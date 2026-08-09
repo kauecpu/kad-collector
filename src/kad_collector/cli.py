@@ -1,0 +1,144 @@
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+from .ai_processor import process_extraction_manifest
+from .answer_key import match_answer_key
+from .collector import collect_documents
+from .config import load_config
+from .database import stage_batch
+from .json_utils import read_json
+from .models import QuestionBatch
+from .pdf_extractor import extract_manifest
+from .review import approve_batch
+from .validation import validate_questions
+
+
+def _path(value: str) -> Path:
+    return Path(value)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="kad-collector",
+        description="Coleta provas e prepara questoes para revisao editorial.",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    collect = subparsers.add_parser("collect", help="localiza e baixa PDFs permitidos")
+    collect.add_argument("--config", type=_path, default=Path("config/sources.toml"))
+
+    extract = subparsers.add_parser("extract", help="extrai texto dos PDFs de um manifesto")
+    extract.add_argument("manifest", type=_path)
+    extract.add_argument("--output", type=_path)
+
+    process = subparsers.add_parser("process", help="estrutura questoes com IA")
+    process.add_argument("extraction", type=_path)
+    process.add_argument("--output-dir", type=_path, default=Path("data/processed"))
+    process.add_argument("--model")
+    process.add_argument("--max-chars", type=int, default=40_000)
+    process.add_argument("--overlap-chars", type=int, default=3_000)
+
+    answers = subparsers.add_parser("match-answers", help="relaciona um gabarito ao lote")
+    answers.add_argument("batch", type=_path)
+    answers.add_argument("answer_key", type=_path)
+    answers.add_argument("--output", type=_path)
+
+    validate = subparsers.add_parser("validate", help="valida um lote sem altera-lo")
+    validate.add_argument("batch", type=_path)
+    validate.add_argument("--require-answers", action="store_true")
+
+    approve = subparsers.add_parser("approve", help="registra revisao humana do lote")
+    approve.add_argument("batch", type=_path)
+    approve.add_argument("--reviewer", required=True)
+    approve.add_argument("--notes")
+    approve.add_argument("--output", type=_path)
+
+    stage = subparsers.add_parser("stage", help="envia lote aprovado para staging")
+    stage.add_argument("batch", type=_path)
+    stage.add_argument(
+        "--execute",
+        action="store_true",
+        help="executa a escrita; sem esta opcao apenas mostra a previa",
+    )
+    return parser
+
+
+def _run(args: argparse.Namespace) -> int:
+    if args.command == "collect":
+        download_manifest, path = collect_documents(load_config(args.config))
+        print(f"Manifesto: {path} ({len(download_manifest.documents)} documentos)")
+        for warning in download_manifest.warnings:
+            print(f"AVISO: {warning}", file=sys.stderr)
+        return 0
+    if args.command == "extract":
+        extraction_manifest, path = extract_manifest(args.manifest, args.output)
+        print(f"Extracao: {path} ({len(extraction_manifest.documents)} documentos)")
+        return 0
+    if args.command == "process":
+        paths = process_extraction_manifest(
+            args.extraction,
+            args.output_dir,
+            model=args.model,
+            max_chars=args.max_chars,
+            overlap_chars=args.overlap_chars,
+        )
+        if not paths:
+            print("Nenhuma prova textual elegivel; verifique tipos e avisos de OCR.")
+        for path in paths:
+            print(f"Lote pendente: {path}")
+        return 0
+    if args.command == "match-answers":
+        batch, path = match_answer_key(args.batch, args.answer_key, args.output)
+        matched = sum(item.answer_status != "missing" for item in batch.questions)
+        print(f"Lote para revisao: {path} ({matched}/{len(batch.questions)} respostas)")
+        return 0
+    if args.command == "validate":
+        batch = QuestionBatch.model_validate(read_json(args.batch))
+        validation = validate_questions(batch.questions, require_answers=args.require_answers)
+        for error in validation.errors:
+            print(f"ERRO: {error}")
+        for warning in validation.warnings:
+            print(f"AVISO: {warning}")
+        print("Valido" if validation.valid else "Invalido")
+        return 0 if validation.valid else 2
+    if args.command == "approve":
+        batch, path = approve_batch(
+            args.batch,
+            args.reviewer,
+            notes=args.notes,
+            output_path=args.output,
+        )
+        print(f"Lote aprovado: {path} ({len(batch.questions)} questoes)")
+        return 0
+    if args.command == "stage":
+        stage_result = stage_batch(args.batch, execute=args.execute)
+        if stage_result.executed:
+            print(
+                "Staging concluido: "
+                f"{stage_result.inserted_count}/{stage_result.question_count} insercoes novas"
+            )
+        else:
+            print(
+                f"Previa valida: lote {stage_result.batch_id}, "
+                f"{stage_result.question_count} questoes. "
+                "Use --execute para gravar em staging."
+            )
+        return 0
+    raise AssertionError(f"comando desconhecido: {args.command}")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        return _run(args)
+    except (OSError, RuntimeError, ValueError) as exc:
+        print(f"ERRO: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

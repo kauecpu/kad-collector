@@ -141,3 +141,20 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+
+# Collector runtime artifacts (may contain copyrighted source material)
+data/raw/
+data/manifests/
+data/extracted/
+data/processed/
+data/reviewed/
+data/approved/
