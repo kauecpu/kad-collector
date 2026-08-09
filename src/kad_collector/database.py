@@ -49,8 +49,9 @@ def stage_batch(path: Path, *, execute: bool = False) -> StageResult:
             """
             INSERT INTO collector.import_batches (
                 id, source_sha256, source_url, source_title, authorization_basis,
-                reviewed_by, reviewed_at, content_sha256, model, created_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                reviewed_by, reviewed_at, content_sha256, model, collection_filters,
+                filtered_out_questions, created_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (id) DO NOTHING
             """,
             (
@@ -63,6 +64,8 @@ def stage_batch(path: Path, *, execute: bool = False) -> StageResult:
                 batch.review.reviewed_at,
                 batch.review.content_sha256,
                 batch.model,
+                Jsonb(batch.filters.model_dump(mode="json")),
+                batch.filtered_out_questions,
                 batch.created_at,
             ),
         )

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -8,6 +9,7 @@ from pypdf.errors import PdfReadError
 
 from .json_utils import read_json, write_json
 from .models import (
+    DocumentRecord,
     DownloadManifest,
     ExtractedDocument,
     ExtractedPage,
@@ -15,9 +17,25 @@ from .models import (
 )
 
 
-def _extract_document(local_path: Path, record) -> ExtractedDocument:  # type: ignore[no-untyped-def]
+def _verify_local_document(local_path: Path, record: DocumentRecord) -> None:
+    digest = hashlib.sha256()
+    size = 0
+    with local_path.open("rb") as handle:
+        while chunk := handle.read(1024 * 1024):
+            digest.update(chunk)
+            size += len(chunk)
+    if size != record.size_bytes:
+        raise ValueError(
+            f"tamanho do PDF diverge do manifesto ({local_path}): {size} != {record.size_bytes}"
+        )
+    if digest.hexdigest() != record.sha256:
+        raise ValueError(f"SHA-256 do PDF diverge do manifesto: {local_path}")
+
+
+def _extract_document(local_path: Path, record: DocumentRecord) -> ExtractedDocument:
     warnings: list[str] = []
     pages: list[ExtractedPage] = []
+    _verify_local_document(local_path, record)
     try:
         reader = PdfReader(local_path, strict=False)
         if reader.is_encrypted and not reader.decrypt(""):
@@ -69,7 +87,12 @@ def extract_manifest(
         local_path = Path(record.local_path)
         extracted.append(_extract_document(local_path, record))
 
-    result = ExtractionManifest(created_at=datetime.now(UTC), documents=extracted)
+    result = ExtractionManifest(
+        created_at=datetime.now(UTC),
+        documents=extracted,
+        filters=manifest.filters,
+        filtered_out_documents=manifest.filtered_out_documents,
+    )
     if output_path is None:
         output_path = Path("data/extracted") / f"{manifest_path.stem}-extracted.json"
     write_json(output_path, result.model_dump(mode="json"))

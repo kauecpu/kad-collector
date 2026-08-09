@@ -7,10 +7,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
+from .filters import filter_questions
 from .json_utils import read_json, write_json
 from .models import (
     AIChunkResult,
     AIQuestion,
+    CollectionFilters,
     ExtractedDocument,
     ExtractionManifest,
     QuestionBatch,
@@ -148,10 +150,31 @@ def _deduplicate(questions: list[QuestionRecord]) -> list[QuestionRecord]:
     return [by_number[number] for number in sorted(by_number)]
 
 
+def _batch_id(
+    document: ExtractedDocument,
+    model: str,
+    filters: CollectionFilters,
+    questions: list[QuestionRecord],
+) -> str:
+    canonical = json.dumps(
+        {
+            "source_sha256": document.document.sha256,
+            "model": model,
+            "filters": filters.model_dump(mode="json"),
+            "questions": [question.model_dump(mode="json") for question in questions],
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, canonical))
+
+
 def process_document(
     document: ExtractedDocument,
     extractor: ChunkExtractor,
     *,
+    filters: CollectionFilters | None = None,
     max_chars: int = 40_000,
     overlap_chars: int = 3_000,
 ) -> QuestionBatch:
@@ -176,15 +199,23 @@ def process_document(
             processing_warnings.append("um trecho terminou com questao incompleta; revisar bordas")
         extracted_questions.extend(_to_question_record(item, document) for item in result.questions)
 
+    active_filters = filters or CollectionFilters()
     questions = _deduplicate(extracted_questions)
+    questions, filtered_out_questions = filter_questions(questions, active_filters)
+    if filtered_out_questions:
+        processing_warnings.append(
+            f"{filtered_out_questions} questoes removidas por nao atenderem aos filtros"
+        )
     validation = validate_questions(questions)
-    batch_id = str(uuid.uuid5(uuid.NAMESPACE_URL, document.document.sha256))
+    batch_id = _batch_id(document, extractor.model, active_filters, questions)
     return QuestionBatch(
         batch_id=batch_id,
         created_at=datetime.now(UTC),
         model=extractor.model,
         source_document=document.document,
         questions=questions,
+        filters=active_filters,
+        filtered_out_questions=filtered_out_questions,
         processing_warnings=list(dict.fromkeys(processing_warnings)),
         validation=validation,
     )
@@ -197,10 +228,14 @@ def process_extraction_manifest(
     model: str | None = None,
     max_chars: int = 40_000,
     overlap_chars: int = 3_000,
+    filters: CollectionFilters | None = None,
     extractor: ChunkExtractor | None = None,
 ) -> list[Path]:
     manifest = ExtractionManifest.model_validate(read_json(extraction_path))
     active_extractor = extractor or OpenAIChunkExtractor(model=model)
+    active_filters = (
+        manifest.filters if filters is None else manifest.filters.merged_with(filters)
+    )
     written: list[Path] = []
     for document in manifest.documents:
         if document.document.document_type != "exam" or document.needs_ocr:
@@ -208,12 +243,11 @@ def process_extraction_manifest(
         batch = process_document(
             document,
             active_extractor,
+            filters=active_filters,
             max_chars=max_chars,
             overlap_chars=overlap_chars,
         )
-        destination = output_dir / (
-            f"{document.document.source_id}-{document.document.sha256[:16]}-questions.json"
-        )
+        destination = output_dir / f"{document.document.source_id}-{batch.batch_id}-questions.json"
         write_json(destination, batch.model_dump(mode="json"))
         written.append(destination)
     return written

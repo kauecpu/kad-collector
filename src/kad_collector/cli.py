@@ -10,7 +10,7 @@ from .collector import collect_documents
 from .config import load_config
 from .database import stage_batch
 from .json_utils import read_json
-from .models import QuestionBatch
+from .models import CollectionFilters, QuestionBatch
 from .pdf_extractor import extract_manifest
 from .review import approve_batch
 from .validation import validate_questions
@@ -18,6 +18,27 @@ from .validation import validate_questions
 
 def _path(value: str) -> Path:
     return Path(value)
+
+
+def _add_filter_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--year", "--ano", dest="years", type=int, action="append")
+    parser.add_argument("--board", "--banca", dest="boards", action="append")
+    parser.add_argument("--organization", "--orgao", dest="organizations", action="append")
+    parser.add_argument("--role", "--cargo", dest="roles", action="append")
+    parser.add_argument("--matter", "--materia", dest="matters", action="append")
+    parser.add_argument("--subject", "--assunto", dest="subjects", action="append")
+
+
+def _filters_from_args(args: argparse.Namespace) -> CollectionFilters | None:
+    filters = CollectionFilters(
+        years=args.years or [],
+        boards=args.boards or [],
+        organizations=args.organizations or [],
+        roles=args.roles or [],
+        matters=args.matters or [],
+        subjects=args.subjects or [],
+    )
+    return None if filters.is_empty() else filters
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -29,6 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     collect = subparsers.add_parser("collect", help="localiza e baixa PDFs permitidos")
     collect.add_argument("--config", type=_path, default=Path("config/sources.toml"))
+    _add_filter_arguments(collect)
 
     extract = subparsers.add_parser("extract", help="extrai texto dos PDFs de um manifesto")
     extract.add_argument("manifest", type=_path)
@@ -40,6 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
     process.add_argument("--model")
     process.add_argument("--max-chars", type=int, default=40_000)
     process.add_argument("--overlap-chars", type=int, default=3_000)
+    _add_filter_arguments(process)
 
     answers = subparsers.add_parser("match-answers", help="relaciona um gabarito ao lote")
     answers.add_argument("batch", type=_path)
@@ -68,8 +91,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _run(args: argparse.Namespace) -> int:
     if args.command == "collect":
-        download_manifest, path = collect_documents(load_config(args.config))
-        print(f"Manifesto: {path} ({len(download_manifest.documents)} documentos)")
+        download_manifest, path = collect_documents(
+            load_config(args.config), _filters_from_args(args)
+        )
+        print(
+            f"Manifesto: {path} ({len(download_manifest.documents)} documentos, "
+            f"{len(download_manifest.references)} referencias, "
+            f"{download_manifest.filtered_out_documents} descartados por filtro)"
+        )
         for warning in download_manifest.warnings:
             print(f"AVISO: {warning}", file=sys.stderr)
         return 0
@@ -84,11 +113,16 @@ def _run(args: argparse.Namespace) -> int:
             model=args.model,
             max_chars=args.max_chars,
             overlap_chars=args.overlap_chars,
+            filters=_filters_from_args(args),
         )
         if not paths:
             print("Nenhuma prova textual elegivel; verifique tipos e avisos de OCR.")
         for path in paths:
-            print(f"Lote pendente: {path}")
+            batch = QuestionBatch.model_validate(read_json(path))
+            print(
+                f"Lote pendente: {path} ({len(batch.questions)} questoes, "
+                f"{batch.filtered_out_questions} descartadas por filtro)"
+            )
         return 0
     if args.command == "match-answers":
         batch, path = match_answer_key(args.batch, args.answer_key, args.output)
