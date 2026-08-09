@@ -165,6 +165,14 @@ class DiscoveryRecord(StrictModel):
     metadata: dict[str, str] = Field(default_factory=dict)
 
 
+class CollectionFailure(StrictModel):
+    source_id: str
+    url: str
+    stage: Literal["robots", "discovery", "download"]
+    message: str
+    retryable: bool = False
+
+
 class DownloadManifest(StrictModel):
     schema_version: Literal["1.0"] = "1.0"
     created_at: datetime
@@ -172,6 +180,8 @@ class DownloadManifest(StrictModel):
     references: list[DiscoveryRecord] = Field(default_factory=list)
     filters: CollectionFilters = Field(default_factory=CollectionFilters)
     filtered_out_documents: int = Field(default=0, ge=0)
+    duplicate_documents: int = Field(default=0, ge=0)
+    failures: list[CollectionFailure] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -273,3 +283,93 @@ class QuestionBatch(StrictModel):
             if any(value is None for value in required):
                 raise ValueError("um lote aprovado exige revisor, data e hash do conteudo")
         return self
+
+
+class QuestionOrigin(StrictModel):
+    source_id: str
+    source_name: str
+    document_title: str
+    url: str
+    sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    pages: list[int] = Field(default_factory=list)
+
+
+class OrganizedQuestion(StrictModel):
+    fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+    question: QuestionRecord
+    origins: list[QuestionOrigin]
+    issues: list[str] = Field(default_factory=list)
+
+
+class RunMetrics(StrictModel):
+    requested_links: int = Field(default=0, ge=0)
+    collected_documents: int = Field(default=0, ge=0)
+    duplicate_documents: int = Field(default=0, ge=0)
+    filtered_out_documents: int = Field(default=0, ge=0)
+    documents_needing_ocr: int = Field(default=0, ge=0)
+    extracted_questions: int = Field(default=0, ge=0)
+    filtered_out_questions: int = Field(default=0, ge=0)
+    duplicate_questions: int = Field(default=0, ge=0)
+    ready_questions: int = Field(default=0, ge=0)
+    exception_questions: int = Field(default=0, ge=0)
+
+
+class ReportArtifacts(StrictModel):
+    download_manifest: str
+    extraction_manifest: str
+    question_batches: list[str] = Field(default_factory=list)
+
+
+class QuestionReport(StrictModel):
+    schema_version: Literal["1.0"] = "1.0"
+    run_id: str
+    created_at: datetime
+    requested_urls: list[str]
+    filters: CollectionFilters = Field(default_factory=CollectionFilters)
+    questions: list[OrganizedQuestion] = Field(default_factory=list)
+    exceptions: list[OrganizedQuestion] = Field(default_factory=list)
+    metrics: RunMetrics
+    collection_failures: list[CollectionFailure] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    artifacts: ReportArtifacts
+
+
+class RetryRecord(StrictModel):
+    source_id: str
+    url: str
+    stage: Literal["discovery", "download"]
+    attempts: int = Field(ge=1)
+    last_error: str
+    last_attempt_at: datetime
+    next_attempt_at: datetime | None = None
+    exhausted: bool = False
+
+
+class AutomationState(StrictModel):
+    schema_version: Literal["1.0"] = "1.0"
+    updated_at: datetime | None = None
+    processed_documents: dict[str, datetime] = Field(default_factory=dict)
+    known_references: dict[str, datetime] = Field(default_factory=dict)
+    source_snapshots: dict[str, list[str]] = Field(default_factory=dict)
+    retries: list[RetryRecord] = Field(default_factory=list)
+
+
+class AutomationMetrics(StrictModel):
+    new_documents: int = Field(default=0, ge=0)
+    known_documents: int = Field(default=0, ge=0)
+    new_references: int = Field(default=0, ge=0)
+    known_references: int = Field(default=0, ge=0)
+    changed_sources: int = Field(default=0, ge=0)
+    pending_retries: int = Field(default=0, ge=0)
+    exhausted_retries: int = Field(default=0, ge=0)
+
+
+class AutomationReport(StrictModel):
+    schema_version: Literal["1.0"] = "1.0"
+    created_at: datetime
+    state_path: str
+    full_download_manifest: str
+    automatic_metrics: AutomationMetrics
+    changed_sources: list[str] = Field(default_factory=list)
+    retry_queue: list[RetryRecord] = Field(default_factory=list)
+    result: QuestionReport

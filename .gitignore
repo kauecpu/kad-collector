@@ -158,3 +158,5 @@ data/extracted/
 data/processed/
 data/reviewed/
 data/approved/
+data/results/
+data/state/

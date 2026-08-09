@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .ai_processor import process_extraction_manifest
 from .answer_key import match_answer_key
+from .automation import run_automatic
 from .collector import collect_documents
 from .config import load_config
 from .database import stage_batch
@@ -14,6 +15,7 @@ from .models import CollectionFilters, QuestionBatch
 from .pdf_extractor import extract_manifest
 from .review import approve_batch
 from .validation import validate_questions
+from .workflow import read_requested_urls, run_semiautomatic
 
 
 def _path(value: str) -> Path:
@@ -51,6 +53,33 @@ def build_parser() -> argparse.ArgumentParser:
     collect = subparsers.add_parser("collect", help="localiza e baixa PDFs permitidos")
     collect.add_argument("--config", type=_path, default=Path("config/sources.toml"))
     _add_filter_arguments(collect)
+
+    run = subparsers.add_parser(
+        "run",
+        aliases=["semi-auto"],
+        help="executa links informados e gera um relatorio local organizado",
+    )
+    run.add_argument("--config", type=_path, default=Path("config/sources.toml"))
+    run.add_argument("--url", action="append", default=[])
+    run.add_argument("--urls-file", type=_path, action="append", default=[])
+    run.add_argument("--output", type=_path)
+    run.add_argument("--model")
+    run.add_argument("--max-chars", type=int, default=40_000)
+    run.add_argument("--overlap-chars", type=int, default=3_000)
+    _add_filter_arguments(run)
+
+    sync = subparsers.add_parser(
+        "sync", help="processa somente novidades das fontes cadastradas e atualiza o estado"
+    )
+    sync.add_argument("--config", type=_path, default=Path("config/sources.toml"))
+    sync.add_argument("--state", type=_path)
+    sync.add_argument("--output", type=_path)
+    sync.add_argument("--model")
+    sync.add_argument("--max-chars", type=int, default=40_000)
+    sync.add_argument("--overlap-chars", type=int, default=3_000)
+    sync.add_argument("--max-attempts", type=int, default=3)
+    sync.add_argument("--retry-delay-seconds", type=int, default=300)
+    _add_filter_arguments(sync)
 
     extract = subparsers.add_parser("extract", help="extrai texto dos PDFs de um manifesto")
     extract.add_argument("manifest", type=_path)
@@ -90,6 +119,46 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _run(args: argparse.Namespace) -> int:
+    if args.command in {"run", "semi-auto"}:
+        urls = read_requested_urls(args.url, args.urls_file)
+        semiautomatic_report, path = run_semiautomatic(
+            config_path=args.config,
+            urls=urls,
+            filters=_filters_from_args(args),
+            output_path=args.output,
+            model=args.model,
+            max_chars=args.max_chars,
+            overlap_chars=args.overlap_chars,
+        )
+        print(
+            f"Resultado: {path} ({semiautomatic_report.metrics.ready_questions} prontas, "
+            f"{semiautomatic_report.metrics.exception_questions} excecoes, "
+            f"{semiautomatic_report.metrics.duplicate_questions} duplicatas removidas)"
+        )
+        for warning in semiautomatic_report.warnings:
+            print(f"AVISO: {warning}", file=sys.stderr)
+        return 0
+    if args.command == "sync":
+        automatic_report, path = run_automatic(
+            config_path=args.config,
+            filters=_filters_from_args(args),
+            state_path=args.state,
+            output_path=args.output,
+            model=args.model,
+            max_chars=args.max_chars,
+            overlap_chars=args.overlap_chars,
+            max_attempts=args.max_attempts,
+            base_delay_seconds=args.retry_delay_seconds,
+        )
+        metrics = automatic_report.automatic_metrics
+        print(
+            f"Resultado automatico: {path} ({metrics.new_documents} novos documentos, "
+            f"{metrics.known_documents} ja conhecidos, "
+            f"{automatic_report.result.metrics.exception_questions} excecoes)"
+        )
+        for warning in automatic_report.result.warnings:
+            print(f"AVISO: {warning}", file=sys.stderr)
+        return 0
     if args.command == "collect":
         download_manifest, path = collect_documents(
             load_config(args.config), _filters_from_args(args)

@@ -14,7 +14,7 @@ from kad_collector.collector import (
     extract_links,
     select_document_links,
 )
-from kad_collector.config import ConfigError, load_config
+from kad_collector.config import ConfigError, config_for_urls, load_config
 from kad_collector.filters import document_might_match_filters
 from kad_collector.models import (
     AppConfig,
@@ -146,6 +146,45 @@ class LinkParsingTests(unittest.TestCase):
         self.assertEqual(manifest.references[0].title, "123")
         self.assertNotIn(question_url, FixtureClient.requested)
 
+    def test_direct_pdf_is_collected_as_exam_and_duplicate_content_is_removed(self) -> None:
+        first_url = "https://provas.example.gov.br/arquivo-1.pdf"
+        second_url = "https://provas.example.gov.br/arquivo-2.pdf"
+        pdf_body = b"%PDF-1.4\nfixture local\n%%EOF"
+
+        class FixtureClient:
+            def __init__(self, user_agent: str, timeout: float, interval_seconds: float) -> None:
+                pass
+
+            def get(self, url: str, allowed_hosts: list[str], max_bytes: int) -> HttpResult:
+                headers = Message()
+                if url.endswith("/robots.txt"):
+                    headers["Content-Type"] = "text/plain; charset=utf-8"
+                    return HttpResult(
+                        url=url,
+                        status_code=200,
+                        headers=headers,
+                        body=b"User-agent: *\nAllow: /\n",
+                    )
+                headers["Content-Type"] = "application/pdf"
+                return HttpResult(
+                    url=url,
+                    status_code=200,
+                    headers=headers,
+                    body=pdf_body,
+                )
+
+        with tempfile.TemporaryDirectory() as temporary:
+            config = AppConfig(
+                collector=CollectorSettings(data_dir=temporary),
+                sources=[source_definition(start_urls=[first_url, second_url])],
+            )
+            with patch("kad_collector.collector.SafeHttpClient", FixtureClient):
+                manifest, _ = collect_documents(config)
+
+        self.assertEqual(len(manifest.documents), 1)
+        self.assertEqual(manifest.documents[0].document_type, "exam")
+        self.assertEqual(manifest.duplicate_documents, 1)
+
 
 class SecurityTests(unittest.TestCase):
     def test_example_commercial_sources_are_disabled_and_reference_only(self) -> None:
@@ -195,6 +234,22 @@ authorization_basis = ""
             with self.assertRaises(ConfigError):
                 load_config(path)
 
+    def test_ad_hoc_urls_must_belong_to_an_enabled_content_source(self) -> None:
+        enabled = source_definition()
+        config = AppConfig(sources=[enabled])
+        selected = config_for_urls(config, ["https://provas.example.gov.br/prova-direta.pdf"])
+        self.assertEqual(
+            selected.sources[0].start_urls,
+            ["https://provas.example.gov.br/prova-direta.pdf"],
+        )
+
+        with self.assertRaisesRegex(ConfigError, "nenhuma fonte cadastrada"):
+            config_for_urls(config, ["https://nao-permitida.example/prova.pdf"])
+
+        ambiguous = AppConfig(sources=[enabled, source_definition(id="outra_fonte")])
+        with self.assertRaisesRegex(ConfigError, "mais de uma fonte"):
+            config_for_urls(ambiguous, ["https://provas.example.gov.br/prova.pdf"])
+
     def test_rejects_commercial_source_without_written_authorization(self) -> None:
         with self.assertRaises(ValueError):
             source_definition(
@@ -225,9 +280,7 @@ authorization_basis = ""
         self.assertFalse(
             policy.can_fetch("https://provas.example.gov.br/restrito/prova.pdf", hosts)
         )
-        self.assertTrue(
-            policy.can_fetch("https://provas.example.gov.br/publico/prova.pdf", hosts)
-        )
+        self.assertTrue(policy.can_fetch("https://provas.example.gov.br/publico/prova.pdf", hosts))
 
 
 if __name__ == "__main__":

@@ -109,6 +109,39 @@ campos diferentes sao combinados (`--ano 2022 --banca FGV`). Filtros informados 
 `process` refinam por intersecao os filtros ja registrados pelo comando `collect`. Uma
 combinacao contraditoria, como coletar 2022 e processar 2023, e rejeitada explicitamente.
 
+### Fluxo semiautomatico de ponta a ponta
+
+Quando a equipe ja possui os links, o comando `run` executa coleta, extracao, estruturacao,
+filtro, deduplicacao entre documentos e organizacao em uma unica chamada. Cada link precisa
+pertencer a uma fonte `content` cadastrada, habilitada e autorizada no TOML. O link pode ser
+uma pagina que lista PDFs ou um PDF direto:
+
+```cmd
+kad-collector run --config config\sources.toml ^
+  --url "https://fonte-oficial.example/prova-2022.pdf" ^
+  --url "https://fonte-oficial.example/outra-pagina" ^
+  --ano 2022 --banca FGV
+```
+
+Para lotes maiores, informe um link por linha. Linhas vazias e linhas iniciadas por `#` sao
+ignoradas:
+
+```cmd
+kad-collector run --config config\sources.toml --urls-file links.txt --ano 2022
+```
+
+O resultado e gravado em `data/results/semi-*.json` e contem:
+
+- `questions`: questoes completas, ordenadas por concurso/orgao e cargo, depois banca e ano;
+- `exceptions`: itens incompletos, conflitantes ou duvidosos, com o motivo para revisao;
+- `metrics`: documentos e questoes filtrados, duplicatas removidas e itens para revisao;
+- `collection_failures` e `warnings`: bloqueios, falhas de fonte e documentos que exigem OCR;
+- `artifacts`: caminhos dos manifestos e lotes intermediarios para auditoria.
+
+A deduplicacao compara o enunciado e as alternativas normalizados e agrega as origens dos lotes.
+Metadados divergentes entre copias colocam a questao em `exceptions`; eles nao sao resolvidos
+silenciosamente. O comando nao aprova lotes e nao escreve no banco do aplicativo.
+
 ### 2. Extrair o texto
 
 Use o caminho do manifesto exibido pelo comando anterior:
@@ -179,6 +212,41 @@ kad-collector stage data\approved\LOTE.json --execute
 Nao use chave `service_role`. A escrita e idempotente e termina em
 `collector.question_staging` com `editorial_status = 'pending_review'`; promover dados
 para as tabelas do aplicativo e uma operacao editorial separada.
+
+## Execucao automatica por novidades
+
+Depois que as fontes habilitadas estiverem revisadas, `sync` executa uma rodada automatica
+usando as `start_urls` cadastradas:
+
+```cmd
+kad-collector sync --config config\sources.toml --ano 2022 --banca FGV
+```
+
+Cada rodada:
+
+1. verifica as paginas e fontes permitidas;
+2. compara o SHA-256 dos documentos com `data/state/automation.json`;
+3. extrai e estrutura somente documentos ainda nao processados;
+4. registra referencias novas, mudancas por fonte e falhas temporarias;
+5. mantem uma fila de retentativas com limite de tentativas;
+6. grava `data/results/automatic-*.json` com metricas e excecoes para a equipe.
+
+O relatorio automatico lista os IDs em `changed_sources` e detalha tentativas pendentes ou
+esgotadas em `retry_queue`, sem esconder falhas persistentes no estado interno.
+
+Os caminhos e limites podem ser alterados sem versionar dados operacionais:
+
+```cmd
+kad-collector sync --config config\sources.toml ^
+  --state data\state\producao.json ^
+  --output data\results\rodada.json ^
+  --max-attempts 4 --retry-delay-seconds 600
+```
+
+Execute `sync` periodicamente pelo agendador autorizado do ambiente. O comando termina ao fim
+de cada rodada; ele nao instala servico, nao altera infraestrutura e nao publica no aplicativo.
+Falhas permanentes, OCR pendente e questoes incompletas continuam visiveis no relatorio. Para
+reprocessar todo o acervo com outra politica ou modelo, use um novo arquivo em `--state`.
 
 ## Scripts equivalentes
 
