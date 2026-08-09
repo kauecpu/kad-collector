@@ -23,6 +23,13 @@ def validate_questions(
             errors.append(f"{prefix}: letras de alternativas duplicadas")
         if question.correct_answer and question.correct_answer not in letters:
             errors.append(f"{prefix}: resposta nao existe entre as alternativas")
+        if question.answer_status == "matched" and question.correct_answer is None:
+            errors.append(f"{prefix}: resposta matched sem alternativa correta")
+        if (
+            question.answer_status in {"missing", "annulled"}
+            and question.correct_answer is not None
+        ):
+            errors.append(f"{prefix}: estado {question.answer_status} contradiz a resposta correta")
         if require_answers and question.answer_status == "missing":
             errors.append(f"{prefix}: resposta do gabarito ausente")
         if not question.source_pages:
@@ -48,6 +55,8 @@ def batch_content_sha256(batch: QuestionBatch) -> str:
         "batch_id": batch.batch_id,
         "model": batch.model,
         "source_document": batch.source_document.model_dump(mode="json"),
+        "filters": batch.filters.model_dump(mode="json"),
+        "filtered_out_questions": batch.filtered_out_questions,
         "questions": [question.model_dump(mode="json") for question in batch.questions],
     }
     canonical = json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":"))

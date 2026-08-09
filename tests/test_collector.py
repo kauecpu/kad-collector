@@ -1,21 +1,37 @@
 from __future__ import annotations
 
+import gzip
 import tempfile
 import unittest
 from email.message import Message
 from pathlib import Path
+from unittest.mock import patch
 
 from kad_collector.collector import (
     RobotsPolicy,
     classify_document,
+    collect_documents,
     extract_links,
     select_document_links,
 )
 from kad_collector.config import ConfigError, load_config
-from kad_collector.models import SourceDefinition
-from kad_collector.security import HttpResult, UnsafeUrlError, validate_public_url
+from kad_collector.filters import document_might_match_filters
+from kad_collector.models import (
+    AppConfig,
+    CollectionFilters,
+    CollectorSettings,
+    SourceDefinition,
+)
+from kad_collector.security import (
+    FetchError,
+    HttpResult,
+    SafeHttpClient,
+    UnsafeUrlError,
+    validate_public_url,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
+PROJECT_ROOT = Path(__file__).parents[1]
 
 
 def source_definition(**changes: object) -> SourceDefinition:
@@ -58,8 +74,96 @@ class LinkParsingTests(unittest.TestCase):
         )
         self.assertEqual(kind, "answer_key")
 
+    def test_document_prefilter_rejects_known_metadata_mismatch(self) -> None:
+        filters = CollectionFilters(years=[2022], boards=["FGV"])
+        self.assertFalse(
+            document_might_match_filters(
+                "Prova 2023",
+                "https://provas.example.gov.br/prova-2023.pdf",
+                {"ano": "2023", "banca": "CESPE"},
+                filters,
+            )
+        )
+        self.assertTrue(
+            document_might_match_filters(
+                "Prova ainda sem metadados",
+                "https://provas.example.gov.br/prova.pdf",
+                {},
+                filters,
+            )
+        )
+        self.assertFalse(
+            document_might_match_filters(
+                "Prova 2023",
+                "https://provas.example.gov.br/prova-2023.pdf",
+                {},
+                filters,
+            )
+        )
+
+    def test_reference_only_records_links_without_downloading_content(self) -> None:
+        page_url = "https://referencias.example.gov.br/lista"
+        question_url = "https://referencias.example.gov.br/questao/123"
+
+        class FixtureClient:
+            requested: list[str] = []
+
+            def __init__(self, user_agent: str, timeout: float, interval_seconds: float) -> None:
+                pass
+
+            def get(self, url: str, allowed_hosts: list[str], max_bytes: int) -> HttpResult:
+                self.requested.append(url)
+                headers = Message()
+                if url.endswith("/robots.txt"):
+                    headers["Content-Type"] = "text/plain; charset=utf-8"
+                    body = b"User-agent: *\nAllow: /\n"
+                elif url == page_url:
+                    headers["Content-Type"] = "text/html; charset=utf-8"
+                    body = f'<a href="{question_url}">Questao 123</a>'.encode()
+                else:
+                    raise AssertionError(f"conteudo de referencia nao deveria ser baixado: {url}")
+                return HttpResult(url=url, status_code=200, headers=headers, body=body)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            source = source_definition(
+                start_urls=[page_url],
+                allowed_hosts=["referencias.example.gov.br"],
+                include_patterns=[r"/questao/\d+$"],
+                exclude_patterns=[],
+                access_mode="reference_only",
+                requires_written_authorization=True,
+                written_authorization_reference="contrato-123",
+            )
+            config = AppConfig(
+                collector=CollectorSettings(data_dir=temporary),
+                sources=[source],
+            )
+            with patch("kad_collector.collector.SafeHttpClient", FixtureClient):
+                manifest, _ = collect_documents(config)
+
+        self.assertEqual(manifest.documents, [])
+        self.assertEqual([item.url for item in manifest.references], [question_url])
+        self.assertEqual(manifest.references[0].title, "123")
+        self.assertNotIn(question_url, FixtureClient.requested)
+
 
 class SecurityTests(unittest.TestCase):
+    def test_example_commercial_sources_are_disabled_and_reference_only(self) -> None:
+        config = load_config(PROJECT_ROOT / "config" / "sources.example.toml")
+        commercial = {
+            source.id: source
+            for source in config.sources
+            if source.id in {"qconcursos_referencia", "gran_questoes_referencia"}
+        }
+        self.assertEqual(set(commercial), {"qconcursos_referencia", "gran_questoes_referencia"})
+        self.assertTrue(all(not source.enabled for source in commercial.values()))
+        self.assertTrue(
+            all(source.access_mode == "reference_only" for source in commercial.values())
+        )
+        self.assertTrue(
+            all(source.requires_written_authorization for source in commercial.values())
+        )
+
     def test_blocks_private_ip(self) -> None:
         with self.assertRaises(UnsafeUrlError):
             validate_public_url("http://127.0.0.1/prova.pdf", ["127.0.0.1"])
@@ -90,6 +194,19 @@ authorization_basis = ""
             )
             with self.assertRaises(ConfigError):
                 load_config(path)
+
+    def test_rejects_commercial_source_without_written_authorization(self) -> None:
+        with self.assertRaises(ValueError):
+            source_definition(
+                access_mode="reference_only",
+                requires_written_authorization=True,
+                written_authorization_reference="",
+            )
+
+    def test_gzip_expansion_respects_uncompressed_limit(self) -> None:
+        compressed = gzip.compress(b"x" * 100_000)
+        with self.assertRaisesRegex(FetchError, "descompactada excede"):
+            SafeHttpClient._decompress_gzip_limited(compressed, 1_024)
 
     def test_robots_policy_blocks_disallowed_path(self) -> None:
         class FixtureClient:

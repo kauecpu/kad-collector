@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import tempfile
 import unittest
 from datetime import UTC, datetime
@@ -16,6 +17,7 @@ from kad_collector.models import (
     AIChunkResult,
     AIQuestion,
     Alternative,
+    CollectionFilters,
     DocumentRecord,
     DownloadManifest,
     ExtractedDocument,
@@ -130,6 +132,38 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(batch.questions[0].year, 2026)
         self.assertEqual(batch.review.status, "pending")
 
+    def test_process_filters_questions_and_records_the_request(self) -> None:
+        class FilteredExtractor:
+            model = "fake-model"
+
+            def extract(self, text: str, metadata: dict[str, object]) -> AIChunkResult:
+                selected = ai_question(1)
+                selected.board = "FGV"
+                selected.year = 2022
+                rejected = ai_question(2)
+                rejected.board = "CESPE"
+                rejected.year = 2023
+                return AIChunkResult(
+                    questions=[selected, rejected],
+                    chunk_has_continuation=False,
+                    warnings=[],
+                )
+
+        extracted = ExtractedDocument(
+            document=document_record(),
+            pages=[ExtractedPage(number=1, text="texto", character_count=5)],
+            text="--- Pagina 1 ---\nTexto integral.",
+            needs_ocr=False,
+        )
+        filters = CollectionFilters(years=[2022], boards=["FGV"])
+        batch = process_document(extracted, FilteredExtractor(), filters=filters)
+        unfiltered = process_document(extracted, FilteredExtractor())
+
+        self.assertEqual([item.number for item in batch.questions], [1])
+        self.assertEqual(batch.filtered_out_questions, 1)
+        self.assertEqual(batch.filters, filters)
+        self.assertNotEqual(batch.batch_id, unfiltered.batch_id)
+
     def test_parses_common_answer_key_formats(self) -> None:
         entries = parse_answer_key((FIXTURES / "gabarito.txt").read_text(encoding="utf-8"))
         self.assertEqual(entries[1].answer, "B")
@@ -175,12 +209,30 @@ class PipelineTests(unittest.TestCase):
                 writer.write(handle)
             record = document_record(str(pdf_path))
             record.size_bytes = pdf_path.stat().st_size
+            record.sha256 = hashlib.sha256(pdf_path.read_bytes()).hexdigest()
             manifest = DownloadManifest(created_at=datetime.now(UTC), documents=[record])
             manifest_path = root / "manifest.json"
             output_path = root / "extracted.json"
             write_json(manifest_path, manifest.model_dump(mode="json"))
             result, _ = extract_manifest(manifest_path, output_path)
             self.assertTrue(result.documents[0].needs_ocr)
+
+    def test_pdf_integrity_mismatch_stops_extraction(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            pdf_path = root / "altered.pdf"
+            writer = PdfWriter()
+            writer.add_blank_page(width=612, height=792)
+            with pdf_path.open("wb") as handle:
+                writer.write(handle)
+            record = document_record(str(pdf_path))
+            record.size_bytes = pdf_path.stat().st_size
+            manifest = DownloadManifest(created_at=datetime.now(UTC), documents=[record])
+            manifest_path = root / "manifest.json"
+            write_json(manifest_path, manifest.model_dump(mode="json"))
+
+            with self.assertRaisesRegex(ValueError, "SHA-256"):
+                extract_manifest(manifest_path, root / "extracted.json")
 
 
 if __name__ == "__main__":

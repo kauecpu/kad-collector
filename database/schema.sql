@@ -11,9 +11,16 @@ CREATE TABLE IF NOT EXISTS collector.import_batches (
     reviewed_at timestamptz NOT NULL,
     content_sha256 text NOT NULL UNIQUE,
     model text NOT NULL,
+    collection_filters jsonb NOT NULL DEFAULT '{}',
+    filtered_out_questions integer NOT NULL DEFAULT 0 CHECK (filtered_out_questions >= 0),
     created_at timestamptz NOT NULL,
     imported_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE collector.import_batches
+    ADD COLUMN IF NOT EXISTS collection_filters jsonb NOT NULL DEFAULT '{}';
+ALTER TABLE collector.import_batches
+    ADD COLUMN IF NOT EXISTS filtered_out_questions integer NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS collector.question_staging (
     id uuid PRIMARY KEY,

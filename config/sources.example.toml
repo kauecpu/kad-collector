@@ -19,6 +19,7 @@ include_patterns = ["(?i)prova", "(?i)gabarito", "(?i)\\.pdf(?:$|\\?)"]
 exclude_patterns = ["(?i)resultado", "(?i)edital"]
 exam_patterns = ["(?i)prova", "(?i)caderno"]
 answer_key_patterns = ["(?i)gabarito"]
+access_mode = "content"
 authorization_basis = "Descreva aqui a permissao ou base legal conferida."
 terms_url = "https://www.example.gov.br/termos"
 
@@ -27,3 +28,38 @@ banca = ""
 orgao = ""
 cargo = ""
 ano = ""
+
+# Plataformas comerciais ficam desativadas. Mesmo no modo reference_only o coletor
+# registra apenas identificador, URL e metadados; nunca baixa o enunciado nem o envia para IA.
+# Habilite somente depois de obter autorizacao escrita especifica para acesso automatizado.
+[[sources]]
+id = "qconcursos_referencia"
+name = "Qconcursos (somente referencia autorizada)"
+enabled = false
+start_urls = ["https://www.qconcursos.com/questoes-de-concursos/"]
+allowed_hosts = ["www.qconcursos.com"]
+include_patterns = ["(?i)/questoes-de-concursos/.*/[0-9]+(?:$|\\?)"]
+exclude_patterns = []
+exam_patterns = []
+answer_key_patterns = []
+access_mode = "reference_only"
+authorization_basis = "Preencher somente apos autorizacao escrita do Qconcursos."
+requires_written_authorization = true
+written_authorization_reference = ""
+terms_url = "https://www.qconcursos.com/termos-de-uso"
+
+[[sources]]
+id = "gran_questoes_referencia"
+name = "Gran Questoes (somente referencia autorizada)"
+enabled = false
+start_urls = ["https://questoes.grancursosonline.com.br/"]
+allowed_hosts = ["questoes.grancursosonline.com.br"]
+include_patterns = ["(?i)/questoes-de-concursos/.*/[0-9]+(?:$|\\?)"]
+exclude_patterns = []
+exam_patterns = []
+answer_key_patterns = []
+access_mode = "reference_only"
+authorization_basis = "Preencher somente apos autorizacao escrita do Gran."
+requires_written_authorization = true
+written_authorization_reference = ""
+terms_url = "https://www.grancursosonline.com.br/termos-de-uso"

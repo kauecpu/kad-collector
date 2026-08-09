@@ -32,7 +32,7 @@ cd /d "C:\Users\gabri\OneDrive\Documents\GitHub\kad-collector"
 py -m venv .venv
 .venv\Scripts\activate
 python -m pip install --upgrade pip
-python -m pip install -e ".[database]"
+python -m pip install -e ".[database,dev]"
 copy config\sources.example.toml config\sources.toml
 ```
 
@@ -58,7 +58,11 @@ Copie o bloco `[[sources]]` do exemplo e preencha:
 - `allowed_hosts`: lista exata de hosts que o coletor pode acessar;
 - `include_patterns` e `exclude_patterns`: expressoes regulares para selecionar links;
 - `exam_patterns` e `answer_key_patterns`: classificacao do tipo de PDF;
+- `access_mode`: `content` para fontes oficiais/licenciadas ou `reference_only` para
+  registrar somente identificador da URL e metadados;
 - `authorization_basis`: registro da permissao ou base de uso conferida;
+- `requires_written_authorization` e `written_authorization_reference`: bloqueio de
+  fontes que exigem permissao escrita antes do acesso automatizado;
 - `terms_url`: pagina de termos ou politica aplicavel;
 - `metadata`: banca, orgao, cargo e ano conhecidos para a fonte.
 
@@ -84,6 +88,26 @@ kad-collector collect --config config\sources.toml
 
 O comando grava PDFs em `data/raw/` e cria um manifesto em `data/manifests/`.
 Esses arquivos sao locais e ignorados pelo Git.
+
+Filtros podem ser repetidos e ficam registrados no manifesto para serem aplicados
+novamente, de forma estrita, depois que a IA estruturar cada questao:
+
+```cmd
+kad-collector collect --config config\sources.toml --ano 2022 --banca FGV
+kad-collector collect --config config\sources.toml --orgao "TJ-SP" --cargo Escrevente
+```
+
+Tambem estao disponiveis `--materia` e `--assunto`, alem dos nomes equivalentes em
+ingles (`--year`, `--board`, `--organization`, `--role`, `--matter`, `--subject`). Quando
+um campo ainda nao aparece no titulo, URL ou metadados do documento, o PDF continua
+elegivel e a decisao definitiva ocorre somente depois da extracao. Questoes sem o campo
+solicitado ou com valor diferente sao removidas do lote e contabilizadas em
+`filtered_out_questions`.
+
+Valores repetidos do mesmo campo funcionam como alternativas (`--banca FGV --banca FCC`);
+campos diferentes sao combinados (`--ano 2022 --banca FGV`). Filtros informados em
+`process` refinam por intersecao os filtros ja registrados pelo comando `collect`. Uma
+combinacao contraditoria, como coletar 2022 e processar 2023, e rejeitada explicitamente.
 
 ### 2. Extrair o texto
 
@@ -176,11 +200,19 @@ python coletor\coletar_provas.py --config config\sources.toml
 
 ## Fontes cadastradas
 
-Nenhuma. Ao adicionar uma fonte real, documente nesta secao:
+Nenhuma fonte vem habilitada. O arquivo de exemplo inclui os seguintes moldes:
 
 | Fonte | Origem | Campos coletados | Limite | Execucao | Base de uso |
 |---|---|---|---|---|---|
-| _Nenhuma habilitada_ | — | — | — | — | — |
+| Fonte oficial de exemplo | `example.gov.br` ficticio | PDFs, origem, SHA-256 e metadados configurados | 20 PDFs por execucao, 3 s entre requisicoes | `access_mode = "content"`; substituir por fonte real autorizada | Preencher permissao, termos e `authorization_basis` |
+| Qconcursos (desabilitada) | `qconcursos.com/questoes-de-concursos/` | Somente identificador, URL e metadados de referencia | 20 referencias por execucao, 3 s entre requisicoes | `reference_only`; exige autorizacao escrita antes de habilitar | Termos reservam o banco e vedam reproducao sem autorizacao escrita |
+| Gran Questoes (desabilitada) | `questoes.grancursosonline.com.br` | Somente identificador, URL e metadados de referencia | 20 referencias por execucao, 3 s entre requisicoes | `reference_only`; exige autorizacao escrita antes de habilitar | Termos protegem os produtos e restringem copia/reproducao |
+
+`reference_only` nunca baixa o enunciado da pagina encontrada, nunca envia esse conteudo
+para a OpenAI e nunca o grava em staging. Essas referencias podem ajudar a localizar a
+prova oficial ou orientar pesquisa de produto, mas nao podem ser usadas para copiar,
+parafrasear ou gerar questoes derivadas de conteudo proprietario. Para usar conteudo de
+uma plataforma comercial, obtenha licenca escrita e registre a referencia da autorizacao.
 
 ## Testes e verificacoes
 

@@ -8,8 +8,17 @@ from pathlib import Path
 from urllib.parse import urljoin, urlsplit, urlunsplit
 from urllib.robotparser import RobotFileParser
 
+from .filters import document_might_match_filters
 from .json_utils import write_json
-from .models import AppConfig, DocumentRecord, DocumentType, DownloadManifest, SourceDefinition
+from .models import (
+    AppConfig,
+    CollectionFilters,
+    DiscoveryRecord,
+    DocumentRecord,
+    DocumentType,
+    DownloadManifest,
+    SourceDefinition,
+)
 from .security import FetchError, SafeHttpClient, UnsafeUrlError, validate_public_url
 
 
@@ -125,7 +134,9 @@ def _relative_or_absolute(path: Path) -> str:
         return str(resolved)
 
 
-def collect_documents(config: AppConfig) -> tuple[DownloadManifest, Path]:
+def collect_documents(
+    config: AppConfig, filters: CollectionFilters | None = None
+) -> tuple[DownloadManifest, Path]:
     enabled_sources = [source for source in config.sources if source.enabled]
     if not enabled_sources:
         raise CollectorError("nenhuma fonte esta habilitada na configuracao")
@@ -142,7 +153,10 @@ def collect_documents(config: AppConfig) -> tuple[DownloadManifest, Path]:
     )
     robots = RobotsPolicy(client, settings.user_agent)
     documents: list[DocumentRecord] = []
+    references: list[DiscoveryRecord] = []
     warnings: list[str] = []
+    active_filters = filters or CollectionFilters()
+    filtered_out_documents = 0
 
     for source in enabled_sources:
         source_links: list[tuple[str, str, DocumentType]] = []
@@ -160,11 +174,39 @@ def collect_documents(config: AppConfig) -> tuple[DownloadManifest, Path]:
                 charset = page.headers.get_content_charset() or "utf-8"
                 html = page.body.decode(charset, errors="replace")
                 for item in select_document_links(html, page.url, source):
-                    if item[0] not in seen_links:
-                        seen_links.add(item[0])
-                        source_links.append(item)
+                    if item[0] in seen_links:
+                        continue
+                    seen_links.add(item[0])
+                    if not document_might_match_filters(
+                        item[1], item[0], source.metadata, active_filters
+                    ):
+                        filtered_out_documents += 1
+                        continue
+                    source_links.append(item)
             except (FetchError, UnsafeUrlError, LookupError) as exc:
                 warnings.append(f"{source.id}: falha ao ler {page_url}: {exc}")
+
+        if source.access_mode == "reference_only":
+            for url, _title, _document_type in source_links[: settings.max_files_per_source]:
+                references.append(
+                    DiscoveryRecord(
+                        source_id=source.id,
+                        source_name=source.name,
+                        title=Path(urlsplit(url).path).name or "referencia",
+                        url=url,
+                        discovered_at=datetime.now(UTC),
+                        authorization_basis=source.authorization_basis,
+                        written_authorization_reference=source.written_authorization_reference,
+                        terms_url=source.terms_url,
+                        metadata=source.metadata,
+                    )
+                )
+            if source_links:
+                warnings.append(
+                    f"{source.id}: {min(len(source_links), settings.max_files_per_source)} "
+                    "referencias registradas; conteudo nao foi baixado"
+                )
+            continue
 
         for url, title, document_type in source_links[: settings.max_files_per_source]:
             try:
@@ -204,7 +246,12 @@ def collect_documents(config: AppConfig) -> tuple[DownloadManifest, Path]:
                 warnings.append(f"{source.id}: falha ao baixar {url}: {exc}")
 
     manifest = DownloadManifest(
-        created_at=datetime.now(UTC), documents=documents, warnings=warnings
+        created_at=datetime.now(UTC),
+        documents=documents,
+        references=references,
+        filters=active_filters,
+        filtered_out_documents=filtered_out_documents,
+        warnings=warnings,
     )
     timestamp = manifest.created_at.strftime("%Y%m%dT%H%M%SZ")
     manifest_path = manifest_dir / f"download-{timestamp}.json"

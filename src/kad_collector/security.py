@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gzip
+import io
 import ipaddress
 import socket
 import time
@@ -89,9 +90,7 @@ class SafeHttpClient:
                 with self._opener.open(request, timeout=self.timeout) as response:
                     body = self._read_limited(response, max_bytes)
                     if response.headers.get("Content-Encoding", "").lower() == "gzip":
-                        body = gzip.decompress(body)
-                        if len(body) > max_bytes:
-                            raise FetchError("resposta descompactada excede o limite configurado")
+                        body = self._decompress_gzip_limited(body, max_bytes)
                     return HttpResult(
                         url=response.geturl(),
                         status_code=response.status,
@@ -118,6 +117,17 @@ class SafeHttpClient:
         if remaining > 0:
             time.sleep(remaining)
         self._last_request_at = time.monotonic()
+
+    @staticmethod
+    def _decompress_gzip_limited(body: bytes, max_bytes: int) -> bytes:
+        try:
+            with gzip.GzipFile(fileobj=io.BytesIO(body)) as compressed:
+                decompressed = compressed.read(max_bytes + 1)
+        except OSError as exc:
+            raise FetchError("resposta gzip invalida") from exc
+        if len(decompressed) > max_bytes:
+            raise FetchError("resposta descompactada excede o limite configurado")
+        return decompressed
 
     @staticmethod
     def _read_limited(response, max_bytes: int) -> bytes:  # type: ignore[no-untyped-def]
