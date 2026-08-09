@@ -12,6 +12,7 @@ from .filters import document_might_match_filters
 from .json_utils import write_json
 from .models import (
     AppConfig,
+    CollectionFailure,
     CollectionFilters,
     DiscoveryRecord,
     DocumentRecord,
@@ -19,7 +20,7 @@ from .models import (
     DownloadManifest,
     SourceDefinition,
 )
-from .security import FetchError, SafeHttpClient, UnsafeUrlError, validate_public_url
+from .security import FetchError, HttpResult, SafeHttpClient, UnsafeUrlError, validate_public_url
 
 
 class CollectorError(RuntimeError):
@@ -134,6 +135,56 @@ def _relative_or_absolute(path: Path) -> str:
         return str(resolved)
 
 
+def _is_pdf(result: HttpResult) -> bool:
+    content_type = result.headers.get_content_type()
+    return content_type == "application/pdf" or result.body[:1024].lstrip().startswith(b"%PDF-")
+
+
+def _is_retryable(exc: Exception) -> bool:
+    if isinstance(exc, FetchError):
+        return (
+            exc.status_code is None
+            or exc.status_code in {408, 425, 429}
+            or bool(exc.status_code and exc.status_code >= 500)
+        )
+    return isinstance(exc, OSError)
+
+
+def _store_document(
+    *,
+    source: SourceDefinition,
+    original_url: str,
+    title: str,
+    document_type: DocumentType,
+    result: HttpResult,
+    raw_dir: Path,
+) -> DocumentRecord:
+    body = result.body
+    digest = hashlib.sha256(body).hexdigest()
+    destination = raw_dir / f"{source.id}-{document_type}-{digest[:16]}.pdf"
+    if not destination.exists():
+        destination.write_bytes(body)
+    content_type = result.headers.get_content_type()
+    if content_type != "application/pdf":
+        content_type = "application/pdf"
+    return DocumentRecord(
+        source_id=source.id,
+        source_name=source.name,
+        document_type=document_type,
+        title=title,
+        original_url=original_url,
+        resolved_url=result.url,
+        local_path=_relative_or_absolute(destination),
+        sha256=digest,
+        content_type=content_type,
+        size_bytes=len(body),
+        downloaded_at=datetime.now(UTC),
+        authorization_basis=source.authorization_basis,
+        terms_url=source.terms_url,
+        metadata=source.metadata,
+    )
+
+
 def collect_documents(
     config: AppConfig, filters: CollectionFilters | None = None
 ) -> tuple[DownloadManifest, Path]:
@@ -154,22 +205,118 @@ def collect_documents(
     robots = RobotsPolicy(client, settings.user_agent)
     documents: list[DocumentRecord] = []
     references: list[DiscoveryRecord] = []
+    failures: list[CollectionFailure] = []
     warnings: list[str] = []
     active_filters = filters or CollectionFilters()
     filtered_out_documents = 0
+    duplicate_documents = 0
+    seen_digests: set[str] = set()
 
     for source in enabled_sources:
         source_links: list[tuple[str, str, DocumentType]] = []
         seen_links: set[str] = set()
+        source_items = 0
         for page_url in source.start_urls:
             try:
                 if not robots.can_fetch(page_url, source.allowed_hosts):
-                    warnings.append(f"{source.id}: robots.txt bloqueou {page_url}")
+                    message = f"{source.id}: robots.txt bloqueou ou nao liberou {page_url}"
+                    warnings.append(message)
+                    failures.append(
+                        CollectionFailure(
+                            source_id=source.id,
+                            url=page_url,
+                            stage="robots",
+                            message=message,
+                        )
+                    )
                     continue
-                page = client.get(page_url, source.allowed_hosts, settings.max_html_bytes)
+                page = client.get(
+                    page_url,
+                    source.allowed_hosts,
+                    max(settings.max_html_bytes, settings.max_pdf_bytes),
+                )
+                if _is_pdf(page):
+                    if len(page.body) > settings.max_pdf_bytes:
+                        message = f"{source.id}: PDF excede o limite: {page_url}"
+                        warnings.append(message)
+                        failures.append(
+                            CollectionFailure(
+                                source_id=source.id,
+                                url=page_url,
+                                stage="download",
+                                message=message,
+                            )
+                        )
+                        continue
+                    title = Path(urlsplit(page.url).path).name or source.name
+                    document_type = classify_document(page.url, title, source)
+                    if document_type == "other":
+                        document_type = "exam"
+                    if not document_might_match_filters(
+                        title, page.url, source.metadata, active_filters
+                    ):
+                        filtered_out_documents += 1
+                        continue
+                    if source.access_mode == "reference_only":
+                        references.append(
+                            DiscoveryRecord(
+                                source_id=source.id,
+                                source_name=source.name,
+                                title=title,
+                                url=page.url,
+                                discovered_at=datetime.now(UTC),
+                                authorization_basis=source.authorization_basis,
+                                written_authorization_reference=(
+                                    source.written_authorization_reference
+                                ),
+                                terms_url=source.terms_url,
+                                metadata=source.metadata,
+                            )
+                        )
+                        continue
+                    if source_items >= settings.max_files_per_source:
+                        continue
+                    record = _store_document(
+                        source=source,
+                        original_url=page_url,
+                        title=title,
+                        document_type=document_type,
+                        result=page,
+                        raw_dir=raw_dir,
+                    )
+                    source_items += 1
+                    if record.sha256 in seen_digests:
+                        duplicate_documents += 1
+                    else:
+                        seen_digests.add(record.sha256)
+                        documents.append(record)
+                    continue
                 content_type = page.headers.get_content_type()
                 if content_type not in {"text/html", "application/xhtml+xml"}:
-                    warnings.append(f"{source.id}: pagina ignorada por Content-Type {content_type}")
+                    message = (
+                        f"{source.id}: pagina ignorada por Content-Type {content_type}: {page_url}"
+                    )
+                    warnings.append(message)
+                    failures.append(
+                        CollectionFailure(
+                            source_id=source.id,
+                            url=page_url,
+                            stage="discovery",
+                            message=message,
+                        )
+                    )
+                    continue
+                if len(page.body) > settings.max_html_bytes:
+                    message = f"{source.id}: pagina HTML excede o limite: {page_url}"
+                    warnings.append(message)
+                    failures.append(
+                        CollectionFailure(
+                            source_id=source.id,
+                            url=page_url,
+                            stage="discovery",
+                            message=message,
+                        )
+                    )
                     continue
                 charset = page.headers.get_content_charset() or "utf-8"
                 html = page.body.decode(charset, errors="replace")
@@ -183,11 +330,23 @@ def collect_documents(
                         filtered_out_documents += 1
                         continue
                     source_links.append(item)
-            except (FetchError, UnsafeUrlError, LookupError) as exc:
-                warnings.append(f"{source.id}: falha ao ler {page_url}: {exc}")
+            except (FetchError, UnsafeUrlError, LookupError, OSError) as exc:
+                message = f"{source.id}: falha ao ler {page_url}: {exc}"
+                warnings.append(message)
+                failures.append(
+                    CollectionFailure(
+                        source_id=source.id,
+                        url=page_url,
+                        stage="discovery",
+                        message=message,
+                        retryable=_is_retryable(exc),
+                    )
+                )
 
         if source.access_mode == "reference_only":
-            for url, _title, _document_type in source_links[: settings.max_files_per_source]:
+            for url, _title, _document_type in source_links[
+                : settings.max_files_per_source - source_items
+            ]:
                 references.append(
                     DiscoveryRecord(
                         source_id=source.id,
@@ -208,42 +367,61 @@ def collect_documents(
                 )
             continue
 
-        for url, title, document_type in source_links[: settings.max_files_per_source]:
+        for url, title, document_type in source_links[
+            : settings.max_files_per_source - source_items
+        ]:
             try:
                 if not robots.can_fetch(url, source.allowed_hosts):
-                    warnings.append(f"{source.id}: robots.txt bloqueou {url}")
+                    message = f"{source.id}: robots.txt bloqueou ou nao liberou {url}"
+                    warnings.append(message)
+                    failures.append(
+                        CollectionFailure(
+                            source_id=source.id,
+                            url=url,
+                            stage="robots",
+                            message=message,
+                        )
+                    )
                     continue
                 result = client.get(url, source.allowed_hosts, settings.max_pdf_bytes)
-                content_type = result.headers.get_content_type()
-                if content_type != "application/pdf" and not result.body[:1024].lstrip().startswith(
-                    b"%PDF-"
-                ):
-                    warnings.append(f"{source.id}: link nao retornou PDF: {url}")
+                if not _is_pdf(result):
+                    message = f"{source.id}: link nao retornou PDF: {url}"
+                    warnings.append(message)
+                    failures.append(
+                        CollectionFailure(
+                            source_id=source.id,
+                            url=url,
+                            stage="download",
+                            message=message,
+                        )
+                    )
                     continue
-                digest = hashlib.sha256(result.body).hexdigest()
-                destination = raw_dir / f"{source.id}-{document_type}-{digest[:16]}.pdf"
-                if not destination.exists():
-                    destination.write_bytes(result.body)
-                documents.append(
-                    DocumentRecord(
+                record = _store_document(
+                    source=source,
+                    original_url=url,
+                    title=title,
+                    document_type=document_type,
+                    result=result,
+                    raw_dir=raw_dir,
+                )
+                source_items += 1
+                if record.sha256 in seen_digests:
+                    duplicate_documents += 1
+                else:
+                    seen_digests.add(record.sha256)
+                    documents.append(record)
+            except (FetchError, UnsafeUrlError, OSError) as exc:
+                message = f"{source.id}: falha ao baixar {url}: {exc}"
+                warnings.append(message)
+                failures.append(
+                    CollectionFailure(
                         source_id=source.id,
-                        source_name=source.name,
-                        document_type=document_type,
-                        title=title,
-                        original_url=url,
-                        resolved_url=result.url,
-                        local_path=_relative_or_absolute(destination),
-                        sha256=digest,
-                        content_type=content_type,
-                        size_bytes=len(result.body),
-                        downloaded_at=datetime.now(UTC),
-                        authorization_basis=source.authorization_basis,
-                        terms_url=source.terms_url,
-                        metadata=source.metadata,
+                        url=url,
+                        stage="download",
+                        message=message,
+                        retryable=_is_retryable(exc),
                     )
                 )
-            except (FetchError, UnsafeUrlError, OSError) as exc:
-                warnings.append(f"{source.id}: falha ao baixar {url}: {exc}")
 
     manifest = DownloadManifest(
         created_at=datetime.now(UTC),
@@ -251,6 +429,8 @@ def collect_documents(
         references=references,
         filters=active_filters,
         filtered_out_documents=filtered_out_documents,
+        duplicate_documents=duplicate_documents,
+        failures=failures,
         warnings=warnings,
     )
     timestamp = manifest.created_at.strftime("%Y%m%dT%H%M%SZ")
