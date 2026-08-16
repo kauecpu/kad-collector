@@ -31,6 +31,58 @@ borda do trecho, omita-a; a sobreposicao entre trechos permitira encontra-la dep
 """.strip()
 
 
+def _format_openai_api_error(exc: Exception, model: str) -> str:
+    status_value: object = getattr(exc, "status_code", None)
+    status = status_value if isinstance(status_value, int) else None
+    body: object = getattr(exc, "body", None)
+    detail = body
+    if isinstance(body, dict):
+        nested_detail: object = body.get("error")
+        if isinstance(nested_detail, dict):
+            detail = nested_detail
+
+    message: str | None = None
+    code: str | None = None
+    error_type: str | None = None
+    if isinstance(detail, dict):
+        message_value: object = detail.get("message")
+        code_value: object = detail.get("code")
+        type_value: object = detail.get("type")
+        if isinstance(message_value, str) and message_value.strip():
+            message = " ".join(message_value.split())
+        if isinstance(code_value, str) and code_value.strip():
+            code = code_value.strip()
+        if isinstance(type_value, str) and type_value.strip():
+            error_type = type_value.strip()
+
+    if message is None:
+        fallback = " ".join(str(exc).split())
+        message = fallback[:500] if fallback else "a API nao informou detalhes"
+
+    context = [f"modelo {model}"]
+    if status is not None:
+        context.append(f"HTTP {status}")
+    if code:
+        context.append(f"codigo {code}")
+    elif error_type:
+        context.append(f"tipo {error_type}")
+
+    diagnostic = " ".join(filter(None, (code, error_type, message))).lower()
+    if status == 429 or "insufficient_quota" in diagnostic or "quota" in diagnostic:
+        guidance = "Verifique o faturamento e os creditos da conta da API OpenAI."
+    elif status in {401, 403}:
+        guidance = "Verifique se a chave e valida e se o projeto tem acesso a esse modelo."
+    elif any(
+        marker in diagnostic
+        for marker in ("model_not_found", "model not found", "does not exist", "model access")
+    ):
+        guidance = "Escolha um modelo disponivel para o projeto com a opcao --model."
+    else:
+        guidance = "A mensagem acima foi devolvida pela API e indica o ajuste necessario."
+
+    return f"OpenAI recusou o processamento ({', '.join(context)}): {message}. {guidance}"
+
+
 class ChunkExtractor(Protocol):
     model: str
 
@@ -50,28 +102,36 @@ class OpenAIChunkExtractor:
         self._client = OpenAI(api_key=api_key, timeout=180.0, max_retries=2)
 
     def extract(self, text: str, metadata: dict[str, object]) -> AIChunkResult:
+        try:
+            from openai import APIError
+        except ImportError as exc:
+            raise RuntimeError("dependencia openai ausente; execute pip install -e .") from exc
+
         request_data = json.dumps(
             {"source_metadata": metadata, "exam_text": text}, ensure_ascii=False
         )
         schema = AIChunkResult.model_json_schema()
-        response = self._client.responses.create(
-            model=self.model,
-            instructions=SYSTEM_INSTRUCTIONS,
-            input=request_data,
-            reasoning={"effort": "low"},
-            text={
-                "format": {
-                    "type": "json_schema",
-                    "name": "exam_questions",
-                    "description": "Questoes estruturadas encontradas no trecho da prova",
-                    "strict": True,
-                    "schema": schema,
+        try:
+            response = self._client.responses.create(
+                model=self.model,
+                instructions=SYSTEM_INSTRUCTIONS,
+                input=request_data,
+                reasoning={"effort": "low"},
+                text={
+                    "format": {
+                        "type": "json_schema",
+                        "name": "exam_questions",
+                        "description": "Questoes estruturadas encontradas no trecho da prova",
+                        "strict": True,
+                        "schema": schema,
+                    },
+                    "verbosity": "low",
                 },
-                "verbosity": "low",
-            },
-            max_output_tokens=20_000,
-            store=False,
-        )
+                max_output_tokens=20_000,
+                store=False,
+            )
+        except APIError as exc:
+            raise RuntimeError(_format_openai_api_error(exc, self.model)) from None
         if not response.output_text:
             raise RuntimeError("a API nao retornou texto estruturado")
         return AIChunkResult.model_validate_json(response.output_text)

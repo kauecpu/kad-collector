@@ -10,6 +10,8 @@ from .json_utils import read_json
 from .models import AutomationReport, ReviewQueue, ReviewQueueItem
 from .review_server import serve_review_application
 
+GUIDED_TEST_MODEL = "gpt-5.4-nano"
+
 
 def select_review_item(queue: ReviewQueue) -> ReviewQueueItem | None:
     if not queue.items:
@@ -49,13 +51,15 @@ def run_guided_test(
         temporary_key = True
 
     try:
+        selected_model = model or GUIDED_TEST_MODEL
         print("\nIniciando teste reduzido: FUVEST 2026 V1 + gabarito.")
+        print(f"Modelo de extracao: {selected_model}.")
         print("Nenhuma conexao com KAD ou Supabase sera aberta.\n")
         report, written_path = run_automatic(
             config_path=config_path,
             state_path=state_path,
             output_path=output_path,
-            model=model,
+            model=selected_model,
         )
         print(f"Resultado do teste: {written_path}")
         if not report.review_queue_path:

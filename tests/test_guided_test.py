@@ -89,7 +89,7 @@ class GuidedTestTests(unittest.TestCase):
                 config_path=config_path,
                 state_path=state_path,
                 output_path=output_path,
-                model=None,
+                model="gpt-5.4-nano",
             )
             review.assert_called_once_with(
                 Path("data/reviewed/ready.json"),

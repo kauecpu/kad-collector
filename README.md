@@ -67,16 +67,19 @@ O lancador:
 2. verifica e repara dependencias binarias incompativeis com a versao ativa do Python;
 3. instala o Collector somente se o pacote ainda nao estiver disponivel no ambiente;
 4. solicita a chave OpenAI com entrada oculta, sem grava-la em arquivo;
-5. coleta apenas a prova V1 e o gabarito da FUVEST 2026;
-6. executa extracao, IA, associacao do gabarito e validacao;
-7. abre automaticamente o primeiro lote da fila no painel local de revisao.
+5. usa `gpt-5.4-nano`, modelo economico voltado a extracao de dados;
+6. coleta apenas a prova V1 e o gabarito da FUVEST 2026;
+7. executa extracao, IA, associacao do gabarito e validacao;
+8. abre automaticamente o primeiro lote da fila no painel local de revisao.
 
 Esse teste usa `config/sources.test.toml`, limitado a dois PDFs do acervo oficial FUVEST
 2026, e registra titulo, URL, SHA-256, banca, orgao, ano e paginas de origem. Ele mantem seu
 proprio estado em `data/state/teste-guiado.json`, nao acessa Supabase, nao modifica o KAD e
 nao executa promocao. Depois da revisao, volte a janela do lancador e pressione `Ctrl+C` para
 encerrar o servidor local. Se a porta 8765 estiver ocupada, outra porta local e escolhida
-automaticamente.
+automaticamente. O teste requer uma conta da API com faturamento ou creditos ativos; a
+chave de uma conta gratuita sem acesso a API nao e suficiente. Para testar outro modelo,
+use `kad-collector testar --model ID_DO_MODELO`.
 
 O mesmo fluxo tambem pode ser iniciado, dentro do ambiente virtual, com:
 

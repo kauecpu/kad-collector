@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
+import httpx
+from openai import BadRequestError
 from pypdf import PdfWriter
 
 from kad_collector.ai_processor import OpenAIChunkExtractor, chunk_text, process_document
@@ -109,6 +111,35 @@ class PipelineTests(unittest.TestCase):
         assert isinstance(output_format, dict)
         self.assertTrue(output_format["strict"])
         self.assertEqual(output_format["type"], "json_schema")
+
+    def test_openai_processor_explains_api_rejection_without_traceback(self) -> None:
+        class RejectingResponses:
+            def create(self, **_kwargs: object) -> SimpleNamespace:
+                request = httpx.Request("POST", "https://api.openai.com/v1/responses")
+                response = httpx.Response(400, request=request)
+                raise BadRequestError(
+                    "requisicao recusada",
+                    response=response,
+                    body={
+                        "error": {
+                            "message": "O projeto nao tem acesso ao modelo solicitado",
+                            "type": "invalid_request_error",
+                            "code": "model_not_found",
+                        }
+                    },
+                )
+
+        extractor = object.__new__(OpenAIChunkExtractor)
+        extractor.model = "gpt-test"
+        extractor._client = SimpleNamespace(  # type: ignore[assignment]
+            responses=RejectingResponses()
+        )
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            r"modelo gpt-test, HTTP 400, codigo model_not_found.*nao tem acesso.*--model",
+        ):
+            extractor.extract("Questao 1...", {"source_url": "https://example.test"})
 
     def test_chunking_preserves_overlap(self) -> None:
         text = "a" * 2_500 + "\n" + "b" * 2_500
