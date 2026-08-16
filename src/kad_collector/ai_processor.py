@@ -245,6 +245,7 @@ def process_document(
 
     metadata: dict[str, object] = {
         **document.document.metadata,
+        "source_id": document.document.source_id,
         "source_url": document.document.resolved_url,
         "source_title": document.document.title,
         "source_sha256": document.document.sha256,

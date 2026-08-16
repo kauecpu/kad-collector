@@ -9,8 +9,7 @@ from .automation import run_automatic
 from .json_utils import read_json
 from .models import AutomationReport, ReviewQueue, ReviewQueueItem
 from .review_server import serve_review_application
-
-GUIDED_TEST_MODEL = "gpt-5.4-nano"
+from .static_parser import FuvestStaticExtractor
 
 
 def select_review_item(queue: ReviewQueue) -> ReviewQueueItem | None:
@@ -41,7 +40,8 @@ def run_guided_test(
     preferred_port: int = 8765,
 ) -> tuple[AutomationReport, ReviewQueueItem | None]:
     temporary_key = False
-    if not os.environ.get("OPENAI_API_KEY", "").strip():
+    use_openai = model is not None
+    if use_openai and not os.environ.get("OPENAI_API_KEY", "").strip():
         key = getpass.getpass(
             "Chave da API OpenAI (entrada oculta; nao sera salva): "
         ).strip()
@@ -51,15 +51,22 @@ def run_guided_test(
         temporary_key = True
 
     try:
-        selected_model = model or GUIDED_TEST_MODEL
+        extractor = None if use_openai else FuvestStaticExtractor()
+        selected_model = model or FuvestStaticExtractor.model
         print("\nIniciando teste reduzido: FUVEST 2026 V1 + gabarito.")
-        print(f"Modelo de extracao: {selected_model}.")
+        if use_openai:
+            print(f"Modelo de extracao por API: {selected_model}.")
+        else:
+            print(f"Extracao local sem API: {selected_model}.")
         print("Nenhuma conexao com KAD ou Supabase sera aberta.\n")
         report, written_path = run_automatic(
             config_path=config_path,
             state_path=state_path,
             output_path=output_path,
-            model=selected_model,
+            model=model,
+            max_chars=500_000,
+            overlap_chars=0,
+            extractor=extractor,
         )
         print(f"Resultado do teste: {written_path}")
         if not report.review_queue_path:

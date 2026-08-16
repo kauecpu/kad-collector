@@ -1,11 +1,11 @@
 # KAD Collector
 
 Pipeline privado para localizar provas e gabaritos em fontes autorizadas, baixar PDFs,
-extrair texto, estruturar questoes com IA e preparar lotes para revisao editorial. O
-coletor nunca publica conteudo diretamente no aplicativo KAD.
+extrair texto, estruturar questoes com parser local ou IA e preparar lotes para revisao
+editorial. O coletor nunca publica conteudo diretamente no aplicativo KAD.
 
 ```text
-Fonte oficial -> coleta controlada -> PDFs -> extracao -> IA -> gabarito
+Fonte oficial -> coleta controlada -> PDFs -> extracao -> parser/IA -> gabarito
               -> validacao -> revisao humana -> banco de staging
 ```
 
@@ -23,7 +23,7 @@ marcados como `needs_ocr` e nao seguem automaticamente para a IA.
 ## Requisitos
 
 - Python 3.11 ou superior;
-- uma chave da API OpenAI apenas para a etapa `process`;
+- uma chave da API OpenAI apenas para os fluxos gerais que usam a etapa `process`;
 - PostgreSQL/Supabase apenas para a etapa opcional `stage --execute`.
 
 ## Instalacao no Windows (CMD)
@@ -64,22 +64,22 @@ testar.cmd
 O lancador:
 
 1. cria o `.venv` somente se ele ainda nao existir;
-2. verifica e repara dependencias binarias incompativeis com a versao ativa do Python;
-3. instala o Collector somente se o pacote ainda nao estiver disponivel no ambiente;
-4. solicita a chave OpenAI com entrada oculta, sem grava-la em arquivo;
-5. usa `gpt-5.4-nano`, modelo economico voltado a extracao de dados;
-6. coleta apenas a prova V1 e o gabarito da FUVEST 2026;
-7. executa extracao, IA, associacao do gabarito e validacao;
-8. abre automaticamente o primeiro lote da fila no painel local de revisao.
+2. instala o Collector somente se o pacote ainda nao estiver disponivel no ambiente;
+3. coleta apenas a prova V1 e o gabarito da FUVEST 2026;
+4. estrutura localmente as questoes reais pelos marcadores oficiais do PDF;
+5. associa o gabarito, valida o lote e sinaliza alternativas visuais;
+6. abre automaticamente o primeiro lote da fila no painel local de revisao.
 
 Esse teste usa `config/sources.test.toml`, limitado a dois PDFs do acervo oficial FUVEST
 2026, e registra titulo, URL, SHA-256, banca, orgao, ano e paginas de origem. Ele mantem seu
 proprio estado em `data/state/teste-guiado.json`, nao acessa Supabase, nao modifica o KAD e
 nao executa promocao. Depois da revisao, volte a janela do lancador e pressione `Ctrl+C` para
 encerrar o servidor local. Se a porta 8765 estiver ocupada, outra porta local e escolhida
-automaticamente. O teste requer uma conta da API com faturamento ou creditos ativos; a
-chave de uma conta gratuita sem acesso a API nao e suficiente. Para testar outro modelo,
-use `kad-collector testar --model ID_DO_MODELO`.
+automaticamente. O modo padrao nao pede chave, nao usa a API OpenAI e nao gera custo de IA.
+Ele usa um parser deterministico especifico para os marcadores da prova FUVEST; alternativas
+baseadas em figuras ou colunas ficam sinalizadas para conferencia humana. Para comparar com
+extracao por IA, use `kad-collector testar --model ID_DO_MODELO`; somente esse modo opcional
+solicita a chave e requer uma conta da API com faturamento ou creditos ativos.
 
 O mesmo fluxo tambem pode ser iniciado, dentro do ambiente virtual, com:
 
