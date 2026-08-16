@@ -15,6 +15,13 @@ if not exist "%VENV_PYTHON%" (
   if errorlevel 1 goto :setup_error
 )
 
+"%VENV_PYTHON%" -c "import jiter.jiter" >nul 2>&1
+if errorlevel 1 (
+  echo Reparando uma dependencia binaria incompativel com esta versao do Python...
+  "%VENV_PYTHON%" -m pip install --force-reinstall --no-cache-dir "jiter==0.16.0"
+  if errorlevel 1 goto :setup_error
+)
+
 "%VENV_PYTHON%" -c "import kad_collector.guided_test" >nul 2>&1
 if errorlevel 1 (
   echo Instalando as dependencias do KAD Collector...

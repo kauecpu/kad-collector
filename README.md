@@ -64,11 +64,12 @@ testar.cmd
 O lancador:
 
 1. cria o `.venv` somente se ele ainda nao existir;
-2. instala o Collector somente se o pacote ainda nao estiver disponivel no ambiente;
-3. solicita a chave OpenAI com entrada oculta, sem grava-la em arquivo;
-4. coleta apenas a prova V1 e o gabarito da FUVEST 2026;
-5. executa extracao, IA, associacao do gabarito e validacao;
-6. abre automaticamente o primeiro lote da fila no painel local de revisao.
+2. verifica e repara dependencias binarias incompativeis com a versao ativa do Python;
+3. instala o Collector somente se o pacote ainda nao estiver disponivel no ambiente;
+4. solicita a chave OpenAI com entrada oculta, sem grava-la em arquivo;
+5. coleta apenas a prova V1 e o gabarito da FUVEST 2026;
+6. executa extracao, IA, associacao do gabarito e validacao;
+7. abre automaticamente o primeiro lote da fila no painel local de revisao.
 
 Esse teste usa `config/sources.test.toml`, limitado a dois PDFs do acervo oficial FUVEST
 2026, e registra titulo, URL, SHA-256, banca, orgao, ano e paginas de origem. Ele mantem seu
