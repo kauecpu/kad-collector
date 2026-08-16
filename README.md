@@ -180,7 +180,36 @@ kad-collector match-answers data\processed\LOTE.json data\extracted\GABARITO.jso
 Formatos textuais simples como `1 - A`, `2) C` e `3 ANULADA` sao reconhecidos. Tabelas
 complexas precisam ser convertidas ou revisadas antes desta etapa.
 
-### 5. Validar e aprovar manualmente
+### 5. Revisar localmente e aprovar
+
+O painel local permite conferir e editar enunciado, alternativas, gabarito, paginas de
+origem e classificacao; cada questao pode ser aprovada ou rejeitada individualmente:
+
+```cmd
+kad-collector review data\reviewed\LOTE.json --open-browser
+```
+
+O servidor aceita conexoes somente em `127.0.0.1`, nao usa Supabase e nao envia o lote
+para servicos externos. Se o PDF original ainda estiver no caminho registrado pelo
+manifesto, ele pode ser aberto ao lado da revisao. Use `--port 8877` se a porta padrao
+`8765` estiver ocupada.
+
+A sessao e salva a cada alteracao em `data/reviews/` e pode ser retomada executando o
+mesmo comando. Editar uma questao ja decidida faz ela voltar para `pending`; rejeicoes
+exigem justificativa. A exportacao so e liberada quando todas as questoes tiverem uma
+decisao e grava somente as aprovadas em `data/approved/`, com revisor, data e hash de
+integridade. PDFs, sessoes e lotes continuam locais e ignorados pelo Git.
+
+Para usar outros caminhos:
+
+```cmd
+kad-collector review data\reviewed\LOTE.json ^
+  --session data\reviews\revisao-equipe.json ^
+  --output data\approved\lote-final.json
+```
+
+O fluxo anterior por linha de comando continua disponivel para lotes que nao precisam de
+decisoes individuais:
 
 ```cmd
 kad-collector validate data\reviewed\LOTE.json --require-answers

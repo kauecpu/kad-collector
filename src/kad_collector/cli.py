@@ -14,6 +14,7 @@ from .json_utils import read_json
 from .models import CollectionFilters, QuestionBatch
 from .pdf_extractor import extract_manifest
 from .review import approve_batch
+from .review_server import serve_review_application
 from .validation import validate_questions
 from .workflow import read_requested_urls, run_semiautomatic
 
@@ -101,6 +102,19 @@ def build_parser() -> argparse.ArgumentParser:
     validate = subparsers.add_parser("validate", help="valida um lote sem altera-lo")
     validate.add_argument("batch", type=_path)
     validate.add_argument("--require-answers", action="store_true")
+
+    review = subparsers.add_parser(
+        "review", help="abre a revisao editorial local por questao"
+    )
+    review.add_argument("batch", type=_path)
+    review.add_argument("--session", type=_path)
+    review.add_argument("--output", type=_path)
+    review.add_argument("--port", type=int, default=8765)
+    review.add_argument(
+        "--open-browser",
+        action="store_true",
+        help="abre o navegador padrao depois que o servidor local iniciar",
+    )
 
     approve = subparsers.add_parser("approve", help="registra revisao humana do lote")
     approve.add_argument("batch", type=_path)
@@ -207,6 +221,15 @@ def _run(args: argparse.Namespace) -> int:
             print(f"AVISO: {warning}")
         print("Valido" if validation.valid else "Invalido")
         return 0 if validation.valid else 2
+    if args.command == "review":
+        serve_review_application(
+            args.batch,
+            session_path=args.session,
+            output_path=args.output,
+            port=args.port,
+            open_browser=args.open_browser,
+        )
+        return 0
     if args.command == "approve":
         batch, path = approve_batch(
             args.batch,

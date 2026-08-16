@@ -157,6 +157,7 @@ data/manifests/
 data/extracted/
 data/processed/
 data/reviewed/
+data/reviews/
 data/approved/
 data/results/
 data/state/

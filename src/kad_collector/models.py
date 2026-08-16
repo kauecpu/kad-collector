@@ -285,6 +285,50 @@ class QuestionBatch(StrictModel):
         return self
 
 
+ReviewDecisionStatus = Literal["pending", "approved", "rejected"]
+
+
+class LocalQuestionDecision(StrictModel):
+    question_number: int = Field(ge=1)
+    status: ReviewDecisionStatus = "pending"
+    reviewed_by: str | None = None
+    reviewed_at: datetime | None = None
+    content_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    notes: str | None = None
+
+    @model_validator(mode="after")
+    def decided_item_requires_audit_fields(self) -> LocalQuestionDecision:
+        audit_fields = (self.reviewed_by, self.reviewed_at, self.content_sha256)
+        if self.status == "pending" and any(value is not None for value in audit_fields):
+            raise ValueError("uma decisao pendente nao pode conter dados de aprovacao")
+        if self.status != "pending" and any(value is None for value in audit_fields):
+            raise ValueError("uma decisao concluida exige revisor, data e hash")
+        if self.status == "rejected" and not (self.notes or "").strip():
+            raise ValueError("uma questao rejeitada exige justificativa")
+        return self
+
+
+class LocalReviewSession(StrictModel):
+    schema_version: Literal["1.0"] = "1.0"
+    source_content_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    created_at: datetime
+    updated_at: datetime
+    batch: QuestionBatch
+    decisions: list[LocalQuestionDecision]
+
+    @model_validator(mode="after")
+    def decisions_must_match_questions(self) -> LocalReviewSession:
+        question_numbers = [question.number for question in self.batch.questions]
+        decision_numbers = [decision.question_number for decision in self.decisions]
+        if len(set(question_numbers)) != len(question_numbers):
+            raise ValueError("a sessao de revisao exige numeros de questao unicos")
+        if len(set(decision_numbers)) != len(decision_numbers):
+            raise ValueError("a sessao possui decisoes duplicadas")
+        if sorted(question_numbers) != sorted(decision_numbers):
+            raise ValueError("cada questao da sessao exige exatamente uma decisao")
+        return self
+
+
 class QuestionOrigin(StrictModel):
     source_id: str
     source_name: str

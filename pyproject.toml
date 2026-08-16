@@ -24,6 +24,9 @@ kad-collector = "kad_collector.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+kad_collector = ["review_ui.html", "review_app.js", "review_styles.css"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
