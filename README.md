@@ -51,6 +51,38 @@ e JSON validado. O modelo pode ser trocado por `OPENAI_MODEL` ou `--model`.
 Referencias oficiais: [Responses API](https://developers.openai.com/api/docs/guides/responses)
 e [modelos](https://developers.openai.com/api/docs/models).
 
+## Teste guiado com dois cliques
+
+No Windows, execute `testar.cmd` na raiz do repositorio. Tambem e possivel inicia-lo pelo
+Prompt de Comando:
+
+```cmd
+cd /d "C:\Users\gabri\OneDrive\Documents\GitHub\kad-collector"
+testar.cmd
+```
+
+O lancador:
+
+1. cria o `.venv` somente se ele ainda nao existir;
+2. instala o Collector somente se o pacote ainda nao estiver disponivel no ambiente;
+3. solicita a chave OpenAI com entrada oculta, sem grava-la em arquivo;
+4. coleta apenas a prova V1 e o gabarito da FUVEST 2026;
+5. executa extracao, IA, associacao do gabarito e validacao;
+6. abre automaticamente o primeiro lote da fila no painel local de revisao.
+
+Esse teste usa `config/sources.test.toml`, limitado a dois PDFs do acervo oficial FUVEST
+2026, e registra titulo, URL, SHA-256, banca, orgao, ano e paginas de origem. Ele mantem seu
+proprio estado em `data/state/teste-guiado.json`, nao acessa Supabase, nao modifica o KAD e
+nao executa promocao. Depois da revisao, volte a janela do lancador e pressione `Ctrl+C` para
+encerrar o servidor local. Se a porta 8765 estiver ocupada, outra porta local e escolhida
+automaticamente.
+
+O mesmo fluxo tambem pode ser iniciado, dentro do ambiente virtual, com:
+
+```cmd
+kad-collector testar
+```
+
 ## Configurando uma fonte
 
 Copie o bloco `[[sources]]` do exemplo e preencha:
@@ -358,7 +390,9 @@ python coletor\coletar_provas.py --config config\sources.toml
 
 ## Fontes cadastradas
 
-Nenhuma fonte vem habilitada. O arquivo de exemplo inclui os seguintes moldes:
+O arquivo de exemplo nao habilita fontes. As configuracoes opt-in `sources.official.toml` e
+`sources.test.toml` habilitam somente as fontes oficiais descritas anteriormente. O arquivo de
+exemplo inclui os seguintes moldes:
 
 | Fonte | Origem | Campos coletados | Limite | Execucao | Base de uso |
 |---|---|---|---|---|---|

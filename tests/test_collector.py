@@ -264,6 +264,21 @@ class SecurityTests(unittest.TestCase):
             ["exam", "answer_key", "exam", "answer_key"],
         )
 
+    def test_guided_configuration_limits_collection_to_one_exam_and_key(self) -> None:
+        config = load_config(PROJECT_ROOT / "config" / "sources.test.toml")
+        self.assertEqual(len(config.sources), 1)
+        self.assertEqual(config.collector.max_files_per_source, 2)
+        source = config.sources[0]
+        html = (
+            '<a href="/wp-content/fuvest2026-fase1-prova-V1.pdf">Prova V1</a>'
+            '<a href="/wp-content/fuvest2026-fase1-prova-V2.pdf">Prova V2</a>'
+            '<a href="/wp-content/fuvest2026-fase1-gabarito.pdf">Gabarito</a>'
+        )
+
+        selected = select_document_links(html, source.start_urls[0], source)
+
+        self.assertEqual([item[2] for item in selected], ["exam", "answer_key"])
+
     def test_example_commercial_sources_are_disabled_and_reference_only(self) -> None:
         config = load_config(PROJECT_ROOT / "config" / "sources.example.toml")
         commercial = {

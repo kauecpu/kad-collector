@@ -10,6 +10,7 @@ from .automation import run_automatic
 from .collector import collect_documents
 from .config import load_config
 from .database import stage_batch
+from .guided_test import run_guided_test
 from .json_utils import read_json
 from .models import CollectionFilters, QuestionBatch
 from .pdf_extractor import extract_manifest
@@ -82,6 +83,23 @@ def build_parser() -> argparse.ArgumentParser:
     sync.add_argument("--max-attempts", type=int, default=3)
     sync.add_argument("--retry-delay-seconds", type=int, default=300)
     _add_filter_arguments(sync)
+
+    guided_test = subparsers.add_parser(
+        "test",
+        aliases=["testar"],
+        help="executa um teste reduzido e abre a fila de revisao automaticamente",
+    )
+    guided_test.add_argument(
+        "--config", type=_path, default=Path("config/sources.test.toml")
+    )
+    guided_test.add_argument(
+        "--state", type=_path, default=Path("data/state/teste-guiado.json")
+    )
+    guided_test.add_argument(
+        "--output", type=_path, default=Path("data/results/teste-guiado.json")
+    )
+    guided_test.add_argument("--model")
+    guided_test.add_argument("--port", type=int, default=8765)
 
     extract = subparsers.add_parser("extract", help="extrai texto dos PDFs de um manifesto")
     extract.add_argument("manifest", type=_path)
@@ -184,6 +202,15 @@ def _run(args: argparse.Namespace) -> int:
         )
         for warning in automatic_report.result.warnings:
             print(f"AVISO: {warning}", file=sys.stderr)
+        return 0
+    if args.command in {"test", "testar"}:
+        run_guided_test(
+            config_path=args.config,
+            state_path=args.state,
+            output_path=args.output,
+            model=args.model,
+            preferred_port=args.port,
+        )
         return 0
     if args.command == "collect":
         download_manifest, path = collect_documents(
@@ -292,6 +319,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return _run(args)
+    except KeyboardInterrupt:
+        print("\nTeste encerrado pelo usuario.")
+        return 130
     except (OSError, RuntimeError, ValueError) as exc:
         print(f"ERRO: {exc}", file=sys.stderr)
         return 1
