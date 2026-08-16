@@ -185,8 +185,85 @@ class LinkParsingTests(unittest.TestCase):
         self.assertEqual(manifest.documents[0].document_type, "exam")
         self.assertEqual(manifest.duplicate_documents, 1)
 
+    def test_static_pagination_follows_allowed_links_and_stops_at_limit(self) -> None:
+        first_page = "https://provas.example.gov.br/lista?page=1"
+        second_page = "https://provas.example.gov.br/lista?page=2"
+        third_page = "https://provas.example.gov.br/lista?page=3"
+
+        class FixtureClient:
+            requested: list[str] = []
+
+            def __init__(self, user_agent: str, timeout: float, interval_seconds: float) -> None:
+                pass
+
+            def get(self, url: str, allowed_hosts: list[str], max_bytes: int) -> HttpResult:
+                self.requested.append(url)
+                headers = Message()
+                if url.endswith("/robots.txt"):
+                    headers["Content-Type"] = "text/plain; charset=utf-8"
+                    body = b"User-agent: *\nAllow: /\n"
+                elif url == first_page:
+                    headers["Content-Type"] = "text/html; charset=utf-8"
+                    body = (
+                        b'<a href="/prova-1.pdf">Prova 1</a>'
+                        b'<a href="?page=2">Proxima pagina</a>'
+                    )
+                elif url == second_page:
+                    headers["Content-Type"] = "text/html; charset=utf-8"
+                    body = (
+                        b'<a href="/gabarito-1.pdf">Gabarito 1</a>'
+                        b'<a href="?page=3">Proxima pagina</a>'
+                    )
+                elif url.endswith(".pdf"):
+                    headers["Content-Type"] = "application/pdf"
+                    body = f"%PDF-1.4\n{url}\n%%EOF".encode()
+                else:
+                    raise AssertionError(f"URL inesperada: {url}")
+                return HttpResult(url=url, status_code=200, headers=headers, body=body)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            source = source_definition(
+                start_urls=[first_page],
+                include_patterns=[r"(?i)\.pdf(?:$|\?)"],
+                pagination_patterns=[r"(?i)page=\d+"],
+                max_pages_per_run=2,
+            )
+            config = AppConfig(
+                collector=CollectorSettings(data_dir=temporary),
+                sources=[source],
+            )
+            with patch("kad_collector.collector.SafeHttpClient", FixtureClient):
+                manifest, _ = collect_documents(config)
+
+        self.assertEqual(len(manifest.documents), 2)
+        self.assertNotIn(third_page, FixtureClient.requested)
+        self.assertTrue(any("paginacao limitada a 2 paginas" in item for item in manifest.warnings))
+
 
 class SecurityTests(unittest.TestCase):
+    def test_official_configuration_registers_two_enabled_sources(self) -> None:
+        config = load_config(PROJECT_ROOT / "config" / "sources.official.toml")
+        self.assertEqual(
+            {source.id for source in config.sources},
+            {"fuvest_vestibular", "coperve_ufsc_2026"},
+        )
+        self.assertTrue(all(source.enabled for source in config.sources))
+        fuvest = next(source for source in config.sources if source.id == "fuvest_vestibular")
+        base = "https://www.fuvest.br/wp-content/uploads/"
+        html = (
+            f'<a href="{base}fuvest2026-fase1-prova-V1.pdf">Prova 2026 V1</a>'
+            f'<a href="{base}fuvest2026-fase1-gabarito.pdf">Gabarito 2026</a>'
+            f'<a href="{base}fuvest2025_primeira_fase_prova_V1.pdf">Prova 2025 V1</a>'
+            f'<a href="{base}fuvest2025_gabarito_primeira_fase.pdf">Gabarito 2025</a>'
+            f'<a href="{base}fuvest2025_guia-provas.pdf">Guia</a>'
+        )
+        selected = select_document_links(html, fuvest.start_urls[0], fuvest)
+        self.assertEqual(len(selected), 4)
+        self.assertEqual(
+            [item[2] for item in selected],
+            ["exam", "answer_key", "exam", "answer_key"],
+        )
+
     def test_example_commercial_sources_are_disabled_and_reference_only(self) -> None:
         config = load_config(PROJECT_ROOT / "config" / "sources.example.toml")
         commercial = {

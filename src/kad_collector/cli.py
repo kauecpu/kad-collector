@@ -13,6 +13,7 @@ from .database import stage_batch
 from .json_utils import read_json
 from .models import CollectionFilters, QuestionBatch
 from .pdf_extractor import extract_manifest
+from .promotion import build_promotion_package, dry_run_promotion
 from .review import approve_batch
 from .review_server import serve_review_application
 from .validation import validate_questions
@@ -129,6 +130,17 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="executa a escrita; sem esta opcao apenas mostra a previa",
     )
+
+    package = subparsers.add_parser(
+        "package", help="gera um pacote local com lotes aprovados para o KAD"
+    )
+    package.add_argument("batch", type=_path, nargs="+")
+    package.add_argument("--output", type=_path)
+
+    promote = subparsers.add_parser(
+        "promote", help="valida e simula a promocao de um pacote, sem acessar o KAD"
+    )
+    promote.add_argument("package", type=_path)
     return parser
 
 
@@ -230,6 +242,21 @@ def _run(args: argparse.Namespace) -> int:
             open_browser=args.open_browser,
         )
         return 0
+    if args.command == "package":
+        package, path = build_promotion_package(args.batch, args.output)
+        print(
+            f"Pacote: {path} ({len(package.batches)} lotes, "
+            f"{sum(len(batch.questions) for batch in package.batches)} questoes, "
+            f"SHA-256 {package.content_sha256})"
+        )
+        return 0
+    if args.command == "promote":
+        result = dry_run_promotion(args.package)
+        print(
+            f"Simulacao valida: {result.package_id} ({result.batch_count} lotes, "
+            f"{result.question_count} questoes, nenhuma escrita no KAD)"
+        )
+        return 0
     if args.command == "approve":
         batch, path = approve_batch(
             args.batch,
@@ -237,7 +264,11 @@ def _run(args: argparse.Namespace) -> int:
             notes=args.notes,
             output_path=args.output,
         )
-        print(f"Lote aprovado: {path} ({len(batch.questions)} questoes)")
+        package, package_path = build_promotion_package([path])
+        print(
+            f"Lote aprovado: {path} ({len(batch.questions)} questoes). "
+            f"Pacote local: {package_path} (SHA-256 {package.content_sha256})"
+        )
         return 0
     if args.command == "stage":
         stage_result = stage_batch(args.batch, execute=args.execute)

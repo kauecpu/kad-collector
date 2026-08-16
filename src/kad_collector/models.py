@@ -100,6 +100,8 @@ class SourceDefinition(StrictModel):
     exclude_patterns: list[str] = Field(default_factory=list)
     exam_patterns: list[str] = Field(default_factory=lambda: [r"(?i)prova|caderno"])
     answer_key_patterns: list[str] = Field(default_factory=lambda: [r"(?i)gabarito"])
+    pagination_patterns: list[str] = Field(default_factory=list)
+    max_pages_per_run: int = Field(default=20, ge=1, le=200)
     access_mode: Literal["content", "reference_only"] = "content"
     authorization_basis: str = ""
     requires_written_authorization: bool = False
@@ -117,6 +119,8 @@ class SourceDefinition(StrictModel):
 
     @model_validator(mode="after")
     def require_authorization_for_enabled_source(self) -> SourceDefinition:
+        if self.pagination_patterns and self.max_pages_per_run < len(self.start_urls):
+            raise ValueError("max_pages_per_run nao pode ser menor que start_urls")
         if self.enabled and not self.authorization_basis.strip():
             raise ValueError("uma fonte habilitada exige authorization_basis")
         if (
@@ -329,6 +333,27 @@ class LocalReviewSession(StrictModel):
         return self
 
 
+class ReviewQueueItem(StrictModel):
+    batch_id: str
+    source_id: str
+    source_title: str
+    batch_path: str
+    session_path: str
+    answer_key_paths: list[str] = Field(default_factory=list)
+    status: Literal["ready", "exception"]
+    question_count: int = Field(ge=0)
+    matched_answers: int = Field(ge=0)
+    missing_answers: int = Field(ge=0)
+    issues: list[str] = Field(default_factory=list)
+
+
+class ReviewQueue(StrictModel):
+    schema_version: Literal["1.0"] = "1.0"
+    created_at: datetime
+    extraction_manifest: str
+    items: list[ReviewQueueItem] = Field(default_factory=list)
+
+
 class QuestionOrigin(StrictModel):
     source_id: str
     source_name: str
@@ -362,6 +387,7 @@ class ReportArtifacts(StrictModel):
     download_manifest: str
     extraction_manifest: str
     question_batches: list[str] = Field(default_factory=list)
+    review_queue: str | None = None
 
 
 class QuestionReport(StrictModel):
@@ -396,6 +422,8 @@ class AutomationState(StrictModel):
     known_references: dict[str, datetime] = Field(default_factory=dict)
     source_snapshots: dict[str, list[str]] = Field(default_factory=dict)
     retries: list[RetryRecord] = Field(default_factory=list)
+    answer_key_manifests: list[str] = Field(default_factory=list)
+    pending_review_batches: dict[str, str] = Field(default_factory=dict)
 
 
 class AutomationMetrics(StrictModel):
@@ -406,6 +434,8 @@ class AutomationMetrics(StrictModel):
     changed_sources: int = Field(default=0, ge=0)
     pending_retries: int = Field(default=0, ge=0)
     exhausted_retries: int = Field(default=0, ge=0)
+    review_ready: int = Field(default=0, ge=0)
+    review_exceptions: int = Field(default=0, ge=0)
 
 
 class AutomationReport(StrictModel):
@@ -416,4 +446,14 @@ class AutomationReport(StrictModel):
     automatic_metrics: AutomationMetrics
     changed_sources: list[str] = Field(default_factory=list)
     retry_queue: list[RetryRecord] = Field(default_factory=list)
+    review_queue_path: str | None = None
     result: QuestionReport
+
+
+class PromotionPackage(StrictModel):
+    schema_version: Literal["1.0"] = "1.0"
+    target: Literal["kad"] = "kad"
+    package_id: str
+    created_at: datetime
+    batches: list[QuestionBatch] = Field(min_length=1)
+    content_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")

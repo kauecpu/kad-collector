@@ -256,7 +256,10 @@ async function exportApproved() {
     method: 'POST',
     body: JSON.stringify({ reviewer, notes: byId('batch-notes').value.trim() }),
   });
-  showNotice(`Lote exportado com ${result.question_count} questões para ${result.output_path}`, 'success');
+  showNotice(
+    `Lote aprovado com ${result.question_count} questões. Pacote local: ${result.promotion_package_path}`,
+    'success',
+  );
 }
 
 function guarded(action) {

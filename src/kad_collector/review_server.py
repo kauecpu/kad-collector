@@ -24,6 +24,7 @@ from .local_review import (
     update_review_question,
 )
 from .models import QuestionRecord, ReviewDecisionStatus
+from .promotion import build_promotion_package
 
 MAX_REQUEST_BYTES = 2_000_000
 
@@ -84,7 +85,7 @@ class ReviewApplication:
             )
             save_review_session(self.session, self.session_path)
 
-    def export(self, reviewer: str, notes: str | None) -> tuple[int, Path]:
+    def export(self, reviewer: str, notes: str | None) -> tuple[int, Path, Path]:
         with self._lock:
             batch, path = export_review_session(
                 self.session,
@@ -92,7 +93,8 @@ class ReviewApplication:
                 notes=notes,
                 output_path=self.output_path,
             )
-            return len(batch.questions), path
+            _package, package_path = build_promotion_package([path])
+            return len(batch.questions), path, package_path
 
 
 def create_review_server(
@@ -213,11 +215,14 @@ def _handler_for(application: ReviewApplication) -> type[BaseHTTPRequestHandler]
                 if path == "/api/export":
                     reviewer = _required_text(payload, "reviewer")
                     notes = _optional_text(payload, "notes")
-                    question_count, output_path = application.export(reviewer, notes)
+                    question_count, output_path, package_path = application.export(
+                        reviewer, notes
+                    )
                     self._send_json(
                         {
                             "question_count": question_count,
                             "output_path": str(output_path),
+                            "promotion_package_path": str(package_path),
                         }
                     )
                     return

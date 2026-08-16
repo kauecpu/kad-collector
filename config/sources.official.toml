@@ -1,0 +1,65 @@
+[collector]
+data_dir = "data"
+user_agent = "KADCollector/0.1 (+https://github.com/igorkauelima6-cpu/kad-collector)"
+request_interval_seconds = 3.0
+timeout_seconds = 30.0
+max_files_per_source = 40
+max_html_bytes = 5000000
+max_pdf_bytes = 50000000
+
+# Acervo publico da Fundacao Universitaria para o Vestibular (FUVEST/USP).
+# Os dois anos sao paginas HTML estaticas e cada PDF permanece atribuido a origem.
+[[sources]]
+id = "fuvest_vestibular"
+name = "FUVEST - Vestibular USP"
+enabled = true
+start_urls = [
+  "https://www.fuvest.br/acervo-vestibular-2026/",
+  "https://www.fuvest.br/acervo-vestibular-2025/",
+]
+allowed_hosts = ["www.fuvest.br"]
+include_patterns = [
+  "(?i)(?:fuvest2026-fase1-(?:prova-v[1-4]|gabarito)|fuvest2025_(?:primeira_fase_prova_v[1-4]|gabarito_primeira_fase))\\.pdf(?:$|[?#])",
+]
+exclude_patterns = [
+  "(?i)(manual|guia|edital|resolucao|lista|nota.?de.?corte|questionario|estatistica)",
+]
+exam_patterns = ["(?i)(prova|caderno)"]
+answer_key_patterns = ["(?i)(gabarito|respostas.?esperadas)"]
+pagination_patterns = ["(?i)/acervo-vestibular-(?:2025|2026)/?$"]
+max_pages_per_run = 4
+access_mode = "content"
+authorization_basis = "Acervo oficial publico da FUVEST; coleta interna para revisao, com preservacao integral da origem e sem publicacao automatica."
+terms_url = "https://www.fuvest.br/acervo/"
+
+[sources.metadata]
+banca = "FUVEST"
+orgao = "Universidade de Sao Paulo"
+cargo = "Vestibular"
+
+# Provas e gabaritos definitivos publicados pela COPERVE/UFSC para consulta e
+# treinamento. O hotsite nao publica robots.txt (404), portanto a politica do
+# Collector permite os caminhos publicos sem inferir acesso a areas restritas.
+[[sources]]
+id = "coperve_ufsc_2026"
+name = "COPERVE - Vestibular Unificado UFSC/IFSC/IFC 2026"
+enabled = true
+start_urls = [
+  "https://vestibularunificado2026.ufsc.br/provas-e-gabaritos-definitivos/",
+]
+allowed_hosts = ["vestibularunificado2026.ufsc.br"]
+include_patterns = ["(?i)\\.pdf(?:$|[?#])"]
+exclude_patterns = ["(?i)(edital|comunicado|resultado|lista)"]
+exam_patterns = ["(?i)(prova|caderno)"]
+answer_key_patterns = ["(?i)gabarito"]
+pagination_patterns = []
+max_pages_per_run = 1
+access_mode = "content"
+authorization_basis = "Provas e gabaritos definitivos disponibilizados pelo hotsite oficial da COPERVE para consulta e treinamento; coleta interna e sem publicacao automatica."
+terms_url = "https://vestibularunificado2026.ufsc.br/treinamento/"
+
+[sources.metadata]
+banca = "COPERVE"
+orgao = "UFSC/IFSC/IFC"
+cargo = "Vestibular"
+ano = "2026"

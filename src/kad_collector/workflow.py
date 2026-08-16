@@ -9,6 +9,7 @@ from .json_utils import read_json, write_json
 from .models import CollectionFilters, QuestionBatch, QuestionReport
 from .pdf_extractor import extract_manifest
 from .reporting import build_question_report
+from .review_queue import prepare_review_queue
 
 
 def read_requested_urls(urls: list[str], files: list[Path]) -> list[str]:
@@ -56,7 +57,13 @@ def run_semiautomatic(
             overlap_chars=overlap_chars,
             extractor=extractor,
         )
-    batches = [QuestionBatch.model_validate(read_json(path)) for path in batch_paths]
+    review_queue, review_queue_path = prepare_review_queue(
+        extraction_path=extraction_path,
+        batch_paths=batch_paths,
+        data_dir=data_dir,
+    )
+    review_batch_paths = [Path(item.batch_path) for item in review_queue.items]
+    batches = [QuestionBatch.model_validate(read_json(path)) for path in review_batch_paths]
     report = build_question_report(
         requested_urls=urls,
         download_manifest=download_manifest,
@@ -64,7 +71,9 @@ def run_semiautomatic(
         extraction_manifest=extraction_manifest,
         extraction_path=extraction_path,
         batches=batches,
-        batch_paths=batch_paths,
+        batch_paths=review_batch_paths,
+        review_queue_path=review_queue_path,
+        require_answers=True,
     )
     if output_path is None:
         timestamp = report.created_at.strftime("%Y%m%dT%H%M%SZ")

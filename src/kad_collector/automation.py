@@ -18,11 +18,14 @@ from .models import (
     CollectionFailure,
     CollectionFilters,
     DownloadManifest,
+    ExtractedDocument,
+    ExtractionManifest,
     QuestionBatch,
     RetryRecord,
 )
 from .pdf_extractor import extract_manifest
 from .reporting import build_question_report
+from .review_queue import prepare_review_queue
 
 
 def load_automation_state(path: Path) -> AutomationState:
@@ -185,6 +188,13 @@ def run_automatic(
     write_json(new_manifest_path, new_manifest.model_dump(mode="json"))
     extraction_path = data_dir / "extracted" / f"{new_manifest_path.stem}-extracted.json"
     extraction_manifest, extraction_path = extract_manifest(new_manifest_path, extraction_path)
+    if any(
+        document.document.document_type == "answer_key"
+        for document in extraction_manifest.documents
+    ):
+        manifest_value = str(extraction_path)
+        if manifest_value not in state.answer_key_manifests:
+            state.answer_key_manifests.append(manifest_value)
 
     batch_paths: list[Path] = []
     processing_error: str | None = None
@@ -207,7 +217,45 @@ def run_automatic(
         except (OSError, RuntimeError, ValueError) as exc:
             processing_error = f"processamento automatico falhou: {exc}"
 
-    batches = [QuestionBatch.model_validate(read_json(path)) for path in batch_paths]
+    for batch_path in batch_paths:
+        pending_batch = QuestionBatch.model_validate(read_json(batch_path))
+        state.pending_review_batches[pending_batch.batch_id] = str(batch_path)
+
+    pending_batch_paths: list[Path] = []
+    for batch_id, stored_path in list(state.pending_review_batches.items()):
+        approved_path = data_dir / "approved" / f"{batch_id}.json"
+        candidate = Path(stored_path)
+        if approved_path.exists():
+            del state.pending_review_batches[batch_id]
+        elif candidate.exists():
+            pending_batch_paths.append(candidate)
+        else:
+            del state.pending_review_batches[batch_id]
+
+    cached_answer_keys: list[ExtractedDocument] = []
+    valid_answer_key_manifests: list[str] = []
+    for stored_path in state.answer_key_manifests:
+        candidate = Path(stored_path)
+        if not candidate.exists():
+            continue
+        cached_manifest = ExtractionManifest.model_validate(read_json(candidate))
+        cached_answer_keys.extend(
+            document
+            for document in cached_manifest.documents
+            if document.document.document_type == "answer_key"
+        )
+        valid_answer_key_manifests.append(stored_path)
+    state.answer_key_manifests = valid_answer_key_manifests
+
+    review_queue, review_queue_path = prepare_review_queue(
+        extraction_path=extraction_path,
+        batch_paths=pending_batch_paths,
+        data_dir=data_dir,
+        now=current_time,
+        answer_key_documents=cached_answer_keys,
+    )
+    review_batch_paths = [Path(item.batch_path) for item in review_queue.items]
+    batches = [QuestionBatch.model_validate(read_json(path)) for path in review_batch_paths]
     requested_urls = [
         url for source in base_config.sources if source.enabled for url in source.start_urls
     ]
@@ -218,7 +266,9 @@ def run_automatic(
         extraction_manifest=extraction_manifest,
         extraction_path=extraction_path,
         batches=batches,
-        batch_paths=batch_paths,
+        batch_paths=review_batch_paths,
+        review_queue_path=review_queue_path,
+        require_answers=True,
     )
     if processing_error:
         question_report.warnings.append(processing_error)
@@ -250,6 +300,8 @@ def run_automatic(
         changed_sources=len(changed_sources),
         pending_retries=sum(not retry.exhausted for retry in state.retries),
         exhausted_retries=sum(retry.exhausted for retry in state.retries),
+        review_ready=sum(item.status == "ready" for item in review_queue.items),
+        review_exceptions=sum(item.status == "exception" for item in review_queue.items),
     )
     automatic_report = AutomationReport(
         created_at=current_time,
@@ -258,6 +310,7 @@ def run_automatic(
         automatic_metrics=automatic_metrics,
         changed_sources=changed_sources,
         retry_queue=state.retries,
+        review_queue_path=str(review_queue_path),
         result=question_report,
     )
     if output_path is None:
