@@ -1,0 +1,187 @@
+from __future__ import annotations
+
+import json
+import tempfile
+import unittest
+from datetime import UTC, datetime
+from pathlib import Path
+
+from kad_collector.answer_key import parse_answer_key
+from kad_collector.json_utils import read_json, write_json
+from kad_collector.models import (
+    Alternative,
+    DocumentRecord,
+    ExtractedDocument,
+    ExtractedPage,
+    ExtractionManifest,
+    PromotionPackage,
+    QuestionBatch,
+    QuestionRecord,
+    ValidationState,
+)
+from kad_collector.promotion import (
+    build_promotion_package,
+    dry_run_promotion,
+    verify_promotion_package,
+)
+from kad_collector.review import approve_batch_model
+from kad_collector.review_queue import prepare_review_queue
+
+
+def document(kind: str, title: str, url: str, digest: str) -> DocumentRecord:
+    return DocumentRecord(
+        source_id="fuvest_vestibular",
+        source_name="FUVEST",
+        document_type=kind,  # type: ignore[arg-type]
+        title=title,
+        original_url=url,
+        resolved_url=url,
+        local_path=f"data/raw/{digest}.pdf",
+        sha256=digest * 64,
+        content_type="application/pdf",
+        size_bytes=100,
+        downloaded_at=datetime.now(UTC),
+        authorization_basis="Acervo oficial publico.",
+        metadata={"banca": "FUVEST", "orgao": "USP", "ano": "2026"},
+    )
+
+
+def question(number: int) -> QuestionRecord:
+    return QuestionRecord(
+        number=number,
+        statement=f"Enunciado {number}",
+        alternatives=[
+            Alternative(letter="A", text="Alternativa A"),
+            Alternative(letter="B", text="Alternativa B"),
+            Alternative(letter="C", text="Alternativa C"),
+            Alternative(letter="D", text="Alternativa D"),
+        ],
+        matter="Conhecimentos Gerais",
+        subject="Teste",
+        board="FUVEST",
+        organization="USP",
+        role="Vestibular",
+        year=2026,
+        source_pages=[1],
+    )
+
+
+class ReviewAutomationTests(unittest.TestCase):
+    def test_variant_table_is_parsed_without_mixing_answer_keys(self) -> None:
+        text = "PROVA V1 PROVA V2\n1 A 2 B 1 C 2 D\n3 * 4 A 3 B 4 C"
+        first = parse_answer_key(text, variant="V1")
+        second = parse_answer_key(text, variant="V2")
+
+        self.assertEqual(first[1].answer, "A")
+        self.assertEqual(first[2].answer, "B")
+        self.assertTrue(first[3].annulled)
+        self.assertEqual(second[1].answer, "C")
+        self.assertEqual(second[4].answer, "C")
+
+    def test_queue_matches_cached_answers_and_creates_local_review_session(self) -> None:
+        exam = document(
+            "exam",
+            "Prova 2026 V1",
+            "https://www.fuvest.br/wp-content/fuvest2026-fase1-prova-V1.pdf",
+            "a",
+        )
+        answer = document(
+            "answer_key",
+            "Gabaritos de Provas da 1a fase",
+            "https://www.fuvest.br/wp-content/fuvest2026-fase1-gabarito.pdf",
+            "b",
+        )
+        other_answer = document(
+            "answer_key",
+            "Gabarito da primeira fase 2025",
+            "https://www.fuvest.br/wp-content/uploads/fuvest2025_gabarito_primeira_fase.pdf",
+            "d",
+        )
+        batch = QuestionBatch(
+            batch_id="batch-fuvest-v1",
+            created_at=datetime.now(UTC),
+            model="fake-model",
+            source_document=exam,
+            questions=[question(1), question(2)],
+            validation=ValidationState(valid=True),
+        )
+        answer_text = "PROVA V1 PROVA V2\n1 A 2 B 1 C 2 D"
+        extraction = ExtractionManifest(
+            created_at=datetime.now(UTC),
+            documents=[],
+        )
+        cached_answers = [
+            ExtractedDocument(
+                document=other_answer,
+                pages=[ExtractedPage(number=1, text="1 D\n2 D", character_count=7)],
+                text="1 D\n2 D",
+            ),
+            ExtractedDocument(
+                document=answer,
+                pages=[ExtractedPage(number=1, text=answer_text, character_count=40)],
+                text=answer_text,
+            ),
+        ]
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            extraction_path = root / "extraction.json"
+            batch_path = root / "batch.json"
+            write_json(extraction_path, extraction.model_dump(mode="json"))
+            write_json(batch_path, batch.model_dump(mode="json"))
+            queue, queue_path = prepare_review_queue(
+                extraction_path=extraction_path,
+                batch_paths=[batch_path],
+                data_dir=root,
+                answer_key_documents=cached_answers,
+            )
+            reviewed = QuestionBatch.model_validate(read_json(Path(queue.items[0].batch_path)))
+
+            self.assertTrue(queue_path.exists())
+            self.assertTrue(Path(queue.items[0].session_path).exists())
+            self.assertEqual(queue.items[0].status, "ready")
+            self.assertEqual(queue.items[0].matched_answers, 2)
+            self.assertEqual(reviewed.questions[0].correct_answer, "A")
+            self.assertEqual(reviewed.questions[1].correct_answer, "B")
+
+    def test_promotion_package_is_local_deterministic_and_tamper_evident(self) -> None:
+        exam = document(
+            "exam",
+            "Prova 2026 V1",
+            "https://www.fuvest.br/wp-content/fuvest2026-fase1-prova-V1.pdf",
+            "c",
+        )
+        first = question(1)
+        first.correct_answer = "A"
+        first.answer_status = "matched"
+        batch = QuestionBatch(
+            batch_id="batch-approved",
+            created_at=datetime.now(UTC),
+            model="fake-model",
+            source_document=exam,
+            questions=[first],
+            validation=ValidationState(valid=True),
+        )
+        approved = approve_batch_model(batch, "revisor.teste")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            batch_path = root / "approved.json"
+            package_path = root / "promotion.json"
+            write_json(batch_path, approved.model_dump(mode="json"))
+            package, _ = build_promotion_package([batch_path], package_path)
+            dry_run = dry_run_promotion(package_path)
+
+            self.assertFalse(dry_run.executed)
+            self.assertEqual(dry_run.question_count, 1)
+            self.assertEqual(dry_run.content_sha256, package.content_sha256)
+
+            raw = json.loads(package_path.read_text(encoding="utf-8"))
+            raw["batches"][0]["questions"][0]["statement"] = "Conteudo adulterado"
+            tampered = PromotionPackage.model_validate(raw)
+            with self.assertRaisesRegex(ValueError, "conteudo mudou"):
+                verify_promotion_package(tampered)
+
+
+if __name__ == "__main__":
+    unittest.main()

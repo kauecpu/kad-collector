@@ -1,0 +1,38 @@
+[collector]
+data_dir = "data"
+user_agent = "KADCollector/0.1 (+https://github.com/igorkauelima6-cpu/kad-collector)"
+request_interval_seconds = 3.0
+timeout_seconds = 30.0
+max_files_per_source = 2
+max_html_bytes = 5000000
+max_pdf_bytes = 50000000
+
+# Teste real reduzido: somente a variante V1 e o gabarito da primeira fase
+# da FUVEST 2026. O fluxo completo usa config/sources.official.toml.
+[[sources]]
+id = "fuvest_vestibular_teste"
+name = "FUVEST 2026 - teste reduzido"
+enabled = true
+start_urls = [
+  "https://www.fuvest.br/acervo-vestibular-2026/",
+]
+allowed_hosts = ["www.fuvest.br"]
+include_patterns = [
+  "(?i)fuvest2026-fase1-(?:prova-v1|gabarito)\\.pdf(?:$|[?#])",
+]
+exclude_patterns = [
+  "(?i)(manual|guia|edital|resolucao|lista|nota.?de.?corte|questionario|estatistica)",
+]
+exam_patterns = ["(?i)(prova|caderno)"]
+answer_key_patterns = ["(?i)(gabarito|respostas.?esperadas)"]
+pagination_patterns = []
+max_pages_per_run = 1
+access_mode = "content"
+authorization_basis = "Acervo oficial publico da FUVEST; teste local reduzido para revisao, sem publicacao automatica."
+terms_url = "https://www.fuvest.br/acervo/"
+
+[sources.metadata]
+banca = "FUVEST"
+orgao = "Universidade de Sao Paulo"
+cargo = "Vestibular"
+ano = "2026"

@@ -1,19 +1,20 @@
 # KAD Collector
 
 Pipeline privado para localizar provas e gabaritos em fontes autorizadas, baixar PDFs,
-extrair texto, estruturar questoes com IA e preparar lotes para revisao editorial. O
-coletor nunca publica conteudo diretamente no aplicativo KAD.
+extrair texto, estruturar questoes com parser local ou IA e preparar lotes para revisao
+editorial. O coletor nunca publica conteudo diretamente no aplicativo KAD.
 
 ```text
-Fonte oficial -> coleta controlada -> PDFs -> extracao -> IA -> gabarito
+Fonte oficial -> coleta controlada -> PDFs -> extracao -> parser/IA -> gabarito
               -> validacao -> revisao humana -> banco de staging
 ```
 
 ## Estado atual
 
-O repositorio fornece o mecanismo generico, mas **nenhuma fonte real vem habilitada por
-padrao**. O arquivo `config/sources.example.toml` e somente um molde. Antes de habilitar
-uma fonte, confira seus termos, `robots.txt`, direitos de uso e limites de requisicao.
+O repositorio fornece o mecanismo generico. O arquivo `config/sources.example.toml` nao
+habilita fontes. O arquivo opt-in `config/sources.official.toml` cadastra duas fontes reais
+conferidas; revise o contato do `user_agent`, termos, `robots.txt` e limites antes da primeira
+execucao no ambiente da equipe.
 
 O MVP processa paginas HTML estaticas que contenham links para PDFs. Paginas que dependem
 de JavaScript ainda nao usam Playwright. PDFs digitalizados sem camada de texto sao
@@ -22,7 +23,7 @@ marcados como `needs_ocr` e nao seguem automaticamente para a IA.
 ## Requisitos
 
 - Python 3.11 ou superior;
-- uma chave da API OpenAI apenas para a etapa `process`;
+- uma chave da API OpenAI apenas para os fluxos gerais que usam a etapa `process`;
 - PostgreSQL/Supabase apenas para a etapa opcional `stage --execute`.
 
 ## Instalacao no Windows (CMD)
@@ -50,6 +51,42 @@ e JSON validado. O modelo pode ser trocado por `OPENAI_MODEL` ou `--model`.
 Referencias oficiais: [Responses API](https://developers.openai.com/api/docs/guides/responses)
 e [modelos](https://developers.openai.com/api/docs/models).
 
+## Teste guiado com dois cliques
+
+No Windows, execute `testar.cmd` na raiz do repositorio. Tambem e possivel inicia-lo pelo
+Prompt de Comando:
+
+```cmd
+cd /d "C:\Users\gabri\OneDrive\Documents\GitHub\kad-collector"
+testar.cmd
+```
+
+O lancador:
+
+1. cria o `.venv` somente se ele ainda nao existir;
+2. instala o Collector somente se o pacote ainda nao estiver disponivel no ambiente;
+3. coleta apenas a prova V1 e o gabarito da FUVEST 2026;
+4. estrutura localmente as questoes reais pelos marcadores oficiais do PDF;
+5. associa o gabarito, valida o lote e sinaliza alternativas visuais;
+6. abre automaticamente o primeiro lote da fila no painel local de revisao.
+
+Esse teste usa `config/sources.test.toml`, limitado a dois PDFs do acervo oficial FUVEST
+2026, e registra titulo, URL, SHA-256, banca, orgao, ano e paginas de origem. Ele mantem seu
+proprio estado em `data/state/teste-guiado.json`, nao acessa Supabase, nao modifica o KAD e
+nao executa promocao. Depois da revisao, volte a janela do lancador e pressione `Ctrl+C` para
+encerrar o servidor local. Se a porta 8765 estiver ocupada, outra porta local e escolhida
+automaticamente. O modo padrao nao pede chave, nao usa a API OpenAI e nao gera custo de IA.
+Ele usa um parser deterministico especifico para os marcadores da prova FUVEST; alternativas
+baseadas em figuras ou colunas ficam sinalizadas para conferencia humana. Para comparar com
+extracao por IA, use `kad-collector testar --model ID_DO_MODELO`; somente esse modo opcional
+solicita a chave e requer uma conta da API com faturamento ou creditos ativos.
+
+O mesmo fluxo tambem pode ser iniciado, dentro do ambiente virtual, com:
+
+```cmd
+kad-collector testar
+```
+
 ## Configurando uma fonte
 
 Copie o bloco `[[sources]]` do exemplo e preencha:
@@ -65,8 +102,37 @@ Copie o bloco `[[sources]]` do exemplo e preencha:
   fontes que exigem permissao escrita antes do acesso automatizado;
 - `terms_url`: pagina de termos ou politica aplicavel;
 - `metadata`: banca, orgao, cargo e ano conhecidos para a fonte.
+- `pagination_patterns`: links HTML estaticos que podem ser seguidos como paginacao;
+- `max_pages_per_run`: limite total de paginas de descoberta por fonte e rodada.
 
 Somente depois da conferencia, altere `enabled = false` para `enabled = true`.
+
+### Fontes oficiais iniciais
+
+`config/sources.official.toml` registra:
+
+- **FUVEST - Vestibular USP**: primeiras fases dos acervos oficiais de 2025 e 2026 em
+  `www.fuvest.br`; coleta as quatro variantes da prova e o gabarito de cada ano, alem de
+  titulo, URL, banca, orgao e ano inferido. O `robots.txt` publico bloqueia apenas
+  `/wp-admin/`. A rodada usa intervalo de 3 segundos, no maximo 4 paginas HTML, 40 PDFs e
+  50 MB por PDF. Provas e gabaritos permanecem atribuidos ao acervo oficial.
+- **COPERVE - Vestibular Unificado UFSC/IFSC/IFC 2026**: pagina oficial de provas e
+  gabaritos definitivos. O hotsite oferece esse material para treinamento e responde 404
+  para `robots.txt`; a politica conservadora do Collector interpreta apenas esse 404 como
+  ausencia de restricoes. A rodada usa uma pagina HTML, intervalo de 3 segundos, no maximo
+  40 PDFs e 50 MB por PDF.
+
+Os gabaritos da COPERVE podem usar respostas numericas por soma de proposicoes, enquanto o
+schema atual aceita alternativas A-H. Esses casos entram em `exception` e nao podem ser
+aprovados silenciosamente. As fontes nao autorizam publicacao automatica no KAD: o conteudo
+continua sujeito a revisao editorial e verificacao de direitos antes da promocao.
+
+Para usar a configuracao opt-in:
+
+```cmd
+copy config\sources.official.toml config\sources.toml
+kad-collector sync --config config\sources.toml
+```
 
 As protecoes do coletor incluem:
 
@@ -180,7 +246,36 @@ kad-collector match-answers data\processed\LOTE.json data\extracted\GABARITO.jso
 Formatos textuais simples como `1 - A`, `2) C` e `3 ANULADA` sao reconhecidos. Tabelas
 complexas precisam ser convertidas ou revisadas antes desta etapa.
 
-### 5. Validar e aprovar manualmente
+### 5. Revisar localmente e aprovar
+
+O painel local permite conferir e editar enunciado, alternativas, gabarito, paginas de
+origem e classificacao; cada questao pode ser aprovada ou rejeitada individualmente:
+
+```cmd
+kad-collector review data\reviewed\LOTE.json --open-browser
+```
+
+O servidor aceita conexoes somente em `127.0.0.1`, nao usa Supabase e nao envia o lote
+para servicos externos. Se o PDF original ainda estiver no caminho registrado pelo
+manifesto, ele pode ser aberto ao lado da revisao. Use `--port 8877` se a porta padrao
+`8765` estiver ocupada.
+
+A sessao e salva a cada alteracao em `data/reviews/` e pode ser retomada executando o
+mesmo comando. Editar uma questao ja decidida faz ela voltar para `pending`; rejeicoes
+exigem justificativa. A exportacao so e liberada quando todas as questoes tiverem uma
+decisao e grava somente as aprovadas em `data/approved/`, com revisor, data e hash de
+integridade. PDFs, sessoes e lotes continuam locais e ignorados pelo Git.
+
+Para usar outros caminhos:
+
+```cmd
+kad-collector review data\reviewed\LOTE.json ^
+  --session data\reviews\revisao-equipe.json ^
+  --output data\approved\lote-final.json
+```
+
+O fluxo anterior por linha de comando continua disponivel para lotes que nao precisam de
+decisoes individuais:
 
 ```cmd
 kad-collector validate data\reviewed\LOTE.json --require-answers
@@ -227,12 +322,17 @@ Cada rodada:
 1. verifica as paginas e fontes permitidas;
 2. compara o SHA-256 dos documentos com `data/state/automation.json`;
 3. extrai e estrutura somente documentos ainda nao processados;
-4. registra referencias novas, mudancas por fonte e falhas temporarias;
-5. mantem uma fila de retentativas com limite de tentativas;
-6. grava `data/results/automatic-*.json` com metricas e excecoes para a equipe.
+4. associa cada prova ao gabarito textual mais provavel, sem decidir empates;
+5. cria lotes em `data/reviewed/`, sessoes locais em `data/reviews/` e um manifesto
+   `queue-*.json` com itens `ready` ou `exception`;
+6. registra referencias novas, mudancas por fonte e falhas temporarias;
+7. mantem uma fila de retentativas com limite de tentativas;
+8. grava `data/results/automatic-*.json` com metricas e excecoes para a equipe.
 
 O relatorio automatico lista os IDs em `changed_sources` e detalha tentativas pendentes ou
 esgotadas em `retry_queue`, sem esconder falhas persistentes no estado interno.
+Provas ainda sem gabarito permanecem no estado pendente e sao reavaliadas quando uma rodada
+posterior encontrar um gabarito textual compativel.
 
 Os caminhos e limites podem ser alterados sem versionar dados operacionais:
 
@@ -247,6 +347,32 @@ Execute `sync` periodicamente pelo agendador autorizado do ambiente. O comando t
 de cada rodada; ele nao instala servico, nao altera infraestrutura e nao publica no aplicativo.
 Falhas permanentes, OCR pendente e questoes incompletas continuam visiveis no relatorio. Para
 reprocessar todo o acervo com outra politica ou modelo, use um novo arquivo em `--state`.
+
+## Pacote de promocao local, sem alterar o KAD
+
+Depois da revisao e aprovacao, gere um pacote autocontido com os lotes aprovados:
+
+```cmd
+kad-collector package data\approved\LOTE-1.json data\approved\LOTE-2.json
+```
+
+Ao concluir uma revisao pela interface local ou pelo comando `approve`, um pacote de um
+unico lote ja e criado automaticamente. Use `package` quando quiser agrupar varios lotes
+aprovados em uma unica entrega.
+
+O comando revalida respostas e hashes de aprovacao, rejeita lotes ou questoes duplicadas e
+grava `data/promotion/UUID.json`. O pacote recebe SHA-256 e identificador deterministico: o
+mesmo conteudo aprovado produz o mesmo ID.
+
+A promocao disponivel nesta fase e somente uma simulacao local:
+
+```cmd
+kad-collector promote data\promotion\UUID.json
+```
+
+Ela verifica novamente o pacote e informa quantos lotes e questoes seriam enviados. Nao abre
+conexao, nao usa Supabase e nao modifica o repositorio ou o aplicativo KAD. Uma integracao
+futura podera consumir esse contrato somente depois de autorizacao especifica.
 
 ## Scripts equivalentes
 
@@ -268,7 +394,9 @@ python coletor\coletar_provas.py --config config\sources.toml
 
 ## Fontes cadastradas
 
-Nenhuma fonte vem habilitada. O arquivo de exemplo inclui os seguintes moldes:
+O arquivo de exemplo nao habilita fontes. As configuracoes opt-in `sources.official.toml` e
+`sources.test.toml` habilitam somente as fontes oficiais descritas anteriormente. O arquivo de
+exemplo inclui os seguintes moldes:
 
 | Fonte | Origem | Campos coletados | Limite | Execucao | Base de uso |
 |---|---|---|---|---|---|

@@ -10,10 +10,13 @@ from .automation import run_automatic
 from .collector import collect_documents
 from .config import load_config
 from .database import stage_batch
+from .guided_test import run_guided_test
 from .json_utils import read_json
 from .models import CollectionFilters, QuestionBatch
 from .pdf_extractor import extract_manifest
+from .promotion import build_promotion_package, dry_run_promotion
 from .review import approve_batch
+from .review_server import serve_review_application
 from .validation import validate_questions
 from .workflow import read_requested_urls, run_semiautomatic
 
@@ -81,6 +84,23 @@ def build_parser() -> argparse.ArgumentParser:
     sync.add_argument("--retry-delay-seconds", type=int, default=300)
     _add_filter_arguments(sync)
 
+    guided_test = subparsers.add_parser(
+        "test",
+        aliases=["testar"],
+        help="executa um teste reduzido e abre a fila de revisao automaticamente",
+    )
+    guided_test.add_argument(
+        "--config", type=_path, default=Path("config/sources.test.toml")
+    )
+    guided_test.add_argument(
+        "--state", type=_path, default=Path("data/state/teste-guiado.json")
+    )
+    guided_test.add_argument(
+        "--output", type=_path, default=Path("data/results/teste-guiado.json")
+    )
+    guided_test.add_argument("--model")
+    guided_test.add_argument("--port", type=int, default=8765)
+
     extract = subparsers.add_parser("extract", help="extrai texto dos PDFs de um manifesto")
     extract.add_argument("manifest", type=_path)
     extract.add_argument("--output", type=_path)
@@ -102,6 +122,19 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument("batch", type=_path)
     validate.add_argument("--require-answers", action="store_true")
 
+    review = subparsers.add_parser(
+        "review", help="abre a revisao editorial local por questao"
+    )
+    review.add_argument("batch", type=_path)
+    review.add_argument("--session", type=_path)
+    review.add_argument("--output", type=_path)
+    review.add_argument("--port", type=int, default=8765)
+    review.add_argument(
+        "--open-browser",
+        action="store_true",
+        help="abre o navegador padrao depois que o servidor local iniciar",
+    )
+
     approve = subparsers.add_parser("approve", help="registra revisao humana do lote")
     approve.add_argument("batch", type=_path)
     approve.add_argument("--reviewer", required=True)
@@ -115,6 +148,17 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="executa a escrita; sem esta opcao apenas mostra a previa",
     )
+
+    package = subparsers.add_parser(
+        "package", help="gera um pacote local com lotes aprovados para o KAD"
+    )
+    package.add_argument("batch", type=_path, nargs="+")
+    package.add_argument("--output", type=_path)
+
+    promote = subparsers.add_parser(
+        "promote", help="valida e simula a promocao de um pacote, sem acessar o KAD"
+    )
+    promote.add_argument("package", type=_path)
     return parser
 
 
@@ -158,6 +202,15 @@ def _run(args: argparse.Namespace) -> int:
         )
         for warning in automatic_report.result.warnings:
             print(f"AVISO: {warning}", file=sys.stderr)
+        return 0
+    if args.command in {"test", "testar"}:
+        run_guided_test(
+            config_path=args.config,
+            state_path=args.state,
+            output_path=args.output,
+            model=args.model,
+            preferred_port=args.port,
+        )
         return 0
     if args.command == "collect":
         download_manifest, path = collect_documents(
@@ -207,6 +260,30 @@ def _run(args: argparse.Namespace) -> int:
             print(f"AVISO: {warning}")
         print("Valido" if validation.valid else "Invalido")
         return 0 if validation.valid else 2
+    if args.command == "review":
+        serve_review_application(
+            args.batch,
+            session_path=args.session,
+            output_path=args.output,
+            port=args.port,
+            open_browser=args.open_browser,
+        )
+        return 0
+    if args.command == "package":
+        package, path = build_promotion_package(args.batch, args.output)
+        print(
+            f"Pacote: {path} ({len(package.batches)} lotes, "
+            f"{sum(len(batch.questions) for batch in package.batches)} questoes, "
+            f"SHA-256 {package.content_sha256})"
+        )
+        return 0
+    if args.command == "promote":
+        result = dry_run_promotion(args.package)
+        print(
+            f"Simulacao valida: {result.package_id} ({result.batch_count} lotes, "
+            f"{result.question_count} questoes, nenhuma escrita no KAD)"
+        )
+        return 0
     if args.command == "approve":
         batch, path = approve_batch(
             args.batch,
@@ -214,7 +291,11 @@ def _run(args: argparse.Namespace) -> int:
             notes=args.notes,
             output_path=args.output,
         )
-        print(f"Lote aprovado: {path} ({len(batch.questions)} questoes)")
+        package, package_path = build_promotion_package([path])
+        print(
+            f"Lote aprovado: {path} ({len(batch.questions)} questoes). "
+            f"Pacote local: {package_path} (SHA-256 {package.content_sha256})"
+        )
         return 0
     if args.command == "stage":
         stage_result = stage_batch(args.batch, execute=args.execute)
@@ -238,6 +319,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return _run(args)
+    except KeyboardInterrupt:
+        print("\nTeste encerrado pelo usuario.")
+        return 130
     except (OSError, RuntimeError, ValueError) as exc:
         print(f"ERRO: {exc}", file=sys.stderr)
         return 1

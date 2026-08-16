@@ -56,8 +56,12 @@ def _origin(batch: QuestionBatch, question: QuestionRecord) -> QuestionOrigin:
     )
 
 
-def _question_issues(question: QuestionRecord) -> list[str]:
+def _question_issues(
+    question: QuestionRecord, *, require_answers: bool = False
+) -> list[str]:
     issues = list(question.review_notes)
+    if require_answers and question.answer_status == "missing":
+        issues.append("gabarito ausente")
     required_metadata = (
         ("materia nao identificada", question.matter),
         ("banca nao identificada", question.board),
@@ -135,6 +139,8 @@ def build_question_report(
     extraction_path: Path,
     batches: list[QuestionBatch],
     batch_paths: list[Path],
+    review_queue_path: Path | None = None,
+    require_answers: bool = False,
 ) -> QuestionReport:
     organized: dict[str, OrganizedQuestion] = {}
     total_candidates = 0
@@ -171,7 +177,12 @@ def build_question_report(
     questions: list[OrganizedQuestion] = []
     exceptions: list[OrganizedQuestion] = []
     for item in organized.values():
-        item.issues = list(dict.fromkeys(item.issues + _question_issues(item.question)))
+        item.issues = list(
+            dict.fromkeys(
+                item.issues
+                + _question_issues(item.question, require_answers=require_answers)
+            )
+        )
         (exceptions if item.issues else questions).append(item)
     questions.sort(key=_sort_key)
     exceptions.sort(key=_sort_key)
@@ -210,5 +221,6 @@ def build_question_report(
             download_manifest=str(download_path),
             extraction_manifest=str(extraction_path),
             question_batches=[str(path) for path in batch_paths],
+            review_queue=str(review_queue_path) if review_queue_path else None,
         ),
     )

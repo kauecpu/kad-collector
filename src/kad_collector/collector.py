@@ -99,6 +99,26 @@ def select_document_links(
     return selected
 
 
+def select_pagination_links(
+    html: str, page_url: str, source: SourceDefinition
+) -> list[str]:
+    selected: list[str] = []
+    seen: set[str] = set()
+    for url, title in extract_links(html, page_url):
+        candidate = f"{title}\n{url}"
+        if not any(re.search(pattern, candidate) for pattern in source.pagination_patterns):
+            continue
+        try:
+            validate_public_url(url, source.allowed_hosts, resolve_dns=False)
+        except UnsafeUrlError:
+            continue
+        if url in seen:
+            continue
+        seen.add(url)
+        selected.append(url)
+    return selected
+
+
 class RobotsPolicy:
     def __init__(self, client: SafeHttpClient, user_agent: str, max_bytes: int = 1_000_000) -> None:
         self.client = client
@@ -216,7 +236,19 @@ def collect_documents(
         source_links: list[tuple[str, str, DocumentType]] = []
         seen_links: set[str] = set()
         source_items = 0
-        for page_url in source.start_urls:
+        pending_pages = list(dict.fromkeys(source.start_urls))
+        seen_pages: set[str] = set()
+        pagination_truncated = False
+        for page_url in pending_pages:
+            if page_url in seen_pages:
+                continue
+            if (
+                source.pagination_patterns
+                and len(seen_pages) >= source.max_pages_per_run
+            ):
+                pagination_truncated = True
+                break
+            seen_pages.add(page_url)
             try:
                 if not robots.can_fetch(page_url, source.allowed_hosts):
                     message = f"{source.id}: robots.txt bloqueou ou nao liberou {page_url}"
@@ -330,6 +362,13 @@ def collect_documents(
                         filtered_out_documents += 1
                         continue
                     source_links.append(item)
+                for discovered_page in select_pagination_links(html, page.url, source):
+                    if discovered_page in seen_pages or discovered_page in pending_pages:
+                        continue
+                    if len(pending_pages) >= source.max_pages_per_run:
+                        pagination_truncated = True
+                        continue
+                    pending_pages.append(discovered_page)
             except (FetchError, UnsafeUrlError, LookupError, OSError) as exc:
                 message = f"{source.id}: falha ao ler {page_url}: {exc}"
                 warnings.append(message)
@@ -342,6 +381,11 @@ def collect_documents(
                         retryable=_is_retryable(exc),
                     )
                 )
+
+        if pagination_truncated:
+            warnings.append(
+                f"{source.id}: paginacao limitada a {source.max_pages_per_run} paginas"
+            )
 
         if source.access_mode == "reference_only":
             for url, _title, _document_type in source_links[

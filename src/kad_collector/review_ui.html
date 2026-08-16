@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="kad-review-token" content="__REVIEW_TOKEN__">
+    <title>KAD Collector · Revisão local</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand-mark">K</div>
+      <div>
+        <p class="eyebrow">KAD COLLECTOR</p>
+        <h1>Revisão editorial local</h1>
+      </div>
+      <span class="local-badge">LOCAL · SEM SUPABASE</span>
+    </header>
+
+    <main class="workspace">
+      <aside class="sidebar">
+        <section class="summary" aria-label="Resumo da revisão">
+          <div><strong id="summary-total">—</strong><span>Total</span></div>
+          <div class="pending"><strong id="summary-pending">—</strong><span>Pendentes</span></div>
+          <div class="approved"><strong id="summary-approved">—</strong><span>Aprovadas</span></div>
+          <div class="rejected"><strong id="summary-rejected">—</strong><span>Rejeitadas</span></div>
+        </section>
+
+        <div class="filter-row" role="group" aria-label="Filtrar questões">
+          <button type="button" class="filter active" data-filter="all">Todas</button>
+          <button type="button" class="filter" data-filter="pending">Pendentes</button>
+          <button type="button" class="filter" data-filter="approved">Aprovadas</button>
+          <button type="button" class="filter" data-filter="rejected">Rejeitadas</button>
+        </div>
+        <nav id="question-list" class="question-list" aria-label="Questões do lote"></nav>
+      </aside>
+
+      <section class="content">
+        <section class="batch-toolbar">
+          <div class="batch-copy">
+            <p class="eyebrow">LOTE EM REVISÃO</p>
+            <h2 id="batch-title">Carregando…</h2>
+            <p id="batch-meta" class="muted"></p>
+          </div>
+          <label>
+            Revisor responsável
+            <input id="reviewer" autocomplete="name" placeholder="Nome ou identificador">
+          </label>
+          <label>
+            Nota final do lote
+            <input id="batch-notes" placeholder="Opcional">
+          </label>
+          <div class="toolbar-actions">
+            <a id="source-link" class="button secondary" href="/source.pdf" target="_blank" rel="noreferrer">Abrir PDF</a>
+            <button id="export-button" type="button" class="button primary">Exportar aprovadas</button>
+          </div>
+        </section>
+
+        <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+
+        <section id="empty-editor" class="empty-editor">
+          <div class="empty-icon">✓</div>
+          <h2>Selecione uma questão</h2>
+          <p>Revise o enunciado, as alternativas, o gabarito e os metadados antes de decidir.</p>
+        </section>
+
+        <form id="question-form" class="question-form" hidden>
+          <header class="question-header">
+            <div>
+              <p class="eyebrow">QUESTÃO <span id="question-number"></span></p>
+              <h2 id="question-heading"></h2>
+            </div>
+            <span id="decision-pill" class="decision-pill"></span>
+          </header>
+
+          <section class="editor-card">
+            <label class="wide">
+              Enunciado
+              <textarea id="statement" rows="7" required></textarea>
+            </label>
+
+            <div class="section-heading">
+              <div><h3>Alternativas</h3><p>Entre duas e oito opções, identificadas de A a H.</p></div>
+              <button id="add-alternative" type="button" class="text-button">+ Adicionar alternativa</button>
+            </div>
+            <div id="alternatives" class="alternatives"></div>
+
+            <div class="field-grid three">
+              <label>Estado do gabarito
+                <select id="answer-status">
+                  <option value="missing">Ausente</option>
+                  <option value="matched">Relacionado</option>
+                  <option value="annulled">Anulada</option>
+                </select>
+              </label>
+              <label>Resposta correta
+                <select id="correct-answer"></select>
+              </label>
+              <label>Páginas de origem
+                <input id="source-pages" placeholder="1, 2">
+              </label>
+            </div>
+          </section>
+
+          <section class="editor-card">
+            <div class="section-heading"><div><h3>Classificação</h3><p>Confirme os metadados produzidos pela IA.</p></div></div>
+            <div class="field-grid three">
+              <label>Matéria<input id="matter"></label>
+              <label>Assunto<input id="subject"></label>
+              <label>Banca<input id="board"></label>
+              <label>Órgão<input id="organization"></label>
+              <label>Cargo<input id="role"></label>
+              <label>Ano<input id="year" type="number" min="1900" max="2100"></label>
+            </div>
+            <label class="wide">Avisos e observações da extração
+              <textarea id="review-notes" rows="4" placeholder="Uma observação por linha"></textarea>
+            </label>
+          </section>
+
+          <section class="decision-card">
+            <label>Justificativa ou observação editorial
+              <textarea id="decision-notes" rows="3" placeholder="Obrigatória para rejeitar; opcional para aprovar"></textarea>
+            </label>
+            <div class="decision-actions">
+              <button id="save-button" type="button" class="button secondary">Salvar alterações</button>
+              <button id="reject-button" type="button" class="button danger">Rejeitar</button>
+              <button id="approve-button" type="button" class="button success">Aprovar questão</button>
+            </div>
+          </section>
+        </form>
+      </section>
+    </main>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>

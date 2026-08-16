@@ -157,6 +157,9 @@ data/manifests/
 data/extracted/
 data/processed/
 data/reviewed/
+data/reviews/
 data/approved/
+data/promotion/
 data/results/
 data/state/
+config/sources.toml
