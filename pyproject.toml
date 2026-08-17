@@ -35,6 +35,7 @@ kad_collector = [
   "desktop_ui.html",
   "desktop_app.js",
   "desktop_styles.css",
+  "sources.official.toml",
 ]
 
 [tool.ruff]

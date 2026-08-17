@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 
 from pydantic import ValidationError
 
+from .desktop_collection import DesktopCollectionManager
 from .desktop_export import DesktopExportResult, export_filtered_questions
 from .desktop_limits import (
     MAX_BATCH_PDFS,
@@ -46,6 +47,11 @@ class DesktopApplication:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.store = DesktopStore(self.data_dir / "collector.sqlite3")
         self.processor = DesktopProcessor(self.store)
+        self.collection_manager = DesktopCollectionManager(
+            self.data_dir,
+            self.store,
+            self.processor,
+        )
         self.token = secrets.token_urlsafe(32)
 
     def bootstrap(self) -> dict[str, Any]:
@@ -53,6 +59,8 @@ class DesktopApplication:
         return {
             **query,
             "jobs": self.store.list_jobs(),
+            "collectionJobs": self.collection_manager.list_jobs(),
+            "sources": self.collection_manager.catalog(),
             "savedFilters": self.store.saved_filters(),
             "config": {
                 "dataDirectory": str(self.data_dir),
@@ -92,6 +100,9 @@ class DesktopApplication:
         job_id = self.store.create_job(paths, metadata, classifier_provider)
         self.processor.start(job_id)
         return job_id
+
+    def collect_from_link(self, payload: dict[str, Any]) -> str:
+        return self.collection_manager.start(payload)
 
     def update_question(self, question_id: str, payload: dict[str, Any]) -> None:
         question = QuestionRecord.model_validate(payload.get("question"))
@@ -232,6 +243,10 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                 if path == "/api/import":
                     job_id = application.import_pdfs(payload)
                     self._send_json({"jobId": job_id}, HTTPStatus.CREATED)
+                    return
+                if path == "/api/collections":
+                    collection_id = application.collect_from_link(payload)
+                    self._send_json({"collectionId": collection_id}, HTTPStatus.CREATED)
                     return
                 job_action = re.fullmatch(r"/api/jobs/([a-f0-9-]+)/(cancel|resume)", path)
                 if job_action is not None:

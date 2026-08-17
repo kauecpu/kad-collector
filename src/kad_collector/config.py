@@ -14,13 +14,11 @@ class ConfigError(ValueError):
     """Configuracao ausente, invalida ou insegura."""
 
 
-def load_config(path: Path) -> AppConfig:
+def load_config_text(raw_text: str, *, source_name: str = "configuracao") -> AppConfig:
     try:
-        raw = tomllib.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise ConfigError(f"arquivo de configuracao nao encontrado: {path}") from exc
+        raw = tomllib.loads(raw_text)
     except tomllib.TOMLDecodeError as exc:
-        raise ConfigError(f"TOML invalido em {path}: {exc}") from exc
+        raise ConfigError(f"TOML invalido em {source_name}: {exc}") from exc
 
     try:
         config = AppConfig.model_validate(raw)
@@ -48,6 +46,14 @@ def load_config(path: Path) -> AppConfig:
                 raise ConfigError(f"regex invalida em {source.id}: {pattern!r}") from exc
 
     return config
+
+
+def load_config(path: Path) -> AppConfig:
+    try:
+        raw_text = path.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise ConfigError(f"arquivo de configuracao nao encontrado: {path}") from exc
+    return load_config_text(raw_text, source_name=str(path))
 
 
 def config_for_urls(config: AppConfig, urls: list[str]) -> AppConfig:

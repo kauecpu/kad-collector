@@ -35,7 +35,16 @@ def _document_type(filename: str, metadata: DesktopImportMetadata) -> str:
     if metadata.document_type != "auto":
         return metadata.document_type
     normalized = filename.casefold()
-    return "answer_key" if any(item in normalized for item in ("gabarito", "respostas")) else "exam"
+    answer_markers = (
+        "answer_key",
+        "answer-key",
+        "gabarito",
+        "padrao-resposta",
+        "padrao_resposta",
+        "respostas",
+        "solucao",
+    )
+    return "answer_key" if any(item in normalized for item in answer_markers) else "exam"
 
 
 def _apply_classification(

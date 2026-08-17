@@ -12,9 +12,9 @@ Fonte oficial -> coleta controlada -> PDFs -> extracao -> parser/IA -> gabarito
 ## Estado atual
 
 O repositorio fornece o mecanismo generico. O arquivo `config/sources.example.toml` nao
-habilita fontes. O arquivo opt-in `config/sources.official.toml` cadastra duas fontes reais
-conferidas; revise o contato do `user_agent`, termos, `robots.txt` e limites antes da primeira
-execucao no ambiente da equipe.
+habilita fontes. O arquivo opt-in `config/sources.official.toml` cadastra dez fontes oficiais
+conferidas: nove de conteudo e uma somente de referencias. Revise o contato do `user_agent`,
+termos, `robots.txt` e limites antes da primeira execucao no ambiente da equipe.
 
 O MVP processa paginas HTML estaticas que contenham links para PDFs. Paginas que dependem
 de JavaScript ainda nao usam Playwright. PDFs digitalizados sem camada de texto sao
@@ -94,6 +94,12 @@ o processamento pagina a pagina, revisar classificacoes e exportar exatamente o 
 filtrado. O estado fica em SQLite dentro de `%LOCALAPPDATA%\KAD Collector`; nenhuma questao
 e enviada ao Supabase pelo aplicativo.
 
+A aba **Coletar links** permite escolher uma fonte cadastrada e informar a pagina especifica
+de um concurso, exame ou ano. A coleta roda em segundo plano, valida o host, respeita
+`robots.txt`, aplica o intervalo e os limites da configuracao, grava o manifesto e cria lotes
+locais de no maximo 20 PDFs para processamento. O link informado fica registrado como origem;
+o lote continua pendente ate revisao humana.
+
 Instale a interface e execute:
 
 ```cmd
@@ -156,21 +162,30 @@ Somente depois da conferencia, altere `enabled = false` para `enabled = true`.
 
 `config/sources.official.toml` registra:
 
-- **FUVEST - Vestibular USP**: primeiras fases dos acervos oficiais de 2025 e 2026 em
-  `www.fuvest.br`; coleta as quatro variantes da prova e o gabarito de cada ano, alem de
-  titulo, URL, banca, orgao e ano inferido. O `robots.txt` publico bloqueia apenas
-  `/wp-admin/`. A rodada usa intervalo de 3 segundos, no maximo 4 paginas HTML, 40 PDFs e
-  50 MB por PDF. Provas e gabaritos permanecem atribuidos ao acervo oficial.
-- **COPERVE - Vestibular Unificado UFSC/IFSC/IFC 2026**: pagina oficial de provas e
-  gabaritos definitivos. O hotsite oferece esse material para treinamento e responde 404
-  para `robots.txt`; a politica conservadora do Collector interpreta apenas esse 404 como
-  ausencia de restricoes. A rodada usa uma pagina HTML, intervalo de 3 segundos, no maximo
-  40 PDFs e 50 MB por PDF.
+Todas as fontes usam intervalo de 3 segundos, limite de 40 arquivos por fonte, 5 MB por
+pagina HTML e 50 MB por PDF. A aba desktop executa um link por rodada; a CLI `sync` usa as
+`start_urls`. Campos comuns: titulo, tipo do documento, URL original e resolvida, SHA-256,
+data de coleta, banca, orgao, cargo/exame e ano quando conhecido.
+
+| Fonte | Origem e conteudo | Descoberta | Execucao |
+|---|---|---|---|
+| FUVEST | `fuvest.br`; provas e gabaritos de 2025 e 2026 | Ate 4 paginas | `content`; aba por link ou `sync` |
+| COPERVE | `vestibularunificado2026.ufsc.br`; provas e gabaritos definitivos de 2026 | 1 pagina | `content`; aba por link ou `sync` |
+| FGV Conhecimento | `conhecimento.fgv.br/concursos`; provas e gabaritos por concurso | Ate 12 paginas de concursos | `content`; prefira colar a pagina de um concurso na aba |
+| INEP - ENEM | `gov.br/inep` e `download.inep.gov.br`; cadernos e gabaritos por edicao | Ate 30 paginas anuais | `content`; aba por ano/PDF ou `sync` |
+| INEP - ENADE | `gov.br/inep` e `download.inep.gov.br`; provas, gabaritos e padroes por curso | Ate 30 paginas anuais | `content`; aba por ano/PDF ou `sync` |
+| INEP - Encceja | `gov.br/inep` e `download.inep.gov.br`; cadernos e gabaritos por nivel | Ate 30 paginas anuais | `content`; aba por ano/PDF ou `sync` |
+| INEP - Revalida | `gov.br/inep` e `download.inep.gov.br`; provas e padroes de resposta | Ate 30 paginas anuais | `content`; aba por edicao/PDF ou `sync` |
+| COMVEST/Unicamp | `comvest.unicamp.br`; acervo historico e provas comentadas | Ate 20 paginas | `content`; reproducao parcial com fonte e ano citados |
+| OBMEP | `obmep.org.br`; provas e solucoes de 2005 a 2025 | 20 paginas anuais | `reference_only`; arquivos recentes usam rota do Drive bloqueada pelo `robots.txt` |
+| UERJ | `sistema.vestibular.uerj.br`; provas, gabaritos e padroes desde 1997 | Ate 30 paginas | `content`; aba por pagina/PDF ou `sync` |
 
 Os gabaritos da COPERVE podem usar respostas numericas por soma de proposicoes, enquanto o
 schema atual aceita alternativas A-H. Esses casos entram em `exception` e nao podem ser
-aprovados silenciosamente. As fontes nao autorizam publicacao automatica no KAD: o conteudo
-continua sujeito a revisao editorial e verificacao de direitos antes da promocao.
+aprovados silenciosamente. A COMVEST autoriza reproducao parcial e nao exclusiva das questoes
+com citacao da fonte e do ano; o Collector nao reproduz a prova inteira como uma publicacao.
+Nenhuma fonte publica automaticamente no KAD: todo conteudo continua sujeito a revisao
+editorial antes da exportacao.
 
 Para usar a configuracao opt-in:
 
