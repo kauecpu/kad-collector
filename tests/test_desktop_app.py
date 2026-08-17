@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from http import HTTPStatus
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -16,6 +17,7 @@ from reportlab.pdfgen import canvas
 from kad_collector.desktop_app import _smoke_test
 from kad_collector.desktop_classifier import LocalRuleClassifier
 from kad_collector.desktop_export import export_filtered_questions
+from kad_collector.desktop_limits import MAX_BATCH_PDFS
 from kad_collector.desktop_models import (
     ClassificationRequest,
     ClassificationValue,
@@ -112,6 +114,69 @@ def valid_question(number: int, statement: str | None = None) -> QuestionRecord:
 
 
 class DesktopPipelineTests(unittest.TestCase):
+    def test_import_limits_reject_oversized_files_and_batches(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            first = root / "primeiro.pdf"
+            second = root / "segundo.pdf"
+            write_blank_pdf(first)
+            write_blank_pdf(second)
+            store = DesktopStore(root / "collector.sqlite3")
+
+            with (
+                patch("kad_collector.desktop_limits.MAX_BATCH_PDFS", 1),
+                self.assertRaisesRegex(ValueError, "limite de 1 PDFs"),
+            ):
+                store.create_job([first, second], metadata(), "local")
+            with (
+                patch("kad_collector.desktop_limits.MAX_PDF_BYTES", 1),
+                self.assertRaisesRegex(ValueError, "excede o limite"),
+            ):
+                store.create_job([first], metadata(), "local")
+
+            for number in range(2, MAX_BATCH_PDFS + 1):
+                (root / f"extra-{number}.pdf").touch()
+            with self.assertRaisesRegex(ValueError, f"limite de {MAX_BATCH_PDFS} PDFs"):
+                DesktopApplication._expand_paths([str(root)])
+
+    def test_processing_rejects_pdf_above_page_limit(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "muitas-paginas.pdf"
+            write_blank_pdf(pdf_path, 2)
+            store = DesktopStore(root / "collector.sqlite3")
+            job_id = store.create_job([pdf_path], metadata(), "local")
+
+            with patch("kad_collector.desktop_processor.MAX_PDF_PAGES", 1):
+                DesktopProcessor(store).run(job_id)
+
+            document = store.documents_for_job(job_id)[0]
+            self.assertEqual(document["status"], "exception")
+            self.assertEqual(store.pages(document["id"]), [])
+            self.assertTrue(any("limite de 1 páginas" in item for item in document["warnings"]))
+
+    def test_processing_rejects_documents_above_batch_page_limit(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            first = root / "a-primeiro.pdf"
+            second = root / "b-segundo.pdf"
+            write_blank_pdf(first)
+            write_blank_pdf(second)
+            store = DesktopStore(root / "collector.sqlite3")
+            job_id = store.create_job([first, second], metadata(), "local")
+
+            with patch("kad_collector.desktop_processor.MAX_BATCH_PAGES", 1):
+                DesktopProcessor(store).run(job_id)
+
+            documents = store.documents_for_job(job_id)
+            self.assertEqual(documents[1]["status"], "exception")
+            self.assertTrue(
+                any(
+                    "lote excede o limite de 1 páginas" in item
+                    for item in documents[1]["warnings"]
+                )
+            )
+
     def test_text_pdf_is_processed_and_incomplete_question_goes_to_exception(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -314,6 +379,31 @@ class DesktopReviewAndFilterTests(unittest.TestCase):
         self.assertEqual(self.store.question(question_id)["status"], "exported")
         self.assertTrue((result.directory / "fontes").is_dir())
 
+    def test_reprocessing_changed_content_invalidates_editorial_decision(self) -> None:
+        original = valid_question(1)
+        question_id = self.store.save_question(
+            self.document["id"], original, full_classification()
+        )
+        self.store.decide_question(
+            question_id, "approved", actor="revisora", notes="Conferida no PDF."
+        )
+
+        self.store.save_question(self.document["id"], original, full_classification())
+        unchanged = self.store.question(question_id)
+        self.assertEqual(unchanged["status"], "approved")
+        self.assertEqual(unchanged["reviewer"], "revisora")
+
+        changed = valid_question(
+            1, "Após reprocessamento, o enunciado oficial desta questão foi alterado."
+        )
+        self.store.save_question(self.document["id"], changed, full_classification())
+        invalidated = self.store.question(question_id)
+        self.assertEqual(invalidated["status"], "pending")
+        self.assertIsNone(invalidated["reviewer"])
+        self.assertIsNone(invalidated["review_notes"])
+        self.assertIsNone(invalidated["exported_at"])
+        self.assertEqual(self.store.audit_log(question_id)[0]["action"], "decision_invalidated")
+
     def test_missing_https_origin_is_sent_to_exceptions(self) -> None:
         missing_origin = metadata(provider=None, source_url=None)
         self.store.update_document_metadata(self.document["id"], missing_origin, actor="revisora")
@@ -348,25 +438,60 @@ class DesktopSmokeTests(unittest.TestCase):
             self.assertEqual(_smoke_test(application), 0)
             self.assertTrue((Path(directory) / "collector.sqlite3").is_file())
 
-    def test_local_server_protects_mutations_with_session_token(self) -> None:
+    def test_local_server_enforces_host_origin_and_session_token(self) -> None:
         with TemporaryDirectory() as directory:
             application = DesktopApplication(Path(directory))
             server, thread, url = start_desktop_server(application)
             try:
-                with urlopen(f"{url}api/bootstrap", timeout=3) as response:
+                origin = url.rstrip("/")
+                with self.assertRaises(HTTPError) as context:
+                    urlopen(f"{url}api/bootstrap", timeout=3)
+                self.assertEqual(context.exception.code, HTTPStatus.FORBIDDEN)
+
+                bootstrap = Request(
+                    f"{url}api/bootstrap",
+                    headers={"X-KAD-Desktop-Token": application.token},
+                )
+                with urlopen(bootstrap, timeout=3) as response:
                     self.assertEqual(response.status, HTTPStatus.OK)
+
+                forged_host = Request(
+                    f"{url}api/bootstrap",
+                    headers={
+                        "Host": "evil.example",
+                        "X-KAD-Desktop-Token": application.token,
+                    },
+                )
+                with self.assertRaises(HTTPError) as context:
+                    urlopen(forged_host, timeout=3)
+                self.assertEqual(context.exception.code, HTTPStatus.FORBIDDEN)
+
                 body = json.dumps({"filters": {}}).encode("utf-8")
                 unauthorized = Request(
                     f"{url}api/query",
                     data=body,
                     method="POST",
-                    headers={"Content-Type": "application/json"},
+                    headers={"Content-Type": "application/json", "Origin": origin},
                 )
                 with self.assertRaises(HTTPError) as context:
                     urlopen(unauthorized, timeout=3)
                 self.assertEqual(context.exception.code, HTTPStatus.FORBIDDEN)
 
-                authorized = Request(
+                wrong_origin = Request(
+                    f"{url}api/query",
+                    data=body,
+                    method="POST",
+                    headers={
+                        "Content-Type": "application/json",
+                        "Origin": "https://evil.example",
+                        "X-KAD-Desktop-Token": application.token,
+                    },
+                )
+                with self.assertRaises(HTTPError) as context:
+                    urlopen(wrong_origin, timeout=3)
+                self.assertEqual(context.exception.code, HTTPStatus.FORBIDDEN)
+
+                missing_origin = Request(
                     f"{url}api/query",
                     data=body,
                     method="POST",
@@ -375,8 +500,49 @@ class DesktopSmokeTests(unittest.TestCase):
                         "X-KAD-Desktop-Token": application.token,
                     },
                 )
+                with self.assertRaises(HTTPError) as context:
+                    urlopen(missing_origin, timeout=3)
+                self.assertEqual(context.exception.code, HTTPStatus.FORBIDDEN)
+
+                authorized = Request(
+                    f"{url}api/query",
+                    data=body,
+                    method="POST",
+                    headers={
+                        "Content-Type": "application/json",
+                        "Origin": origin,
+                        "X-KAD-Desktop-Token": application.token,
+                    },
+                )
                 with urlopen(authorized, timeout=3) as response:
                     self.assertEqual(response.status, HTTPStatus.OK)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
+    def test_authenticated_pdf_response_streams_without_read_bytes(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "prova.pdf"
+            write_blank_pdf(pdf_path, 2)
+            application = DesktopApplication(root / "data")
+            job_id = application.store.create_job([pdf_path], metadata(), "local")
+            document = application.store.documents_for_job(job_id)[0]
+            server, thread, url = start_desktop_server(application)
+            try:
+                request = Request(
+                    f"{url}api/documents/{document['id']}/pdf",
+                    headers={"X-KAD-Desktop-Token": application.token},
+                )
+                with (
+                    patch("kad_collector.desktop_server.PDF_STREAM_CHUNK_BYTES", 64),
+                    patch.object(Path, "read_bytes", side_effect=AssertionError("read_bytes")),
+                    urlopen(request, timeout=3) as response,
+                ):
+                    self.assertEqual(response.status, HTTPStatus.OK)
+                    self.assertEqual(response.headers["Content-Type"], "application/pdf")
+                    self.assertEqual(len(response.read()), pdf_path.stat().st_size)
             finally:
                 server.shutdown()
                 server.server_close()

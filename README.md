@@ -106,6 +106,11 @@ e salva checkpoints por pagina. **Pausar** encerra o trecho corrente com seguran
 continua das paginas ja persistidas. PDFs digitalizados ou paginas sem camada de texto entram
 em `excecoes.jsonl`; OCR nao faz parte desta versao.
 
+Cada lote aceita no maximo 20 PDFs, 5.000 paginas no total, 1.000 paginas por arquivo e
+50 MB por PDF. Arquivos que ultrapassam os limites entram nas excecoes sem serem processados.
+A interface HTTP local aceita somente `127.0.0.1` ou `localhost` na porta iniciada pelo
+aplicativo; APIs de leitura e escrita exigem o token efemero da sessao.
+
 O classificador `local` usa metadados informados e regras conservadoras com confianca por
 campo. Para usar a integracao opcional ja existente com a OpenAI, defina `OPENAI_API_KEY` e,
 se necessario, `OPENAI_MODEL` somente na sessao que inicia o aplicativo, e selecione OpenAI

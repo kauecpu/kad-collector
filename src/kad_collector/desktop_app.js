@@ -37,6 +37,31 @@ async function request(path, options = {}) {
   return payload;
 }
 
+async function openAuthenticatedPdf(event) {
+  event.preventDefault();
+  const popup = window.open('about:blank', '_blank');
+  if (!popup) {
+    toast('Permita a abertura da janela para visualizar o PDF.', 'error');
+    return;
+  }
+  popup.opener = null;
+  try {
+    const response = await fetch(event.currentTarget.href, {
+      headers: {'X-KAD-Desktop-Token': token},
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || 'Falha ao abrir o PDF local.');
+    }
+    const objectUrl = URL.createObjectURL(await response.blob());
+    popup.location.replace(objectUrl);
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 300000);
+  } catch (error) {
+    popup.close();
+    toast(error.message, 'error');
+  }
+}
+
 function toast(message, kind = 'info') {
   const element = byId('toast');
   element.textContent = message;
@@ -695,6 +720,7 @@ document.querySelectorAll('.modal-close').forEach((button) => {
 });
 byId('import-open').addEventListener('click', () => byId('import-dialog').showModal());
 byId('export-open').addEventListener('click', exportCurrentFilter);
+byId('review-pdf').addEventListener('click', openAuthenticatedPdf);
 byId('choose-files').addEventListener('click', () => choosePaths('files'));
 byId('choose-folder').addEventListener('click', () => choosePaths('folder'));
 byId('import-form').addEventListener('submit', submitImport);

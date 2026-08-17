@@ -12,6 +12,7 @@ from pypdf.errors import PdfReadError
 
 from .answer_key import parse_answer_key
 from .desktop_classifier import LocalRuleClassifier, build_classifier
+from .desktop_limits import MAX_BATCH_PAGES, MAX_PDF_BYTES, MAX_PDF_PAGES
 from .desktop_models import (
     ClassificationRequest,
     DesktopImportMetadata,
@@ -106,21 +107,58 @@ class DesktopProcessor:
             documents = self.store.documents_for_job(job_id)
             total_pages = 0
             for document in documents:
-                if document["page_count"]:
-                    total_pages += int(document["page_count"])
-                    continue
                 path = Path(cast(str, document["local_path"]))
+                document_id = cast(str, document["id"])
+                warnings = list(cast(list[str], document["warnings"]))
                 try:
-                    reader = PdfReader(path, strict=False)
-                    page_count = len(reader.pages)
-                except (OSError, PdfReadError) as exc:
+                    size = path.stat().st_size
+                    if size > MAX_PDF_BYTES:
+                        warnings.append(
+                            f"PDF excede o limite de {MAX_PDF_BYTES // (1024 * 1024)} MB"
+                        )
+                        self.store.update_document(
+                            document_id,
+                            size_bytes=size,
+                            status="exception",
+                            warnings_json=json.dumps(warnings, ensure_ascii=False),
+                        )
+                        continue
+                    page_count = int(document["page_count"])
+                    if not page_count:
+                        reader = PdfReader(path, strict=False)
+                        page_count = len(reader.pages)
+                except (OSError, PdfReadError, ValueError) as exc:
                     self.store.update_document(
-                        cast(str, document["id"]),
+                        document_id,
                         status="exception",
                         warnings_json=json.dumps([f"PDF ilegivel: {exc}"], ensure_ascii=False),
                     )
                     continue
-                self.store.update_document(cast(str, document["id"]), page_count=page_count)
+                if page_count > MAX_PDF_PAGES:
+                    warnings.append(f"PDF excede o limite de {MAX_PDF_PAGES} páginas")
+                    self.store.update_document(
+                        document_id,
+                        size_bytes=size,
+                        page_count=page_count,
+                        status="exception",
+                        warnings_json=json.dumps(warnings, ensure_ascii=False),
+                    )
+                    continue
+                if total_pages + page_count > MAX_BATCH_PAGES:
+                    warnings.append(f"lote excede o limite de {MAX_BATCH_PAGES} páginas")
+                    self.store.update_document(
+                        document_id,
+                        size_bytes=size,
+                        page_count=page_count,
+                        status="exception",
+                        warnings_json=json.dumps(warnings, ensure_ascii=False),
+                    )
+                    continue
+                self.store.update_document(
+                    document_id,
+                    size_bytes=size,
+                    page_count=page_count,
+                )
                 total_pages += page_count
             processed_pages = sum(
                 len(self.store.pages(cast(str, item["id"]))) for item in documents
@@ -138,6 +176,10 @@ class DesktopProcessor:
                         job_id, status="paused", message="Lote pausado; pronto para retomar"
                     )
                     return
+                if document["status"] == "exception" and not self.store.pages(
+                    cast(str, document["id"])
+                ):
+                    continue
                 self._extract_document(job_id, document, event, started)
                 if event.is_set():
                     self.store.update_job(
@@ -182,7 +224,28 @@ class DesktopProcessor:
         warnings = list(cast(list[str], document["warnings"]))
         self.store.update_job(job_id, current_file=path.name, message=f"Lendo {path.name}")
         try:
+            size = path.stat().st_size
+            if size > MAX_PDF_BYTES:
+                warnings.append(f"PDF excede o limite de {MAX_PDF_BYTES // (1024 * 1024)} MB")
+                self.store.update_document(
+                    document_id,
+                    size_bytes=size,
+                    status="exception",
+                    warnings_json=json.dumps(warnings, ensure_ascii=False),
+                )
+                return
             reader = PdfReader(path, strict=False)
+            page_count = len(reader.pages)
+            if page_count > MAX_PDF_PAGES:
+                warnings.append(f"PDF excede o limite de {MAX_PDF_PAGES} páginas")
+                self.store.update_document(
+                    document_id,
+                    size_bytes=size,
+                    page_count=page_count,
+                    status="exception",
+                    warnings_json=json.dumps(warnings, ensure_ascii=False),
+                )
+                return
             if reader.is_encrypted and not reader.decrypt(""):
                 warnings.append("PDF criptografado; extração bloqueada")
                 self.store.update_document(
@@ -204,8 +267,8 @@ class DesktopProcessor:
         self.store.update_document(
             document_id,
             sha256=_sha256(path),
-            size_bytes=path.stat().st_size,
-            page_count=len(reader.pages),
+            size_bytes=size,
+            page_count=page_count,
             status="processing",
         )
         for number, page in enumerate(reader.pages, start=1):

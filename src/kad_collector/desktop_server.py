@@ -16,6 +16,11 @@ from urllib.parse import urlparse
 from pydantic import ValidationError
 
 from .desktop_export import DesktopExportResult, export_filtered_questions
+from .desktop_limits import (
+    MAX_BATCH_PDFS,
+    MAX_PDF_BYTES,
+    PDF_STREAM_CHUNK_BYTES,
+)
 from .desktop_models import (
     DesktopFilterSet,
     DesktopImportMetadata,
@@ -69,6 +74,8 @@ class DesktopApplication:
                 if key not in seen:
                     seen.add(key)
                     selected.append(candidate)
+                    if len(selected) > MAX_BATCH_PDFS:
+                        raise ValueError(f"o lote excede o limite de {MAX_BATCH_PDFS} PDFs")
         return selected
 
     def import_pdfs(self, payload: dict[str, Any]) -> str:
@@ -164,6 +171,8 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
             return
 
         def do_GET(self) -> None:
+            if not self._trusted_request(require_origin=False):
+                return
             path = urlparse(self.path).path
             if path == "/":
                 html_document = _resource_text("desktop_ui.html").replace(
@@ -178,6 +187,8 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
             if path in resources_by_path:
                 name, content_type = resources_by_path[path]
                 self._send_bytes(_resource_bytes(name), content_type)
+                return
+            if path.startswith("/api/") and not self._authorized():
                 return
             if path == "/api/bootstrap":
                 self._send_json(application.bootstrap())
@@ -202,14 +213,14 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                     source = Path(cast(str, document_payload["local_path"]))
                     if not source.is_file():
                         raise ValueError("PDF de origem não encontrado")
-                    self._send_bytes(source.read_bytes(), "application/pdf")
-                except ValueError as exc:
+                    self._send_file(source, "application/pdf")
+                except (OSError, ValueError) as exc:
                     self._send_error(HTTPStatus.NOT_FOUND, str(exc))
                 return
             self._send_error(HTTPStatus.NOT_FOUND, "rota não encontrada")
 
         def do_POST(self) -> None:
-            if not self._authorized():
+            if not self._trusted_request(require_origin=True) or not self._authorized():
                 return
             path = urlparse(self.path).path
             try:
@@ -261,7 +272,7 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                 self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
 
         def do_PUT(self) -> None:
-            if not self._authorized():
+            if not self._trusted_request(require_origin=True) or not self._authorized():
                 return
             path = urlparse(self.path).path
             try:
@@ -281,7 +292,7 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                 self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
 
         def do_DELETE(self) -> None:
-            if not self._authorized():
+            if not self._trusted_request(require_origin=True) or not self._authorized():
                 return
             match = re.fullmatch(r"/api/filters/([a-f0-9-]+)", urlparse(self.path).path)
             if match is None:
@@ -297,6 +308,28 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                 return True
             self._send_error(HTTPStatus.FORBIDDEN, "token local inválido")
             return False
+
+        def _trusted_request(self, *, require_origin: bool) -> bool:
+            host_values = self.headers.get_all("Host") or []
+            if len(host_values) != 1:
+                self._send_error(HTTPStatus.FORBIDDEN, "Host local inválido")
+                return False
+            authority = _local_authority(host_values[0])
+            actual_port = cast(tuple[str, int], self.server.server_address)[1]
+            if authority is None or authority[1] != actual_port:
+                self._send_error(HTTPStatus.FORBIDDEN, "Host local inválido")
+                return False
+
+            origin_values = self.headers.get_all("Origin") or []
+            if not origin_values:
+                if require_origin:
+                    self._send_error(HTTPStatus.FORBIDDEN, "Origin local ausente")
+                    return False
+                return True
+            if len(origin_values) != 1 or not _origin_matches(origin_values[0], authority):
+                self._send_error(HTTPStatus.FORBIDDEN, "Origin local inválido")
+                return False
+            return True
 
         def _read_json(self) -> dict[str, Any]:
             raw_length = self.headers.get("Content-Length")
@@ -326,13 +359,36 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
             content_type: str,
             status: HTTPStatus = HTTPStatus.OK,
         ) -> None:
+            self._send_headers(len(body), content_type, status)
+            self.wfile.write(body)
+
+        def _send_file(self, source: Path, content_type: str) -> None:
+            size = source.stat().st_size
+            if size > MAX_PDF_BYTES:
+                self._send_error(
+                    HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                    f"PDF excede o limite de {MAX_PDF_BYTES // (1024 * 1024)} MB",
+                )
+                return
+            with source.open("rb") as handle:
+                self._send_headers(size, content_type, HTTPStatus.OK)
+                while chunk := handle.read(PDF_STREAM_CHUNK_BYTES):
+                    self.wfile.write(chunk)
+
+        def _send_headers(
+            self,
+            content_length: int,
+            content_type: str,
+            status: HTTPStatus,
+        ) -> None:
             self.send_response(status)
             self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Content-Length", str(content_length))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("X-Frame-Options", "DENY")
             self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("Cross-Origin-Resource-Policy", "same-origin")
             self.send_header(
                 "Content-Security-Policy",
                 "default-src 'self'; script-src 'self'; style-src 'self'; "
@@ -340,7 +396,6 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                 "connect-src 'self'",
             )
             self.end_headers()
-            self.wfile.write(body)
 
     return DesktopRequestHandler
 
@@ -359,6 +414,46 @@ def _optional_text(payload: dict[str, Any], key: str) -> str | None:
     if not isinstance(value, str):
         raise ValueError(f"campo {key} deve ser texto")
     return value.strip() or None
+
+
+def _local_authority(value: str) -> tuple[str, int] | None:
+    parsed = urlparse(f"//{value}")
+    try:
+        port = parsed.port
+    except ValueError:
+        return None
+    hostname = parsed.hostname.casefold() if parsed.hostname else None
+    if (
+        hostname not in {"127.0.0.1", "localhost"}
+        or port is None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path
+        or parsed.query
+        or parsed.fragment
+    ):
+        return None
+    return hostname, port
+
+
+def _origin_matches(value: str, authority: tuple[str, int]) -> bool:
+    parsed = urlparse(value)
+    try:
+        port = parsed.port
+    except ValueError:
+        return False
+    hostname = parsed.hostname.casefold() if parsed.hostname else None
+    return (
+        parsed.scheme == "http"
+        and hostname == authority[0]
+        and port == authority[1]
+        and parsed.username is None
+        and parsed.password is None
+        and not parsed.path
+        and not parsed.params
+        and not parsed.query
+        and not parsed.fragment
+    )
 
 
 def _resource_text(name: str) -> str:

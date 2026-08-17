@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, cast
 
+from .desktop_limits import validate_pdf_batch
 from .desktop_models import (
     ClassifierProviderName,
     DesktopFilterSet,
@@ -215,12 +216,7 @@ class DesktopStore:
         metadata: DesktopImportMetadata,
         classifier_provider: ClassifierProviderName,
     ) -> str:
-        resolved = [path.resolve() for path in paths]
-        if not resolved:
-            raise ValueError("selecione ao menos um PDF")
-        invalid = [path for path in resolved if not path.is_file() or path.suffix.lower() != ".pdf"]
-        if invalid:
-            raise ValueError(f"arquivo PDF invalido: {invalid[0]}")
+        resolved = validate_pdf_batch(paths)
         job_id = str(uuid.uuid4())
         created_at = _now()
         with closing(self._connect()) as connection:
@@ -437,6 +433,18 @@ class DesktopStore:
         )
         created_at = _now()
         with closing(self._connect()) as connection:
+            existing = connection.execute(
+                """
+                SELECT fingerprint, payload_json, status, reviewer, review_notes, exported_at
+                FROM questions WHERE id = ?
+                """,
+                (question_id,),
+            ).fetchone()
+            decision_invalidated = (
+                existing is not None
+                and cast(str, existing["fingerprint"]) != fingerprint
+                and existing["status"] in {"approved", "rejected", "exported"}
+            )
             connection.execute(
                 """
                 INSERT INTO questions (
@@ -450,8 +458,15 @@ class DesktopStore:
                     confidence = excluded.confidence,
                     flags_json = excluded.flags_json,
                     status = CASE
-                        WHEN questions.status IN ('approved', 'rejected', 'exported')
+                        WHEN questions.fingerprint = excluded.fingerprint
+                            AND questions.status IN ('approved', 'rejected', 'exported')
                         THEN questions.status ELSE excluded.status END,
+                    reviewer = CASE WHEN questions.fingerprint = excluded.fingerprint
+                        THEN questions.reviewer ELSE NULL END,
+                    review_notes = CASE WHEN questions.fingerprint = excluded.fingerprint
+                        THEN questions.review_notes ELSE NULL END,
+                    exported_at = CASE WHEN questions.fingerprint = excluded.fingerprint
+                        THEN questions.exported_at ELSE NULL END,
                     updated_at = excluded.updated_at
                 """,
                 (
@@ -468,6 +483,24 @@ class DesktopStore:
                     created_at,
                 ),
             )
+            if decision_invalidated and existing is not None:
+                self._audit(
+                    connection,
+                    question_id,
+                    "decision_invalidated",
+                    None,
+                    {
+                        "status": existing["status"],
+                        "fingerprint": existing["fingerprint"],
+                        "question": json.loads(cast(str, existing["payload_json"])),
+                    },
+                    {
+                        "status": status,
+                        "fingerprint": fingerprint,
+                        "question": question.model_dump(mode="json"),
+                    },
+                    "Decisão editorial invalidada após reprocessamento com conteúdo alterado.",
+                )
             connection.commit()
         return question_id
 
