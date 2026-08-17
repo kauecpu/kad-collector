@@ -6,7 +6,7 @@ editorial. O coletor nunca publica conteudo diretamente no aplicativo KAD.
 
 ```text
 Fonte oficial -> coleta controlada -> PDFs -> extracao -> parser/IA -> gabarito
-              -> validacao -> revisao humana -> banco de staging
+              -> validacao -> revisao humana -> questoes.jsonl -> painel KAD
 ```
 
 ## Estado atual
@@ -24,7 +24,7 @@ marcados como `needs_ocr` e nao seguem automaticamente para a IA.
 
 - Python 3.11 ou superior;
 - uma chave da API OpenAI apenas para os fluxos gerais que usam a etapa `process`;
-- PostgreSQL/Supabase apenas para a etapa opcional `stage --execute`.
+- acesso local ao painel administrativo do KAD para importar o JSONL revisado.
 
 ## Instalacao no Windows (CMD)
 
@@ -248,8 +248,9 @@ complexas precisam ser convertidas ou revisadas antes desta etapa.
 
 ### 5. Revisar localmente e aprovar
 
-O painel local permite conferir e editar enunciado, alternativas, gabarito, paginas de
-origem e classificacao; cada questao pode ser aprovada ou rejeitada individualmente:
+O painel local permite conferir e editar enunciado, alternativas, gabarito comentado,
+paginas de origem e todos os campos do contrato editorial; cada questao pode ser aprovada
+ou rejeitada individualmente:
 
 ```cmd
 kad-collector review data\reviewed\LOTE.json --open-browser
@@ -264,7 +265,8 @@ A sessao e salva a cada alteracao em `data/reviews/` e pode ser retomada executa
 mesmo comando. Editar uma questao ja decidida faz ela voltar para `pending`; rejeicoes
 exigem justificativa. A exportacao so e liberada quando todas as questoes tiverem uma
 decisao e grava somente as aprovadas em `data/approved/`, com revisor, data e hash de
-integridade. PDFs, sessoes e lotes continuam locais e ignorados pelo Git.
+integridade. Ao exportar, tambem cria a pasta `data/exports/LOTE/` pronta para o painel.
+PDFs, sessoes e lotes continuam locais e ignorados pelo Git.
 
 Para usar outros caminhos:
 
@@ -282,31 +284,32 @@ kad-collector validate data\reviewed\LOTE.json --require-answers
 kad-collector approve data\reviewed\LOTE.json --reviewer "nome.do.revisor"
 ```
 
-A aprovacao exige todas as respostas e grava um hash do conteudo. Qualquer alteracao
+A aprovacao exige todos os campos do `EditorialImportRecord` v1, de duas a cinco
+alternativas sequenciais entre A e E, uma explicacao e todas as respostas. Ela grava um
+hash do conteudo. Qualquer alteracao
 posterior invalida a importacao. Revise tambem direitos, fidelidade do enunciado,
 alternativas, classificacao e gabarito antes de aprovar.
 
-### 6. Enviar para o banco de staging
+### 6. Gerar a pasta para o painel administrativo
 
-Um responsavel pelo banco deve aplicar uma vez `database/schema.sql`. O script cria o
-schema isolado `collector` e remove acesso dos papeis publicos `anon` e `authenticated`.
-
-Primeiro execute somente a previa, que nao abre conexao com o banco:
+A interface de revisao faz isso ao clicar em **Exportar aprovadas**. Para um lote ja
+aprovado, o mesmo resultado pode ser gerado pela CLI:
 
 ```cmd
-kad-collector stage data\approved\LOTE.json
+kad-collector export-admin data\approved\LOTE.json
 ```
 
-Para gravar, use uma conexao PostgreSQL de um usuario restrito ao schema de staging:
+A pasta `data/exports/LOTE/` contem:
 
-```cmd
-set KAD_DATABASE_URL=postgresql://usuario:senha@host:5432/banco
-kad-collector stage data\approved\LOTE.json --execute
-```
+- `questoes.jsonl`, com uma questao valida por linha no contrato versionado;
+- `excecoes/questoes.jsonl`, com rejeicoes, anuladas e itens incompletos;
+- `fontes/`, com os PDFs da prova e do gabarito preservados como evidencia;
+- `manifesto.json` e `relatorio.json`, com hashes, contagens e motivos.
 
-Nao use chave `service_role`. A escrita e idempotente e termina em
-`collector.question_staging` com `editorial_status = 'pending_review'`; promover dados
-para as tabelas do aplicativo e uma operacao editorial separada.
+Importe apenas `questoes.jsonl` na tela **Importacoes** do painel KAD. O painel cria um
+lote para revisao e aplica itens validos sempre como rascunho. O coletor nao usa o schema
+`collector.*`, nao recebe credenciais do Supabase e nao escreve diretamente no banco.
+O contrato oficial e sua fixture estao em `contracts/`.
 
 ## Execucao automatica por novidades
 
@@ -348,7 +351,7 @@ de cada rodada; ele nao instala servico, nao altera infraestrutura e nao publica
 Falhas permanentes, OCR pendente e questoes incompletas continuam visiveis no relatorio. Para
 reprocessar todo o acervo com outra politica ou modelo, use um novo arquivo em `--state`.
 
-## Pacote de promocao local, sem alterar o KAD
+## Pacote de promocao local legado
 
 Depois da revisao e aprovacao, gere um pacote autocontido com os lotes aprovados:
 
@@ -356,9 +359,9 @@ Depois da revisao e aprovacao, gere um pacote autocontido com os lotes aprovados
 kad-collector package data\approved\LOTE-1.json data\approved\LOTE-2.json
 ```
 
-Ao concluir uma revisao pela interface local ou pelo comando `approve`, um pacote de um
-unico lote ja e criado automaticamente. Use `package` quando quiser agrupar varios lotes
-aprovados em uma unica entrega.
+Esse formato continua disponivel apenas para compatibilidade com testes e lotes antigos.
+Novas entregas ao painel devem usar `export-admin` e `questoes.jsonl`; a interface local
+nao cria mais um pacote de promocao automaticamente.
 
 O comando revalida respostas e hashes de aprovacao, rejeita lotes ou questoes duplicadas e
 grava `data/promotion/UUID.json`. O pacote recebe SHA-256 e identificador deterministico: o

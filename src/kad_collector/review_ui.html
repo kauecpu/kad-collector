@@ -105,13 +105,34 @@
           <section class="editor-card">
             <div class="section-heading"><div><h3>Classificação</h3><p>Confirme os metadados produzidos pela IA.</p></div></div>
             <div class="field-grid three">
-              <label>Matéria<input id="matter"></label>
-              <label>Assunto<input id="subject"></label>
+              <label>Disciplina<input id="discipline"></label>
+              <label>Matéria específica<input id="matter"></label>
+              <label>Tópico / assunto<input id="subject"></label>
               <label>Banca<input id="board"></label>
               <label>Órgão<input id="organization"></label>
+              <label>Concurso<input id="concurso"></label>
               <label>Cargo<input id="role"></label>
               <label>Ano<input id="year" type="number" min="1900" max="2100"></label>
+              <label>Nível
+                <select id="level">
+                  <option value="">Selecione</option>
+                  <option value="Fundamental">Fundamental</option>
+                  <option value="Médio">Médio</option>
+                  <option value="Superior">Superior</option>
+                </select>
+              </label>
+              <label>Dificuldade
+                <select id="difficulty">
+                  <option value="">Selecione</option>
+                  <option value="Fácil">Fácil</option>
+                  <option value="Média">Média</option>
+                  <option value="Difícil">Difícil</option>
+                </select>
+              </label>
             </div>
+            <label class="wide">Explicação / gabarito comentado
+              <textarea id="explanation" rows="5" placeholder="Explique por que a alternativa correta responde ao enunciado"></textarea>
+            </label>
             <label class="wide">Avisos e observações da extração
               <textarea id="review-notes" rows="4" placeholder="Uma observação por linha"></textarea>
             </label>

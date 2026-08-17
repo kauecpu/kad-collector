@@ -10,6 +10,7 @@ from .automation import run_automatic
 from .collector import collect_documents
 from .config import load_config
 from .database import stage_batch
+from .editorial_export import export_admin_package
 from .guided_test import run_guided_test
 from .json_utils import read_json
 from .models import CollectionFilters, QuestionBatch
@@ -140,6 +141,15 @@ def build_parser() -> argparse.ArgumentParser:
     approve.add_argument("--reviewer", required=True)
     approve.add_argument("--notes")
     approve.add_argument("--output", type=_path)
+
+    export_admin = subparsers.add_parser(
+        "export-admin",
+        help="gera a pasta local com questoes.jsonl para o painel administrativo",
+    )
+    export_admin.add_argument("batch", type=_path)
+    export_admin.add_argument(
+        "--output-dir", type=_path, default=Path("data/exports")
+    )
 
     stage = subparsers.add_parser("stage", help="envia lote aprovado para staging")
     stage.add_argument("batch", type=_path)
@@ -278,10 +288,11 @@ def _run(args: argparse.Namespace) -> int:
         )
         return 0
     if args.command == "promote":
-        result = dry_run_promotion(args.package)
+        promotion_result = dry_run_promotion(args.package)
         print(
-            f"Simulacao valida: {result.package_id} ({result.batch_count} lotes, "
-            f"{result.question_count} questoes, nenhuma escrita no KAD)"
+            f"Simulacao valida: {promotion_result.package_id} "
+            f"({promotion_result.batch_count} lotes, "
+            f"{promotion_result.question_count} questoes, nenhuma escrita no KAD)"
         )
         return 0
     if args.command == "approve":
@@ -291,10 +302,19 @@ def _run(args: argparse.Namespace) -> int:
             notes=args.notes,
             output_path=args.output,
         )
-        package, package_path = build_promotion_package([path])
+        admin_result = export_admin_package(batch)
         print(
             f"Lote aprovado: {path} ({len(batch.questions)} questoes). "
-            f"Pacote local: {package_path} (SHA-256 {package.content_sha256})"
+            f"Importacao do painel: {admin_result.questions_path}"
+        )
+        return 0
+    if args.command == "export-admin":
+        batch = QuestionBatch.model_validate(read_json(args.batch))
+        admin_result = export_admin_package(batch, output_root=args.output_dir)
+        print(
+            f"Pasta para o painel: {admin_result.directory} "
+            f"({admin_result.exported_count} questoes, "
+            f"{admin_result.exception_count} excecoes)"
         )
         return 0
     if args.command == "stage":

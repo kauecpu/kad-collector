@@ -14,7 +14,7 @@ from pypdf import PdfWriter
 from kad_collector.ai_processor import OpenAIChunkExtractor, chunk_text, process_document
 from kad_collector.answer_key import match_answer_key, parse_answer_key
 from kad_collector.database import stage_batch
-from kad_collector.json_utils import write_json
+from kad_collector.json_utils import read_json, write_json
 from kad_collector.models import (
     AIChunkResult,
     AIQuestion,
@@ -218,6 +218,16 @@ class PipelineTests(unittest.TestCase):
             write_json(pending, batch.model_dump(mode="json"))
             answers.write_text("1 - B\n2 - A\n", encoding="utf-8")
             match_answer_key(pending, answers, reviewed)
+            reviewed_payload = read_json(reviewed)
+            for question_payload in reviewed_payload["questions"]:
+                question_payload.update({
+                    "discipline": "Direito",
+                    "concurso": "Concurso Teste 2026",
+                    "level": "Superior",
+                    "difficulty": "Média",
+                    "explanation": "A alternativa correta decorre do conceito cobrado.",
+                })
+            write_json(reviewed, reviewed_payload)
             approved_batch, _ = approve_batch(
                 reviewed, "revisor.teste", output_path=approved
             )

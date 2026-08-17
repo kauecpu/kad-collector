@@ -120,7 +120,7 @@ function renderAlternatives(alternatives) {
     letter.value = alternative.letter;
     letter.setAttribute('aria-label', 'Letra da alternativa');
     letter.addEventListener('input', () => {
-      letter.value = letter.value.toUpperCase().replace(/[^A-H]/g, '');
+      letter.value = letter.value.toUpperCase().replace(/[^A-E]/g, '');
       renderCorrectAnswers();
     });
     const text = document.createElement('textarea');
@@ -183,12 +183,17 @@ function renderEditor() {
   pill.textContent = statusLabel(decision.status);
   pill.className = `decision-pill ${decision.status}`;
   byId('statement').value = question.statement;
+  byId('discipline').value = question.discipline || '';
   byId('matter').value = question.matter || '';
   byId('subject').value = question.subject || '';
   byId('board').value = question.board || '';
   byId('organization').value = question.organization || '';
+  byId('concurso').value = question.concurso || '';
   byId('role').value = question.role || '';
   byId('year').value = question.year || '';
+  byId('level').value = question.level || '';
+  byId('difficulty').value = question.difficulty || '';
+  byId('explanation').value = question.explanation || '';
   byId('source-pages').value = question.source_pages.join(', ');
   byId('review-notes').value = question.review_notes.join('\n');
   byId('answer-status').value = question.answer_status;
@@ -208,12 +213,17 @@ function readQuestion() {
     ...original,
     statement: byId('statement').value.trim(),
     alternatives: alternativeValues(),
+    discipline: optionalValue('discipline'),
     matter: optionalValue('matter'),
     subject: optionalValue('subject'),
     board: optionalValue('board'),
     organization: optionalValue('organization'),
+    concurso: optionalValue('concurso'),
     role: optionalValue('role'),
     year: byId('year').value ? Number(byId('year').value) : null,
+    level: optionalValue('level'),
+    difficulty: optionalValue('difficulty'),
+    explanation: optionalValue('explanation'),
     source_pages: [...new Set(sourcePages)],
     answer_status: answerStatus,
     correct_answer: answerStatus === 'matched' ? (byId('correct-answer').value || null) : null,
@@ -257,7 +267,7 @@ async function exportApproved() {
     body: JSON.stringify({ reviewer, notes: byId('batch-notes').value.trim() }),
   });
   showNotice(
-    `Lote aprovado com ${result.question_count} questões. Pacote local: ${result.promotion_package_path}`,
+    `JSONL gerado com ${result.question_count} questões e ${result.exception_count} exceções: ${result.questions_path}`,
     'success',
   );
 }
@@ -274,9 +284,9 @@ function guarded(action) {
 
 byId('add-alternative').addEventListener('click', () => {
   const values = alternativeValues();
-  if (values.length >= 8) return showNotice('O limite é de oito alternativas.', 'error');
+  if (values.length >= 5) return showNotice('O contrato do KAD aceita até cinco alternativas.', 'error');
   const used = new Set(values.map((item) => item.letter));
-  const letter = 'ABCDEFGH'.split('').find((candidate) => !used.has(candidate)) || '';
+  const letter = 'ABCDE'.split('').find((candidate) => !used.has(candidate)) || '';
   renderAlternatives([...values, { letter, text: '' }]);
 });
 byId('answer-status').addEventListener('change', renderCorrectAnswers);

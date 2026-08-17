@@ -18,7 +18,9 @@ def approve_batch_model(
     if len(reviewer) < 2:
         raise ValueError("informe o nome ou identificador do revisor")
     approved = batch.model_copy(deep=True)
-    validation = validate_questions(approved.questions, require_answers=True)
+    validation = validate_questions(
+        approved.questions, require_answers=True, require_editorial=True
+    )
     if not validation.valid:
         raise ValueError("o lote nao pode ser aprovado: " + "; ".join(validation.errors))
     approved.validation = validation

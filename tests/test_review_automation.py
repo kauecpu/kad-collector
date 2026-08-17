@@ -58,10 +58,15 @@ def question(number: int) -> QuestionRecord:
         ],
         matter="Conhecimentos Gerais",
         subject="Teste",
+        discipline="Conhecimentos Gerais",
         board="FUVEST",
         organization="USP",
+        concurso="FUVEST 2026",
         role="Vestibular",
         year=2026,
+        level="Superior",
+        difficulty="Média",
+        explanation="A resposta indicada decorre diretamente do enunciado apresentado.",
         source_pages=[1],
     )
 

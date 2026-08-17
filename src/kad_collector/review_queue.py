@@ -135,10 +135,13 @@ def prepare_review_queue(
             matched_paths.append(answer_key.document.local_path)
             if entries:
                 updated = apply_answer_entries(batch, entries)
+                updated.answer_key_document = answer_key.document
             else:
                 issues.append("gabarito associado, mas nenhuma resposta A-H foi reconhecida")
 
-        answer_validation = validate_questions(updated.questions, require_answers=True)
+        answer_validation = validate_questions(
+            updated.questions, require_answers=True, require_editorial=True
+        )
         missing_answers = sum(
             question.answer_status == "missing" for question in updated.questions
         )
