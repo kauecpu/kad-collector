@@ -241,13 +241,26 @@ class LinkParsingTests(unittest.TestCase):
 
 
 class SecurityTests(unittest.TestCase):
-    def test_official_configuration_registers_two_enabled_sources(self) -> None:
+    def test_official_configuration_registers_authorized_sources(self) -> None:
         config = load_config(PROJECT_ROOT / "config" / "sources.official.toml")
         self.assertEqual(
             {source.id for source in config.sources},
-            {"fuvest_vestibular", "coperve_ufsc_2026"},
+            {
+                "fuvest_vestibular",
+                "coperve_ufsc_2026",
+                "fgv_conhecimento",
+                "inep_enem",
+                "inep_enade",
+                "inep_encceja",
+                "inep_revalida",
+                "comvest_unicamp",
+                "obmep_referencias",
+                "uerj_vestibular",
+            },
         )
         self.assertTrue(all(source.enabled for source in config.sources))
+        obmep = next(source for source in config.sources if source.id == "obmep_referencias")
+        self.assertEqual(obmep.access_mode, "reference_only")
         fuvest = next(source for source in config.sources if source.id == "fuvest_vestibular")
         base = "https://www.fuvest.br/wp-content/uploads/"
         html = (
@@ -263,6 +276,11 @@ class SecurityTests(unittest.TestCase):
             [item[2] for item in selected],
             ["exam", "answer_key", "exam", "answer_key"],
         )
+
+    def test_packaged_official_configuration_matches_cli_configuration(self) -> None:
+        packaged = load_config(PROJECT_ROOT / "src" / "kad_collector" / "sources.official.toml")
+        configured = load_config(PROJECT_ROOT / "config" / "sources.official.toml")
+        self.assertEqual(packaged, configured)
 
     def test_guided_configuration_limits_collection_to_one_exam_and_key(self) -> None:
         config = load_config(PROJECT_ROOT / "config" / "sources.test.toml")

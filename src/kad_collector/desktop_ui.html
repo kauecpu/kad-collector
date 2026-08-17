@@ -19,6 +19,9 @@
           <button class="rail-link active" type="button" data-section="workspace">
             <span class="rail-icon">⌁</span><span>Operação</span>
           </button>
+          <button class="rail-link" type="button" data-section="sources">
+            <span class="rail-icon">↓</span><span>Coletar links</span>
+          </button>
           <button class="rail-link" type="button" data-section="reviews">
             <span class="rail-icon">✓</span><span>Revisão</span>
           </button>
@@ -30,6 +33,7 @@
       </aside>
 
       <main id="main" class="main-area">
+        <div id="editorial-view">
         <header class="app-header">
           <div>
             <p class="eyebrow">CENTRAL EDITORIAL</p>
@@ -102,6 +106,70 @@
               <span>Questão</span><span>Classificação</span><span>Confiança</span><span>Situação</span>
             </div>
             <div id="question-list" class="question-list" aria-live="polite"></div>
+          </section>
+        </section>
+        </div>
+
+        <section id="source-view" class="source-view" hidden>
+          <header class="source-header">
+            <div>
+              <p class="eyebrow">FONTES OFICIAIS</p>
+              <h1>Coletar de um link</h1>
+              <p>Cole a página de uma prova, concurso ou edição. O Collector baixa somente PDFs permitidos e inicia o processamento local.</p>
+            </div>
+            <span class="source-safety"><i></i>robots.txt e limites ativos</span>
+          </header>
+
+          <div class="source-layout">
+            <form id="source-form" class="source-form-card">
+              <div class="source-step"><span>01</span><div><strong>Escolha a origem</strong><small>Somente domínios oficiais cadastrados</small></div></div>
+              <label>Fonte oficial
+                <select id="source-select" required></select>
+              </label>
+              <div id="source-details" class="source-details" aria-live="polite"></div>
+
+              <div class="source-step"><span>02</span><div><strong>Informe o link</strong><small>Página da edição, do concurso ou PDF direto</small></div></div>
+              <label>Link oficial HTTPS
+                <input id="source-url" type="url" inputmode="url" placeholder="https://..." required>
+              </label>
+              <div class="form-grid two">
+                <label>Classificador
+                  <select id="source-classifier">
+                    <option value="local">Local, sem custo</option>
+                    <option value="openai">OpenAI configurada</option>
+                  </select>
+                </label>
+                <div class="source-submit-cell">
+                  <button id="source-submit" class="button primary" type="submit">Coletar deste link</button>
+                </div>
+              </div>
+              <p class="source-form-note">Os arquivos ficam no computador e entram como pendentes. Nada é publicado automaticamente no KAD.</p>
+            </form>
+
+            <aside class="source-guide-card">
+              <p class="eyebrow">COMO USAR</p>
+              <h2>Um recorte por vez.</h2>
+              <ol>
+                <li><span>1</span><p><strong>Abra a fonte oficial</strong><small>Prefira a página específica do concurso ou ano.</small></p></li>
+                <li><span>2</span><p><strong>Cole o endereço</strong><small>O domínio precisa corresponder à fonte selecionada.</small></p></li>
+                <li><span>3</span><p><strong>Revise o lote</strong><small>Questões extraídas continuam pendentes até decisão humana.</small></p></li>
+              </ol>
+            </aside>
+          </div>
+
+          <section class="source-catalog-section">
+            <header class="section-heading">
+              <div><p class="eyebrow">CATÁLOGO</p><h2>Acervos cadastrados</h2></div>
+              <small id="source-count"></small>
+            </header>
+            <div id="source-grid" class="source-grid"></div>
+          </section>
+
+          <section class="collection-section">
+            <header class="section-heading">
+              <div><p class="eyebrow">ATIVIDADE</p><h2>Coletas recentes</h2></div>
+            </header>
+            <div id="collection-list" class="collection-list" aria-live="polite"></div>
           </section>
         </section>
       </main>

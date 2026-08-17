@@ -14,6 +14,8 @@ const state = {
   currentQuestion: null,
   currentAudit: [],
   polling: null,
+  activeSection: 'workspace',
+  selectedSourceId: null,
 };
 
 const byId = (id) => document.getElementById(id);
@@ -128,10 +130,150 @@ function render() {
   renderJobs();
   renderSavedFilters();
   renderQuery();
+  renderSourceCatalog();
+  renderCollections();
+  renderSection();
   const openaiOption = byId('import-classifier').querySelector('option[value="openai"]');
+  const sourceOpenaiOption = byId('source-classifier').querySelector('option[value="openai"]');
   const configured = state.bootstrap.config.openaiConfigured;
   openaiOption.disabled = !configured;
   openaiOption.textContent = configured ? 'OpenAI configurada' : 'OpenAI não configurada';
+  sourceOpenaiOption.disabled = !configured;
+  sourceOpenaiOption.textContent = configured ? 'OpenAI configurada' : 'OpenAI não configurada';
+}
+
+function renderSection() {
+  const collecting = state.activeSection === 'sources';
+  byId('editorial-view').hidden = collecting;
+  byId('source-view').hidden = !collecting;
+}
+
+function sourceById(sourceId) {
+  return (state.bootstrap.sources || []).find((source) => source.id === sourceId) || null;
+}
+
+function selectSource(sourceId, {resetUrl = true} = {}) {
+  const source = sourceById(sourceId);
+  if (!source) return;
+  state.selectedSourceId = source.id;
+  byId('source-select').value = source.id;
+  if (resetUrl) byId('source-url').value = source.defaultUrl;
+  const details = byId('source-details');
+  details.replaceChildren();
+  const category = document.createElement('span');
+  category.className = 'source-category';
+  category.textContent = source.category;
+  const copy = document.createElement('p');
+  copy.textContent = source.description;
+  const hosts = document.createElement('small');
+  hosts.textContent = `Domínios permitidos: ${source.allowedHosts.join(', ')}`;
+  details.append(category, copy, hosts);
+  if (source.notice) {
+    const notice = document.createElement('small');
+    notice.className = 'source-notice';
+    notice.textContent = source.notice;
+    details.append(notice);
+  }
+  byId('source-submit').disabled = !source.collectable;
+  byId('source-submit').textContent = source.collectable
+    ? 'Coletar deste link'
+    : 'Somente referências';
+  document.querySelectorAll('.source-card').forEach((card) => {
+    card.classList.toggle('selected', card.dataset.sourceId === source.id);
+  });
+}
+
+function renderSourceCatalog() {
+  const sources = state.bootstrap.sources || [];
+  const select = byId('source-select');
+  const knownIds = Array.from(select.options).map((option) => option.value).join('|');
+  const currentIds = sources.map((source) => source.id).join('|');
+  if (knownIds !== currentIds) {
+    select.replaceChildren();
+    sources.forEach((source) => {
+      const option = document.createElement('option');
+      option.value = source.id;
+      option.textContent = `${source.name}${source.collectable ? '' : ' — referências'}`;
+      option.disabled = !source.collectable;
+      select.append(option);
+    });
+  }
+  if (!state.selectedSourceId || !sourceById(state.selectedSourceId)) {
+    state.selectedSourceId = (sourceById('fgv_conhecimento') || sources.find((item) => item.collectable))?.id || null;
+    if (state.selectedSourceId) selectSource(state.selectedSourceId, {resetUrl: true});
+  } else {
+    selectSource(state.selectedSourceId, {resetUrl: false});
+  }
+
+  byId('source-count').textContent = `${sources.filter((source) => source.collectable).length} fontes prontas`;
+  const grid = byId('source-grid');
+  grid.replaceChildren();
+  sources.forEach((source) => {
+    const card = document.createElement('article');
+    card.className = `source-card${source.id === state.selectedSourceId ? ' selected' : ''}`;
+    card.dataset.sourceId = source.id;
+    const top = document.createElement('div');
+    const category = document.createElement('span');
+    category.className = 'source-category';
+    category.textContent = source.category;
+    const mode = document.createElement('span');
+    mode.className = `source-mode ${source.collectable ? 'ready' : 'reference'}`;
+    mode.textContent = source.collectable ? 'PRONTA' : 'REFERÊNCIA';
+    top.append(category, mode);
+    const title = document.createElement('h3');
+    title.textContent = source.name;
+    const copy = document.createElement('p');
+    copy.textContent = source.description;
+    const action = document.createElement('button');
+    action.className = 'text-button source-card-action';
+    action.type = 'button';
+    action.disabled = !source.collectable;
+    action.textContent = source.collectable ? 'Usar esta fonte →' : 'Download automático indisponível';
+    action.addEventListener('click', () => selectSource(source.id));
+    card.append(top, title, copy, action);
+    grid.append(card);
+  });
+}
+
+function collectionStatusLabel(status) {
+  return {queued: 'Na fila', running: 'Coletando', completed: 'Concluída', failed: 'Falhou'}[status] || status;
+}
+
+function renderCollections() {
+  const list = byId('collection-list');
+  list.replaceChildren();
+  const jobs = state.bootstrap.collectionJobs || [];
+  if (!jobs.length) {
+    const empty = document.createElement('div');
+    empty.className = 'collection-empty';
+    empty.textContent = 'Nenhuma coleta por link iniciada nesta sessão.';
+    list.append(empty);
+    return;
+  }
+  jobs.slice(0, 8).forEach((job) => {
+    const row = document.createElement('article');
+    row.className = 'collection-row';
+    const signal = document.createElement('span');
+    signal.className = `collection-signal ${job.status}`;
+    const copy = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = job.sourceName;
+    const url = document.createElement('small');
+    url.textContent = job.url;
+    copy.append(title, url);
+    const result = document.createElement('div');
+    result.className = 'collection-result';
+    const status = document.createElement('strong');
+    status.textContent = collectionStatusLabel(job.status);
+    const summary = document.createElement('small');
+    if (job.status === 'failed') summary.textContent = job.error || 'Falha não detalhada.';
+    else if (job.status === 'completed') {
+      summary.textContent = `${job.documents} PDF(s), ${job.failures} falha(s)`;
+    } else summary.textContent = 'A página e os PDFs estão sendo verificados.';
+    result.append(status, summary);
+    row.append(signal, copy, result);
+    list.append(row);
+  });
 }
 
 function renderMetrics() {
@@ -221,11 +363,36 @@ async function jobAction(jobId, action) {
 
 function schedulePoll() {
   clearTimeout(state.polling);
-  const active = (state.bootstrap.jobs || []).some((job) =>
-    ['queued', 'running', 'cancelling'].includes(job.status)
-  );
+  const activeProcessing = (state.bootstrap.jobs || []).some((job) =>
+    ['queued', 'running', 'cancelling'].includes(job.status));
+  const activeCollection = (state.bootstrap.collectionJobs || []).some((job) =>
+    ['queued', 'running'].includes(job.status));
+  const active = activeProcessing || activeCollection;
   if (active) {
     state.polling = setTimeout(() => loadBootstrap({preserveQuery: true}).catch(() => {}), 1400);
+  }
+}
+
+async function submitSourceCollection(event) {
+  event.preventDefault();
+  const button = byId('source-submit');
+  button.disabled = true;
+  try {
+    const result = await request('/api/collections', {
+      method: 'POST',
+      body: JSON.stringify({
+        sourceId: byId('source-select').value,
+        url: byId('source-url').value.trim(),
+        classifierProvider: byId('source-classifier').value,
+      }),
+    });
+    toast(`Coleta ${result.collectionId.slice(0, 8)} iniciada. A janela pode continuar sendo usada.`);
+    await loadBootstrap({preserveQuery: true});
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    const source = sourceById(byId('source-select').value);
+    button.disabled = !source?.collectable;
   }
 }
 
@@ -724,6 +891,8 @@ byId('review-pdf').addEventListener('click', openAuthenticatedPdf);
 byId('choose-files').addEventListener('click', () => choosePaths('files'));
 byId('choose-folder').addEventListener('click', () => choosePaths('folder'));
 byId('import-form').addEventListener('submit', submitImport);
+byId('source-form').addEventListener('submit', submitSourceCollection);
+byId('source-select').addEventListener('change', (event) => selectSource(event.target.value));
 byId('facet-search').addEventListener('input', filterFacetOptions);
 byId('clear-filters').addEventListener('click', async () => {
   state.filters = emptyFilters();
@@ -756,6 +925,9 @@ document.querySelectorAll('.rail-link').forEach((button) => {
     document.querySelectorAll('.rail-link').forEach((item) => item.classList.remove('active'));
     button.classList.add('active');
     const section = button.dataset.section;
+    state.activeSection = section;
+    renderSection();
+    if (section === 'sources') return;
     state.filters.statuses = section === 'reviews'
       ? ['pending', 'exception']
       : section === 'exports' ? ['exportable', 'exported'] : [];
