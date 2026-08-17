@@ -124,7 +124,9 @@ def decide_review_question(
     updated = session.model_copy(deep=True)
     question = updated.batch.questions[_question_index(updated, question_number)]
     if status == "approved":
-        validation = validate_questions([question], require_answers=True)
+        validation = validate_questions(
+            [question], require_answers=True, require_editorial=True
+        )
         if not validation.valid:
             raise ValueError("a questao nao pode ser aprovada: " + "; ".join(validation.errors))
     elif normalized_notes is None:

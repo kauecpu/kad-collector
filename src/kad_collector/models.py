@@ -236,6 +236,11 @@ class AIChunkResult(StrictModel):
 
 
 class QuestionRecord(AIQuestion):
+    discipline: str | None = None
+    concurso: str | None = None
+    level: Literal["Fundamental", "Médio", "Superior"] | None = None
+    difficulty: Literal["Fácil", "Média", "Difícil"] | None = None
+    explanation: str | None = None
     correct_answer: str | None = Field(default=None, pattern=r"^[A-H]$")
     answer_status: Literal["missing", "matched", "annulled"] = "missing"
     review_notes: list[str] = Field(default_factory=list)
@@ -269,6 +274,7 @@ class QuestionBatch(StrictModel):
     created_at: datetime
     model: str
     source_document: DocumentRecord
+    answer_key_document: DocumentRecord | None = None
     questions: list[QuestionRecord]
     filters: CollectionFilters = Field(default_factory=CollectionFilters)
     filtered_out_questions: int = Field(default=0, ge=0)

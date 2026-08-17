@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import tempfile
 import threading
@@ -9,7 +10,6 @@ import urllib.request
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import patch
 
 from kad_collector.json_utils import read_json, write_json
 from kad_collector.local_review import (
@@ -42,10 +42,15 @@ def question(number: int, *, with_answer: bool = True) -> QuestionRecord:
         ],
         matter="Direito",
         subject="Atos administrativos",
+        discipline="Direito",
         board="FGV",
         organization="Orgao Teste",
+        concurso="Concurso Teste 2026",
         role="Analista",
         year=2026,
+        level="Superior",
+        difficulty="Média",
+        explanation="A alternativa B corresponde corretamente ao enunciado.",
         source_pages=[number],
         correct_answer="B" if with_answer else None,
         answer_status="matched" if with_answer else "missing",
@@ -155,30 +160,30 @@ class LocalReviewTests(unittest.TestCase):
 
 
 class ReviewServerTests(unittest.TestCase):
-    def test_export_creates_promotion_package_after_editorial_approval(self) -> None:
+    def test_export_creates_admin_jsonl_after_editorial_approval(self) -> None:
         batch = pending_batch()
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
+            source_path = root / "source.pdf"
+            source_path.write_bytes(b"pdf-evidence")
+            batch.source_document.local_path = str(source_path)
+            batch.source_document.size_bytes = source_path.stat().st_size
+            batch.source_document.sha256 = hashlib.sha256(source_path.read_bytes()).hexdigest()
             batch_path = root / "batch.json"
             approved_path = root / "approved.json"
-            package_path = root / "promotion.json"
             write_json(batch_path, batch.model_dump(mode="json"))
-            application = ReviewApplication(batch_path, output_path=approved_path)
+            application = ReviewApplication(
+                batch_path,
+                output_path=approved_path,
+                admin_output_root=root / "exports",
+            )
             application.decide(1, "approved", "revisor.teste", None)
             application.decide(2, "approved", "revisor.teste", None)
 
-            with patch(
-                "kad_collector.review_server.build_promotion_package",
-                return_value=(None, package_path),
-            ) as build_package:
-                count, written_path, written_package = application.export(
-                    "editor.chefe", None
-                )
-
-        self.assertEqual(count, 2)
-        self.assertEqual(written_path, approved_path)
-        self.assertEqual(written_package, package_path)
-        build_package.assert_called_once_with([approved_path])
+            written_path, result = application.export("editor.chefe", None)
+            self.assertEqual(written_path, approved_path)
+            self.assertEqual(result.exported_count, 2)
+            self.assertTrue(result.questions_path.exists())
 
     def test_server_exposes_ui_and_protects_mutations_with_local_token(self) -> None:
         batch = pending_batch()

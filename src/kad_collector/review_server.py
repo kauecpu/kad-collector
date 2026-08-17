@@ -15,6 +15,11 @@ from urllib.parse import urlparse
 
 from pydantic import ValidationError
 
+from .editorial_export import (
+    EditorialExportResult,
+    export_admin_package,
+    rejected_question_exception,
+)
 from .local_review import (
     decide_review_question,
     export_review_session,
@@ -24,7 +29,6 @@ from .local_review import (
     update_review_question,
 )
 from .models import QuestionRecord, ReviewDecisionStatus
-from .promotion import build_promotion_package
 
 MAX_REQUEST_BYTES = 2_000_000
 
@@ -36,11 +40,13 @@ class ReviewApplication:
         *,
         session_path: Path | None = None,
         output_path: Path | None = None,
+        admin_output_root: Path = Path("data/exports"),
     ) -> None:
         self.session, self.session_path = load_or_create_review_session(
             batch_path, session_path
         )
         self.output_path = output_path
+        self.admin_output_root = admin_output_root
         self.token = secrets.token_urlsafe(32)
         self._lock = threading.Lock()
 
@@ -85,7 +91,7 @@ class ReviewApplication:
             )
             save_review_session(self.session, self.session_path)
 
-    def export(self, reviewer: str, notes: str | None) -> tuple[int, Path, Path]:
+    def export(self, reviewer: str, notes: str | None) -> tuple[Path, EditorialExportResult]:
         with self._lock:
             batch, path = export_review_session(
                 self.session,
@@ -93,8 +99,23 @@ class ReviewApplication:
                 notes=notes,
                 output_path=self.output_path,
             )
-            _package, package_path = build_promotion_package([path])
-            return len(batch.questions), path, package_path
+            questions = {
+                question.number: question for question in self.session.batch.questions
+            }
+            rejected = [
+                rejected_question_exception(
+                    questions[decision.question_number],
+                    reason=decision.notes or "Questao rejeitada na revisao editorial.",
+                )
+                for decision in self.session.decisions
+                if decision.status == "rejected"
+            ]
+            result = export_admin_package(
+                batch,
+                output_root=self.admin_output_root,
+                additional_exceptions=rejected,
+            )
+            return path, result
 
 
 def create_review_server(
@@ -215,14 +236,14 @@ def _handler_for(application: ReviewApplication) -> type[BaseHTTPRequestHandler]
                 if path == "/api/export":
                     reviewer = _required_text(payload, "reviewer")
                     notes = _optional_text(payload, "notes")
-                    question_count, output_path, package_path = application.export(
-                        reviewer, notes
-                    )
+                    output_path, result = application.export(reviewer, notes)
                     self._send_json(
                         {
-                            "question_count": question_count,
+                            "question_count": result.exported_count,
+                            "exception_count": result.exception_count,
                             "output_path": str(output_path),
-                            "promotion_package_path": str(package_path),
+                            "admin_export_directory": str(result.directory),
+                            "questions_path": str(result.questions_path),
                         }
                     )
                     return
