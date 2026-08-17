@@ -1,0 +1,369 @@
+from __future__ import annotations
+
+import html
+import json
+import os
+import re
+import secrets
+import threading
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from importlib import resources
+from pathlib import Path
+from typing import Any, cast
+from urllib.parse import urlparse
+
+from pydantic import ValidationError
+
+from .desktop_export import DesktopExportResult, export_filtered_questions
+from .desktop_models import (
+    DesktopFilterSet,
+    DesktopImportMetadata,
+    QuestionClassification,
+)
+from .desktop_processor import DesktopProcessor
+from .desktop_store import DesktopStore
+from .models import QuestionRecord
+
+MAX_REQUEST_BYTES = 5_000_000
+
+
+def default_desktop_data_dir() -> Path:
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        return Path(local_app_data) / "KAD Collector"
+    return Path.cwd() / "data" / "desktop"
+
+
+class DesktopApplication:
+    def __init__(self, data_dir: Path | None = None) -> None:
+        self.data_dir = (data_dir or default_desktop_data_dir()).resolve()
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.store = DesktopStore(self.data_dir / "collector.sqlite3")
+        self.processor = DesktopProcessor(self.store)
+        self.token = secrets.token_urlsafe(32)
+
+    def bootstrap(self) -> dict[str, Any]:
+        query = self.store.query(DesktopFilterSet())
+        return {
+            **query,
+            "jobs": self.store.list_jobs(),
+            "savedFilters": self.store.saved_filters(),
+            "config": {
+                "dataDirectory": str(self.data_dir),
+                "openaiConfigured": bool(os.environ.get("OPENAI_API_KEY")),
+                "openaiModel": os.environ.get("OPENAI_MODEL", "gpt-5.6-terra"),
+                "localOnly": True,
+            },
+        }
+
+    @staticmethod
+    def _expand_paths(paths: list[str]) -> list[Path]:
+        selected: list[Path] = []
+        seen: set[str] = set()
+        for raw_path in paths:
+            path = Path(raw_path).expanduser().resolve()
+            candidates = sorted(path.rglob("*.pdf")) if path.is_dir() else [path]
+            for candidate in candidates:
+                key = str(candidate).casefold()
+                if key not in seen:
+                    seen.add(key)
+                    selected.append(candidate)
+        return selected
+
+    def import_pdfs(self, payload: dict[str, Any]) -> str:
+        raw_paths = payload.get("paths")
+        if not isinstance(raw_paths, list) or not all(isinstance(item, str) for item in raw_paths):
+            raise ValueError("paths deve ser uma lista de caminhos locais")
+        paths = self._expand_paths(raw_paths)
+        metadata = DesktopImportMetadata.model_validate(payload.get("metadata", {}))
+        classifier_provider = payload.get("classifierProvider", "local")
+        if classifier_provider not in {"local", "openai"}:
+            raise ValueError("classificador deve ser local ou openai")
+        if classifier_provider == "openai" and not os.environ.get("OPENAI_API_KEY"):
+            raise ValueError("OPENAI_API_KEY não está configurada nesta sessão")
+        job_id = self.store.create_job(paths, metadata, classifier_provider)
+        self.processor.start(job_id)
+        return job_id
+
+    def update_question(self, question_id: str, payload: dict[str, Any]) -> None:
+        question = QuestionRecord.model_validate(payload.get("question"))
+        classification_payload = payload.get("classification")
+        classification = (
+            QuestionClassification.model_validate(classification_payload)
+            if classification_payload is not None
+            else None
+        )
+        actor = _required_text(payload, "actor")
+        notes = _optional_text(payload, "notes")
+        self.store.update_question(
+            question_id,
+            question,
+            classification,
+            actor=actor,
+            notes=notes,
+        )
+
+    def update_document(self, document_id: str, payload: dict[str, Any]) -> None:
+        metadata = DesktopImportMetadata.model_validate(payload.get("metadata"))
+        actor = _required_text(payload, "actor")
+        self.store.update_document_metadata(document_id, metadata, actor=actor)
+
+    def decide(self, question_id: str, payload: dict[str, Any]) -> None:
+        status = payload.get("status")
+        if status not in {"approved", "rejected", "exception"}:
+            raise ValueError("decisão inválida")
+        self.store.decide_question(
+            question_id,
+            status,
+            actor=_required_text(payload, "actor"),
+            notes=_optional_text(payload, "notes"),
+        )
+
+    def export(self, payload: dict[str, Any]) -> DesktopExportResult:
+        filters = DesktopFilterSet.model_validate(payload.get("filters", {}))
+        output_path = payload.get("outputPath")
+        output_root = (
+            Path(output_path).resolve()
+            if isinstance(output_path, str)
+            else self.data_dir / "exports"
+        )
+        output_root.mkdir(parents=True, exist_ok=True)
+        return export_filtered_questions(self.store, filters, output_root=output_root)
+
+
+def create_desktop_server(
+    application: DesktopApplication,
+    *,
+    port: int = 0,
+) -> ThreadingHTTPServer:
+    if not 0 <= port <= 65_535:
+        raise ValueError("a porta deve estar entre 0 e 65535")
+    server = ThreadingHTTPServer(("127.0.0.1", port), _handler_for(application))
+    server.daemon_threads = True
+    return server
+
+
+def start_desktop_server(
+    application: DesktopApplication,
+    *,
+    port: int = 0,
+) -> tuple[ThreadingHTTPServer, threading.Thread, str]:
+    server = create_desktop_server(application, port=port)
+    actual_port = cast(tuple[str, int], server.server_address)[1]
+    thread = threading.Thread(target=server.serve_forever, name="kad-desktop-http", daemon=True)
+    thread.start()
+    return server, thread, f"http://127.0.0.1:{actual_port}/"
+
+
+def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler]:
+    class DesktopRequestHandler(BaseHTTPRequestHandler):
+        server_version = "KADCollectorDesktop/1"
+
+        def log_message(self, format: str, *args: object) -> None:
+            return
+
+        def do_GET(self) -> None:
+            path = urlparse(self.path).path
+            if path == "/":
+                html_document = _resource_text("desktop_ui.html").replace(
+                    "__DESKTOP_TOKEN__", html.escape(application.token, quote=True)
+                )
+                self._send_bytes(html_document.encode("utf-8"), "text/html; charset=utf-8")
+                return
+            resources_by_path = {
+                "/desktop.css": ("desktop_styles.css", "text/css; charset=utf-8"),
+                "/desktop.js": ("desktop_app.js", "text/javascript; charset=utf-8"),
+            }
+            if path in resources_by_path:
+                name, content_type = resources_by_path[path]
+                self._send_bytes(_resource_bytes(name), content_type)
+                return
+            if path == "/api/bootstrap":
+                self._send_json(application.bootstrap())
+                return
+            question_match = re.fullmatch(r"/api/questions/([a-f0-9-]+)", path)
+            if question_match is not None:
+                try:
+                    question_id = question_match.group(1)
+                    self._send_json(
+                        {
+                            "question": application.store.question(question_id),
+                            "audit": application.store.audit_log(question_id),
+                        }
+                    )
+                except ValueError as exc:
+                    self._send_error(HTTPStatus.NOT_FOUND, str(exc))
+                return
+            pdf_match = re.fullmatch(r"/api/documents/([a-f0-9-]+)/pdf", path)
+            if pdf_match is not None:
+                try:
+                    document_payload = application.store.document(pdf_match.group(1))
+                    source = Path(cast(str, document_payload["local_path"]))
+                    if not source.is_file():
+                        raise ValueError("PDF de origem não encontrado")
+                    self._send_bytes(source.read_bytes(), "application/pdf")
+                except ValueError as exc:
+                    self._send_error(HTTPStatus.NOT_FOUND, str(exc))
+                return
+            self._send_error(HTTPStatus.NOT_FOUND, "rota não encontrada")
+
+        def do_POST(self) -> None:
+            if not self._authorized():
+                return
+            path = urlparse(self.path).path
+            try:
+                payload = self._read_json()
+                if path == "/api/query":
+                    filters = DesktopFilterSet.model_validate(payload.get("filters", payload))
+                    self._send_json(application.store.query(filters))
+                    return
+                if path == "/api/import":
+                    job_id = application.import_pdfs(payload)
+                    self._send_json({"jobId": job_id}, HTTPStatus.CREATED)
+                    return
+                job_action = re.fullmatch(r"/api/jobs/([a-f0-9-]+)/(cancel|resume)", path)
+                if job_action is not None:
+                    job_id, action = job_action.groups()
+                    application.store.job(job_id)
+                    if action == "cancel":
+                        application.processor.cancel(job_id)
+                    else:
+                        application.processor.start(job_id)
+                    self._send_json({"ok": True})
+                    return
+                decision_match = re.fullmatch(r"/api/questions/([a-f0-9-]+)/decision", path)
+                if decision_match is not None:
+                    application.decide(decision_match.group(1), payload)
+                    self._send_json({"ok": True})
+                    return
+                if path == "/api/filters":
+                    saved = application.store.save_filter(
+                        _required_text(payload, "name"),
+                        DesktopFilterSet.model_validate(payload.get("filters", {})),
+                    )
+                    self._send_json(saved, HTTPStatus.CREATED)
+                    return
+                if path == "/api/export":
+                    result = application.export(payload)
+                    self._send_json(
+                        {
+                            "directory": str(result.directory),
+                            "questionsPath": str(result.questions_path),
+                            "exceptionsPath": str(result.exceptions_path),
+                            "exported": result.exported_count,
+                            "exceptions": result.exception_count,
+                        }
+                    )
+                    return
+                self._send_error(HTTPStatus.NOT_FOUND, "rota não encontrada")
+            except (OSError, RuntimeError, ValueError, ValidationError) as exc:
+                self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
+
+        def do_PUT(self) -> None:
+            if not self._authorized():
+                return
+            path = urlparse(self.path).path
+            try:
+                payload = self._read_json()
+                question_match = re.fullmatch(r"/api/questions/([a-f0-9-]+)", path)
+                if question_match is not None:
+                    application.update_question(question_match.group(1), payload)
+                    self._send_json({"ok": True})
+                    return
+                document_match = re.fullmatch(r"/api/documents/([a-f0-9-]+)", path)
+                if document_match is not None:
+                    application.update_document(document_match.group(1), payload)
+                    self._send_json({"ok": True})
+                    return
+                self._send_error(HTTPStatus.NOT_FOUND, "rota não encontrada")
+            except (OSError, RuntimeError, ValueError, ValidationError) as exc:
+                self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
+
+        def do_DELETE(self) -> None:
+            if not self._authorized():
+                return
+            match = re.fullmatch(r"/api/filters/([a-f0-9-]+)", urlparse(self.path).path)
+            if match is None:
+                self._send_error(HTTPStatus.NOT_FOUND, "rota não encontrada")
+                return
+            application.store.delete_filter(match.group(1))
+            self._send_json({"ok": True})
+
+        def _authorized(self) -> bool:
+            if secrets.compare_digest(
+                self.headers.get("X-KAD-Desktop-Token", ""), application.token
+            ):
+                return True
+            self._send_error(HTTPStatus.FORBIDDEN, "token local inválido")
+            return False
+
+        def _read_json(self) -> dict[str, Any]:
+            raw_length = self.headers.get("Content-Length")
+            if raw_length is None:
+                raise ValueError("Content-Length ausente")
+            length = int(raw_length)
+            if length < 0 or length > MAX_REQUEST_BYTES:
+                raise ValueError("corpo da requisição excede o limite local")
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError("o corpo JSON deve ser um objeto")
+            return payload
+
+        def _send_json(self, payload: Any, status: HTTPStatus = HTTPStatus.OK) -> None:
+            self._send_bytes(
+                json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                "application/json; charset=utf-8",
+                status,
+            )
+
+        def _send_error(self, status: HTTPStatus, message: str) -> None:
+            self._send_json({"error": message}, status)
+
+        def _send_bytes(
+            self,
+            body: bytes,
+            content_type: str,
+            status: HTTPStatus = HTTPStatus.OK,
+        ) -> None:
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header(
+                "Content-Security-Policy",
+                "default-src 'self'; script-src 'self'; style-src 'self'; "
+                "img-src 'self' data:; object-src 'self'; frame-ancestors 'none'; "
+                "connect-src 'self'",
+            )
+            self.end_headers()
+            self.wfile.write(body)
+
+    return DesktopRequestHandler
+
+
+def _required_text(payload: dict[str, Any], key: str) -> str:
+    value = payload.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"campo {key} é obrigatório")
+    return value.strip()
+
+
+def _optional_text(payload: dict[str, Any], key: str) -> str | None:
+    value = payload.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"campo {key} deve ser texto")
+    return value.strip() or None
+
+
+def _resource_text(name: str) -> str:
+    return resources.files("kad_collector").joinpath(name).read_text(encoding="utf-8")
+
+
+def _resource_bytes(name: str) -> bytes:
+    return resources.files("kad_collector").joinpath(name).read_bytes()

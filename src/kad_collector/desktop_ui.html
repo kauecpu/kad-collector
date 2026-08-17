@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="kad-desktop-token" content="__DESKTOP_TOKEN__">
+    <title>KAD Collector</title>
+    <link rel="stylesheet" href="/desktop.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Ir para o conteúdo</a>
+    <div class="app-shell">
+      <aside class="app-rail" aria-label="Navegação principal">
+        <div class="brand-block" aria-label="KAD Collector">
+          <span class="brand-k">K</span>
+          <span><strong>KAD</strong><small>COLLECTOR</small></span>
+        </div>
+        <nav class="rail-nav">
+          <button class="rail-link active" type="button" data-section="workspace">
+            <span class="rail-icon">⌁</span><span>Operação</span>
+          </button>
+          <button class="rail-link" type="button" data-section="reviews">
+            <span class="rail-icon">✓</span><span>Revisão</span>
+          </button>
+          <button class="rail-link" type="button" data-section="exports">
+            <span class="rail-icon">↗</span><span>Exportações</span>
+          </button>
+        </nav>
+        <div class="local-seal"><span></span>100% local</div>
+      </aside>
+
+      <main id="main" class="main-area">
+        <header class="app-header">
+          <div>
+            <p class="eyebrow">CENTRAL EDITORIAL</p>
+            <h1>Transforme PDFs em conteúdo revisável.</h1>
+            <p class="header-copy">Extração, classificação e auditoria em um fluxo seguro.</p>
+          </div>
+          <div class="header-actions">
+            <button id="export-open" class="button ghost" type="button">Exportar filtro</button>
+            <button id="import-open" class="button primary" type="button"><span>＋</span>Novo lote</button>
+          </div>
+        </header>
+
+        <section class="metric-grid" aria-label="Resumo do acervo">
+          <article class="metric-card signature">
+            <span class="metric-label">QUESTÕES</span>
+            <strong id="metric-total">0</strong>
+            <small>no acervo local</small>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">PENDENTES</span>
+            <strong id="metric-pending">0</strong>
+            <small>aguardando revisão</small>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">EXCEÇÕES</span>
+            <strong id="metric-exceptions">0</strong>
+            <small>precisam de decisão</small>
+          </article>
+          <article class="metric-card ready">
+            <span class="metric-label">EXPORTÁVEIS</span>
+            <strong id="metric-exportable">0</strong>
+            <small>prontas para o painel</small>
+          </article>
+        </section>
+
+        <section id="job-strip" class="job-strip" aria-label="Processamentos recentes"></section>
+
+        <section class="workbench">
+          <aside class="filter-panel" aria-label="Filtros profissionais">
+            <header class="panel-heading">
+              <div><p class="eyebrow">REFINAR</p><h2>Filtros</h2></div>
+              <button id="clear-filters" class="text-button" type="button">Limpar</button>
+            </header>
+            <label class="search-field compact">
+              <span>⌕</span>
+              <input id="facet-search" type="search" placeholder="Buscar nas opções" autocomplete="off">
+            </label>
+            <div class="saved-filter-row">
+              <select id="saved-filter-select" aria-label="Filtros salvos">
+                <option value="">Filtros salvos</option>
+              </select>
+              <button id="save-filter" class="icon-button" type="button" aria-label="Salvar filtro atual">＋</button>
+            </div>
+            <div id="facet-groups" class="facet-groups"></div>
+          </aside>
+
+          <section class="records-panel">
+            <header class="records-toolbar">
+              <div>
+                <p class="eyebrow">QUESTÕES ENCONTRADAS</p>
+                <h2><span id="result-count">0</span> itens no recorte</h2>
+              </div>
+              <label class="search-field records-search">
+                <span>⌕</span>
+                <input id="question-search" type="search" placeholder="Buscar no enunciado" autocomplete="off">
+              </label>
+            </header>
+            <div id="active-filters" class="active-filters" aria-label="Filtros ativos"></div>
+            <div class="table-head" aria-hidden="true">
+              <span>Questão</span><span>Classificação</span><span>Confiança</span><span>Situação</span>
+            </div>
+            <div id="question-list" class="question-list" aria-live="polite"></div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="import-dialog" class="modal import-modal">
+      <form id="import-form" method="dialog">
+        <header class="modal-header">
+          <div><p class="eyebrow">NOVO LOTE</p><h2>Adicionar PDFs</h2></div>
+          <button class="icon-button modal-close" type="button" aria-label="Fechar">×</button>
+        </header>
+        <p class="modal-copy">O arquivo permanece no computador. PDFs sem texto entram em exceções e não usam OCR nesta versão.</p>
+        <section class="drop-zone" aria-label="Selecionar documentos">
+          <div class="drop-symbol">PDF</div>
+          <div><strong>Escolha arquivos ou uma pasta</strong><span>Processamento retomável, indicado para lotes de até 300 páginas.</span></div>
+          <div class="drop-actions">
+            <button id="choose-files" class="button ghost" type="button">Selecionar PDFs</button>
+            <button id="choose-folder" class="button ghost" type="button">Selecionar pasta</button>
+          </div>
+        </section>
+        <div id="selected-paths" class="selected-paths"></div>
+        <div class="form-section-title"><span>01</span><div><strong>Origem</strong><small>Obrigatória antes da exportação</small></div></div>
+        <div class="form-grid two">
+          <label>Provider<input id="import-provider" placeholder="Ex.: cebraspe-oficial"></label>
+          <label>URL HTTPS da origem<input id="import-url" type="url" placeholder="https://..."></label>
+          <label>Concurso<input id="import-concurso" placeholder="Ex.: INSS 2025"></label>
+          <label>Banca<input id="import-board" placeholder="Ex.: Cebraspe"></label>
+          <label>Ano<input id="import-year" type="number" min="1900" max="2100"></label>
+          <label>Cargo<input id="import-role"></label>
+          <label>Instituição<input id="import-organization"></label>
+          <label>Nível
+            <select id="import-level"><option value="">Não informado</option><option>Fundamental</option><option>Médio</option><option>Superior</option></select>
+          </label>
+        </div>
+        <div class="form-section-title"><span>02</span><div><strong>Conteúdo conhecido</strong><small>Deixe vazio quando não houver evidência</small></div></div>
+        <div class="form-grid three">
+          <label>Disciplina<input id="import-discipline"></label>
+          <label>Assunto<input id="import-subject"></label>
+          <label>Tópico<input id="import-topic"></label>
+          <label>Dificuldade
+            <select id="import-difficulty"><option value="">Não informada</option><option>Fácil</option><option>Média</option><option>Difícil</option></select>
+          </label>
+          <label>Tipo do documento
+            <select id="import-document-type"><option value="auto">Detectar pelo nome</option><option value="exam">Prova</option><option value="answer_key">Gabarito</option></select>
+          </label>
+          <label>Classificador
+            <select id="import-classifier"><option value="local">Local, sem custo</option><option value="openai">OpenAI configurada</option></select>
+          </label>
+        </div>
+        <footer class="modal-footer">
+          <span id="import-hint">Nenhum arquivo selecionado.</span>
+          <button id="import-submit" class="button primary" type="submit">Iniciar processamento</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <dialog id="review-dialog" class="modal review-modal">
+      <form id="review-form" method="dialog">
+        <header class="modal-header review-header">
+          <div><p class="eyebrow">REVISÃO EDITORIAL</p><h2 id="review-title">Questão</h2></div>
+          <div class="review-header-actions">
+            <a id="review-pdf" class="button ghost" href="#" target="_blank" rel="noreferrer">Abrir PDF</a>
+            <button class="icon-button modal-close" type="button" aria-label="Fechar">×</button>
+          </div>
+        </header>
+        <div id="review-flags" class="review-flags"></div>
+        <div class="review-layout">
+          <section class="review-main">
+            <label>Enunciado<textarea id="edit-statement" rows="7" required></textarea></label>
+            <div class="section-row"><h3>Alternativas</h3><button id="add-alternative" class="text-button" type="button">＋ Adicionar</button></div>
+            <div id="edit-alternatives" class="alternative-editor"></div>
+            <div class="form-grid three">
+              <label>Estado do gabarito
+                <select id="edit-answer-status"><option value="missing">Ausente</option><option value="matched">Relacionado</option><option value="annulled">Anulada</option></select>
+              </label>
+              <label>Resposta correta<select id="edit-correct-answer"></select></label>
+              <label>Páginas<input id="edit-source-pages" placeholder="1, 2"></label>
+            </div>
+            <label>Explicação<textarea id="edit-explanation" rows="5" placeholder="Obrigatória para exportar"></textarea></label>
+          </section>
+          <aside class="review-side">
+            <h3>Classificação</h3>
+            <div class="form-grid two compact-grid">
+              <label>Disciplina<input id="edit-discipline"></label>
+              <label>Assunto<input id="edit-matter"></label>
+              <label>Tópico<input id="edit-subject"></label>
+              <label>Banca<input id="edit-board"></label>
+              <label>Concurso<input id="edit-concurso"></label>
+              <label>Ano<input id="edit-year" type="number" min="1900" max="2100"></label>
+              <label>Cargo<input id="edit-role"></label>
+              <label>Instituição<input id="edit-organization"></label>
+              <label>Nível<select id="edit-level"><option value="">—</option><option>Fundamental</option><option>Médio</option><option>Superior</option></select></label>
+              <label>Dificuldade<select id="edit-difficulty"><option value="">—</option><option>Fácil</option><option>Média</option><option>Difícil</option></select></label>
+            </div>
+            <h3>Origem do documento</h3>
+            <label>Provider<input id="edit-provider"></label>
+            <label>URL HTTPS<input id="edit-source-url" type="url"></label>
+            <label>Observações<textarea id="edit-review-notes" rows="4"></textarea></label>
+            <label>Revisor<input id="edit-actor" placeholder="Nome ou identificador"></label>
+            <label>Justificativa<textarea id="edit-decision-notes" rows="3" placeholder="Obrigatória para rejeitar"></textarea></label>
+          </aside>
+        </div>
+        <footer class="modal-footer decision-footer">
+          <span id="review-status-copy"></span>
+          <div>
+            <button id="mark-exception" class="button ghost warning" type="button">Marcar exceção</button>
+            <button id="reject-question" class="button danger" type="button">Rejeitar</button>
+            <button id="save-question" class="button ghost" type="button">Salvar</button>
+            <button id="approve-question" class="button success" type="button">Aprovar</button>
+          </div>
+        </footer>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <script src="/desktop.js" defer></script>
+  </body>
+</html>
+
