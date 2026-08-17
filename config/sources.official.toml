@@ -73,16 +73,18 @@ name = "FGV Conhecimento - Concursos"
 enabled = true
 start_urls = ["https://conhecimento.fgv.br/concursos"]
 allowed_hosts = ["conhecimento.fgv.br"]
-include_patterns = ["(?i)\\.pdf(?:$|[?#])"]
+include_patterns = [
+  "(?is)(?:prova|caderno|quest(?:ao|oes)|gabarito|padrao.?de.?resposta|respostas?.?esperadas?|tipo[-_ ]?[1-5]).*\\.pdf(?:$|[?#])",
+]
 exclude_patterns = [
-  "(?i)(edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao)",
+  "(?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)",
 ]
-exam_patterns = ["(?i)(prova|caderno)"]
-answer_key_patterns = ["(?i)(gabarito|resposta)"]
+exam_patterns = ["(?i)(prova|caderno|quest(?:ao|oes)|tipo[-_ ]?[1-5])"]
+answer_key_patterns = ["(?i)(gabarito|padrao.?de.?resposta|respostas?.?esperadas?)"]
 pagination_patterns = [
-  "(?i)^https://conhecimento\\.fgv\\.br/concursos/[a-z0-9_-]+/?$",
+  "(?i)https://conhecimento\\.fgv\\.br/concursos/[a-z0-9_-]+/?$",
 ]
-max_pages_per_run = 12
+max_pages_per_run = 40
 access_mode = "content"
 authorization_basis = "Provas e gabaritos publicados nas paginas oficiais da FGV Conhecimento; coleta de questoes aplicadas, com atribuicao da origem, revisao humana e sem copia de bancos editoriais privados."
 terms_url = "https://conhecimento.fgv.br/concursos"

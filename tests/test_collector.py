@@ -13,6 +13,7 @@ from kad_collector.collector import (
     collect_documents,
     extract_links,
     select_document_links,
+    select_pagination_links,
 )
 from kad_collector.config import ConfigError, config_for_urls, load_config
 from kad_collector.filters import document_might_match_filters
@@ -275,6 +276,26 @@ class SecurityTests(unittest.TestCase):
         self.assertEqual(
             [item[2] for item in selected],
             ["exam", "answer_key", "exam", "answer_key"],
+        )
+
+        fgv = next(source for source in config.sources if source.id == "fgv_conhecimento")
+        fgv_html = (FIXTURES / "fgv_concurso.html").read_text(encoding="utf-8")
+        fgv_selected = select_document_links(fgv_html, fgv.start_urls[0], fgv)
+        self.assertEqual(
+            [(Path(item[0]).name, item[2]) for item in fgv_selected],
+            [
+                ("auditor-fiscal-frb100-tipo-1.pdf", "exam"),
+                ("gabdef_cf.pdf", "answer_key"),
+            ],
+        )
+        self.assertEqual(fgv.max_pages_per_run, 40)
+        fgv_index = (FIXTURES / "fgv_index.html").read_text(encoding="utf-8")
+        self.assertEqual(
+            select_pagination_links(fgv_index, fgv.start_urls[0], fgv),
+            [
+                "https://conhecimento.fgv.br/concursos/rfb22",
+                "https://conhecimento.fgv.br/concursos/senado22",
+            ],
         )
 
     def test_packaged_official_configuration_matches_cli_configuration(self) -> None:

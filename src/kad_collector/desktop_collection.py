@@ -185,6 +185,9 @@ class DesktopCollectionManager:
             "failures": 0,
             "warnings": [],
             "manifestPath": None,
+            "outputDirectory": None,
+            "files": [],
+            "failureDetails": [],
             "importJobIds": [],
             "error": None,
         }
@@ -238,6 +241,16 @@ class DesktopCollectionManager:
             warnings = list(manifest.warnings)
             if not paths:
                 warnings.append("Nenhum PDF compativel foi encontrado neste link.")
+            files = [
+                {
+                    "title": document.title,
+                    "documentType": document.document_type,
+                    "localPath": str(Path(document.local_path).resolve()),
+                    "sourceUrl": document.original_url,
+                    "sizeBytes": document.size_bytes,
+                }
+                for document in manifest.documents
+            ]
             self._update(
                 job_id,
                 status="completed",
@@ -247,6 +260,20 @@ class DesktopCollectionManager:
                 failures=len(manifest.failures),
                 warnings=warnings,
                 manifestPath=str(manifest_path.resolve()),
+                outputDirectory=(
+                    str(paths[0].parent)
+                    if paths
+                    else str((self.data_dir / "collected" / "raw").resolve())
+                ),
+                files=files,
+                failureDetails=[
+                    {
+                        "stage": failure.stage,
+                        "url": failure.url,
+                        "message": failure.message,
+                    }
+                    for failure in manifest.failures
+                ],
                 importJobIds=import_job_ids,
             )
         except (OSError, RuntimeError, ValueError) as exc:
