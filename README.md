@@ -87,6 +87,51 @@ O mesmo fluxo tambem pode ser iniciado, dentro do ambiente virtual, com:
 kad-collector testar
 ```
 
+## Aplicativo desktop para Windows
+
+O Collector possui uma central editorial local para selecionar PDFs ou pastas, acompanhar
+o processamento pagina a pagina, revisar classificacoes e exportar exatamente o recorte
+filtrado. O estado fica em SQLite dentro de `%LOCALAPPDATA%\KAD Collector`; nenhuma questao
+e enviada ao Supabase pelo aplicativo.
+
+Instale a interface e execute:
+
+```cmd
+python -m pip install -e ".[desktop]"
+kad-collector-desktop
+```
+
+A interface aceita lotes textuais de aproximadamente 300 paginas, trabalha em segundo plano
+e salva checkpoints por pagina. **Pausar** encerra o trecho corrente com seguranca; **Retomar**
+continua das paginas ja persistidas. PDFs digitalizados ou paginas sem camada de texto entram
+em `excecoes.jsonl`; OCR nao faz parte desta versao.
+
+Cada lote aceita no maximo 20 PDFs, 5.000 paginas no total, 1.000 paginas por arquivo e
+50 MB por PDF. Arquivos que ultrapassam os limites entram nas excecoes sem serem processados.
+A interface HTTP local aceita somente `127.0.0.1` ou `localhost` na porta iniciada pelo
+aplicativo; APIs de leitura e escrita exigem o token efemero da sessao.
+
+O classificador `local` usa metadados informados e regras conservadoras com confianca por
+campo. Para usar a integracao opcional ja existente com a OpenAI, defina `OPENAI_API_KEY` e,
+se necessario, `OPENAI_MODEL` somente na sessao que inicia o aplicativo, e selecione OpenAI
+ao criar o lote. A chave nunca e salva no SQLite, no executavel ou nos relatorios.
+
+Os filtros usam OR dentro da mesma categoria e AND entre categorias. Origem, conteudo,
+qualidade e situacao possuem contagens facetadas, busca, chips ativos e filtros salvos. Uma
+exportacao gera uma pasta com `questoes.jsonl`, `excecoes.jsonl`, `relatorio.json`,
+`manifesto.json` e os PDFs de evidencia. Somente questoes aprovadas, validas e com URL HTTPS
+de origem entram no arquivo importavel.
+
+Para gerar o executavel:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build-desktop.ps1
+```
+
+O artefato final fica em `dist\KAD-Collector.exe`. O script tambem executa o modo
+`--smoke-test`, que abre o banco local, carrega os recursos da interface e encerra sem criar
+uma janela.
+
 ## Configurando uma fonte
 
 Copie o bloco `[[sources]]` do exemplo e preencha:

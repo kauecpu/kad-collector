@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kad-collector"
-version = "0.1.0"
+version = "0.2.0"
 description = "Pipeline privado e revisável de coleta de provas para o KAD"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -16,16 +16,26 @@ dependencies = [
 
 [project.optional-dependencies]
 database = ["psycopg[binary]>=3.2,<4"]
-dev = ["ruff>=0.9", "mypy>=1.14"]
+desktop = ["pywebview>=5.4,<6"]
+build = ["pyinstaller>=6.12,<7"]
+dev = ["ruff>=0.9", "mypy>=1.14", "reportlab>=4.2,<5"]
 
 [project.scripts]
 kad-collector = "kad_collector.cli:main"
+kad-collector-desktop = "kad_collector.desktop_app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-kad_collector = ["review_ui.html", "review_app.js", "review_styles.css"]
+kad_collector = [
+  "review_ui.html",
+  "review_app.js",
+  "review_styles.css",
+  "desktop_ui.html",
+  "desktop_app.js",
+  "desktop_styles.css",
+]
 
 [tool.ruff]
 line-length = 100

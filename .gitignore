@@ -150,6 +150,8 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .venv/
+/build/
+/dist/
 
 # Collector runtime artifacts (may contain copyrighted source material)
 data/raw/
