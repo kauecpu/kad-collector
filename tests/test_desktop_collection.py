@@ -8,7 +8,11 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from kad_collector.desktop_collection import DesktopCollectionManager
+from kad_collector.desktop_collection import (
+    DesktopCollectionManager,
+    _import_metadata,
+    _processing_batches,
+)
 from kad_collector.desktop_models import DesktopFilterSet, DesktopImportMetadata
 from kad_collector.desktop_processor import DesktopProcessor, _document_type
 from kad_collector.desktop_store import DesktopStore
@@ -262,6 +266,133 @@ Enunciado completo da segunda questao.
                     "url": "https://example.com/prova.pdf",
                 }
             )
+
+    def test_fgv_requires_a_specific_contest_page(self) -> None:
+        with self.assertRaisesRegex(ValueError, "pagina especifica"):
+            self.manager.start(
+                {
+                    "sourceId": "fgv_conhecimento",
+                    "url": "https://conhecimento.fgv.br/concursos",
+                }
+            )
+
+    def test_high_performance_preserves_the_file_limit(self) -> None:
+        captured: list[object] = []
+
+        def collect(config: object, **_kwargs: object) -> tuple[DownloadManifest, Path]:
+            captured.append(config)
+            path = self.root / "manifest.json"
+            path.write_text("{}", encoding="utf-8")
+            return DownloadManifest(created_at=datetime.now(UTC)), path
+
+        with patch("kad_collector.desktop_collection.collect_documents", side_effect=collect):
+            collection_id = self.manager.start(
+                {
+                    "sourceId": "fgv_conhecimento",
+                    "url": "https://conhecimento.fgv.br/concursos/rfb22",
+                    "capacityProfile": "high_performance",
+                }
+            )
+            for _ in range(100):
+                job = next(
+                    item for item in self.manager.list_jobs() if item["id"] == collection_id
+                )
+                if job["status"] not in {"queued", "running", "processing"}:
+                    break
+                threading.Event().wait(0.01)
+
+        self.assertTrue(captured)
+        config = captured[0]
+        self.assertEqual(config.collector.max_files_per_source, 40)  # type: ignore[attr-defined]
+        self.assertEqual(config.collector.max_concurrency, 8)  # type: ignore[attr-defined]
+
+    def test_fgv_metadata_groups_contest_role_and_variant(self) -> None:
+        source = self.manager._source("fgv_conhecimento")
+        pdf_path = self.root / "cuidador.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4\nfixture\n%%EOF")
+        document = DocumentRecord(
+            source_id=source.id,
+            source_name=source.name,
+            document_type="exam",
+            title="Tipo 2",
+            original_url=(
+                "https://conhecimento.fgv.br/sites/default/files/concursos/"
+                "cuidadorcnm001_tipo_2.pdf"
+            ),
+            resolved_url=(
+                "https://conhecimento.fgv.br/sites/default/files/concursos/"
+                "cuidadorcnm001_tipo_2.pdf"
+            ),
+            local_path=str(pdf_path),
+            sha256="b" * 64,
+            content_type="application/pdf",
+            size_bytes=pdf_path.stat().st_size,
+            downloaded_at=datetime.now(UTC),
+            authorization_basis="Fonte oficial.",
+            metadata={"banca": "FGV"},
+        )
+
+        metadata = _import_metadata(
+            source, "https://conhecimento.fgv.br/concursos/seadap2022", document
+        )
+
+        self.assertEqual(metadata.concurso, "SEADAP2022")
+        self.assertEqual(metadata.role, "Cuidador")
+        self.assertEqual(metadata.variant, "Tipo 2")
+
+    def test_large_contest_batches_keep_the_answer_key_with_every_exam_group(self) -> None:
+        source = self.manager._source("fgv_conhecimento")
+        documents: list[DocumentRecord] = []
+        metadata_by_path: dict[str, DesktopImportMetadata] = {}
+        for number in range(25):
+            path = self.root / f"analista_tipo_{number % 4 + 1}_{number}.pdf"
+            path.write_bytes(b"%PDF-1.4\nfixture\n%%EOF")
+            document = DocumentRecord(
+                source_id=source.id,
+                source_name=source.name,
+                document_type="exam",
+                title=f"Analista - Tipo {number % 4 + 1}",
+                original_url=f"https://conhecimento.fgv.br/concursos/exam-{number}.pdf",
+                resolved_url=f"https://conhecimento.fgv.br/concursos/exam-{number}.pdf",
+                local_path=str(path),
+                sha256=f"{number + 1:064x}",
+                content_type="application/pdf",
+                size_bytes=path.stat().st_size,
+                downloaded_at=datetime.now(UTC),
+                authorization_basis="Fonte oficial.",
+                metadata={"banca": "FGV", "cargo": "Analista"},
+            )
+            documents.append(document)
+            metadata_by_path[str(path.resolve()).casefold()] = _import_metadata(
+                source, "https://conhecimento.fgv.br/concursos/teste2026", document
+            )
+        key_path = self.root / "gabarito-definitivo.pdf"
+        key_path.write_bytes(b"%PDF-1.4\nfixture\n%%EOF")
+        answer_key = DocumentRecord(
+            source_id=source.id,
+            source_name=source.name,
+            document_type="answer_key",
+            title="Gabarito definitivo",
+            original_url="https://conhecimento.fgv.br/concursos/gabarito.pdf",
+            resolved_url="https://conhecimento.fgv.br/concursos/gabarito.pdf",
+            local_path=str(key_path),
+            sha256="f" * 64,
+            content_type="application/pdf",
+            size_bytes=key_path.stat().st_size,
+            downloaded_at=datetime.now(UTC),
+            authorization_basis="Fonte oficial.",
+            metadata={"banca": "FGV"},
+        )
+        documents.append(answer_key)
+        metadata_by_path[str(key_path.resolve()).casefold()] = _import_metadata(
+            source, "https://conhecimento.fgv.br/concursos/teste2026", answer_key
+        )
+
+        batches = _processing_batches(documents, metadata_by_path)
+
+        self.assertEqual(len(batches), 2)
+        self.assertTrue(all(key_path.resolve() in batch for batch in batches))
+        self.assertTrue(all(len(batch) <= 20 for batch in batches))
 
     def test_reference_only_source_cannot_start_content_download(self) -> None:
         with self.assertRaisesRegex(ValueError, "somente para registro"):

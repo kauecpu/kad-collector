@@ -125,6 +125,7 @@ class SourceDefinition(StrictModel):
     exclude_patterns: list[str] = Field(default_factory=list)
     exam_patterns: list[str] = Field(default_factory=lambda: [r"(?i)prova|caderno"])
     answer_key_patterns: list[str] = Field(default_factory=lambda: [r"(?i)gabarito"])
+    collection_url_patterns: list[str] = Field(default_factory=list)
     pagination_patterns: list[str] = Field(default_factory=list)
     max_pages_per_run: int | None = Field(default=20, ge=1, le=10_000)
     discovery_strategies: list[DiscoveryStrategy] = Field(

@@ -5,11 +5,12 @@ import json
 import re
 import threading
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, cast
 
 from pypdf import PdfReader
-from pypdf.errors import PdfReadError
+from pypdf.errors import DependencyError, PdfReadError
 
 from .answer_key import parse_answer_key
 from .desktop_classifier import LocalRuleClassifier, build_classifier
@@ -60,13 +61,17 @@ def _variant_number(document: dict[str, Any]) -> int | None:
         )
         if value
     )
-    match = re.search(r"(?<![A-Z0-9])V(?P<number>[1-9]\d*)(?!\d)", candidate, re.IGNORECASE)
+    match = re.search(
+        r"(?<![A-Z0-9])(?:V|TIPO|PROVA)[-_ ]*(?P<number>[1-9]\d*)(?!\d)",
+        candidate,
+        re.IGNORECASE,
+    )
     return int(match.group("number")) if match else None
 
 
-def _document_group(document: dict[str, Any]) -> tuple[str | None, int | None]:
+def _document_group(document: dict[str, Any]) -> tuple[str | None, str | None]:
     metadata = DesktopImportMetadata.model_validate(document["metadata"])
-    return metadata.provider, metadata.year
+    return metadata.provider, metadata.concurso
 
 
 def _canonical_exam_documents(
@@ -74,7 +79,7 @@ def _canonical_exam_documents(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     selected: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
-    fuvest_groups: dict[tuple[str | None, int | None], list[dict[str, Any]]] = {}
+    fuvest_groups: dict[tuple[str | None, str | None], list[dict[str, Any]]] = {}
     for document in documents:
         metadata = DesktopImportMetadata.model_validate(document["metadata"])
         if metadata.provider != "fuvest_vestibular":
@@ -102,9 +107,33 @@ def _select_answer_key(
     same_group = [item for item in answer_keys if _document_group(item) == _document_group(exam)]
     if len(same_group) == 1:
         return same_group[0]
-    if not same_group and len(answer_keys) == 1:
-        return answer_keys[0]
-    return None
+    candidates = same_group or answer_keys
+    if not candidates:
+        return None
+    exam_metadata = DesktopImportMetadata.model_validate(exam["metadata"])
+    role_words = set(re.findall(r"[a-z0-9]+", (exam_metadata.role or "").casefold()))
+
+    def score(item: dict[str, Any]) -> tuple[int, int, int]:
+        metadata = DesktopImportMetadata.model_validate(item["metadata"])
+        haystack = " ".join(
+            (
+                metadata.document_title or "",
+                metadata.source_url or "",
+                cast(str, item.get("answer_key_text", ""))[:20_000],
+            )
+        ).casefold()
+        role_score = sum(word in haystack for word in role_words if len(word) > 2)
+        definitive = int("definitiv" in haystack)
+        year_score = int(
+            exam_metadata.year is not None and metadata.year == exam_metadata.year
+        )
+        return role_score, definitive, year_score
+
+    selected = max(candidates, key=score)
+    if score(selected)[0] or len(candidates) == 1:
+        return selected
+    definitive = [item for item in candidates if score(item)[1]]
+    return definitive[0] if len(definitive) == 1 else None
 
 
 def _apply_classification(
@@ -134,27 +163,23 @@ def _apply_classification(
 
 
 class DesktopProcessor:
-    def __init__(self, store: DesktopStore) -> None:
+    def __init__(self, store: DesktopStore, *, max_workers: int = 2) -> None:
         self.store = store
-        self._threads: dict[str, threading.Thread] = {}
+        self._executor = ThreadPoolExecutor(
+            max_workers=max_workers, thread_name_prefix="kad-processor"
+        )
+        self._futures: dict[str, Future[None]] = {}
         self._cancel_events: dict[str, threading.Event] = {}
         self._lock = threading.Lock()
 
     def start(self, job_id: str) -> None:
         with self._lock:
-            existing = self._threads.get(job_id)
-            if existing is not None and existing.is_alive():
+            existing = self._futures.get(job_id)
+            if existing is not None and not existing.done():
                 return
             event = threading.Event()
-            thread = threading.Thread(
-                target=self.run,
-                args=(job_id, event),
-                name=f"kad-collector-{job_id[:8]}",
-                daemon=True,
-            )
             self._cancel_events[job_id] = event
-            self._threads[job_id] = thread
-            thread.start()
+            self._futures[job_id] = self._executor.submit(self.run, job_id, event)
 
     def cancel(self, job_id: str) -> None:
         event = self._cancel_events.get(job_id)
@@ -196,7 +221,7 @@ class DesktopProcessor:
                     if not page_count:
                         reader = PdfReader(path, strict=False)
                         page_count = len(reader.pages)
-                except (OSError, PdfReadError, ValueError) as exc:
+                except (OSError, PdfReadError, DependencyError, ValueError) as exc:
                     self.store.update_document(
                         document_id,
                         status="exception",
@@ -324,7 +349,7 @@ class DesktopProcessor:
                     warnings_json=json.dumps(warnings, ensure_ascii=False),
                 )
                 return
-        except (OSError, PdfReadError) as exc:
+        except (OSError, PdfReadError, DependencyError, ValueError) as exc:
             warnings.append(f"PDF ilegível: {exc}")
             self.store.update_document(
                 document_id,
@@ -435,13 +460,22 @@ class DesktopProcessor:
                 continue
             metadata = DesktopImportMetadata.model_validate(document["metadata"])
             answer_key = _select_answer_key(document, answer_keys)
-            variant = f"V{_variant_number(document)}" if _variant_number(document) else None
+            variant_number = _variant_number(document)
+            variant = metadata.variant or (
+                f"Tipo {variant_number}" if variant_number is not None else None
+            )
             answer_entries = (
-                parse_answer_key(cast(str, answer_key["answer_key_text"]), variant=variant)
+                parse_answer_key(
+                    cast(str, answer_key["answer_key_text"]),
+                    variant=variant,
+                    role=metadata.role,
+                )
                 if answer_key is not None
                 else {}
             )
-            if answer_key is None:
+            if answer_key is None and any(
+                question.answer_status == "missing" for question in questions
+            ):
                 existing_warnings.append("nenhum gabarito correspondente foi localizado")
             elif not answer_entries:
                 existing_warnings.append(
@@ -466,6 +500,7 @@ class DesktopProcessor:
                 )
                 classified = LocalRuleClassifier().classify_many(requests, metadata)
             by_number = {item.question_number: item.classification for item in classified}
+            structured_questions: list[QuestionRecord] = []
             for question in questions:
                 classification = by_number.get(question.number, QuestionClassification())
                 updated = _apply_classification(question, classification)
@@ -480,8 +515,9 @@ class DesktopProcessor:
                     )
                     updated = QuestionRecord.model_validate(payload)
                 self.store.save_question(document_id, updated, classification)
+                structured_questions.append(updated)
             missing_answers = sum(
-                question.number not in answer_entries for question in questions
+                question.answer_status == "missing" for question in structured_questions
             )
             if missing_answers:
                 existing_warnings.append(

@@ -83,6 +83,26 @@ class ReviewAutomationTests(unittest.TestCase):
         self.assertEqual(second[1].answer, "C")
         self.assertEqual(second[4].answer, "C")
 
+    def test_fgv_grid_is_selected_by_role_and_type(self) -> None:
+        text = """
+Cuidador – Tipo 1
+1 2 3 4
+A B C D
+Cuidador – Tipo 2
+1 2 3 4
+B C * A
+Professor de Sociologia – Tipo 2
+1 2 3 4
+D A B C
+"""
+
+        entries = parse_answer_key(text, variant="Tipo 2", role="Cuidador")
+
+        self.assertEqual(entries[1].answer, "B")
+        self.assertEqual(entries[2].answer, "C")
+        self.assertTrue(entries[3].annulled)
+        self.assertEqual(entries[4].answer, "A")
+
     def test_queue_matches_cached_answers_and_creates_local_review_session(self) -> None:
         exam = document(
             "exam",

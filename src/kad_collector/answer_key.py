@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,9 +30,110 @@ _TABULAR_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _VARIANT_PATTERN = re.compile(r"\bV[1-9]\d*\b", re.IGNORECASE)
+_GRID_HEADING = re.compile(
+    r"^\s*(?P<label>.+?)\s*[-–—]\s*(?:TIPO|PROVA)\s*(?P<variant>[1-9]\d*)\s*$",
+    re.IGNORECASE,
+)
+_GRID_NUMBER = re.compile(r"\d{1,3}(?:ING|ESP)?", re.IGNORECASE)
+_GRID_ANSWER = re.compile(r"[A-HX*]", re.IGNORECASE)
 
 
-def parse_answer_key(text: str, *, variant: str | None = None) -> dict[int, AnswerEntry]:
+@dataclass
+class _AnswerGrid:
+    label: str
+    variant: int
+    entries: dict[int, AnswerEntry]
+
+
+def _normalized_words(value: str) -> set[str]:
+    decomposed = unicodedata.normalize("NFKD", value)
+    normalized = "".join(
+        character for character in decomposed if not unicodedata.combining(character)
+    ).casefold()
+    return {
+        word
+        for word in re.findall(r"[a-z0-9]+", normalized)
+        if len(word) > 1 and word not in {"tipo", "prova", "cargo"}
+    }
+
+
+def _variant_number(value: str | None) -> int | None:
+    match = re.search(r"(?:V|TIPO|PROVA)?\s*([1-9]\d*)", value or "", re.IGNORECASE)
+    return int(match.group(1)) if match else None
+
+
+def _parse_answer_grids(text: str) -> list[_AnswerGrid]:
+    grids: list[_AnswerGrid] = []
+    active: _AnswerGrid | None = None
+    pending_numbers: list[int] = []
+    for raw_line in text.splitlines():
+        line = " ".join(raw_line.split())
+        heading = _GRID_HEADING.match(line)
+        if heading is not None:
+            if active is not None and active.entries:
+                grids.append(active)
+            active = _AnswerGrid(
+                label=heading.group("label"),
+                variant=int(heading.group("variant")),
+                entries={},
+            )
+            pending_numbers = []
+            continue
+        if active is None:
+            continue
+        number_tokens = _GRID_NUMBER.findall(line)
+        if len(number_tokens) >= 2 and re.fullmatch(
+            r"(?:\d{1,3}(?:ING|ESP)?\s*)+", line, re.IGNORECASE
+        ):
+            pending_numbers = [int(re.sub(r"\D", "", item)) for item in number_tokens]
+            continue
+        answer_tokens = _GRID_ANSWER.findall(line)
+        if pending_numbers and len(answer_tokens) == len(pending_numbers) and re.fullmatch(
+            r"(?:[A-HX*]\s*)+", line, re.IGNORECASE
+        ):
+            for number, raw_answer in zip(pending_numbers, answer_tokens, strict=True):
+                answer = raw_answer.upper()
+                active.entries[number] = AnswerEntry(
+                    number=number,
+                    answer=None if answer in {"X", "*"} else answer,
+                    annulled=answer in {"X", "*"},
+                )
+            pending_numbers = []
+    if active is not None and active.entries:
+        grids.append(active)
+    return grids
+
+
+def _select_answer_grid(
+    grids: list[_AnswerGrid], *, variant: str | None, role: str | None
+) -> dict[int, AnswerEntry] | None:
+    if not grids:
+        return None
+    variant_number = _variant_number(variant)
+    candidates = [grid for grid in grids if variant_number in {None, grid.variant}]
+    if not candidates:
+        return None
+    role_words = _normalized_words(role or "")
+    if role_words:
+        scored = [
+            (len(role_words & _normalized_words(grid.label)), grid) for grid in candidates
+        ]
+        score, selected = max(scored, key=lambda item: (item[0], len(item[1].entries)))
+        if score:
+            return selected.entries
+    if len(candidates) == 1:
+        return candidates[0].entries
+    return None
+
+
+def parse_answer_key(
+    text: str, *, variant: str | None = None, role: str | None = None
+) -> dict[int, AnswerEntry]:
+    grid_entries = _select_answer_grid(
+        _parse_answer_grids(text), variant=variant, role=role
+    )
+    if grid_entries is not None:
+        return grid_entries
     entries: dict[int, AnswerEntry] = {}
     variants = list(dict.fromkeys(item.upper() for item in _VARIANT_PATTERN.findall(text)))
     normalized_variant = (variant or "").upper()

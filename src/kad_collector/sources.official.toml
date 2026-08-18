@@ -87,7 +87,7 @@ ano = "2026"
 id = "fgv_conhecimento"
 name = "FGV Conhecimento - Concursos"
 enabled = true
-start_urls = ["https://conhecimento.fgv.br/concursos"]
+start_urls = ["https://conhecimento.fgv.br/concursos/rfb22"]
 allowed_hosts = ["conhecimento.fgv.br"]
 robots_policy = "ignore"
 crawl_delay_policy = "ignore"
@@ -99,10 +99,9 @@ exclude_patterns = [
 ]
 exam_patterns = ["(?i)(prova|caderno|quest(?:ao|oes)|tipo[-_ ]?[1-5])"]
 answer_key_patterns = ["(?i)(gabarito|padrao.?de.?resposta|respostas?.?esperadas?)"]
-pagination_patterns = [
-  "(?i)https://conhecimento\\.fgv\\.br/concursos/[a-z0-9_-]+/?$",
-]
-max_pages_per_run = 40
+collection_url_patterns = ["(?i)^https://conhecimento\\.fgv\\.br/concursos/[a-z0-9_-]+/?(?:[?#].*)?$"]
+pagination_patterns = []
+max_pages_per_run = 1
 access_mode = "content"
 authorization_basis = "Provas e gabaritos publicados nas paginas oficiais da FGV Conhecimento; coleta de questoes aplicadas, com atribuicao da origem, revisao humana e sem copia de bancos editoriais privados."
 terms_url = "https://conhecimento.fgv.br/concursos"
@@ -227,11 +226,13 @@ start_urls = [
 allowed_hosts = ["www.comvest.unicamp.br"]
 robots_policy = "ignore"
 crawl_delay_policy = "ignore"
-include_patterns = ["(?i)\\.pdf(?:$|[?#])"]
-exclude_patterns = [
-  "(?i)(edital|manual|estatistica|relatorio|perfil|demanda|nota.?de.?corte|programa)",
+include_patterns = [
+  "(?is)(?:prova|quest(?:ao|oes|ão|ões)|caderno|conhecimentos?.?gerais|multipla.?escolha|múltipla.?escolha|(?:^|[/_-])F[12](?:[/_.-]|$)|CQ[_-]|gabarito|resposta|solucao|solução).*\\.pdf(?:$|[?#])",
 ]
-exam_patterns = ["(?i)(prova|questoes|fase|redacao)"]
+exclude_patterns = [
+  "(?i)(edital|manual|estatistica|relatorio|perfil|demanda|nota.?de.?corte|programa|anuario|desempenho|lista|chamada|convocad|aprovad|classificacao|resultado|declaracao|isencao|vagas?|normas?)",
+]
+exam_patterns = ["(?i)(prova|quest(?:ao|oes|ão|ões)|caderno|fase|redacao|(?:^|[/_-])F[12](?:[/_.-]|$)|CQ[_-])"]
 answer_key_patterns = ["(?i)(gabarito|resposta|solucao)"]
 pagination_patterns = [
   "(?i)/(?:ingresso-20\\d{2}|vestibulares-anteriores/1a-fase-2a-fase-comentadas)/?$",

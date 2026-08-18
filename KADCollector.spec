@@ -5,17 +5,19 @@ from PyInstaller.utils.hooks import collect_all, collect_data_files
 
 webview_data, webview_binaries, webview_hidden = collect_all("webview")
 playwright_data, playwright_binaries, playwright_hidden = collect_all("playwright")
+cryptography_data, cryptography_binaries, cryptography_hidden = collect_all("cryptography")
 
 a = Analysis(
     ["desktop_launcher.py"],
     pathex=["src"],
-    binaries=[*webview_binaries, *playwright_binaries],
+    binaries=[*webview_binaries, *playwright_binaries, *cryptography_binaries],
     datas=[
         *collect_data_files("kad_collector"),
         *webview_data,
         *playwright_data,
+        *cryptography_data,
     ],
-    hiddenimports=[*webview_hidden, *playwright_hidden],
+    hiddenimports=[*webview_hidden, *playwright_hidden, *cryptography_hidden],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
