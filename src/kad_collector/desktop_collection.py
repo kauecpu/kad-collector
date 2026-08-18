@@ -192,8 +192,7 @@ class DesktopCollectionManager:
         return {
             "cache": state.cache_summary(),
             "profiles": ["conservative", "balanced", "high_performance", "custom"],
-            "robotsPolicy": "enforce",
-            "crawlDelayPolicy": "enforce",
+            "policyModes": ["enforce", "observe", "ignore"],
         }
 
     def start(self, payload: dict[str, Any]) -> str:
@@ -235,11 +234,18 @@ class DesktopCollectionManager:
             not isinstance(custom_interval, (int, float)) or not 0 <= custom_interval <= 300
         ):
             raise ValueError("requestIntervalSeconds deve estar entre 0 e 300")
+        robots_policy = payload.get("robotsPolicy", source.robots_policy)
+        crawl_delay_policy = payload.get("crawlDelayPolicy", source.crawl_delay_policy)
+        policy_modes = {"enforce", "observe", "ignore"}
+        if robots_policy not in policy_modes or crawl_delay_policy not in policy_modes:
+            raise ValueError("politica de robots ou Crawl-delay invalida")
         engine_options = {
             "capacityProfile": profile,
             "browserEnabled": browser_enabled,
             "maxConcurrency": custom_concurrency,
             "requestIntervalSeconds": custom_interval,
+            "robotsPolicy": robots_policy,
+            "crawlDelayPolicy": crawl_delay_policy,
         }
 
         job_id = str(uuid.uuid4())
@@ -266,6 +272,8 @@ class DesktopCollectionManager:
             "importJobIds": [],
             "error": None,
             "capacityProfile": profile,
+            "robotsPolicy": robots_policy,
+            "crawlDelayPolicy": crawl_delay_policy,
             "strategies": [
                 *source.discovery_strategies,
                 *(
@@ -399,6 +407,8 @@ class DesktopCollectionManager:
                     "discovery_strategies": strategies,
                     "max_concurrency": engine_options.get("maxConcurrency"),
                     "request_interval_seconds": engine_options.get("requestIntervalSeconds"),
+                    "robots_policy": engine_options["robotsPolicy"],
+                    "crawl_delay_policy": engine_options["crawlDelayPolicy"],
                 }
             )
             profile = engine_options["capacityProfile"]

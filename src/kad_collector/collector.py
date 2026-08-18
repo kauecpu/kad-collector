@@ -218,13 +218,31 @@ def select_pagination_links(html: str, page_url: str, source: SourceDefinition) 
 
 
 class RobotsPolicy:
-    def __init__(self, client: _HttpGetter, user_agent: str, max_bytes: int = 1_000_000) -> None:
+    def __init__(
+        self,
+        client: _HttpGetter,
+        user_agent: str,
+        max_bytes: int = 1_000_000,
+        *,
+        robots_policy: str = "enforce",
+        crawl_delay_policy: str = "enforce",
+    ) -> None:
         self.client = client
         self.user_agent = user_agent
         self.max_bytes = max_bytes
+        self.robots_policy = robots_policy
+        self.crawl_delay_policy = crawl_delay_policy
         self._cache: dict[tuple[str, str], RobotFileParser | None] = {}
+        self.observations: list[str] = []
+
+    def _observe(self, message: str) -> None:
+        if message not in self.observations:
+            self.observations.append(message)
 
     def can_fetch(self, url: str, allowed_hosts: list[str]) -> bool:
+        if self.robots_policy == "ignore":
+            self._observe("robots.txt ignorado por politica administrativa explicita")
+            return True
         parsed = urlsplit(url)
         key = (parsed.scheme, parsed.netloc)
         if key not in self._cache:
@@ -237,20 +255,32 @@ class RobotsPolicy:
                 if exc.status_code == 404:
                     self._cache[key] = None
                 else:
-                    return False
+                    self._observe(f"robots.txt indisponivel para {parsed.netloc}: {exc}")
+                    return self.robots_policy == "observe"
             else:
                 parser.parse(result.body.decode("utf-8", errors="replace").splitlines())
                 self._cache[key] = parser
         cached = self._cache[key]
-        return True if cached is None else cached.can_fetch(self.user_agent, url)
+        allowed = True if cached is None else cached.can_fetch(self.user_agent, url)
+        if not allowed and self.robots_policy == "observe":
+            self._observe(f"robots.txt bloquearia {url}; coleta mantida em modo observe")
+            return True
+        return allowed
 
     def crawl_delay(self, url: str) -> float | None:
+        if self.crawl_delay_policy == "ignore":
+            self._observe("Crawl-delay ignorado por politica administrativa explicita")
+            return None
         parsed = urlsplit(url)
         cached = self._cache.get((parsed.scheme, parsed.netloc))
         if cached is None:
             return None
         value = cached.crawl_delay(self.user_agent) or cached.crawl_delay("*")
-        return float(value) if value is not None else None
+        delay = float(value) if value is not None else None
+        if delay is not None and self.crawl_delay_policy == "observe":
+            self._observe(f"Crawl-delay de {delay:g}s observado para {parsed.netloc}; nao aplicado")
+            return None
+        return delay
 
 
 def _relative_or_absolute(path: Path) -> str:
@@ -523,7 +553,12 @@ def collect_documents(
                     interval_seconds=interval,
                 )
             )
-        robots = RobotsPolicy(client, settings.user_agent)
+        robots = RobotsPolicy(
+            client,
+            settings.user_agent,
+            robots_policy=source.robots_policy,
+            crawl_delay_policy=source.crawl_delay_policy,
+        )
         source_links: list[tuple[str, str, DocumentType]] = []
         seen_links: set[str] = set()
         source_items = 0
@@ -954,6 +989,7 @@ def collect_documents(
                         )
             state.delete_checkpoint(checkpoint_key)
         finally:
+            warnings.extend(f"{source.id}: {item}" for item in robots.observations)
             client.close()
 
     telemetry = state.events(active_run_id)
@@ -976,8 +1012,13 @@ def collect_documents(
             "max_retries": settings.max_retries,
             "conditional_cache": settings.conditional_cache,
             "resume_downloads": settings.resume_downloads,
-            "robots_policy": "enforce",
-            "crawl_delay_policy": "enforce",
+            "source_policies": {
+                source.id: {
+                    "robots_policy": source.robots_policy,
+                    "crawl_delay_policy": source.crawl_delay_policy,
+                }
+                for source in enabled_sources
+            },
         },
     )
     timestamp = manifest.created_at.strftime("%Y%m%dT%H%M%SZ")

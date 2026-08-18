@@ -213,8 +213,14 @@ cookies, tokens ou query strings.
 | Personalizado | 1 a 32 | 0 a 300 s | Ajuste administrativo por execucao |
 
 O perfil nao desativa seguranca de rede. Hosts cadastrados, DNS publico, redirects validados,
-TLS, quotas, limites de descompressao e cancelamento continuam ativos. O repositorio exige
-aplicacao de `robots.txt` e `Crawl-delay`; o manifesto registra essa politica.
+TLS, quotas, limites de descompressao e cancelamento continuam ativos. `robots.txt` e
+`Crawl-delay` sao politicas administrativas independentes, sempre registradas no manifesto.
+
+Cada fonte aceita `enforce`, `observe` ou `ignore`. `enforce` consulta e aplica a regra;
+`observe` consulta e registra o que teria sido bloqueado sem interromper a coleta; `ignore`
+nao consulta o arquivo nem aplica o atraso. O padrao distribuido continua sendo `enforce`, e
+a tela mostra a escolha antes de iniciar. Nenhum desses modos autoriza atravessar login,
+CAPTCHA, autenticacao ou um bloqueio explicito do servidor.
 
 ### Estrategias de descoberta
 

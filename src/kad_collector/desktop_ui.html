@@ -158,11 +158,24 @@
                     <label>Intervalo entre requisições
                       <input id="source-request-interval" type="number" min="0" max="300" step="0.1" value="3">
                     </label>
+                    <label>Política de robots.txt
+                      <select id="source-robots-policy">
+                        <option value="enforce">Aplicar</option>
+                        <option value="observe">Observar</option>
+                        <option value="ignore">Ignorar</option>
+                      </select>
+                    </label>
+                    <label>Política de Crawl-delay
+                      <select id="source-crawl-delay-policy">
+                        <option value="enforce">Aplicar</option>
+                        <option value="observe">Observar</option>
+                        <option value="ignore">Ignorar</option>
+                      </select>
+                    </label>
                   </div>
                 </details>
                 <div class="engine-policy-strip">
-                  <span>ROBOTS <strong>APLICADO</strong></span>
-                  <span>CRAWL-DELAY <strong>APLICADO</strong></span>
+                  <span>POLÍTICAS <strong>REGISTRADAS NO MANIFESTO</strong></span>
                   <span id="engine-cache-summary">CACHE 0 B</span>
                 </div>
               </section>

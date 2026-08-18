@@ -136,8 +136,8 @@ class SourceDefinition(StrictModel):
     browser_enabled: bool = False
     max_concurrency: int | None = Field(default=None, ge=1, le=32)
     request_interval_seconds: float | None = Field(default=None, ge=0.0)
-    robots_policy: Literal["enforce"] = "enforce"
-    crawl_delay_policy: Literal["enforce"] = "enforce"
+    robots_policy: Literal["enforce", "observe", "ignore"] = "enforce"
+    crawl_delay_policy: Literal["enforce", "observe", "ignore"] = "enforce"
     access_mode: Literal["content", "reference_only"] = "content"
     authorization_basis: str = ""
     requires_written_authorization: bool = False

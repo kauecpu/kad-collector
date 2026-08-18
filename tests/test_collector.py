@@ -448,6 +448,64 @@ authorization_basis = ""
         )
         self.assertTrue(policy.can_fetch("https://provas.example.gov.br/publico/prova.pdf", hosts))
 
+    def test_robots_policy_observe_records_but_does_not_block(self) -> None:
+        class FixtureClient:
+            def get(self, url: str, allowed_hosts: list[str], max_bytes: int) -> HttpResult:
+                headers = Message()
+                headers["Content-Type"] = "text/plain; charset=utf-8"
+                return HttpResult(
+                    url=url,
+                    status_code=200,
+                    headers=headers,
+                    body=(FIXTURES / "robots.txt").read_bytes(),
+                )
+
+        policy = RobotsPolicy(  # type: ignore[arg-type]
+            FixtureClient(), "KADCollector/0.1", robots_policy="observe"
+        )
+        self.assertTrue(
+            policy.can_fetch(
+                "https://provas.example.gov.br/restrito/prova.pdf",
+                ["provas.example.gov.br"],
+            )
+        )
+        self.assertTrue(any("modo observe" in item for item in policy.observations))
+
+    def test_robots_policy_ignore_does_not_fetch_robots_file(self) -> None:
+        class FailIfCalled:
+            def get(self, url: str, allowed_hosts: list[str], max_bytes: int) -> HttpResult:
+                raise AssertionError("robots.txt nao deveria ser consultado")
+
+        policy = RobotsPolicy(  # type: ignore[arg-type]
+            FailIfCalled(), "KADCollector/0.1", robots_policy="ignore"
+        )
+        self.assertTrue(
+            policy.can_fetch(
+                "https://provas.example.gov.br/restrito/prova.pdf",
+                ["provas.example.gov.br"],
+            )
+        )
+
+    def test_crawl_delay_observe_records_but_does_not_wait(self) -> None:
+        class FixtureClient:
+            def get(self, url: str, allowed_hosts: list[str], max_bytes: int) -> HttpResult:
+                headers = Message()
+                headers["Content-Type"] = "text/plain; charset=utf-8"
+                return HttpResult(
+                    url=url,
+                    status_code=200,
+                    headers=headers,
+                    body=b"User-agent: *\nCrawl-delay: 7\nAllow: /\n",
+                )
+
+        policy = RobotsPolicy(  # type: ignore[arg-type]
+            FixtureClient(), "KADCollector/0.1", crawl_delay_policy="observe"
+        )
+        url = "https://provas.example.gov.br/publico/prova.pdf"
+        self.assertTrue(policy.can_fetch(url, ["provas.example.gov.br"]))
+        self.assertIsNone(policy.crawl_delay(url))
+        self.assertTrue(any("7s observado" in item for item in policy.observations))
+
 
 if __name__ == "__main__":
     unittest.main()

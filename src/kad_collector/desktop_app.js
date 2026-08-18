@@ -160,6 +160,8 @@ function selectSource(sourceId, {resetUrl = true} = {}) {
   if (resetUrl) {
     byId('source-url').value = source.defaultUrl;
     byId('source-browser-enabled').checked = Boolean(source.engine?.browserAvailable);
+    byId('source-robots-policy').value = source.engine?.robotsPolicy || 'enforce';
+    byId('source-crawl-delay-policy').value = source.engine?.crawlDelayPolicy || 'enforce';
   }
   const details = byId('source-details');
   details.replaceChildren();
@@ -500,6 +502,8 @@ async function submitSourceCollection(event) {
         browserEnabled: byId('source-browser-enabled').checked,
         maxConcurrency: Number(byId('source-max-concurrency').value),
         requestIntervalSeconds: Number(byId('source-request-interval').value),
+        robotsPolicy: byId('source-robots-policy').value,
+        crawlDelayPolicy: byId('source-crawl-delay-policy').value,
       }),
     });
     toast(`Coleta ${result.collectionId.slice(0, 8)} iniciada. A janela pode continuar sendo usada.`);
@@ -521,6 +525,13 @@ function applyCapacityProfile() {
   };
   if (presets[profile]) {
     [concurrency.value, interval.value] = presets[profile];
+  }
+  if (profile === 'high_performance') {
+    byId('source-robots-policy').value = 'ignore';
+    byId('source-crawl-delay-policy').value = 'ignore';
+  } else if (profile !== 'custom') {
+    byId('source-robots-policy').value = 'enforce';
+    byId('source-crawl-delay-policy').value = 'enforce';
   }
   const editable = profile === 'custom';
   concurrency.readOnly = !editable;

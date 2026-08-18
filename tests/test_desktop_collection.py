@@ -42,9 +42,13 @@ class DesktopCollectionTests(unittest.TestCase):
         self.assertIn('id="source-form"', html)
         self.assertIn('id="source-capacity-profile"', html)
         self.assertIn('id="source-browser-enabled"', html)
+        self.assertIn('id="source-robots-policy"', html)
+        self.assertIn('id="source-crawl-delay-policy"', html)
         self.assertIn("/api/collections", javascript)
         self.assertIn("capacityProfile", javascript)
         self.assertIn("collectionAction", javascript)
+        self.assertIn("robotsPolicy", javascript)
+        self.assertIn("crawlDelayPolicy", javascript)
 
     def test_collection_downloads_then_creates_local_processing_job(self) -> None:
         pdf_path = self.root / "fgv_conhecimento-exam-fixture.pdf"
