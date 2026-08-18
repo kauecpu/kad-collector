@@ -494,6 +494,28 @@ class DesktopReviewAndFilterTests(unittest.TestCase):
         self.assertIn("duplicate", self.store.question(second_id)["flags"])
         self.assertEqual(self.store.query(DesktopFilterSet())["total"], 2)
 
+    def test_summary_separates_official_answers_from_editorial_status(self) -> None:
+        matched = valid_question(
+            1, "Questão com alternativa oficialmente relacionada ao gabarito."
+        )
+        annulled = valid_question(
+            2, "Questão oficialmente anulada no documento de gabarito."
+        ).model_copy(update={"answer_status": "annulled", "correct_answer": None})
+        missing = valid_question(
+            3, "Questão ainda sem resposta localizada no gabarito oficial."
+        ).model_copy(update={"answer_status": "missing", "correct_answer": None})
+        for question in (matched, annulled, missing):
+            self.store.save_question(self.document["id"], question, full_classification())
+
+        summary = self.store.query(DesktopFilterSet())["summary"]
+
+        self.assertEqual(summary["answer_matched"], 1)
+        self.assertEqual(summary["answer_annulled"], 1)
+        self.assertEqual(summary["answer_official"], 2)
+        self.assertEqual(summary["answer_missing"], 1)
+        self.assertEqual(summary["pending"], 1)
+        self.assertEqual(summary["exception"], 2)
+
     def test_human_review_exports_only_valid_approved_selection(self) -> None:
         question_id = self.store.save_question(
             self.document["id"], valid_question(1), full_classification()
@@ -697,6 +719,8 @@ class DesktopSmokeTests(unittest.TestCase):
 
         for control_id in (
             "metric-card-pending",
+            "metric-answer-summary",
+            "metric-missing-answers",
             "batch-toolbar",
             "batch-approve-dialog",
             "defer-question",
@@ -705,6 +729,8 @@ class DesktopSmokeTests(unittest.TestCase):
             self.assertIn(f'id="{control_id}"', html)
         self.assertIn("/api/questions/batch-approve", javascript)
         self.assertIn("activateEditorialQueue('pending')", javascript)
+        self.assertIn("vinculadas ao gabarito", html)
+        self.assertIn("Resposta oficial (gabarito)", html)
 
     def test_packaged_resources_and_database_bootstrap(self) -> None:
         with TemporaryDirectory() as directory:

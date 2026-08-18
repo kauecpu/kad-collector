@@ -38,7 +38,7 @@
           <div>
             <p class="eyebrow">CENTRAL EDITORIAL</p>
             <h1>Transforme PDFs em conteúdo revisável.</h1>
-            <p class="header-copy">Extração, classificação e auditoria em um fluxo seguro.</p>
+            <p class="header-copy">Extração, relação com o gabarito oficial, classificação e auditoria em um fluxo seguro.</p>
           </div>
           <div class="header-actions">
             <button id="export-open" class="button ghost" type="button">Exportar filtro</button>
@@ -50,18 +50,18 @@
           <article class="metric-card signature">
             <span class="metric-label">QUESTÕES</span>
             <strong id="metric-total">0</strong>
-            <small>no acervo local</small>
+            <small id="metric-answer-summary">0 vinculadas ao gabarito · 0 sem resposta oficial</small>
           </article>
-          <button id="metric-card-pending" class="metric-card metric-action" type="button" aria-label="Abrir fila de questões pendentes">
-            <span class="metric-label">PENDENTES</span>
+          <button id="metric-card-pending" class="metric-card metric-action" type="button" aria-label="Abrir fila de revisão editorial">
+            <span class="metric-label">REVISÃO EDITORIAL</span>
             <strong id="metric-pending">0</strong>
-            <small>aguardando revisão</small>
+            <small>aguardando conferência humana</small>
             <span class="metric-cue">Revisar fila →</span>
           </button>
           <button id="metric-card-exceptions" class="metric-card metric-action" type="button" aria-label="Abrir questões em exceção">
             <span class="metric-label">EXCEÇÕES</span>
             <strong id="metric-exceptions">0</strong>
-            <small>precisam de decisão</small>
+            <small id="metric-missing-answers">0 sem resposta oficial</small>
             <span class="metric-cue">Ver motivos →</span>
           </button>
           <button id="metric-card-exportable" class="metric-card metric-action ready" type="button" aria-label="Abrir questões exportáveis">
@@ -307,10 +307,10 @@
               <label>Estado do gabarito
                 <select id="edit-answer-status"><option value="missing">Ausente</option><option value="matched">Relacionado</option><option value="annulled">Anulada</option></select>
               </label>
-              <label>Resposta correta<select id="edit-correct-answer"></select></label>
+              <label>Resposta oficial (gabarito)<select id="edit-correct-answer"></select></label>
               <label>Páginas<input id="edit-source-pages" placeholder="1, 2"></label>
             </div>
-            <label>Explicação<textarea id="edit-explanation" rows="5" placeholder="Obrigatória para exportar"></textarea></label>
+            <label>Explicação editorial<textarea id="edit-explanation" rows="5" placeholder="Não define a resposta; é obrigatória apenas para exportar"></textarea></label>
           </section>
           <aside class="review-side">
             <h3>Classificação</h3>
