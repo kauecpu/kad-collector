@@ -714,15 +714,16 @@ class DesktopStore:
     def decide_question(
         self,
         question_id: str,
-        status: Literal["approved", "rejected", "exception"],
+        status: Literal["pending", "approved", "rejected", "exception"],
         *,
         actor: str,
         notes: str | None,
     ) -> None:
         if not actor.strip():
             raise ValueError("informe o revisor")
-        if status == "rejected" and not (notes or "").strip():
-            raise ValueError("uma rejeicao exige justificativa")
+        if status in {"rejected", "exception"} and not (notes or "").strip():
+            action = "excecao" if status == "exception" else "rejeicao"
+            raise ValueError(f"uma {action} exige justificativa")
         before = self.question(question_id)
         question = QuestionRecord.model_validate(before["question"])
         if status == "approved":
@@ -739,8 +740,73 @@ class DesktopStore:
                 """,
                 (status, actor.strip(), notes, _now(), question_id),
             )
-            self._audit(connection, question_id, status, actor, before, None, notes)
+            action = "deferred" if status == "pending" else status
+            self._audit(
+                connection,
+                question_id,
+                action,
+                actor,
+                before,
+                {"status": status},
+                notes,
+            )
             connection.commit()
+
+    def approve_questions(
+        self,
+        question_ids: list[str],
+        *,
+        actor: str,
+        notes: str | None = None,
+    ) -> int:
+        reviewer = actor.strip()
+        if not reviewer:
+            raise ValueError("informe o revisor")
+        normalized_ids = list(dict.fromkeys(question_ids))
+        if not normalized_ids:
+            raise ValueError("selecione ao menos uma questao")
+        if len(normalized_ids) > 1_000:
+            raise ValueError("a aprovacao em lote aceita no maximo 1000 questoes")
+
+        before_views = [self.question(question_id) for question_id in normalized_ids]
+        invalid: list[str] = []
+        for before in before_views:
+            if before["status"] != "pending":
+                invalid.append(f"questao {before['question']['number']}: nao esta pendente")
+                continue
+            question = QuestionRecord.model_validate(before["question"])
+            errors = validate_editorial_question(question)
+            if "duplicate" in before["flags"]:
+                errors.append(f"questao {question.number}: duplicata nao resolvida")
+            invalid.extend(errors)
+        if invalid:
+            raise ValueError("lote nao exportavel: " + "; ".join(invalid[:20]))
+
+        now = _now()
+        with closing(self._connect()) as connection:
+            for before in before_views:
+                question_id = cast(str, before["id"])
+                cursor = connection.execute(
+                    """
+                    UPDATE questions SET status = 'approved', reviewer = ?, review_notes = ?,
+                        updated_at = ?, exported_at = NULL
+                    WHERE id = ? AND status = 'pending'
+                    """,
+                    (reviewer, notes, now, question_id),
+                )
+                if cursor.rowcount != 1:
+                    raise RuntimeError("a fila mudou durante a aprovacao; tente novamente")
+                self._audit(
+                    connection,
+                    question_id,
+                    "approved",
+                    reviewer,
+                    before,
+                    {"status": "approved"},
+                    notes,
+                )
+            connection.commit()
+        return len(before_views)
 
     @staticmethod
     def _audit(
@@ -847,6 +913,8 @@ class DesktopStore:
     @staticmethod
     def _summary(views: list[dict[str, Any]]) -> dict[str, int]:
         counts = Counter(cast(str, view["status"]) for view in views)
+        for status in ("pending", "approved", "rejected", "exception", "exported"):
+            counts.setdefault(status, 0)
         counts["exportable"] = sum(bool(view["exportable"]) for view in views)
         counts["total"] = len(views)
         return dict(counts)
@@ -866,6 +934,7 @@ class DesktopStore:
             "boards": (question.get("board") or metadata.get("board"), filters.boards),
             "years": (question.get("year") or metadata.get("year"), filters.years),
             "roles": (question.get("role") or metadata.get("role"), filters.roles),
+            "variants": (metadata.get("variant"), filters.variants),
             "levels": (question.get("level") or metadata.get("level"), filters.levels),
             "disciplines": (
                 question.get("discipline") or metadata.get("discipline"),
@@ -930,6 +999,7 @@ class DesktopStore:
             "boards": lambda view: view["question"].get("board") or view["metadata"].get("board"),
             "years": lambda view: view["question"].get("year") or view["metadata"].get("year"),
             "roles": lambda view: view["question"].get("role") or view["metadata"].get("role"),
+            "variants": lambda view: view["metadata"].get("variant"),
             "levels": lambda view: view["question"].get("level") or view["metadata"].get("level"),
             "disciplines": lambda view: (
                 view["question"].get("discipline") or view["metadata"].get("discipline")

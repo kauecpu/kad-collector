@@ -5,6 +5,7 @@ import threading
 import unittest
 from datetime import UTC, datetime
 from http import HTTPStatus
+from importlib import resources
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -518,6 +519,124 @@ class DesktopReviewAndFilterTests(unittest.TestCase):
         self.assertEqual(self.store.question(question_id)["status"], "exported")
         self.assertTrue((result.directory / "fontes").is_dir())
 
+    def test_batch_approval_is_atomic_audited_and_persistent(self) -> None:
+        first_id = self.store.save_question(
+            self.document["id"],
+            valid_question(1, "Primeira questão completa selecionada para revisão em lote."),
+            full_classification(),
+        )
+        second_id = self.store.save_question(
+            self.document["id"],
+            valid_question(2, "Segunda questão completa selecionada para revisão em lote."),
+            full_classification(),
+        )
+
+        approved = self.store.approve_questions(
+            [first_id, second_id], actor="revisora", notes="Lote conferido no PDF."
+        )
+
+        self.assertEqual(approved, 2)
+        self.assertEqual(self.store.query(DesktopFilterSet())["summary"]["pending"], 0)
+        self.assertEqual(self.store.query(DesktopFilterSet())["summary"]["exportable"], 2)
+        audit = self.store.audit_log(first_id)[0]
+        self.assertEqual(audit["action"], "approved")
+        self.assertEqual(audit["notes"], "Lote conferido no PDF.")
+        self.assertIsNotNone(audit["before_json"])
+        self.assertIsNotNone(audit["after_json"])
+
+        reopened = DesktopStore(self.root / "collector.sqlite3")
+        self.assertEqual(reopened.question(first_id)["status"], "approved")
+        self.assertEqual(reopened.question(second_id)["status"], "approved")
+
+    def test_batch_approval_changes_nothing_when_one_question_is_invalid(self) -> None:
+        valid_id = self.store.save_question(
+            self.document["id"], valid_question(1), full_classification()
+        )
+        invalid = valid_question(2).model_copy(
+            update={"explanation": None, "difficulty": None}
+        )
+        invalid_id = self.store.save_question(
+            self.document["id"], invalid, full_classification()
+        )
+
+        with self.assertRaisesRegex(ValueError, "lote nao exportavel"):
+            self.store.approve_questions(
+                [valid_id, invalid_id], actor="revisora", notes=None
+            )
+
+        self.assertEqual(self.store.question(valid_id)["status"], "pending")
+        self.assertNotEqual(self.store.question(invalid_id)["status"], "approved")
+
+    def test_edit_before_approval_persists_human_content(self) -> None:
+        question_id = self.store.save_question(
+            self.document["id"], valid_question(1), full_classification()
+        )
+        edited = valid_question(
+            1, "Depois da revisão humana, este é o enunciado editorial definitivo."
+        )
+
+        self.store.update_question(
+            question_id,
+            edited,
+            full_classification(),
+            actor="revisora",
+            notes="Enunciado corrigido.",
+        )
+        self.store.decide_question(
+            question_id, "approved", actor="revisora", notes="Conferida no PDF."
+        )
+
+        stored = self.store.question(question_id)
+        self.assertEqual(stored["question"]["statement"], edited.statement)
+        self.assertEqual(stored["status"], "approved")
+        self.assertEqual(
+            [event["action"] for event in self.store.audit_log(question_id)[:2]],
+            ["approved", "updated"],
+        )
+
+    def test_exception_requires_reason_and_defer_keeps_question_pending(self) -> None:
+        question_id = self.store.save_question(
+            self.document["id"], valid_question(1), full_classification()
+        )
+
+        with self.assertRaisesRegex(ValueError, "excecao exige justificativa"):
+            self.store.decide_question(
+                question_id, "exception", actor="revisora", notes=""
+            )
+        self.assertEqual(self.store.question(question_id)["status"], "pending")
+
+        self.store.decide_question(
+            question_id,
+            "pending",
+            actor="revisora",
+            notes="Revisar a diagramação depois.",
+        )
+        deferred = self.store.question(question_id)
+        self.assertEqual(deferred["status"], "pending")
+        self.assertEqual(self.store.audit_log(question_id)[0]["action"], "deferred")
+
+        self.store.decide_question(
+            question_id,
+            "exception",
+            actor="revisora",
+            notes="Alternativa ilegível na página de origem.",
+        )
+        exception = self.store.question(question_id)
+        self.assertEqual(exception["status"], "exception")
+        self.assertEqual(exception["review_notes"], "Alternativa ilegível na página de origem.")
+
+    def test_variant_and_document_filters_are_available(self) -> None:
+        variant = metadata(variant="Tipo 2")
+        self.store.update_document_metadata(self.document["id"], variant, actor="revisora")
+        self.store.save_question(self.document["id"], valid_question(1), full_classification())
+
+        selected = self.store.query(
+            DesktopFilterSet(variants=["Tipo 2"], source_files=["prova.pdf"])
+        )
+
+        self.assertEqual(selected["total"], 1)
+        self.assertEqual(selected["facets"]["variants"][0]["value"], "Tipo 2")
+
     def test_reprocessing_changed_content_invalidates_editorial_decision(self) -> None:
         original = valid_question(1)
         question_id = self.store.save_question(
@@ -571,6 +690,22 @@ class DesktopReviewAndFilterTests(unittest.TestCase):
 
 
 class DesktopSmokeTests(unittest.TestCase):
+    def test_packaged_editorial_ui_contains_pending_and_batch_review_controls(self) -> None:
+        package = resources.files("kad_collector")
+        html = package.joinpath("desktop_ui.html").read_text(encoding="utf-8")
+        javascript = package.joinpath("desktop_app.js").read_text(encoding="utf-8")
+
+        for control_id in (
+            "metric-card-pending",
+            "batch-toolbar",
+            "batch-approve-dialog",
+            "defer-question",
+            "review-context",
+        ):
+            self.assertIn(f'id="{control_id}"', html)
+        self.assertIn("/api/questions/batch-approve", javascript)
+        self.assertIn("activateEditorialQueue('pending')", javascript)
+
     def test_packaged_resources_and_database_bootstrap(self) -> None:
         with TemporaryDirectory() as directory:
             application = DesktopApplication(Path(directory))
@@ -655,6 +790,50 @@ class DesktopSmokeTests(unittest.TestCase):
                 )
                 with urlopen(authorized, timeout=3) as response:
                     self.assertEqual(response.status, HTTPStatus.OK)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
+    def test_local_server_batch_approval_updates_bootstrap_counters(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "prova.pdf"
+            write_text_pdf(pdf_path, [["Documento oficial para revisão."]])
+            application = DesktopApplication(root / "data")
+            job_id = application.store.create_job([pdf_path], metadata(), "local")
+            document = application.store.documents_for_job(job_id)[0]
+            question_ids = [
+                application.store.save_question(
+                    document["id"],
+                    valid_question(
+                        number,
+                        f"Questão completa número {number} para aprovação pela API local.",
+                    ),
+                    full_classification(),
+                )
+                for number in (1, 2)
+            ]
+            server, thread, url = start_desktop_server(application)
+            try:
+                origin = url.rstrip("/")
+                request = Request(
+                    f"{url}api/questions/batch-approve",
+                    data=json.dumps(
+                        {"questionIds": question_ids, "actor": "revisora", "notes": None}
+                    ).encode("utf-8"),
+                    method="POST",
+                    headers={
+                        "Content-Type": "application/json",
+                        "Origin": origin,
+                        "X-KAD-Desktop-Token": application.token,
+                    },
+                )
+                with urlopen(request, timeout=3) as response:
+                    self.assertEqual(json.loads(response.read())["approved"], 2)
+                summary = application.bootstrap()["summary"]
+                self.assertEqual(summary["pending"], 0)
+                self.assertEqual(summary["exportable"], 2)
             finally:
                 server.shutdown()
                 server.server_close()

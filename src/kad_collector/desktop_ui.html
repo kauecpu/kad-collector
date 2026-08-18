@@ -52,21 +52,24 @@
             <strong id="metric-total">0</strong>
             <small>no acervo local</small>
           </article>
-          <article class="metric-card">
+          <button id="metric-card-pending" class="metric-card metric-action" type="button" aria-label="Abrir fila de questões pendentes">
             <span class="metric-label">PENDENTES</span>
             <strong id="metric-pending">0</strong>
             <small>aguardando revisão</small>
-          </article>
-          <article class="metric-card">
+            <span class="metric-cue">Revisar fila →</span>
+          </button>
+          <button id="metric-card-exceptions" class="metric-card metric-action" type="button" aria-label="Abrir questões em exceção">
             <span class="metric-label">EXCEÇÕES</span>
             <strong id="metric-exceptions">0</strong>
             <small>precisam de decisão</small>
-          </article>
-          <article class="metric-card ready">
+            <span class="metric-cue">Ver motivos →</span>
+          </button>
+          <button id="metric-card-exportable" class="metric-card metric-action ready" type="button" aria-label="Abrir questões exportáveis">
             <span class="metric-label">EXPORTÁVEIS</span>
             <strong id="metric-exportable">0</strong>
             <small>prontas para o painel</small>
-          </article>
+            <span class="metric-cue">Ver aprovadas →</span>
+          </button>
         </section>
 
         <section id="job-strip" class="job-strip" aria-label="Processamentos recentes"></section>
@@ -93,7 +96,7 @@
           <section class="records-panel">
             <header class="records-toolbar">
               <div>
-                <p class="eyebrow">QUESTÕES ENCONTRADAS</p>
+                <p id="records-kicker" class="eyebrow">QUESTÕES ENCONTRADAS</p>
                 <h2><span id="result-count">0</span> itens no recorte</h2>
               </div>
               <label class="search-field records-search">
@@ -102,8 +105,19 @@
               </label>
             </header>
             <div id="active-filters" class="active-filters" aria-label="Filtros ativos"></div>
+            <div id="batch-toolbar" class="batch-toolbar" hidden>
+              <label class="batch-select-all">
+                <input id="select-all-pending" type="checkbox">
+                <span>Selecionar todas deste recorte</span>
+              </label>
+              <span id="selection-summary" aria-live="polite">0 selecionadas</span>
+              <div>
+                <button id="clear-selection" class="text-button" type="button">Limpar seleção</button>
+                <button id="batch-approve-open" class="button success" type="button" disabled>Aprovar selecionadas</button>
+              </div>
+            </div>
             <div class="table-head" aria-hidden="true">
-              <span>Questão</span><span>Classificação</span><span>Confiança</span><span>Situação</span>
+              <span></span><span>Questão</span><span>Classificação</span><span>Confiança</span><span>Situação</span>
             </div>
             <div id="question-list" class="question-list" aria-live="polite"></div>
           </section>
@@ -283,6 +297,7 @@
           </div>
         </header>
         <div id="review-flags" class="review-flags"></div>
+        <div id="review-context" class="review-context" aria-label="Contexto da questão"></div>
         <div class="review-layout">
           <section class="review-main">
             <label>Enunciado<textarea id="edit-statement" rows="7" required></textarea></label>
@@ -307,6 +322,7 @@
               <label>Concurso<input id="edit-concurso"></label>
               <label>Ano<input id="edit-year" type="number" min="1900" max="2100"></label>
               <label>Cargo<input id="edit-role"></label>
+              <label>Variante<input id="edit-variant"></label>
               <label>Instituição<input id="edit-organization"></label>
               <label>Nível<select id="edit-level"><option value="">—</option><option>Fundamental</option><option>Médio</option><option>Superior</option></select></label>
               <label>Dificuldade<select id="edit-difficulty"><option value="">—</option><option>Fácil</option><option>Média</option><option>Difícil</option></select></label>
@@ -316,17 +332,35 @@
             <label>URL HTTPS<input id="edit-source-url" type="url"></label>
             <label>Observações<textarea id="edit-review-notes" rows="4"></textarea></label>
             <label>Revisor<input id="edit-actor" placeholder="Nome ou identificador"></label>
-            <label>Justificativa<textarea id="edit-decision-notes" rows="3" placeholder="Obrigatória para rejeitar"></textarea></label>
+            <label>Justificativa<textarea id="edit-decision-notes" rows="3" placeholder="Obrigatória para exceção ou rejeição"></textarea></label>
           </aside>
         </div>
         <footer class="modal-footer decision-footer">
           <span id="review-status-copy"></span>
           <div>
-            <button id="mark-exception" class="button ghost warning" type="button">Marcar exceção</button>
+            <button id="defer-question" class="button ghost" type="button">Ignorar por enquanto</button>
+            <button id="mark-exception" class="button ghost warning" type="button">Enviar para Exceções</button>
             <button id="reject-question" class="button danger" type="button">Rejeitar</button>
             <button id="save-question" class="button ghost" type="button">Salvar</button>
             <button id="approve-question" class="button success" type="button">Aprovar</button>
           </div>
+        </footer>
+      </form>
+    </dialog>
+
+    <dialog id="batch-approve-dialog" class="modal compact-modal">
+      <form id="batch-approve-form">
+        <header class="modal-header">
+          <div><p class="eyebrow">APROVAÇÃO EM LOTE</p><h2>Confirmar revisão</h2></div>
+          <button class="icon-button modal-close" type="button" aria-label="Fechar">×</button>
+        </header>
+        <p id="batch-confirm-copy" class="modal-copy"></p>
+        <label>Revisor responsável<input id="batch-actor" required autocomplete="name"></label>
+        <label>Observação opcional<textarea id="batch-notes" rows="3" placeholder="Contexto desta aprovação"></textarea></label>
+        <p class="batch-warning">Somente questões completas serão aprovadas. Se uma delas ainda tiver bloqueios, nenhuma questão do lote será alterada.</p>
+        <footer class="modal-footer">
+          <button class="button ghost modal-close" type="button">Cancelar</button>
+          <button id="batch-approve-submit" class="button success" type="submit">Confirmar aprovação</button>
         </footer>
       </form>
     </dialog>
