@@ -15,6 +15,10 @@ conditional_cache = true
 resume_downloads = true
 disk_quota_bytes = 5000000000
 
+# Decisao administrativa explicita do responsavel em 2026-08-18: as fontes
+# oficiais ignoram robots.txt e Crawl-delay. A politica efetiva permanece
+# registrada no manifesto, nos avisos e na telemetria de cada execucao.
+
 # Acervo publico da Fundacao Universitaria para o Vestibular (FUVEST/USP).
 # Os dois anos sao paginas HTML estaticas e cada PDF permanece atribuido a origem.
 [[sources]]
@@ -26,6 +30,8 @@ start_urls = [
   "https://www.fuvest.br/acervo-vestibular-2025/",
 ]
 allowed_hosts = ["www.fuvest.br"]
+robots_policy = "ignore"
+crawl_delay_policy = "ignore"
 include_patterns = [
   "(?i)(?:fuvest2026-fase1-(?:prova-v[1-4]|gabarito)|fuvest2025_(?:primeira_fase_prova_v[1-4]|gabarito_primeira_fase))\\.pdf(?:$|[?#])",
 ]
@@ -56,6 +62,8 @@ start_urls = [
   "https://vestibularunificado2026.ufsc.br/provas-e-gabaritos-definitivos/",
 ]
 allowed_hosts = ["vestibularunificado2026.ufsc.br"]
+robots_policy = "ignore"
+crawl_delay_policy = "ignore"
 include_patterns = ["(?i)\\.pdf(?:$|[?#])"]
 exclude_patterns = ["(?i)(edital|comunicado|resultado|lista)"]
 exam_patterns = ["(?i)(prova|caderno)"]
@@ -81,6 +89,8 @@ name = "FGV Conhecimento - Concursos"
 enabled = true
 start_urls = ["https://conhecimento.fgv.br/concursos"]
 allowed_hosts = ["conhecimento.fgv.br"]
+robots_policy = "ignore"
+crawl_delay_policy = "ignore"
 include_patterns = [
   "(?is)(?:prova|caderno|quest(?:ao|oes)|gabarito|padrao.?de.?resposta|respostas?.?esperadas?|tipo[-_ ]?[1-5]).*\\.pdf(?:$|[?#])",
 ]
@@ -111,6 +121,8 @@ start_urls = [
   "https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/enem/provas-e-gabaritos",
 ]
 allowed_hosts = ["www.gov.br", "download.inep.gov.br"]
+robots_policy = "ignore"
+crawl_delay_policy = "ignore"
 include_patterns = ["(?i)\\.pdf(?:$|[?#])"]
 exclude_patterns = ["(?i)(edital|manual|cartilha|relatorio|matriz|resultado)"]
 exam_patterns = ["(?i)(prova|caderno)"]
@@ -134,6 +146,8 @@ start_urls = [
   "https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/enade/provas-e-gabaritos",
 ]
 allowed_hosts = ["www.gov.br", "download.inep.gov.br"]
+robots_policy = "ignore"
+crawl_delay_policy = "ignore"
 include_patterns = ["(?i)\\.pdf(?:$|[?#])"]
 exclude_patterns = ["(?i)(edital|manual|questionario|relatorio|portaria|resultado)"]
 exam_patterns = ["(?i)(prova|caderno)"]
@@ -157,6 +171,8 @@ start_urls = [
   "https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/encceja/provas-e-gabaritos",
 ]
 allowed_hosts = ["www.gov.br", "download.inep.gov.br"]
+robots_policy = "ignore"
+crawl_delay_policy = "ignore"
 include_patterns = ["(?i)\\.pdf(?:$|[?#])"]
 exclude_patterns = ["(?i)(edital|manual|cartilha|relatorio|matriz|resultado)"]
 exam_patterns = ["(?i)(prova|caderno)"]
@@ -180,6 +196,8 @@ start_urls = [
   "https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/revalida/provas-e-gabaritos",
 ]
 allowed_hosts = ["www.gov.br", "download.inep.gov.br"]
+robots_policy = "ignore"
+crawl_delay_policy = "ignore"
 include_patterns = ["(?i)\\.pdf(?:$|[?#])"]
 exclude_patterns = ["(?i)(edital|manual|cartilha|relatorio|portaria|resultado)"]
 exam_patterns = ["(?i)(prova|caderno)"]
@@ -207,6 +225,8 @@ start_urls = [
   "https://www.comvest.unicamp.br/vestibulares-anteriores/1a-fase-2a-fase-comentadas/",
 ]
 allowed_hosts = ["www.comvest.unicamp.br"]
+robots_policy = "ignore"
+crawl_delay_policy = "ignore"
 include_patterns = ["(?i)\\.pdf(?:$|[?#])"]
 exclude_patterns = [
   "(?i)(edital|manual|estatistica|relatorio|perfil|demanda|nota.?de.?corte|programa)",
@@ -256,6 +276,8 @@ start_urls = [
   "https://www.obmep.org.br/provas-2005.htm",
 ]
 allowed_hosts = ["www.obmep.org.br", "drive.google.com"]
+robots_policy = "ignore"
+crawl_delay_policy = "ignore"
 include_patterns = ["(?i)^https://drive\\.google\\.com/file/d/[a-z0-9_-]+/view"]
 exclude_patterns = []
 exam_patterns = ["(?i)prova"]
@@ -281,6 +303,8 @@ start_urls = [
   "https://sistema.vestibular.uerj.br/portal_vestibular_uerj/busca_rapida/provas_e_gabaritos.html",
 ]
 allowed_hosts = ["sistema.vestibular.uerj.br"]
+robots_policy = "ignore"
+crawl_delay_policy = "ignore"
 include_patterns = ["(?i)\\.pdf(?:$|[?#])"]
 exclude_patterns = ["(?i)(edital|manual|resultado|classificacao|calendario)"]
 exam_patterns = ["(?i)(prova|exame)"]

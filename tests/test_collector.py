@@ -273,6 +273,8 @@ class SecurityTests(unittest.TestCase):
             },
         )
         self.assertTrue(all(source.enabled for source in config.sources))
+        self.assertTrue(all(source.robots_policy == "ignore" for source in config.sources))
+        self.assertTrue(all(source.crawl_delay_policy == "ignore" for source in config.sources))
         obmep = next(source for source in config.sources if source.id == "obmep_referencias")
         self.assertEqual(obmep.access_mode, "reference_only")
         fuvest = next(source for source in config.sources if source.id == "fuvest_vestibular")

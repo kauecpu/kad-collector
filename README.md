@@ -218,9 +218,13 @@ TLS, quotas, limites de descompressao e cancelamento continuam ativos. `robots.t
 
 Cada fonte aceita `enforce`, `observe` ou `ignore`. `enforce` consulta e aplica a regra;
 `observe` consulta e registra o que teria sido bloqueado sem interromper a coleta; `ignore`
-nao consulta o arquivo nem aplica o atraso. O padrao distribuido continua sendo `enforce`, e
-a tela mostra a escolha antes de iniciar. Nenhum desses modos autoriza atravessar login,
-CAPTCHA, autenticacao ou um bloqueio explicito do servidor.
+nao consulta o arquivo nem aplica o atraso. O modelo e as fontes de exemplo continuam usando
+`enforce` como padrao seguro. Por decisao administrativa explicita do responsavel em
+2026-08-18, todas as fontes do manifesto oficial usam `ignore` tanto para `robots.txt` quanto
+para `Crawl-delay`; a escolha aparece na tela e fica registrada por fonte no manifesto, nos
+avisos e na telemetria. Os intervalos, a concorrencia e os demais limites internos continuam
+independentes dessas duas politicas. Nenhum desses modos autoriza atravessar login, CAPTCHA,
+autenticacao ou um bloqueio explicito do servidor.
 
 ### Estrategias de descoberta
 

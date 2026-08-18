@@ -526,13 +526,6 @@ function applyCapacityProfile() {
   if (presets[profile]) {
     [concurrency.value, interval.value] = presets[profile];
   }
-  if (profile === 'high_performance') {
-    byId('source-robots-policy').value = 'ignore';
-    byId('source-crawl-delay-policy').value = 'ignore';
-  } else if (profile !== 'custom') {
-    byId('source-robots-policy').value = 'enforce';
-    byId('source-crawl-delay-policy').value = 'enforce';
-  }
   const editable = profile === 'custom';
   concurrency.readOnly = !editable;
   interval.readOnly = !editable;
