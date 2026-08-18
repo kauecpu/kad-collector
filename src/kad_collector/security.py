@@ -22,14 +22,27 @@ class FetchError(RuntimeError):
         self.status_code = status_code
 
 
-def validate_public_url(
-    url: str, allowed_hosts: list[str], *, resolve_dns: bool = True
-) -> str:
+def host_matches_allowlist(host: str, allowed_hosts: list[str]) -> bool:
+    """Match an exact host or an explicit ``*.example.org`` subdomain pattern."""
+
+    normalized = host.lower().rstrip(".")
+    for allowed in allowed_hosts:
+        candidate = allowed.lower().rstrip(".")
+        if candidate.startswith("*."):
+            suffix = candidate[1:]
+            if normalized.endswith(suffix) and normalized != candidate[2:]:
+                return True
+        elif normalized == candidate:
+            return True
+    return False
+
+
+def validate_public_url(url: str, allowed_hosts: list[str], *, resolve_dns: bool = True) -> str:
     parsed = urlsplit(url)
     host = (parsed.hostname or "").lower().rstrip(".")
     if parsed.scheme not in {"http", "https"}:
         raise UnsafeUrlError(f"esquema nao permitido: {url}")
-    if not host or host not in allowed_hosts:
+    if not host or not host_matches_allowlist(host, allowed_hosts):
         raise UnsafeUrlError(f"host nao permitido: {host or url}")
     if parsed.username or parsed.password:
         raise UnsafeUrlError("credenciais embutidas na URL nao sao permitidas")

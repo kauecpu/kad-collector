@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, TypeVar
+from typing import Any, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -15,11 +15,36 @@ class StrictModel(BaseModel):
 class CollectorSettings(StrictModel):
     data_dir: str = "data"
     user_agent: str = "KADCollector/0.1"
-    request_interval_seconds: float = Field(default=3.0, ge=1.0)
+    capacity_profile: Literal["conservative", "balanced", "high_performance", "custom"] = "balanced"
+    request_interval_seconds: float = Field(default=3.0, ge=0.0)
     timeout_seconds: float = Field(default=30.0, ge=1.0, le=120.0)
-    max_files_per_source: int = Field(default=20, ge=1, le=500)
+    connect_timeout_seconds: float = Field(default=10.0, ge=1.0, le=120.0)
+    max_files_per_source: int | None = Field(default=20, ge=1, le=10_000)
     max_html_bytes: int = Field(default=5_000_000, ge=1_024)
     max_pdf_bytes: int = Field(default=50_000_000, ge=1_024)
+    max_concurrency: int = Field(default=4, ge=1, le=32)
+    max_retries: int = Field(default=4, ge=0, le=10)
+    retry_max_delay_seconds: float = Field(default=120.0, ge=0.1, le=3_600.0)
+    conditional_cache: bool = True
+    resume_downloads: bool = True
+    disk_quota_bytes: int | None = Field(default=5_000_000_000, ge=1_000_000)
+
+
+DiscoveryStrategy = Literal["html", "sitemap", "feed", "json", "browser"]
+
+
+def _default_discovery_strategies() -> list[DiscoveryStrategy]:
+    return ["html"]
+
+
+class JsonDiscoveryEndpoint(StrictModel):
+    url: str
+    items_path: str = "items"
+    url_field: str = "url"
+    title_field: str = "title"
+    type_field: str | None = None
+    next_page_field: str | None = None
+    headers: dict[str, str] = Field(default_factory=dict)
 
 
 class CollectionFilters(StrictModel):
@@ -101,7 +126,18 @@ class SourceDefinition(StrictModel):
     exam_patterns: list[str] = Field(default_factory=lambda: [r"(?i)prova|caderno"])
     answer_key_patterns: list[str] = Field(default_factory=lambda: [r"(?i)gabarito"])
     pagination_patterns: list[str] = Field(default_factory=list)
-    max_pages_per_run: int = Field(default=20, ge=1, le=200)
+    max_pages_per_run: int | None = Field(default=20, ge=1, le=10_000)
+    discovery_strategies: list[DiscoveryStrategy] = Field(
+        default_factory=_default_discovery_strategies
+    )
+    sitemap_urls: list[str] = Field(default_factory=list)
+    feed_urls: list[str] = Field(default_factory=list)
+    json_endpoints: list[JsonDiscoveryEndpoint] = Field(default_factory=list)
+    browser_enabled: bool = False
+    max_concurrency: int | None = Field(default=None, ge=1, le=32)
+    request_interval_seconds: float | None = Field(default=None, ge=0.0)
+    robots_policy: Literal["enforce"] = "enforce"
+    crawl_delay_policy: Literal["enforce"] = "enforce"
     access_mode: Literal["content", "reference_only"] = "content"
     authorization_basis: str = ""
     requires_written_authorization: bool = False
@@ -119,8 +155,16 @@ class SourceDefinition(StrictModel):
 
     @model_validator(mode="after")
     def require_authorization_for_enabled_source(self) -> SourceDefinition:
-        if self.pagination_patterns and self.max_pages_per_run < len(self.start_urls):
+        if (
+            self.pagination_patterns
+            and self.max_pages_per_run is not None
+            and self.max_pages_per_run < len(self.start_urls)
+        ):
             raise ValueError("max_pages_per_run nao pode ser menor que start_urls")
+        if not self.discovery_strategies:
+            raise ValueError("discovery_strategies exige pelo menos uma estrategia")
+        if "browser" in self.discovery_strategies and not self.browser_enabled:
+            raise ValueError("a estrategia browser exige browser_enabled=true")
         if self.enabled and not self.authorization_basis.strip():
             raise ValueError("uma fonte habilitada exige authorization_basis")
         if (
@@ -177,6 +221,21 @@ class CollectionFailure(StrictModel):
     retryable: bool = False
 
 
+class CollectionTelemetryEvent(StrictModel):
+    occurred_at: datetime
+    source_id: str
+    url: str
+    strategy: str
+    outcome: str
+    status_code: int | None = None
+    duration_ms: int = Field(default=0, ge=0)
+    bytes_received: int = Field(default=0, ge=0)
+    attempt: int = Field(default=1, ge=1)
+    wait_seconds: float = Field(default=0.0, ge=0.0)
+    cache_status: Literal["disabled", "miss", "hit", "revalidated"] = "disabled"
+    detail: str | None = None
+
+
 class DownloadManifest(StrictModel):
     schema_version: Literal["1.0"] = "1.0"
     created_at: datetime
@@ -187,6 +246,8 @@ class DownloadManifest(StrictModel):
     duplicate_documents: int = Field(default=0, ge=0)
     failures: list[CollectionFailure] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    telemetry: list[CollectionTelemetryEvent] = Field(default_factory=list)
+    collection_policy: dict[str, Any] = Field(default_factory=dict)
 
 
 class ExtractedPage(StrictModel):

@@ -10,7 +10,8 @@ from importlib import resources
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from .collector import collect_documents
+from .collection_state import CollectionStateStore
+from .collector import CollectionPaused, collect_documents
 from .config import ConfigError, load_config_text
 from .desktop_limits import MAX_BATCH_PDFS
 from .desktop_models import DesktopDocumentType, DesktopImportMetadata
@@ -137,6 +138,11 @@ class DesktopCollectionManager:
         self.config = load_desktop_source_config(data_dir)
         self._jobs: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
+        self._controls: dict[str, threading.Event] = {}
+        self._requests: dict[
+            str,
+            tuple[SourceDefinition, str, Literal["local", "openai"], dict[str, Any]],
+        ] = {}
 
     def catalog(self) -> list[dict[str, Any]]:
         catalog: list[dict[str, Any]] = []
@@ -162,6 +168,14 @@ class DesktopCollectionManager:
                         if source.id == "obmep_referencias"
                         else None
                     ),
+                    "engine": {
+                        "strategies": source.discovery_strategies,
+                        "browserAvailable": source.browser_enabled,
+                        "robotsPolicy": source.robots_policy,
+                        "crawlDelayPolicy": source.crawl_delay_policy,
+                        "maxConcurrency": source.max_concurrency,
+                        "requestIntervalSeconds": source.request_interval_seconds,
+                    },
                 }
             )
         return catalog
@@ -170,6 +184,17 @@ class DesktopCollectionManager:
         with self._lock:
             jobs = [dict(job) for job in self._jobs.values()]
         return sorted(jobs, key=lambda item: str(item["createdAt"]), reverse=True)
+
+    def engine_summary(self) -> dict[str, Any]:
+        state = CollectionStateStore(
+            Path(self.config.collector.data_dir) / "collection-engine.sqlite3"
+        )
+        return {
+            "cache": state.cache_summary(),
+            "profiles": ["conservative", "balanced", "high_performance", "custom"],
+            "robotsPolicy": "enforce",
+            "crawlDelayPolicy": "enforce",
+        }
 
     def start(self, payload: dict[str, Any]) -> str:
         source_id = payload.get("sourceId")
@@ -194,6 +219,29 @@ class DesktopCollectionManager:
         except UnsafeUrlError as exc:
             raise ValueError(str(exc)) from exc
 
+        profile = payload.get("capacityProfile", "balanced")
+        if profile not in {"conservative", "balanced", "high_performance", "custom"}:
+            raise ValueError("perfil de capacidade invalido")
+        browser_enabled = payload.get("browserEnabled", False)
+        if not isinstance(browser_enabled, bool):
+            raise ValueError("browserEnabled deve ser booleano")
+        custom_concurrency = payload.get("maxConcurrency")
+        if custom_concurrency is not None and (
+            not isinstance(custom_concurrency, int) or not 1 <= custom_concurrency <= 32
+        ):
+            raise ValueError("maxConcurrency deve estar entre 1 e 32")
+        custom_interval = payload.get("requestIntervalSeconds")
+        if custom_interval is not None and (
+            not isinstance(custom_interval, (int, float)) or not 0 <= custom_interval <= 300
+        ):
+            raise ValueError("requestIntervalSeconds deve estar entre 0 e 300")
+        engine_options = {
+            "capacityProfile": profile,
+            "browserEnabled": browser_enabled,
+            "maxConcurrency": custom_concurrency,
+            "requestIntervalSeconds": custom_interval,
+        }
+
         job_id = str(uuid.uuid4())
         job: dict[str, Any] = {
             "id": job_id,
@@ -217,17 +265,66 @@ class DesktopCollectionManager:
             "failureDetails": [],
             "importJobIds": [],
             "error": None,
+            "capacityProfile": profile,
+            "strategies": [
+                *source.discovery_strategies,
+                *(
+                    ["browser"]
+                    if browser_enabled and "browser" not in source.discovery_strategies
+                    else []
+                ),
+            ],
+            "telemetry": {
+                "requests": 0,
+                "bytes": 0,
+                "retries": 0,
+                "cacheHits": 0,
+            },
         }
         with self._lock:
             self._jobs[job_id] = job
+            self._controls[job_id] = threading.Event()
+            self._requests[job_id] = (
+                source,
+                normalized_url,
+                classifier_provider,
+                engine_options,
+            )
         thread = threading.Thread(
             target=self._run,
-            args=(job_id, source, normalized_url, classifier_provider),
+            args=(job_id, source, normalized_url, classifier_provider, engine_options),
             name=f"kad-collection-{job_id[:8]}",
             daemon=True,
         )
         thread.start()
         return job_id
+
+    def action(self, job_id: str, action: str) -> None:
+        with self._lock:
+            if job_id not in self._jobs:
+                raise ValueError("coleta nao encontrada")
+            job = self._jobs[job_id]
+            control = self._controls[job_id]
+            request = self._requests[job_id]
+            if action in {"pause", "cancel"}:
+                if job["status"] not in {"queued", "running"}:
+                    raise ValueError("esta coleta nao pode ser interrompida neste estado")
+                job["requestedAction"] = action
+                job["status"] = "pausing" if action == "pause" else "cancelling"
+                control.set()
+                return
+            if action != "resume" or job["status"] != "paused":
+                raise ValueError("esta coleta nao pode ser retomada neste estado")
+            control.clear()
+            job["requestedAction"] = None
+            job["status"] = "queued"
+        source, url, classifier, engine_options = request
+        threading.Thread(
+            target=self._run,
+            args=(job_id, source, url, classifier, engine_options),
+            name=f"kad-collection-{job_id[:8]}",
+            daemon=True,
+        ).start()
 
     def _source(self, source_id: str) -> SourceDefinition:
         matches = [source for source in self.config.sources if source.id == source_id]
@@ -288,15 +385,55 @@ class DesktopCollectionManager:
         source: SourceDefinition,
         url: str,
         classifier_provider: Literal["local", "openai"],
+        engine_options: dict[str, Any],
     ) -> None:
         self._update(job_id, status="running")
         try:
-            selected_source = source.model_copy(update={"start_urls": [url]})
+            strategies = list(source.discovery_strategies)
+            if engine_options["browserEnabled"] and "browser" not in strategies:
+                strategies.append("browser")
+            selected_source = source.model_copy(
+                update={
+                    "start_urls": [url],
+                    "browser_enabled": bool(engine_options["browserEnabled"]),
+                    "discovery_strategies": strategies,
+                    "max_concurrency": engine_options.get("maxConcurrency"),
+                    "request_interval_seconds": engine_options.get("requestIntervalSeconds"),
+                }
+            )
+            profile = engine_options["capacityProfile"]
+            profile_updates: dict[str, Any] = {"capacity_profile": profile}
+            if profile == "conservative":
+                profile_updates.update({"max_concurrency": 2, "request_interval_seconds": 3.0})
+            elif profile == "high_performance":
+                profile_updates.update(
+                    {
+                        "max_concurrency": engine_options.get("maxConcurrency") or 8,
+                        "request_interval_seconds": (
+                            engine_options.get("requestIntervalSeconds")
+                            if engine_options.get("requestIntervalSeconds") is not None
+                            else 0.0
+                        ),
+                        "max_files_per_source": None,
+                    }
+                )
+            elif profile == "custom":
+                if engine_options.get("maxConcurrency") is not None:
+                    profile_updates["max_concurrency"] = engine_options["maxConcurrency"]
+                if engine_options.get("requestIntervalSeconds") is not None:
+                    profile_updates["request_interval_seconds"] = engine_options[
+                        "requestIntervalSeconds"
+                    ]
+            run_settings = self.config.collector.model_copy(update=profile_updates)
             run_config = AppConfig(
-                collector=self.config.collector,
+                collector=run_settings,
                 sources=[selected_source],
             )
-            manifest, manifest_path = collect_documents(run_config)
+            manifest, manifest_path = collect_documents(
+                run_config,
+                run_id=job_id,
+                stop_event=self._controls[job_id],
+            )
             paths = [Path(document.local_path).resolve() for document in manifest.documents]
             import_job_ids: list[str] = []
             metadata = _import_metadata(source, url)
@@ -355,8 +492,24 @@ class DesktopCollectionManager:
                     for failure in manifest.failures
                 ],
                 importJobIds=import_job_ids,
+                telemetry={
+                    "requests": len(manifest.telemetry),
+                    "bytes": sum(item.bytes_received for item in manifest.telemetry),
+                    "retries": sum(item.attempt > 1 for item in manifest.telemetry),
+                    "cacheHits": sum(
+                        item.cache_status in {"hit", "revalidated"} for item in manifest.telemetry
+                    ),
+                },
             )
             self._wait_for_processing(job_id, import_job_ids)
+        except CollectionPaused:
+            with self._lock:
+                requested = self._jobs[job_id].get("requestedAction")
+            self._update(
+                job_id,
+                status="cancelled" if requested == "cancel" else "paused",
+                completedAt=(datetime.now(UTC).isoformat() if requested == "cancel" else None),
+            )
         except (OSError, RuntimeError, ValueError) as exc:
             self._update(
                 job_id,

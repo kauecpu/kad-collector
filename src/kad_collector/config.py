@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 from pydantic import ValidationError
 
 from .models import AppConfig
+from .security import host_matches_allowlist
 
 
 class ConfigError(ValueError):
@@ -26,11 +27,19 @@ def load_config_text(raw_text: str, *, source_name: str = "configuracao") -> App
         raise ConfigError(str(exc)) from exc
 
     for source in config.sources:
-        for url in source.start_urls:
+        configured_urls = [
+            *source.start_urls,
+            *source.sitemap_urls,
+            *source.feed_urls,
+            *(endpoint.url for endpoint in source.json_endpoints),
+        ]
+        for url in configured_urls:
             parsed = urlsplit(url)
             if parsed.scheme not in {"http", "https"} or not parsed.hostname:
                 raise ConfigError(f"URL inicial invalida em {source.id}: {url}")
-            if parsed.hostname.lower().rstrip(".") not in source.allowed_hosts:
+            if not host_matches_allowlist(
+                parsed.hostname.lower().rstrip("."), source.allowed_hosts
+            ):
                 raise ConfigError(
                     f"host da URL inicial nao consta em allowed_hosts ({source.id}): {url}"
                 )
@@ -39,11 +48,18 @@ def load_config_text(raw_text: str, *, source_name: str = "configuracao") -> App
             + source.exclude_patterns
             + source.exam_patterns
             + source.answer_key_patterns
+            + source.pagination_patterns
         ):
             try:
                 re.compile(pattern)
             except re.error as exc:
                 raise ConfigError(f"regex invalida em {source.id}: {pattern!r}") from exc
+        forbidden_headers = {"authorization", "cookie", "proxy-authorization"}
+        for endpoint in source.json_endpoints:
+            if forbidden_headers.intersection(name.casefold() for name in endpoint.headers):
+                raise ConfigError(
+                    f"endpoint JSON de {source.id} contem cabecalho sensivel proibido"
+                )
 
     return config
 
@@ -69,7 +85,11 @@ def config_for_urls(config: AppConfig, urls: list[str]) -> AppConfig:
         host = (parsed.hostname or "").lower().rstrip(".")
         if parsed.scheme not in {"http", "https"} or not host:
             raise ConfigError(f"URL informada e invalida: {url}")
-        matching = [source for source in config.sources if host in source.allowed_hosts]
+        matching = [
+            source
+            for source in config.sources
+            if host_matches_allowlist(host, source.allowed_hosts)
+        ]
         if not matching:
             raise ConfigError(f"nenhuma fonte cadastrada permite o host {host}")
         enabled = [source for source in matching if source.enabled]

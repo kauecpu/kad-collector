@@ -117,7 +117,7 @@
               <h1>Coletar de um link</h1>
               <p>Cole a página de uma prova, concurso ou edição. O Collector baixa somente PDFs permitidos e inicia o processamento local.</p>
             </div>
-            <span class="source-safety"><i></i>robots.txt e limites ativos</span>
+            <span class="source-safety"><i></i>motor seguro · coleta retomável</span>
           </header>
 
           <div class="source-layout">
@@ -132,6 +132,40 @@
               <label>Link oficial HTTPS
                 <input id="source-url" type="url" inputmode="url" placeholder="https://..." required>
               </label>
+
+              <div class="source-step"><span>03</span><div><strong>Configure o motor</strong><small>Capacidade, JavaScript e diagnóstico da execução</small></div></div>
+              <section class="engine-panel" aria-label="Motor de coleta">
+                <div class="engine-profile-row">
+                  <label>Perfil de capacidade
+                    <select id="source-capacity-profile">
+                      <option value="balanced">Equilibrado</option>
+                      <option value="conservative">Conservador</option>
+                      <option value="high_performance">Alto desempenho</option>
+                      <option value="custom">Personalizado</option>
+                    </select>
+                  </label>
+                  <label class="engine-toggle">
+                    <input id="source-browser-enabled" type="checkbox">
+                    <span><strong>Renderizar JavaScript</strong><small>Usa Edge/Chromium quando o HTML não expõe os links.</small></span>
+                  </label>
+                </div>
+                <details class="engine-advanced">
+                  <summary>Ajustes avançados</summary>
+                  <div class="form-grid two">
+                    <label>Concorrência por fonte
+                      <input id="source-max-concurrency" type="number" min="1" max="32" value="4">
+                    </label>
+                    <label>Intervalo entre requisições
+                      <input id="source-request-interval" type="number" min="0" max="300" step="0.1" value="3">
+                    </label>
+                  </div>
+                </details>
+                <div class="engine-policy-strip">
+                  <span>ROBOTS <strong>APLICADO</strong></span>
+                  <span>CRAWL-DELAY <strong>APLICADO</strong></span>
+                  <span id="engine-cache-summary">CACHE 0 B</span>
+                </div>
+              </section>
               <div class="form-grid two">
                 <label>Classificador
                   <select id="source-classifier">

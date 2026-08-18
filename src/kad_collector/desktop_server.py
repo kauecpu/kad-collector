@@ -61,6 +61,7 @@ class DesktopApplication:
             "jobs": self.store.list_jobs(),
             "collectionJobs": self.collection_manager.list_jobs(),
             "sources": self.collection_manager.catalog(),
+            "collectionEngine": self.collection_manager.engine_summary(),
             "savedFilters": self.store.saved_filters(),
             "config": {
                 "dataDirectory": str(self.data_dir),
@@ -103,6 +104,9 @@ class DesktopApplication:
 
     def collect_from_link(self, payload: dict[str, Any]) -> str:
         return self.collection_manager.start(payload)
+
+    def collection_action(self, collection_id: str, action: str) -> None:
+        self.collection_manager.action(collection_id, action)
 
     def update_question(self, question_id: str, payload: dict[str, Any]) -> None:
         question = QuestionRecord.model_validate(payload.get("question"))
@@ -247,6 +251,14 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                 if path == "/api/collections":
                     collection_id = application.collect_from_link(payload)
                     self._send_json({"collectionId": collection_id}, HTTPStatus.CREATED)
+                    return
+                collection_action = re.fullmatch(
+                    r"/api/collections/([a-f0-9-]+)/(pause|resume|cancel)", path
+                )
+                if collection_action is not None:
+                    collection_id, action = collection_action.groups()
+                    application.collection_action(collection_id, action)
+                    self._send_json({"ok": True})
                     return
                 job_action = re.fullmatch(r"/api/jobs/([a-f0-9-]+)/(cancel|resume)", path)
                 if job_action is not None:

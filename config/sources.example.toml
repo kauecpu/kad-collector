@@ -1,11 +1,19 @@
 [collector]
 data_dir = "data"
 user_agent = "KADCollector/0.1 (+contato@exemplo.com)"
+capacity_profile = "custom"
 request_interval_seconds = 3.0
 timeout_seconds = 30.0
+connect_timeout_seconds = 10.0
 max_files_per_source = 20
 max_html_bytes = 5000000
 max_pdf_bytes = 50000000
+max_concurrency = 4
+max_retries = 4
+retry_max_delay_seconds = 120.0
+conditional_cache = true
+resume_downloads = true
+disk_quota_bytes = 5000000000
 
 # Este bloco e apenas um molde desativado. Substitua-o por uma fonte oficial
 # cuja coleta tenha sido verificada e autorizada antes de definir enabled=true.
@@ -15,6 +23,11 @@ name = "Fonte oficial de exemplo"
 enabled = false
 start_urls = ["https://www.example.gov.br/provas"]
 allowed_hosts = ["www.example.gov.br"]
+discovery_strategies = ["html", "sitemap"]
+sitemap_urls = ["https://www.example.gov.br/sitemap.xml"]
+browser_enabled = false
+robots_policy = "enforce"
+crawl_delay_policy = "enforce"
 include_patterns = ["(?i)prova", "(?i)gabarito", "(?i)\\.pdf(?:$|\\?)"]
 exclude_patterns = ["(?i)resultado", "(?i)edital"]
 exam_patterns = ["(?i)prova", "(?i)caderno"]

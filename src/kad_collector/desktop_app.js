@@ -157,7 +157,10 @@ function selectSource(sourceId, {resetUrl = true} = {}) {
   if (!source) return;
   state.selectedSourceId = source.id;
   byId('source-select').value = source.id;
-  if (resetUrl) byId('source-url').value = source.defaultUrl;
+  if (resetUrl) {
+    byId('source-url').value = source.defaultUrl;
+    byId('source-browser-enabled').checked = Boolean(source.engine?.browserAvailable);
+  }
   const details = byId('source-details');
   details.replaceChildren();
   const category = document.createElement('span');
@@ -168,6 +171,9 @@ function selectSource(sourceId, {resetUrl = true} = {}) {
   const hosts = document.createElement('small');
   hosts.textContent = `Domínios permitidos: ${source.allowedHosts.join(', ')}`;
   details.append(category, copy, hosts);
+  const strategy = document.createElement('small');
+  strategy.textContent = `Descoberta: ${(source.engine?.strategies || ['html']).join(' → ')}`;
+  details.append(strategy);
   if (source.notice) {
     const notice = document.createElement('small');
     notice.className = 'source-notice';
@@ -206,6 +212,8 @@ function renderSourceCatalog() {
   }
 
   byId('source-count').textContent = `${sources.filter((source) => source.collectable).length} fontes prontas`;
+  const cache = state.bootstrap.collectionEngine?.cache || {};
+  byId('engine-cache-summary').textContent = `CACHE ${formatBytes(cache.bytes || 0)} · ${cache.entries || 0} item(ns)`;
   const grid = byId('source-grid');
   grid.replaceChildren();
   sources.forEach((source) => {
@@ -238,8 +246,17 @@ function renderSourceCatalog() {
 function collectionStatusLabel(status) {
   return {
     queued: 'Na fila', running: 'Baixando', processing: 'Processando',
-    completed: 'Concluída', needs_attention: 'Requer atenção', failed: 'Falhou',
+    pausing: 'Pausando', paused: 'Pausada', cancelling: 'Cancelando',
+    cancelled: 'Cancelada', completed: 'Concluída', needs_attention: 'Requer atenção',
+    failed: 'Falhou',
   }[status] || status;
+}
+
+function formatBytes(bytes) {
+  if (!bytes) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const index = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+  return `${(bytes / 1024 ** index).toFixed(index ? 1 : 0)} ${units[index]}`;
 }
 
 function renderCollections() {
@@ -264,7 +281,21 @@ function renderCollections() {
     title.textContent = job.sourceName;
     const url = document.createElement('small');
     url.textContent = job.url;
-    copy.append(title, url);
+    const stats = document.createElement('div');
+    stats.className = 'collection-engine-stats';
+    const telemetry = job.telemetry || {};
+    [
+      `${job.capacityProfile || 'balanced'}`,
+      `${telemetry.requests || 0} req`,
+      `${formatBytes(telemetry.bytes || 0)}`,
+      `${telemetry.cacheHits || 0} cache`,
+      `${telemetry.retries || 0} retry`,
+    ].forEach((label) => {
+      const item = document.createElement('span');
+      item.textContent = label;
+      stats.append(item);
+    });
+    copy.append(title, url, stats);
     const result = document.createElement('div');
     result.className = 'collection-result';
     const status = document.createElement('strong');
@@ -278,6 +309,17 @@ function renderCollections() {
       summary.textContent = 'PDFs baixados; extraindo questões e associando o gabarito.';
     } else summary.textContent = 'A página e os PDFs estão sendo verificados.';
     result.append(status, summary);
+    const actions = document.createElement('div');
+    actions.className = 'collection-actions';
+    if (['queued', 'running'].includes(job.status)) {
+      actions.append(
+        collectionButton('Pausar', () => collectionAction(job.id, 'pause')),
+        collectionButton('Cancelar', () => collectionAction(job.id, 'cancel')),
+      );
+    } else if (job.status === 'paused') {
+      actions.append(collectionButton('Continuar', () => collectionAction(job.id, 'resume')));
+    }
+    result.append(actions);
     row.append(signal, copy, result);
     if (collectionFinished) {
       const details = document.createElement('details');
@@ -328,6 +370,22 @@ function renderCollections() {
     }
     list.append(row);
   });
+}
+
+function collectionButton(label, action) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = label;
+  button.addEventListener('click', action);
+  return button;
+}
+
+async function collectionAction(collectionId, action) {
+  try {
+    await request(`/api/collections/${collectionId}/${action}`, {method: 'POST', body: '{}'});
+    toast(action === 'resume' ? 'Coleta retomada do checkpoint.' : 'Comando enviado ao motor.');
+    await loadBootstrap({preserveQuery: true});
+  } catch (error) { toast(error.message, 'error'); }
 }
 
 function renderMetrics() {
@@ -420,7 +478,7 @@ function schedulePoll() {
   const activeProcessing = (state.bootstrap.jobs || []).some((job) =>
     ['queued', 'running', 'cancelling'].includes(job.status));
   const activeCollection = (state.bootstrap.collectionJobs || []).some((job) =>
-    ['queued', 'running', 'processing'].includes(job.status));
+    ['queued', 'running', 'pausing', 'cancelling', 'processing'].includes(job.status));
   const active = activeProcessing || activeCollection;
   if (active) {
     state.polling = setTimeout(() => loadBootstrap({preserveQuery: true}).catch(() => {}), 1400);
@@ -438,6 +496,10 @@ async function submitSourceCollection(event) {
         sourceId: byId('source-select').value,
         url: byId('source-url').value.trim(),
         classifierProvider: byId('source-classifier').value,
+        capacityProfile: byId('source-capacity-profile').value,
+        browserEnabled: byId('source-browser-enabled').checked,
+        maxConcurrency: Number(byId('source-max-concurrency').value),
+        requestIntervalSeconds: Number(byId('source-request-interval').value),
       }),
     });
     toast(`Coleta ${result.collectionId.slice(0, 8)} iniciada. A janela pode continuar sendo usada.`);
@@ -448,6 +510,21 @@ async function submitSourceCollection(event) {
     const source = sourceById(byId('source-select').value);
     button.disabled = !source?.collectable;
   }
+}
+
+function applyCapacityProfile() {
+  const profile = byId('source-capacity-profile').value;
+  const concurrency = byId('source-max-concurrency');
+  const interval = byId('source-request-interval');
+  const presets = {
+    conservative: [2, 3], balanced: [4, 1], high_performance: [8, 0],
+  };
+  if (presets[profile]) {
+    [concurrency.value, interval.value] = presets[profile];
+  }
+  const editable = profile === 'custom';
+  concurrency.readOnly = !editable;
+  interval.readOnly = !editable;
 }
 
 function renderQuery() {
@@ -947,6 +1024,7 @@ byId('choose-folder').addEventListener('click', () => choosePaths('folder'));
 byId('import-form').addEventListener('submit', submitImport);
 byId('source-form').addEventListener('submit', submitSourceCollection);
 byId('source-select').addEventListener('change', (event) => selectSource(event.target.value));
+byId('source-capacity-profile').addEventListener('change', applyCapacityProfile);
 byId('facet-search').addEventListener('input', filterFacetOptions);
 byId('clear-filters').addEventListener('click', async () => {
   state.filters = emptyFilters();
@@ -989,4 +1067,5 @@ document.querySelectorAll('.rail-link').forEach((button) => {
   });
 });
 
+applyCapacityProfile();
 loadBootstrap().catch((error) => toast(error.message, 'error'));

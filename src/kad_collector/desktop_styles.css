@@ -199,6 +199,23 @@ label { display: grid; gap: 6px; color: #5f596b; font-size: 10px; font-weight: 7
 .source-submit-cell .button { width: 100%; }
 .button:disabled, .text-button:disabled { opacity: .48; cursor: not-allowed; transform: none; box-shadow: none; }
 .source-form-note { margin: 0; padding-top: 4px; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.engine-panel { display: grid; gap: 11px; padding: 14px; overflow: hidden; background: linear-gradient(135deg, rgba(239,231,255,.72), rgba(255,253,249,.94)); border: 1px solid #d9caef; border-radius: 15px; }
+.engine-profile-row { display: grid; grid-template-columns: minmax(180px,.8fr) minmax(230px,1.2fr); gap: 12px; align-items: end; }
+.engine-toggle { display: flex; min-height: 42px; align-items: center; gap: 10px; padding: 8px 10px; color: var(--ink); background: rgba(255,255,255,.66); border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+.engine-toggle input { width: 16px; height: 16px; accent-color: var(--purple); }
+.engine-toggle strong, .engine-toggle small { display: block; }
+.engine-toggle strong { font-size: 10px; }
+.engine-toggle small { margin-top: 2px; color: var(--muted); font-size: 8px; font-weight: 500; line-height: 1.35; }
+.engine-advanced { border-top: 1px solid rgba(111,65,180,.16); padding-top: 8px; }
+.engine-advanced summary { width: fit-content; color: var(--purple); cursor: pointer; font-size: 9px; font-weight: 800; }
+.engine-advanced .form-grid { margin-top: 10px; }
+.engine-policy-strip { display: flex; flex-wrap: wrap; gap: 6px; }
+.engine-policy-strip span { padding: 5px 7px; color: #655b70; background: rgba(255,255,255,.7); border: 1px solid rgba(111,65,180,.13); border-radius: 999px; font: 700 7px "Consolas", monospace; letter-spacing: .04em; }
+.engine-policy-strip strong { color: var(--success); }
+.collection-engine-stats { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.collection-engine-stats span { padding: 4px 6px; color: #665d70; background: #f0e9f8; border-radius: 999px; font: 700 7px "Consolas", monospace; }
+.collection-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 7px; }
+.collection-actions button { padding: 5px 8px; color: var(--purple); background: transparent; border: 1px solid #d4c4e8; border-radius: 8px; cursor: pointer; font-size: 8px; font-weight: 800; }
 .source-guide-card { position: relative; padding: 25px; color: white; background: #21153a; border-color: #21153a; overflow: hidden; }
 .source-guide-card::after { position: absolute; right: -50px; bottom: -70px; width: 190px; height: 190px; content: ""; border: 22px solid rgba(201,243,107,.12); border-radius: 50px 0; transform: rotate(16deg); }
 .source-guide-card .eyebrow { color: var(--lime); }
@@ -226,7 +243,9 @@ label { display: grid; gap: 6px; color: #5f596b; font-size: 10px; font-weight: 7
 .collection-list { display: grid; gap: 7px; }
 .collection-row { display: grid; grid-template-columns: 8px minmax(0, 1fr) minmax(180px, auto); gap: 12px; align-items: center; min-height: 58px; padding: 10px 12px; background: #f7f3ed; border: 1px solid #e4ddd4; border-radius: 12px; }
 .collection-signal { width: 8px; height: 32px; background: var(--purple-soft); border-radius: 99px; }
-.collection-signal.running, .collection-signal.processing { background: var(--purple); }
+.collection-signal.running, .collection-signal.processing, .collection-signal.pausing { background: var(--purple); }
+.collection-signal.paused { background: var(--warning); }
+.collection-signal.cancelling, .collection-signal.cancelled { background: var(--muted); }
 .collection-signal.completed { background: var(--success); }
 .collection-signal.needs_attention { background: var(--warning); }
 .collection-signal.failed { background: var(--danger); }
@@ -301,6 +320,7 @@ label { display: grid; gap: 6px; color: #5f596b; font-size: 10px; font-weight: 7
 }
 
 @media (max-width: 820px) {
+  .engine-profile-row { grid-template-columns: 1fr; }
   .app-shell { display: block; }
   .app-rail { position: static; width: 100%; height: auto; flex-direction: row; align-items: center; padding: 9px 12px; }
   .brand-block { padding: 0 12px 0 0; }

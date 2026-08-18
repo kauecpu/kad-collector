@@ -205,10 +205,7 @@ class LinkParsingTests(unittest.TestCase):
                     body = b"User-agent: *\nAllow: /\n"
                 elif url == first_page:
                     headers["Content-Type"] = "text/html; charset=utf-8"
-                    body = (
-                        b'<a href="/prova-1.pdf">Prova 1</a>'
-                        b'<a href="?page=2">Proxima pagina</a>'
-                    )
+                    body = b'<a href="/prova-1.pdf">Prova 1</a><a href="?page=2">Proxima pagina</a>'
                 elif url == second_page:
                     headers["Content-Type"] = "text/html; charset=utf-8"
                     body = (
@@ -242,6 +239,22 @@ class LinkParsingTests(unittest.TestCase):
 
 
 class SecurityTests(unittest.TestCase):
+    def test_professional_collection_settings_accept_unbounded_file_count(self) -> None:
+        settings = CollectorSettings(
+            capacity_profile="high_performance",
+            request_interval_seconds=0,
+            max_files_per_source=None,
+            max_concurrency=8,
+        )
+        self.assertIsNone(settings.max_files_per_source)
+        self.assertEqual(settings.max_concurrency, 8)
+
+    def test_browser_strategy_requires_explicit_source_enablement(self) -> None:
+        with self.assertRaisesRegex(ValueError, "browser_enabled"):
+            source_definition(discovery_strategies=["html", "browser"])
+        source = source_definition(discovery_strategies=["html", "browser"], browser_enabled=True)
+        self.assertTrue(source.browser_enabled)
+
     def test_official_configuration_registers_authorized_sources(self) -> None:
         config = load_config(PROJECT_ROOT / "config" / "sources.official.toml")
         self.assertEqual(
@@ -343,6 +356,28 @@ class SecurityTests(unittest.TestCase):
             validate_public_url(
                 "https://usuario:senha@provas.example.gov.br/prova.pdf",
                 ["provas.example.gov.br"],
+                resolve_dns=False,
+            )
+
+    def test_explicit_subdomain_pattern_does_not_allow_apex_or_other_domains(self) -> None:
+        self.assertEqual(
+            validate_public_url(
+                "https://arquivos.provas.example.gov.br/prova.pdf",
+                ["*.provas.example.gov.br"],
+                resolve_dns=False,
+            ),
+            "https://arquivos.provas.example.gov.br/prova.pdf",
+        )
+        with self.assertRaises(UnsafeUrlError):
+            validate_public_url(
+                "https://provas.example.gov.br/prova.pdf",
+                ["*.provas.example.gov.br"],
+                resolve_dns=False,
+            )
+        with self.assertRaises(UnsafeUrlError):
+            validate_public_url(
+                "https://evil-example.gov.br/prova.pdf",
+                ["*.example.gov.br"],
                 resolve_dns=False,
             )
 
