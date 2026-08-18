@@ -15,6 +15,8 @@ class DesktopImportMetadata(StrictModel):
     provider: str | None = None
     source_url: str | None = None
     external_id: str | None = None
+    document_title: str | None = None
+    variant: str | None = None
     document_type: DesktopDocumentType = "auto"
     concurso: str | None = None
     board: str | None = None
@@ -31,6 +33,8 @@ class DesktopImportMetadata(StrictModel):
         "provider",
         "source_url",
         "external_id",
+        "document_title",
+        "variant",
         "concurso",
         "board",
         "role",

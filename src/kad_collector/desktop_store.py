@@ -53,8 +53,9 @@ def _classification_confidences(
     classification: QuestionClassification,
 ) -> list[float]:
     return [
-        getattr(classification, field_name).confidence
-        for field_name in type(classification).model_fields
+        value.confidence
+        for field_name in ("discipline", "subject", "topic")
+        if (value := getattr(classification, field_name)).value is not None
     ]
 
 
@@ -63,7 +64,16 @@ def question_quality_flags(
     classification: QuestionClassification,
 ) -> list[str]:
     flags: list[str] = []
-    if validate_editorial_question(question):
+    letters = [alternative.letter for alternative in question.alternatives]
+    expected_letters = list("ABCDE"[: len(letters)])
+    if (
+        len(question.statement.strip()) < 10
+        or not question.source_pages
+        or not 2 <= len(letters) <= 5
+        or letters != expected_letters
+        or question.correct_answer is not None
+        and question.correct_answer not in letters
+    ):
         flags.append("incomplete")
     if not (question.explanation or "").strip():
         flags.append("without_explanation")
@@ -215,8 +225,14 @@ class DesktopStore:
         paths: list[Path],
         metadata: DesktopImportMetadata,
         classifier_provider: ClassifierProviderName,
+        *,
+        metadata_by_path: dict[str, DesktopImportMetadata] | None = None,
     ) -> str:
         resolved = validate_pdf_batch(paths)
+        document_metadata_by_path = {
+            str(Path(path).resolve()).casefold(): value
+            for path, value in (metadata_by_path or {}).items()
+        }
         job_id = str(uuid.uuid4())
         created_at = _now()
         with closing(self._connect()) as connection:
@@ -230,7 +246,9 @@ class DesktopStore:
             )
             for path in resolved:
                 document_id = str(uuid.uuid4())
-                document_metadata = metadata.model_copy()
+                document_metadata = document_metadata_by_path.get(
+                    str(path).casefold(), metadata
+                ).model_copy(deep=True)
                 if document_metadata.external_id is None:
                     document_metadata.external_id = path.stem
                 connection.execute(
@@ -267,6 +285,38 @@ class DesktopStore:
         if row is None:
             raise ValueError("lote nao encontrado")
         return dict(row)
+
+    def job_question_summary(self, job_ids: list[str]) -> dict[str, int]:
+        if not job_ids:
+            return {
+                "questions": 0,
+                "matched_answers": 0,
+                "annulled_answers": 0,
+                "missing_answers": 0,
+            }
+        placeholders = ",".join("?" for _ in job_ids)
+        with closing(self._connect()) as connection:
+            row = connection.execute(
+                f"""
+                SELECT COUNT(*) AS questions,
+                       SUM(CASE WHEN json_extract(q.payload_json, '$.answer_status') = 'matched'
+                           THEN 1 ELSE 0 END) AS matched_answers,
+                       SUM(CASE WHEN json_extract(q.payload_json, '$.answer_status') = 'annulled'
+                           THEN 1 ELSE 0 END) AS annulled_answers,
+                       SUM(CASE WHEN json_extract(q.payload_json, '$.answer_status') = 'missing'
+                           THEN 1 ELSE 0 END) AS missing_answers
+                FROM questions q
+                JOIN documents d ON d.id = q.document_id
+                WHERE d.job_id IN ({placeholders})
+                """,  # noqa: S608
+                tuple(job_ids),
+            ).fetchone()
+        return {
+            "questions": int(row["questions"] or 0),
+            "matched_answers": int(row["matched_answers"] or 0),
+            "annulled_answers": int(row["annulled_answers"] or 0),
+            "missing_answers": int(row["missing_answers"] or 0),
+        }
 
     def documents_for_job(self, job_id: str) -> list[dict[str, Any]]:
         with closing(self._connect()) as connection:
@@ -427,7 +477,7 @@ class DesktopStore:
             "exception"
             if any(
                 flag in flags
-                for flag in ("annulled", "visual", "without_explanation", "incomplete")
+                for flag in ("annulled", "visual", "without_answer", "incomplete")
             )
             else "pending"
         )
@@ -565,7 +615,7 @@ class DesktopStore:
         confidence = min(confidence_values, default=0)
         next_status: DesktopQuestionStatus = "pending"
         if any(
-            flag in flags for flag in ("annulled", "visual", "without_explanation", "incomplete")
+            flag in flags for flag in ("annulled", "visual", "without_answer", "incomplete")
         ):
             next_status = "exception"
         with closing(self._connect()) as connection:
@@ -728,6 +778,9 @@ class DesktopStore:
                 and "duplicate" not in flags,
             }
         )
+        if document_title := metadata.get("document_title"):
+            payload["stored_filename"] = payload["filename"]
+            payload["filename"] = document_title
         return payload
 
     @staticmethod
