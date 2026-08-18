@@ -11,7 +11,7 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from pypdf import PdfWriter
+from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 
 from kad_collector.desktop_app import _smoke_test
@@ -25,6 +25,7 @@ from kad_collector.desktop_models import (
     DesktopImportMetadata,
     QuestionClassification,
 )
+from kad_collector.desktop_parser import parse_question_pages
 from kad_collector.desktop_processor import DesktopProcessor
 from kad_collector.desktop_server import DesktopApplication, start_desktop_server
 from kad_collector.desktop_store import DesktopStore
@@ -114,6 +115,138 @@ def valid_question(number: int, statement: str | None = None) -> QuestionRecord:
 
 
 class DesktopPipelineTests(unittest.TestCase):
+    def test_generic_parser_supports_fgv_standalone_numbers_and_parentheses(self) -> None:
+        questions, warnings = parse_question_pages(
+            [
+                {
+                    "page_number": 8,
+                    "text": """
+33
+Assinale a alternativa correta sobre o tema apresentado.
+(A) Primeira alternativa.
+(B) Segunda alternativa.
+(C) Terceira alternativa.
+34
+Considere o segundo enunciado e escolha a opção correta.
+(A) Primeira opção.
+(B) Segunda opção.
+(C) Terceira opção.
+""",
+                }
+            ]
+        )
+
+        self.assertEqual([question.number for question in questions], [33, 34])
+        self.assertEqual(
+            [alternative.letter for alternative in questions[0].alternatives],
+            ["A", "B", "C"],
+        )
+        self.assertEqual(warnings, [])
+
+    def test_comvest_commented_question_uses_inline_official_answer(self) -> None:
+        questions, warnings = parse_question_pages(
+            [
+                {
+                    "page_number": 7,
+                    "text": """
+QUESTÃO 1
+Com base no texto, assinale a alternativa correta.
+a) Primeira alternativa.
+b) Segunda alternativa.
+c) Terceira alternativa.
+d) Quarta alternativa.
+Objetivo da Questão
+Este comentário não faz parte do enunciado.
+Alternativa Correta: C
+Comentários Gerais
+Informações editoriais da banca.
+""",
+                }
+            ]
+        )
+
+        self.assertEqual(warnings, [])
+        self.assertEqual(len(questions), 1)
+        self.assertEqual(questions[0].answer_status, "matched")
+        self.assertEqual(questions[0].correct_answer, "C")
+        self.assertNotIn("comentário", questions[0].statement.casefold())
+
+    def test_processing_queue_limits_simultaneous_jobs(self) -> None:
+        with TemporaryDirectory() as directory:
+            store = DesktopStore(Path(directory) / "collector.sqlite3")
+            processor = DesktopProcessor(store, max_workers=2)
+            gate = threading.Event()
+            two_running = threading.Event()
+            lock = threading.Lock()
+            active = 0
+            peak = 0
+
+            def blocked_run(_job_id: str, _event: threading.Event) -> None:
+                nonlocal active, peak
+                with lock:
+                    active += 1
+                    peak = max(peak, active)
+                    if active == 2:
+                        two_running.set()
+                gate.wait(5)
+                with lock:
+                    active -= 1
+
+            with patch.object(processor, "run", side_effect=blocked_run):
+                for number in range(8):
+                    processor.start(f"job-{number}")
+                self.assertTrue(two_running.wait(2))
+                threading.Event().wait(0.05)
+                self.assertEqual(peak, 2)
+                gate.set()
+                for _ in range(200):
+                    if all(future.done() for future in processor._futures.values()):
+                        break
+                    threading.Event().wait(0.01)
+                self.assertTrue(all(future.done() for future in processor._futures.values()))
+
+    def test_aes_pdf_is_supported_and_password_failure_is_isolated(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source.pdf"
+            readable = root / "aes-readable.pdf"
+            blocked = root / "aes-password.pdf"
+            write_text_pdf(
+                source,
+                [
+                    [
+                        "QUESTAO 1",
+                        "Assinale a alternativa correta sobre a escala cartografica.",
+                        "A) Primeira alternativa.",
+                        "B) Segunda alternativa.",
+                        "C) Terceira alternativa.",
+                        "Alternativa Correta: B",
+                    ]
+                ],
+            )
+            readable_writer = PdfWriter()
+            readable_writer.append_pages_from_reader(PdfReader(source))
+            readable_writer.encrypt(user_password="", algorithm="AES-256")
+            with readable.open("wb") as stream:
+                readable_writer.write(stream)
+            blocked_writer = PdfWriter()
+            blocked_writer.add_blank_page(width=595, height=842)
+            blocked_writer.encrypt(user_password="segredo", algorithm="AES-256")
+            with blocked.open("wb") as stream:
+                blocked_writer.write(stream)
+
+            store = DesktopStore(root / "collector.sqlite3")
+            job_id = store.create_job([readable, blocked], metadata(), "local")
+            DesktopProcessor(store).run(job_id)
+
+            self.assertEqual(store.job(job_id)["status"], "completed")
+            documents = store.documents_for_job(job_id)
+            self.assertEqual(sum(item["status"] == "exception" for item in documents), 1)
+            result = store.query(DesktopFilterSet())
+            self.assertEqual(result["total"], 1)
+            self.assertEqual(result["questions"][0]["status"], "pending")
+            self.assertEqual(result["questions"][0]["question"]["correct_answer"], "B")
+
     def test_import_limits_reject_oversized_files_and_batches(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)

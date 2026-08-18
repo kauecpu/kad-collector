@@ -189,14 +189,29 @@ def select_document_links(
         if url in seen:
             continue
         seen.add(url)
-        selected.append(
-            (
-                url,
-                title or Path(urlsplit(url).path).name,
-                classify_document(url, title, source),
-            )
-        )
+        document_type = classify_document(url, title, source)
+        if source.access_mode == "content" and document_type == "other":
+            continue
+        selected.append((url, title or Path(urlsplit(url).path).name, document_type))
     return selected
+
+
+def _limit_document_links(
+    links: list[tuple[str, str, DocumentType]], limit: int | None
+) -> list[tuple[str, str, DocumentType]]:
+    if limit is None or len(links) <= limit:
+        return links
+    exams = [item for item in links if item[2] == "exam"]
+    answer_keys = sorted(
+        (item for item in links if item[2] == "answer_key"),
+        key=lambda item: ("definitiv" not in f"{item[1]} {item[0]}".casefold(), links.index(item)),
+    )
+    if limit == 1 or not answer_keys:
+        return exams[:limit]
+    if not exams:
+        return answer_keys[:limit]
+    key_slots = min(len(answer_keys), max(1, min(4, limit // 4)))
+    return [*exams[: limit - key_slots], *answer_keys[:key_slots]]
 
 
 def select_pagination_links(html: str, page_url: str, source: SourceDefinition) -> list[str]:
@@ -904,7 +919,7 @@ def collect_documents(
                 if settings.max_files_per_source is None
                 else max(0, settings.max_files_per_source - source_items)
             )
-            selected_links = source_links if remaining is None else source_links[:remaining]
+            selected_links = _limit_document_links(source_links, remaining)
             if source.access_mode == "reference_only":
                 for url, _title, _document_type in selected_links:
                     references.append(
@@ -1207,9 +1222,11 @@ def _collect_documents_legacy(
             warnings.append(f"{source.id}: paginacao limitada a {source.max_pages_per_run} paginas")
 
         if source.access_mode == "reference_only":
-            for url, _title, _document_type in source_links[
-                : (settings.max_files_per_source or 10_000) - source_items
-            ]:
+            reference_links = _limit_document_links(
+                source_links,
+                (settings.max_files_per_source or 10_000) - source_items,
+            )
+            for url, _title, _document_type in reference_links:
                 references.append(
                     DiscoveryRecord(
                         source_id=source.id,
@@ -1231,9 +1248,11 @@ def _collect_documents_legacy(
                 )
             continue
 
-        for url, title, document_type in source_links[
-            : (settings.max_files_per_source or 10_000) - source_items
-        ]:
+        downloadable_links = _limit_document_links(
+            source_links,
+            (settings.max_files_per_source or 10_000) - source_items,
+        )
+        for url, title, document_type in downloadable_links:
             try:
                 if not robots.can_fetch(url, source.allowed_hosts):
                     message = f"{source.id}: robots.txt bloqueou ou nao liberou {url}"

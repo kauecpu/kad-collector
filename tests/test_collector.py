@@ -303,14 +303,22 @@ class SecurityTests(unittest.TestCase):
                 ("gabdef_cf.pdf", "answer_key"),
             ],
         )
-        self.assertEqual(fgv.max_pages_per_run, 40)
+        self.assertEqual(fgv.max_pages_per_run, 1)
+        self.assertEqual(fgv.start_urls, ["https://conhecimento.fgv.br/concursos/rfb22"])
         fgv_index = (FIXTURES / "fgv_index.html").read_text(encoding="utf-8")
         self.assertEqual(
             select_pagination_links(fgv_index, fgv.start_urls[0], fgv),
-            [
-                "https://conhecimento.fgv.br/concursos/rfb22",
-                "https://conhecimento.fgv.br/concursos/senado22",
-            ],
+            [],
+        )
+
+        comvest = next(source for source in config.sources if source.id == "comvest_unicamp")
+        comvest_html = (FIXTURES / "comvest_archive.html").read_text(encoding="utf-8")
+        comvest_selected = select_document_links(
+            comvest_html, comvest.start_urls[0], comvest
+        )
+        self.assertEqual(
+            [(Path(item[0]).name, item[2]) for item in comvest_selected],
+            [("F1_2026_Prova-Q.pdf", "exam"), ("F2_1o-dia_todos.pdf", "exam")],
         )
 
     def test_packaged_official_configuration_matches_cli_configuration(self) -> None:

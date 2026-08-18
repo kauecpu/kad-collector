@@ -182,6 +182,12 @@ function selectSource(sourceId, {resetUrl = true} = {}) {
     notice.textContent = source.notice;
     details.append(notice);
   }
+  if (source.urlHint) {
+    const hint = document.createElement('small');
+    hint.className = 'source-notice';
+    hint.textContent = source.urlHint;
+    details.append(hint);
+  }
   byId('source-submit').disabled = !source.collectable;
   byId('source-submit').textContent = source.collectable
     ? 'Coletar deste link'
@@ -303,12 +309,19 @@ function renderCollections() {
     const status = document.createElement('strong');
     status.textContent = collectionStatusLabel(job.status);
     const summary = document.createElement('small');
+    const flowSummary = [
+      `${job.discoveredDocuments || 0} descobertos`,
+      `${job.downloadedDocuments || job.documents || 0} baixados`,
+      `${job.processedDocuments || 0} processados`,
+      `${job.questions || 0} questões`,
+      `${(job.failures || 0) + (job.failedDocuments || 0)} falhas`,
+    ].join(' · ');
     if (job.status === 'failed') summary.textContent = job.error || 'Falha não detalhada.';
     else if (collectionFinished) {
-      summary.textContent = `${job.documents} PDF(s) · ${job.questions || 0} questão(ões) · ${job.matchedAnswers || 0} resposta(s)`;
+      summary.textContent = flowSummary;
       if (!job.documents) status.textContent = 'Concluída sem PDFs';
     } else if (job.status === 'processing') {
-      summary.textContent = 'PDFs baixados; extraindo questões e associando o gabarito.';
+      summary.textContent = flowSummary;
     } else summary.textContent = 'A página e os PDFs estão sendo verificados.';
     result.append(status, summary);
     const actions = document.createElement('div');

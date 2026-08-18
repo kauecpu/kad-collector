@@ -13,7 +13,22 @@ _QUESTION_LINE = re.compile(
     re.IGNORECASE,
 )
 _EXPLICIT_QUESTION = re.compile(r"^\s*(?:QUEST(?:ÃO|AO)|QUEST[.])", re.IGNORECASE)
-_ALTERNATIVE_LINE = re.compile(r"^\s*(?P<letter>[A-H])\s*[).:\-]\s*(?P<text>.*)$")
+_ALTERNATIVE_LINE = re.compile(
+    r"^\s*(?:\((?P<parenthesized>[A-H])\)|(?P<plain>[A-H])\s*[).:\-])\s*"
+    r"(?P<text>.*)$",
+    re.IGNORECASE,
+)
+_ANSWER_LINE = re.compile(
+    r"^\s*(?:alternativa\s+correta|resposta\s+correta|gabarito)\s*[:\-]\s*"
+    r"(?P<letter>[A-H])\b",
+    re.IGNORECASE,
+)
+_COMMENTARY_BOUNDARY = re.compile(
+    r"^\s*(?:objetivo\s+da\s+quest[aã]o|coment[aá]rios?\s+gerais|"
+    r"desempenho\s+dos\s+candidatos|alternativa\s+correta|resposta\s+correta|"
+    r"resposta\s+esperada)\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -23,6 +38,8 @@ class _QuestionBuilder:
     statement_lines: list[str] = field(default_factory=list)
     alternatives: dict[str, list[str]] = field(default_factory=dict)
     active_alternative: str | None = None
+    correct_answer: str | None = None
+    collecting_content: bool = True
 
 
 def _clean(lines: list[str]) -> str:
@@ -67,13 +84,16 @@ def _flush(
             role=None,
             year=None,
             source_pages=sorted(builder.pages),
-            answer_status="missing",
+            answer_status="matched" if builder.correct_answer else "missing",
+            correct_answer=builder.correct_answer,
             review_notes=notes,
         )
     )
 
 
-def _generic_parse(pages: list[dict[str, Any]]) -> tuple[list[QuestionRecord], list[str]]:
+def _generic_parse(
+    pages: list[dict[str, Any]], *, allow_standalone_numbers: bool
+) -> tuple[list[QuestionRecord], list[str]]:
     questions: list[QuestionRecord] = []
     warnings: list[str] = []
     current: _QuestionBuilder | None = None
@@ -86,9 +106,18 @@ def _generic_parse(pages: list[dict[str, Any]]) -> tuple[list[QuestionRecord], l
             question_match = _QUESTION_LINE.match(line)
             if question_match is not None:
                 number = int(question_match.group("number"))
+                if not 1 <= number <= 200:
+                    continue
                 explicit = _EXPLICIT_QUESTION.match(line) is not None
                 punctuation = bool(re.search(rf"{number}\s*[).:\-]", line))
-                if explicit or punctuation:
+                standalone = not question_match.group("text").strip()
+                standalone_allowed = (
+                    allow_standalone_numbers
+                    and standalone
+                    and number <= 200
+                    and (current is None or current.collecting_content)
+                )
+                if explicit or punctuation or standalone_allowed:
                     _flush(current, questions, warnings)
                     current = _QuestionBuilder(number=number, pages={page_number})
                     inline = question_match.group("text").strip()
@@ -96,8 +125,15 @@ def _generic_parse(pages: list[dict[str, Any]]) -> tuple[list[QuestionRecord], l
                         current.statement_lines.append(inline)
                     continue
             alternative_match = _ALTERNATIVE_LINE.match(line)
-            if alternative_match is not None and current is not None:
-                letter = alternative_match.group("letter").upper()
+            if (
+                alternative_match is not None
+                and current is not None
+                and current.collecting_content
+            ):
+                letter = (
+                    alternative_match.group("parenthesized")
+                    or alternative_match.group("plain")
+                ).upper()
                 current.active_alternative = letter
                 current.alternatives.setdefault(letter, [])
                 inline = alternative_match.group("text").strip()
@@ -105,7 +141,21 @@ def _generic_parse(pages: list[dict[str, Any]]) -> tuple[list[QuestionRecord], l
                     current.alternatives[letter].append(inline)
                 current.pages.add(page_number)
                 continue
+            if current is not None:
+                answer_match = _ANSWER_LINE.match(line)
+                if answer_match is not None:
+                    current.correct_answer = answer_match.group("letter").upper()
+                    current.active_alternative = None
+                    current.collecting_content = False
+                    current.pages.add(page_number)
+                    continue
+                if _COMMENTARY_BOUNDARY.match(line):
+                    current.active_alternative = None
+                    current.collecting_content = False
+                    continue
             if current is None:
+                continue
+            if not current.collecting_content:
                 continue
             current.pages.add(page_number)
             if current.active_alternative is None:
@@ -113,7 +163,30 @@ def _generic_parse(pages: list[dict[str, Any]]) -> tuple[list[QuestionRecord], l
             else:
                 current.alternatives[current.active_alternative].append(line)
     _flush(current, questions, warnings)
-    return questions, warnings
+    selected: dict[int, QuestionRecord] = {}
+    for question in questions:
+        existing = selected.get(question.number)
+        score = (
+            int(question.answer_status == "matched"),
+            len(question.alternatives),
+            len(question.statement),
+        )
+        existing_score = (
+            (
+                int(existing.answer_status == "matched"),
+                len(existing.alternatives),
+                len(existing.statement),
+            )
+            if existing is not None
+            else (-1, -1, -1)
+        )
+        if score > existing_score:
+            selected[question.number] = question
+        if existing is not None:
+            warnings.append(
+                f"questao {question.number}: ocorrencia duplicada; preservada a mais completa"
+            )
+    return [selected[number] for number in sorted(selected)], warnings
 
 
 def parse_question_pages(pages: list[dict[str, Any]]) -> tuple[list[QuestionRecord], list[str]]:
@@ -131,4 +204,9 @@ def parse_question_pages(pages: list[dict[str, Any]]) -> tuple[list[QuestionReco
             for item in result.questions
         ]
         return questions, result.warnings
-    return _generic_parse(pages)
+    has_explicit_questions = any(
+        _EXPLICIT_QUESTION.match(line)
+        for page in pages
+        for line in str(page["text"]).splitlines()
+    )
+    return _generic_parse(pages, allow_standalone_numbers=not has_explicit_questions)

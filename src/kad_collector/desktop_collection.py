@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
 from typing import Any, Literal, cast
+from urllib.parse import unquote, urlsplit
 
 from .collection_state import CollectionStateStore
 from .collector import CollectionPaused, collect_documents
@@ -83,8 +84,40 @@ def _year_from_url(url: str) -> int | None:
 
 def _document_variant(document: DocumentRecord) -> str | None:
     candidate = f"{document.title} {document.original_url} {document.resolved_url}"
-    match = re.search(r"(?<![A-Z0-9])V(?P<number>[1-9]\d*)(?!\d)", candidate, re.IGNORECASE)
-    return f"V{match.group('number')}" if match else None
+    match = re.search(
+        r"(?<![A-Z0-9])(?P<label>V|TIPO|PROVA)[-_ ]*(?P<number>[1-9]\d*)(?!\d)",
+        candidate,
+        re.IGNORECASE,
+    )
+    if match is None:
+        return None
+    label = "V" if match.group("label").casefold() == "v" else "Tipo "
+    return f"{label}{match.group('number')}"
+
+
+def _contest_name(source: SourceDefinition, url: str) -> str:
+    path_parts = [unquote(part) for part in urlsplit(url).path.split("/") if part]
+    if "concursos" in path_parts and path_parts[-1] != "concursos":
+        return " ".join(path_parts[-1].replace("_", "-").split("-")).upper()
+    return source.name
+
+
+def _document_role(document: DocumentRecord | None) -> str | None:
+    if document is None:
+        return None
+    if document.document_type == "answer_key":
+        return None
+    title = " ".join(document.title.split()).strip()
+    if title and not re.fullmatch(
+        r"(?i)(?:tipo|prova)\s*\d+|(?:caderno\s+de\s+)?quest(?:ões|oes)(?:\s+completo)?",
+        title,
+    ):
+        return title
+    stem = unquote(Path(urlsplit(document.original_url).path).stem)
+    stem = re.sub(r"(?i)[-_ ]+(?:tipo|prova)[-_ ]*\d+.*$", "", stem)
+    stem = re.sub(r"(?i)(?:cn[sm]|nm|ns)\d{3,}$", "", stem)
+    role = " ".join(part for part in re.split(r"[-_]+", stem) if part)
+    return role.title() if role else None
 
 
 def _import_metadata(
@@ -116,13 +149,54 @@ def _import_metadata(
         document_title=document.title if document is not None else None,
         variant=_document_variant(document) if document is not None else None,
         document_type=document_type,
-        concurso=metadata.get("concurso") or metadata.get("cargo") or source.name,
+        concurso=metadata.get("concurso") or _contest_name(source, url),
         board=metadata.get("banca"),
         year=year,
-        role=metadata.get("cargo"),
+        role=metadata.get("cargo") or _document_role(document),
         organization=metadata.get("orgao"),
         level=level,
     )
+
+
+def _processing_batches(
+    documents: list[DocumentRecord],
+    metadata_by_path: dict[str, DesktopImportMetadata],
+) -> list[list[Path]]:
+    answer_keys = [document for document in documents if document.document_type == "answer_key"]
+    answer_keys.sort(
+        key=lambda document: (
+            "definitiv" not in f"{document.title} {document.original_url}".casefold(),
+            document.title.casefold(),
+        )
+    )
+    shared_keys = answer_keys[: min(4, max(0, MAX_BATCH_PDFS - 1))]
+    shared_paths = [Path(document.local_path).resolve() for document in shared_keys]
+    exam_groups: dict[tuple[object, ...], list[Path]] = {}
+    for document in documents:
+        if document.document_type != "exam":
+            continue
+        path = Path(document.local_path).resolve()
+        metadata = metadata_by_path[str(path).casefold()]
+        key = (
+            metadata.provider,
+            metadata.concurso,
+            metadata.year,
+            metadata.role,
+        )
+        exam_groups.setdefault(key, []).append(path)
+
+    batches: list[list[Path]] = []
+    capacity = max(1, MAX_BATCH_PDFS - len(shared_paths))
+    for group in exam_groups.values():
+        for start in range(0, len(group), capacity):
+            batches.append([*group[start : start + capacity], *shared_paths])
+    if not batches and answer_keys:
+        all_key_paths = [Path(document.local_path).resolve() for document in answer_keys]
+        batches.extend(
+            all_key_paths[start : start + MAX_BATCH_PDFS]
+            for start in range(0, len(all_key_paths), MAX_BATCH_PDFS)
+        )
+    return batches
 
 
 class DesktopCollectionManager:
@@ -157,6 +231,11 @@ class DesktopCollectionManager:
                     "category": category,
                     "description": description,
                     "defaultUrl": source.start_urls[0],
+                    "urlHint": (
+                        "Use a página específica do concurso, não o índice geral."
+                        if source.collection_url_patterns
+                        else None
+                    ),
                     "allowedHosts": source.allowed_hosts,
                     "mode": source.access_mode,
                     "collectable": source.enabled and source.access_mode == "content",
@@ -217,6 +296,10 @@ class DesktopCollectionManager:
             validate_public_url(normalized_url, source.allowed_hosts, resolve_dns=False)
         except UnsafeUrlError as exc:
             raise ValueError(str(exc)) from exc
+        if source.collection_url_patterns and not any(
+            re.search(pattern, normalized_url) for pattern in source.collection_url_patterns
+        ):
+            raise ValueError("use a pagina especifica do concurso, nao o indice geral")
 
         profile = payload.get("capacityProfile", "balanced")
         if profile not in {"conservative", "balanced", "high_performance", "custom"}:
@@ -258,6 +341,10 @@ class DesktopCollectionManager:
             "createdAt": datetime.now(UTC).isoformat(),
             "completedAt": None,
             "documents": 0,
+            "discoveredDocuments": 0,
+            "downloadedDocuments": 0,
+            "processedDocuments": 0,
+            "failedDocuments": 0,
             "references": 0,
             "failures": 0,
             "questions": 0,
@@ -366,6 +453,14 @@ class DesktopCollectionManager:
                 return
             if all(job["status"] == "completed" for job in jobs):
                 summary = self.store.job_question_summary(import_job_ids)
+                processed_paths: set[str] = set()
+                failed_paths: set[str] = set()
+                for import_job_id in import_job_ids:
+                    for document in self.store.documents_for_job(import_job_id):
+                        if document["status"] == "processed":
+                            processed_paths.add(str(document["local_path"]).casefold())
+                        elif document["status"] == "exception":
+                            failed_paths.add(str(document["local_path"]).casefold())
                 warnings = list(self._jobs[collection_id]["warnings"])
                 needs_attention = not summary["questions"] or bool(summary["missing_answers"])
                 if not summary["questions"]:
@@ -382,6 +477,8 @@ class DesktopCollectionManager:
                     matchedAnswers=summary["matched_answers"],
                     annulledAnswers=summary["annulled_answers"],
                     missingAnswers=summary["missing_answers"],
+                    processedDocuments=len(processed_paths),
+                    failedDocuments=len(failed_paths - processed_paths),
                     warnings=list(dict.fromkeys(warnings)),
                 )
                 return
@@ -424,7 +521,6 @@ class DesktopCollectionManager:
                             if engine_options.get("requestIntervalSeconds") is not None
                             else 0.0
                         ),
-                        "max_files_per_source": None,
                     }
                 )
             elif profile == "custom":
@@ -453,8 +549,7 @@ class DesktopCollectionManager:
                 )
                 for document in manifest.documents
             }
-            for start in range(0, len(paths), MAX_BATCH_PDFS):
-                batch_paths = paths[start : start + MAX_BATCH_PDFS]
+            for batch_paths in _processing_batches(manifest.documents, metadata_by_path):
                 import_job_id = self.store.create_job(
                     batch_paths,
                     metadata,
@@ -483,6 +578,12 @@ class DesktopCollectionManager:
                 job_id,
                 status="processing",
                 documents=len(manifest.documents),
+                discoveredDocuments=(
+                    len(manifest.documents)
+                    + manifest.filtered_out_documents
+                    + sum(failure.stage == "download" for failure in manifest.failures)
+                ),
+                downloadedDocuments=len(manifest.documents),
                 references=len(manifest.references),
                 failures=len(manifest.failures),
                 warnings=warnings,
