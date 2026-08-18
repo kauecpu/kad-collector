@@ -133,11 +133,23 @@ class DesktopApplication:
 
     def decide(self, question_id: str, payload: dict[str, Any]) -> None:
         status = payload.get("status")
-        if status not in {"approved", "rejected", "exception"}:
+        if status not in {"pending", "approved", "rejected", "exception"}:
             raise ValueError("decisão inválida")
         self.store.decide_question(
             question_id,
             status,
+            actor=_required_text(payload, "actor"),
+            notes=_optional_text(payload, "notes"),
+        )
+
+    def approve_batch(self, payload: dict[str, Any]) -> int:
+        question_ids = payload.get("questionIds")
+        if not isinstance(question_ids, list) or not all(
+            isinstance(question_id, str) for question_id in question_ids
+        ):
+            raise ValueError("questionIds deve ser uma lista de identificadores")
+        return self.store.approve_questions(
+            question_ids,
             actor=_required_text(payload, "actor"),
             notes=_optional_text(payload, "notes"),
         )
@@ -274,6 +286,10 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                 if decision_match is not None:
                     application.decide(decision_match.group(1), payload)
                     self._send_json({"ok": True})
+                    return
+                if path == "/api/questions/batch-approve":
+                    approved = application.approve_batch(payload)
+                    self._send_json({"approved": approved})
                     return
                 if path == "/api/filters":
                     saved = application.store.save_filter(

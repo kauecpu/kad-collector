@@ -66,6 +66,7 @@ class DesktopFilterSet(StrictModel):
     boards: list[str] = Field(default_factory=list)
     years: list[int] = Field(default_factory=list)
     roles: list[str] = Field(default_factory=list)
+    variants: list[str] = Field(default_factory=list)
     levels: list[str] = Field(default_factory=list)
     disciplines: list[str] = Field(default_factory=list)
     subjects: list[str] = Field(default_factory=list)
@@ -81,6 +82,7 @@ class DesktopFilterSet(StrictModel):
         "concursos",
         "boards",
         "roles",
+        "variants",
         "levels",
         "disciplines",
         "subjects",

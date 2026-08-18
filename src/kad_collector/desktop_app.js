@@ -1,7 +1,7 @@
 const token = document.querySelector('meta[name="kad-desktop-token"]').content;
 
 const emptyFilters = () => ({
-  source_files: [], concursos: [], boards: [], years: [], roles: [], levels: [],
+  source_files: [], concursos: [], boards: [], years: [], roles: [], variants: [], levels: [],
   disciplines: [], subjects: [], topics: [], difficulties: [], statuses: [],
   quality_flags: [], search: '', min_confidence: null,
 });
@@ -11,6 +11,7 @@ const state = {
   query: null,
   filters: emptyFilters(),
   selectedPaths: [],
+  selectedQuestionIds: new Set(),
   currentQuestion: null,
   currentAudit: [],
   polling: null,
@@ -56,7 +57,8 @@ async function openAuthenticatedPdf(event) {
       throw new Error(payload.error || 'Falha ao abrir o PDF local.');
     }
     const objectUrl = URL.createObjectURL(await response.blob());
-    popup.location.replace(objectUrl);
+    const page = Number(event.currentTarget.dataset.page || 0);
+    popup.location.replace(page > 0 ? `${objectUrl}#page=${page}` : objectUrl);
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 300000);
   } catch (error) {
     popup.close();
@@ -91,7 +93,7 @@ function flagLabel(flag) {
 const facetDefinitions = [
   ['Origem', [
     ['source_files', 'PDF de origem'], ['concursos', 'Concurso'], ['boards', 'Banca'],
-    ['years', 'Ano'], ['roles', 'Cargo'], ['levels', 'Nível'],
+    ['years', 'Ano'], ['roles', 'Cargo'], ['variants', 'Variante'], ['levels', 'Nível'],
   ]],
   ['Conteúdo', [
     ['disciplines', 'Disciplina'], ['subjects', 'Assunto'], ['topics', 'Tópico'],
@@ -411,6 +413,10 @@ function renderMetrics() {
   byId('metric-pending').textContent = summary.pending || 0;
   byId('metric-exceptions').textContent = summary.exception || 0;
   byId('metric-exportable').textContent = summary.exportable || 0;
+  const activeStatus = state.filters.statuses.length === 1 ? state.filters.statuses[0] : null;
+  byId('metric-card-pending').classList.toggle('active', activeStatus === 'pending');
+  byId('metric-card-exceptions').classList.toggle('active', activeStatus === 'exception');
+  byId('metric-card-exportable').classList.toggle('active', activeStatus === 'exportable');
 }
 
 function renderJobs() {
@@ -548,10 +554,22 @@ function applyCapacityProfile() {
 
 function renderQuery() {
   if (!state.query) return;
+  const visiblePending = new Set(
+    (state.query.questions || []).filter((view) => view.status === 'pending').map((view) => view.id)
+  );
+  state.selectedQuestionIds = new Set(
+    [...state.selectedQuestionIds].filter((questionId) => visiblePending.has(questionId))
+  );
   byId('result-count').textContent = state.query.total || 0;
+  const activeStatus = state.filters.statuses.length === 1 ? state.filters.statuses[0] : null;
+  byId('records-kicker').textContent = activeStatus === 'pending' ? 'FILA DE REVISÃO'
+    : activeStatus === 'exception' ? 'QUESTÕES EM EXCEÇÃO'
+      : activeStatus === 'exportable' ? 'QUESTÕES APROVADAS' : 'QUESTÕES ENCONTRADAS';
   renderFacets();
   renderActiveFilters();
   renderQuestions();
+  renderBatchToolbar();
+  renderMetrics();
 }
 
 function renderFacets() {
@@ -668,10 +686,30 @@ function renderQuestions() {
   }
   questions.forEach((view) => {
     const question = view.question;
-    const row = document.createElement('button');
-    row.type = 'button';
+    const row = document.createElement('article');
     row.className = 'question-row';
-    row.addEventListener('click', () => openQuestion(view.id));
+    row.classList.toggle('selected', state.selectedQuestionIds.has(view.id));
+
+    if (view.status === 'pending') {
+      const selector = document.createElement('label');
+      selector.className = 'question-selector';
+      selector.setAttribute('aria-label', `Selecionar questão ${question.number}`);
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = state.selectedQuestionIds.has(view.id);
+      checkbox.addEventListener('change', () => toggleQuestionSelection(view.id));
+      selector.append(checkbox);
+      row.append(selector);
+    } else {
+      const placeholder = document.createElement('span');
+      placeholder.className = 'question-selector-placeholder';
+      row.append(placeholder);
+    }
+
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'question-open';
+    open.addEventListener('click', () => openQuestion(view.id));
 
     const main = document.createElement('span');
     main.className = 'question-copy';
@@ -682,7 +720,9 @@ function renderQuestions() {
     const title = document.createElement('strong');
     title.textContent = question.statement;
     const source = document.createElement('small');
-    source.textContent = `${view.filename} · pág. ${(question.source_pages || []).join(', ') || '—'}`;
+    source.textContent = view.status === 'exception' && view.review_notes
+      ? `Motivo: ${view.review_notes}`
+      : `${view.filename} · pág. ${(question.source_pages || []).join(', ') || '—'}`;
     text.append(title, source);
     main.append(number, text);
 
@@ -708,9 +748,47 @@ function renderQuestions() {
     const status = document.createElement('span');
     status.className = `status-pill ${view.status}`;
     status.textContent = view.exportable ? 'Exportável' : statusLabel(view.status);
-    row.append(main, classification, confidence, status);
+    open.append(main, classification, confidence, status);
+    row.append(open);
     root.append(row);
   });
+}
+
+function pendingQuestionsInView() {
+  return (state.query?.questions || []).filter((view) => view.status === 'pending');
+}
+
+function toggleQuestionSelection(questionId) {
+  if (state.selectedQuestionIds.has(questionId)) state.selectedQuestionIds.delete(questionId);
+  else state.selectedQuestionIds.add(questionId);
+  renderQuestions();
+  renderBatchToolbar();
+}
+
+function renderBatchToolbar() {
+  const pending = pendingQuestionsInView();
+  const toolbar = byId('batch-toolbar');
+  toolbar.hidden = pending.length === 0;
+  const selected = state.selectedQuestionIds.size;
+  byId('selection-summary').textContent = `${selected} selecionada${selected === 1 ? '' : 's'}`;
+  byId('batch-approve-open').disabled = selected === 0;
+  const selectAll = byId('select-all-pending');
+  selectAll.checked = pending.length > 0 && selected === pending.length;
+  selectAll.indeterminate = selected > 0 && selected < pending.length;
+}
+
+function activateEditorialQueue(status) {
+  state.activeSection = 'workspace';
+  state.filters = emptyFilters();
+  state.filters.statuses = [status];
+  state.selectedQuestionIds.clear();
+  byId('question-search').value = '';
+  document.querySelectorAll('.rail-link').forEach((item) => item.classList.remove('active'));
+  document.querySelector('.rail-link[data-section="workspace"]')?.classList.add('active');
+  renderSection();
+  runQuery().then(() => {
+    document.querySelector('.workbench')?.scrollIntoView({behavior: 'smooth', block: 'start'});
+  }).catch((error) => toast(error.message, 'error'));
 }
 
 function filterFacetOptions() {
@@ -837,6 +915,9 @@ function fillReviewForm() {
   const question = view.question;
   byId('review-title').textContent = `Questão ${question.number} · ${view.filename}`;
   byId('review-pdf').href = `/api/documents/${view.document_id}/pdf`;
+  byId('review-pdf').dataset.page = question.source_pages?.[0] || '';
+  byId('review-pdf').textContent = question.source_pages?.[0]
+    ? `Abrir PDF · pág. ${question.source_pages[0]}` : 'Abrir PDF';
   byId('edit-statement').value = question.statement;
   byId('edit-answer-status').value = question.answer_status;
   byId('edit-source-pages').value = (question.source_pages || []).join(', ');
@@ -848,6 +929,7 @@ function fillReviewForm() {
   byId('edit-concurso').value = question.concurso || '';
   byId('edit-year').value = question.year || '';
   byId('edit-role').value = question.role || '';
+  byId('edit-variant').value = view.metadata.variant || '';
   byId('edit-organization').value = question.organization || '';
   byId('edit-level').value = question.level || '';
   byId('edit-difficulty').value = question.difficulty || '';
@@ -858,8 +940,36 @@ function fillReviewForm() {
   byId('edit-decision-notes').value = view.review_notes || '';
   renderAlternativeEditor(question.alternatives);
   renderCorrectAnswers(question.correct_answer);
+  byId('edit-correct-answer').disabled = question.answer_status !== 'matched';
   renderReviewFlags();
+  renderReviewContext();
   byId('review-status-copy').textContent = `Situação atual: ${statusLabel(view.status)} · ${state.currentAudit.length} evento(s) de auditoria`;
+}
+
+function renderReviewContext() {
+  const root = byId('review-context');
+  root.replaceChildren();
+  const view = state.currentQuestion;
+  const question = view.question;
+  const items = [
+    ['Banca', question.board || view.metadata.board],
+    ['Concurso', question.concurso || view.metadata.concurso],
+    ['Ano', question.year || view.metadata.year],
+    ['Cargo', question.role || view.metadata.role],
+    ['Variante', view.metadata.variant],
+    ['Documento', view.filename],
+  ];
+  items.forEach(([label, value]) => {
+    const item = document.createElement('div');
+    item.className = 'review-context-item';
+    const caption = document.createElement('span');
+    caption.textContent = label;
+    const content = document.createElement('strong');
+    content.textContent = value || 'Não informado';
+    content.title = String(value || 'Não informado');
+    item.append(caption, content);
+    root.append(item);
+  });
 }
 
 function renderReviewFlags() {
@@ -967,6 +1077,7 @@ function documentMetadata(question) {
   return {
     ...state.currentQuestion.metadata,
     provider: optional('edit-provider'), source_url: optional('edit-source-url'),
+    variant: optional('edit-variant'),
     concurso: question.concurso, board: question.board, year: question.year,
     role: question.role, organization: question.organization, level: question.level,
     discipline: question.discipline, subject: question.matter, topic: question.subject,
@@ -997,17 +1108,64 @@ async function saveCurrentQuestion({silent = false} = {}) {
 
 async function decideCurrent(status) {
   try {
-    await saveCurrentQuestion({silent: true});
+    const actor = optional('edit-actor');
+    const notes = optional('edit-decision-notes');
+    if (!actor) throw new Error('Informe o revisor responsável.');
+    if (['exception', 'rejected'].includes(status) && !notes) {
+      throw new Error('Informe a justificativa para esta decisão.');
+    }
+    if (status !== 'pending') await saveCurrentQuestion({silent: true});
     await request(`/api/questions/${state.currentQuestion.id}/decision`, {
       method: 'POST',
+      body: JSON.stringify({status, actor, notes}),
+    });
+    const messages = {
+      approved: 'Questão aprovada e movida para Exportáveis.',
+      exception: 'Questão enviada para Exceções com a justificativa informada.',
+      rejected: 'Questão rejeitada e decisão registrada.',
+      pending: 'Questão mantida em Pendentes para revisão posterior.',
+    };
+    toast(messages[status] || 'Decisão registrada.');
+    state.selectedQuestionIds.delete(state.currentQuestion.id);
+    byId('review-dialog').close();
+    await loadBootstrap({preserveQuery: true});
+  } catch (error) { toast(error.message, 'error'); }
+}
+
+function openBatchApproval() {
+  const count = state.selectedQuestionIds.size;
+  if (!count) return;
+  const noun = count === 1 ? 'questão' : 'questões';
+  byId('batch-confirm-copy').textContent = `Você está prestes a aprovar ${count} ${noun} e movê-la${count === 1 ? '' : 's'} de Pendentes para Exportáveis.`;
+  byId('batch-actor').value = byId('edit-actor').value || '';
+  byId('batch-notes').value = '';
+  byId('batch-approve-dialog').showModal();
+}
+
+async function submitBatchApproval(event) {
+  event.preventDefault();
+  const button = byId('batch-approve-submit');
+  const questionIds = [...state.selectedQuestionIds];
+  button.disabled = true;
+  try {
+    const result = await request('/api/questions/batch-approve', {
+      method: 'POST',
       body: JSON.stringify({
-        status, actor: optional('edit-actor'), notes: optional('edit-decision-notes'),
+        questionIds,
+        actor: byId('batch-actor').value.trim(),
+        notes: byId('batch-notes').value.trim() || null,
       }),
     });
-    toast(status === 'approved' ? 'Questão aprovada e pronta para o filtro exportável.' : 'Decisão registrada.');
-    byId('review-dialog').close();
-    await loadBootstrap({preserveQuery: false});
-  } catch (error) { toast(error.message, 'error'); }
+    byId('batch-approve-dialog').close();
+    state.selectedQuestionIds.clear();
+    const noun = result.approved === 1 ? 'questão' : 'questões';
+    toast(`${result.approved} ${noun} aprovada${result.approved === 1 ? '' : 's'} e movida${result.approved === 1 ? '' : 's'} para Exportáveis.`);
+    await loadBootstrap({preserveQuery: true});
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    button.disabled = false;
+  }
 }
 
 async function exportCurrentFilter() {
@@ -1037,6 +1195,9 @@ document.querySelectorAll('.modal-close').forEach((button) => {
 });
 byId('import-open').addEventListener('click', () => byId('import-dialog').showModal());
 byId('export-open').addEventListener('click', exportCurrentFilter);
+byId('metric-card-pending').addEventListener('click', () => activateEditorialQueue('pending'));
+byId('metric-card-exceptions').addEventListener('click', () => activateEditorialQueue('exception'));
+byId('metric-card-exportable').addEventListener('click', () => activateEditorialQueue('exportable'));
 byId('review-pdf').addEventListener('click', openAuthenticatedPdf);
 byId('choose-files').addEventListener('click', () => choosePaths('files'));
 byId('choose-folder').addEventListener('click', () => choosePaths('folder'));
@@ -1047,6 +1208,7 @@ byId('source-capacity-profile').addEventListener('change', applyCapacityProfile)
 byId('facet-search').addEventListener('input', filterFacetOptions);
 byId('clear-filters').addEventListener('click', async () => {
   state.filters = emptyFilters();
+  state.selectedQuestionIds.clear();
   byId('question-search').value = '';
   await runQuery();
 });
@@ -1071,12 +1233,27 @@ byId('save-question').addEventListener('click', () => saveCurrentQuestion().catc
 byId('approve-question').addEventListener('click', () => decideCurrent('approved'));
 byId('reject-question').addEventListener('click', () => decideCurrent('rejected'));
 byId('mark-exception').addEventListener('click', () => decideCurrent('exception'));
+byId('defer-question').addEventListener('click', () => decideCurrent('pending'));
+byId('select-all-pending').addEventListener('change', (event) => {
+  state.selectedQuestionIds = event.target.checked
+    ? new Set(pendingQuestionsInView().map((view) => view.id)) : new Set();
+  renderQuestions();
+  renderBatchToolbar();
+});
+byId('clear-selection').addEventListener('click', () => {
+  state.selectedQuestionIds.clear();
+  renderQuestions();
+  renderBatchToolbar();
+});
+byId('batch-approve-open').addEventListener('click', openBatchApproval);
+byId('batch-approve-form').addEventListener('submit', submitBatchApproval);
 document.querySelectorAll('.rail-link').forEach((button) => {
   button.addEventListener('click', async () => {
     document.querySelectorAll('.rail-link').forEach((item) => item.classList.remove('active'));
     button.classList.add('active');
     const section = button.dataset.section;
     state.activeSection = section;
+    state.selectedQuestionIds.clear();
     renderSection();
     if (section === 'sources') return;
     state.filters.statuses = section === 'reviews'

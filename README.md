@@ -138,6 +138,15 @@ O artefato final fica em `dist\KAD-Collector.exe`. O script tambem executa o mod
 `--smoke-test`, que abre o banco local, carrega os recursos da interface e encerra sem criar
 uma janela.
 
+O executavel validado para Windows tambem fica disponivel na pagina de
+[Releases do KAD Collector](https://github.com/kauecpu/kad-collector/releases). Binarios nao
+sao commitados no historico Git; cada versao e publicada como artefato da release correspondente.
+
+Na interface, o card **Pendentes** abre a fila editorial. A revisao permite editar a questao,
+consultar o PDF na pagina de origem, enviar para excecoes com justificativa, adiar a decisao e
+aprovar individualmente ou em lote. Somente uma aprovacao humana move a questao para
+**Exportaveis**.
+
 ## Configurando uma fonte
 
 Copie o bloco `[[sources]]` do exemplo e preencha:
