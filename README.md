@@ -180,6 +180,13 @@ data de coleta, banca, orgao, cargo/exame e ano quando conhecido.
 | OBMEP | `obmep.org.br`; provas e solucoes de 2005 a 2025 | 20 paginas anuais | `reference_only`; arquivos recentes usam rota do Drive bloqueada pelo `robots.txt` |
 | UERJ | `sistema.vestibular.uerj.br`; provas, gabaritos e padroes desde 1997 | Ate 30 paginas | `content`; aba por pagina/PDF ou `sync` |
 
+Na FUVEST, os cadernos V1-V4 repetem as mesmas questoes em ordens diferentes. O Collector
+preserva todos os PDFs como evidencia, usa a menor versao disponivel (normalmente V1) como
+caderno canonico e seleciona no gabarito o bloco correspondente a essa versao. Assim, uma
+prova de 90 itens produz 90 questoes, e nao 360 duplicatas. A coleta so aparece como concluida
+quando o processamento termina; questoes sem resposta oficial deixam a rodada em
+`needs_attention`. Explicacoes continuam pendentes de enriquecimento e revisao editorial.
+
 Os gabaritos da COPERVE podem usar respostas numericas por soma de proposicoes, enquanto o
 schema atual aceita alternativas A-H. Esses casos entram em `exception` e nao podem ser
 aprovados silenciosamente. A COMVEST autoriza reproducao parcial e nao exclusiva das questoes

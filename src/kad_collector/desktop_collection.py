@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import threading
+import time
 import uuid
 from datetime import UTC, datetime
 from importlib import resources
@@ -12,10 +13,10 @@ from typing import Any, Literal, cast
 from .collector import collect_documents
 from .config import ConfigError, load_config_text
 from .desktop_limits import MAX_BATCH_PDFS
-from .desktop_models import DesktopImportMetadata
+from .desktop_models import DesktopDocumentType, DesktopImportMetadata
 from .desktop_processor import DesktopProcessor
 from .desktop_store import DesktopStore
-from .models import AppConfig, SourceDefinition
+from .models import AppConfig, DocumentRecord, SourceDefinition
 from .security import UnsafeUrlError, validate_public_url
 
 _SOURCE_PRESENTATION: dict[str, tuple[str, str]] = {
@@ -79,19 +80,41 @@ def _year_from_url(url: str) -> int | None:
     return int(match.group(1)) if match else None
 
 
-def _import_metadata(source: SourceDefinition, url: str) -> DesktopImportMetadata:
-    metadata = source.metadata
+def _document_variant(document: DocumentRecord) -> str | None:
+    candidate = f"{document.title} {document.original_url} {document.resolved_url}"
+    match = re.search(r"(?<![A-Z0-9])V(?P<number>[1-9]\d*)(?!\d)", candidate, re.IGNORECASE)
+    return f"V{match.group('number')}" if match else None
+
+
+def _import_metadata(
+    source: SourceDefinition,
+    url: str,
+    document: DocumentRecord | None = None,
+) -> DesktopImportMetadata:
+    metadata = {**source.metadata, **(document.metadata if document else {})}
     raw_year = metadata.get("ano")
-    year = int(raw_year) if raw_year and raw_year.isdigit() else _year_from_url(url)
+    year_candidate = (
+        f"{document.title} {document.original_url} {document.resolved_url} {url}"
+        if document is not None
+        else url
+    )
+    year = int(raw_year) if raw_year and raw_year.isdigit() else _year_from_url(year_candidate)
     raw_level = metadata.get("nivel")
     level = (
         cast(Literal["Fundamental", "Médio", "Superior"], raw_level)
         if raw_level in {"Fundamental", "Médio", "Superior"}
         else None
     )
+    document_type: DesktopDocumentType = "auto"
+    if document is not None and document.document_type in {"exam", "answer_key"}:
+        document_type = cast(DesktopDocumentType, document.document_type)
     return DesktopImportMetadata(
         provider=source.id,
-        source_url=url,
+        source_url=document.original_url if document is not None else url,
+        external_id=document.sha256 if document is not None else None,
+        document_title=document.title if document is not None else None,
+        variant=_document_variant(document) if document is not None else None,
+        document_type=document_type,
         concurso=metadata.get("concurso") or metadata.get("cargo") or source.name,
         board=metadata.get("banca"),
         year=year,
@@ -183,6 +206,10 @@ class DesktopCollectionManager:
             "documents": 0,
             "references": 0,
             "failures": 0,
+            "questions": 0,
+            "matchedAnswers": 0,
+            "annulledAnswers": 0,
+            "missingAnswers": 0,
             "warnings": [],
             "manifestPath": None,
             "outputDirectory": None,
@@ -212,6 +239,49 @@ class DesktopCollectionManager:
         with self._lock:
             self._jobs[job_id].update(changes)
 
+    def _wait_for_processing(self, collection_id: str, import_job_ids: list[str]) -> None:
+        if not import_job_ids:
+            self._update(
+                collection_id,
+                status="needs_attention",
+                completedAt=datetime.now(UTC).isoformat(),
+            )
+            return
+        while True:
+            jobs = [self.store.job(job_id) for job_id in import_job_ids]
+            failed = [job for job in jobs if job["status"] == "failed"]
+            if failed:
+                errors = [str(job["error"]) for job in failed if job.get("error")]
+                self._update(
+                    collection_id,
+                    status="failed",
+                    completedAt=datetime.now(UTC).isoformat(),
+                    error="; ".join(errors) or "processamento dos PDFs falhou",
+                )
+                return
+            if all(job["status"] == "completed" for job in jobs):
+                summary = self.store.job_question_summary(import_job_ids)
+                warnings = list(self._jobs[collection_id]["warnings"])
+                needs_attention = not summary["questions"] or bool(summary["missing_answers"])
+                if not summary["questions"]:
+                    warnings.append("Nenhuma questão foi reconhecida nos PDFs coletados.")
+                elif summary["missing_answers"]:
+                    warnings.append(
+                        f"{summary['missing_answers']} questão(ões) ficaram sem resposta oficial."
+                    )
+                self._update(
+                    collection_id,
+                    status="needs_attention" if needs_attention else "completed",
+                    completedAt=datetime.now(UTC).isoformat(),
+                    questions=summary["questions"],
+                    matchedAnswers=summary["matched_answers"],
+                    annulledAnswers=summary["annulled_answers"],
+                    missingAnswers=summary["missing_answers"],
+                    warnings=list(dict.fromkeys(warnings)),
+                )
+                return
+            time.sleep(0.2)
+
     def _run(
         self,
         job_id: str,
@@ -230,11 +300,22 @@ class DesktopCollectionManager:
             paths = [Path(document.local_path).resolve() for document in manifest.documents]
             import_job_ids: list[str] = []
             metadata = _import_metadata(source, url)
+            metadata_by_path = {
+                str(Path(document.local_path).resolve()).casefold(): _import_metadata(
+                    source, url, document
+                )
+                for document in manifest.documents
+            }
             for start in range(0, len(paths), MAX_BATCH_PDFS):
+                batch_paths = paths[start : start + MAX_BATCH_PDFS]
                 import_job_id = self.store.create_job(
-                    paths[start : start + MAX_BATCH_PDFS],
+                    batch_paths,
                     metadata,
                     classifier_provider,
+                    metadata_by_path={
+                        str(path).casefold(): metadata_by_path[str(path).casefold()]
+                        for path in batch_paths
+                    },
                 )
                 import_job_ids.append(import_job_id)
                 self.processor.start(import_job_id)
@@ -253,8 +334,7 @@ class DesktopCollectionManager:
             ]
             self._update(
                 job_id,
-                status="completed",
-                completedAt=datetime.now(UTC).isoformat(),
+                status="processing",
                 documents=len(manifest.documents),
                 references=len(manifest.references),
                 failures=len(manifest.failures),
@@ -276,6 +356,7 @@ class DesktopCollectionManager:
                 ],
                 importJobIds=import_job_ids,
             )
+            self._wait_for_processing(job_id, import_job_ids)
         except (OSError, RuntimeError, ValueError) as exc:
             self._update(
                 job_id,

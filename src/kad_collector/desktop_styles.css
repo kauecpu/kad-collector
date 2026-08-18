@@ -226,8 +226,9 @@ label { display: grid; gap: 6px; color: #5f596b; font-size: 10px; font-weight: 7
 .collection-list { display: grid; gap: 7px; }
 .collection-row { display: grid; grid-template-columns: 8px minmax(0, 1fr) minmax(180px, auto); gap: 12px; align-items: center; min-height: 58px; padding: 10px 12px; background: #f7f3ed; border: 1px solid #e4ddd4; border-radius: 12px; }
 .collection-signal { width: 8px; height: 32px; background: var(--purple-soft); border-radius: 99px; }
-.collection-signal.running { background: var(--purple); }
+.collection-signal.running, .collection-signal.processing { background: var(--purple); }
 .collection-signal.completed { background: var(--success); }
+.collection-signal.needs_attention { background: var(--warning); }
 .collection-signal.failed { background: var(--danger); }
 .collection-row strong, .collection-row small { display: block; }
 .collection-row strong { margin-bottom: 4px; font-size: 10px; }

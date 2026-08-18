@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import threading
 import time
 from pathlib import Path
@@ -45,6 +46,65 @@ def _document_type(filename: str, metadata: DesktopImportMetadata) -> str:
         "solucao",
     )
     return "answer_key" if any(item in normalized for item in answer_markers) else "exam"
+
+
+def _variant_number(document: dict[str, Any]) -> int | None:
+    metadata = DesktopImportMetadata.model_validate(document["metadata"])
+    candidate = " ".join(
+        value
+        for value in (
+            metadata.variant,
+            metadata.document_title,
+            metadata.source_url,
+            cast(str, document["filename"]),
+        )
+        if value
+    )
+    match = re.search(r"(?<![A-Z0-9])V(?P<number>[1-9]\d*)(?!\d)", candidate, re.IGNORECASE)
+    return int(match.group("number")) if match else None
+
+
+def _document_group(document: dict[str, Any]) -> tuple[str | None, int | None]:
+    metadata = DesktopImportMetadata.model_validate(document["metadata"])
+    return metadata.provider, metadata.year
+
+
+def _canonical_exam_documents(
+    documents: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    selected: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    fuvest_groups: dict[tuple[str | None, int | None], list[dict[str, Any]]] = {}
+    for document in documents:
+        metadata = DesktopImportMetadata.model_validate(document["metadata"])
+        if metadata.provider != "fuvest_vestibular":
+            selected.append(document)
+            continue
+        fuvest_groups.setdefault(_document_group(document), []).append(document)
+
+    for group in fuvest_groups.values():
+        ranked = sorted(
+            group,
+            key=lambda item: (
+                _variant_number(item) is None,
+                _variant_number(item) or 10_000,
+                cast(str, item["filename"]),
+            ),
+        )
+        selected.append(ranked[0])
+        skipped.extend(ranked[1:])
+    return selected, skipped
+
+
+def _select_answer_key(
+    exam: dict[str, Any], answer_keys: list[dict[str, Any]]
+) -> dict[str, Any] | None:
+    same_group = [item for item in answer_keys if _document_group(item) == _document_group(exam)]
+    if len(same_group) == 1:
+        return same_group[0]
+    if not same_group and len(answer_keys) == 1:
+        return answer_keys[0]
+    return None
 
 
 def _apply_classification(
@@ -324,7 +384,7 @@ class DesktopProcessor:
 
     def _structure_job(self, job_id: str, event: threading.Event) -> None:
         documents = self.store.documents_for_job(job_id)
-        answer_keys: list[dict[int, Any]] = []
+        answer_keys: list[dict[str, Any]] = []
         exam_documents: list[dict[str, Any]] = []
         for document in documents:
             metadata = DesktopImportMetadata.model_validate(document["metadata"])
@@ -332,16 +392,26 @@ class DesktopProcessor:
                 text = "\n".join(
                     str(page["text"]) for page in self.store.pages(cast(str, document["id"]))
                 )
-                entries = parse_answer_key(text)
-                if entries:
-                    answer_keys.append(entries)
+                if text.strip():
+                    answer_keys.append({**document, "answer_key_text": text})
                 continue
             exam_documents.append(document)
 
-        safe_answer_key = (
-            answer_keys[0] if len(answer_keys) == 1 and len(exam_documents) == 1 else None
-        )
-        for document in exam_documents:
+        canonical_exams, skipped_exams = _canonical_exam_documents(exam_documents)
+        for document in skipped_exams:
+            metadata = DesktopImportMetadata.model_validate(document["metadata"])
+            warnings = list(cast(list[str], document["warnings"]))
+            warnings.append(
+                f"versão {metadata.variant or 'alternativa'} preservada como origem; "
+                "questões não duplicadas porque a menor versão do caderno é a canônica"
+            )
+            self.store.update_document(
+                cast(str, document["id"]),
+                status="processed",
+                warnings_json=json.dumps(list(dict.fromkeys(warnings)), ensure_ascii=False),
+            )
+
+        for document in canonical_exams:
             if event.is_set():
                 return
             if document["status"] == "exception" and not self.store.pages(
@@ -364,6 +434,20 @@ class DesktopProcessor:
                 )
                 continue
             metadata = DesktopImportMetadata.model_validate(document["metadata"])
+            answer_key = _select_answer_key(document, answer_keys)
+            variant = f"V{_variant_number(document)}" if _variant_number(document) else None
+            answer_entries = (
+                parse_answer_key(cast(str, answer_key["answer_key_text"]), variant=variant)
+                if answer_key is not None
+                else {}
+            )
+            if answer_key is None:
+                existing_warnings.append("nenhum gabarito correspondente foi localizado")
+            elif not answer_entries:
+                existing_warnings.append(
+                    "gabarito localizado, mas sem respostas reconhecidas para "
+                    f"{variant or 'a prova'}"
+                )
             requests = [
                 ClassificationRequest(
                     question_number=question.number,
@@ -385,17 +469,24 @@ class DesktopProcessor:
             for question in questions:
                 classification = by_number.get(question.number, QuestionClassification())
                 updated = _apply_classification(question, classification)
-                if safe_answer_key is not None and question.number in safe_answer_key:
-                    entry = safe_answer_key[question.number]
-                    if entry.status == "matched":
-                        payload = updated.model_dump(mode="json")
-                        payload.update({"answer_status": "matched", "correct_answer": entry.answer})
-                        updated = QuestionRecord.model_validate(payload)
-                    elif entry.status == "annulled":
-                        payload = updated.model_dump(mode="json")
-                        payload.update({"answer_status": "annulled", "correct_answer": None})
-                        updated = QuestionRecord.model_validate(payload)
+                entry = answer_entries.get(question.number)
+                if entry is not None:
+                    payload = updated.model_dump(mode="json")
+                    payload.update(
+                        {
+                            "answer_status": "annulled" if entry.annulled else "matched",
+                            "correct_answer": None if entry.annulled else entry.answer,
+                        }
+                    )
+                    updated = QuestionRecord.model_validate(payload)
                 self.store.save_question(document_id, updated, classification)
+            missing_answers = sum(
+                question.number not in answer_entries for question in questions
+            )
+            if missing_answers:
+                existing_warnings.append(
+                    f"{missing_answers} de {len(questions)} questões ficaram sem resposta oficial"
+                )
             self.store.update_document(
                 document_id,
                 status="processed",

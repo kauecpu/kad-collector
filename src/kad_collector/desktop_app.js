@@ -236,7 +236,10 @@ function renderSourceCatalog() {
 }
 
 function collectionStatusLabel(status) {
-  return {queued: 'Na fila', running: 'Coletando', completed: 'Concluída', failed: 'Falhou'}[status] || status;
+  return {
+    queued: 'Na fila', running: 'Baixando', processing: 'Processando',
+    completed: 'Concluída', needs_attention: 'Requer atenção', failed: 'Falhou',
+  }[status] || status;
 }
 
 function renderCollections() {
@@ -251,6 +254,7 @@ function renderCollections() {
     return;
   }
   jobs.slice(0, 8).forEach((job) => {
+    const collectionFinished = ['completed', 'needs_attention'].includes(job.status);
     const row = document.createElement('article');
     row.className = 'collection-row';
     const signal = document.createElement('span');
@@ -267,13 +271,15 @@ function renderCollections() {
     status.textContent = collectionStatusLabel(job.status);
     const summary = document.createElement('small');
     if (job.status === 'failed') summary.textContent = job.error || 'Falha não detalhada.';
-    else if (job.status === 'completed') {
-      summary.textContent = `${job.documents} PDF(s), ${job.failures} falha(s)`;
+    else if (collectionFinished) {
+      summary.textContent = `${job.documents} PDF(s) · ${job.questions || 0} questão(ões) · ${job.matchedAnswers || 0} resposta(s)`;
       if (!job.documents) status.textContent = 'Concluída sem PDFs';
+    } else if (job.status === 'processing') {
+      summary.textContent = 'PDFs baixados; extraindo questões e associando o gabarito.';
     } else summary.textContent = 'A página e os PDFs estão sendo verificados.';
     result.append(status, summary);
     row.append(signal, copy, result);
-    if (job.status === 'completed') {
+    if (collectionFinished) {
       const details = document.createElement('details');
       details.className = 'collection-details';
       const detailsSummary = document.createElement('summary');
@@ -414,7 +420,7 @@ function schedulePoll() {
   const activeProcessing = (state.bootstrap.jobs || []).some((job) =>
     ['queued', 'running', 'cancelling'].includes(job.status));
   const activeCollection = (state.bootstrap.collectionJobs || []).some((job) =>
-    ['queued', 'running'].includes(job.status));
+    ['queued', 'running', 'processing'].includes(job.status));
   const active = activeProcessing || activeCollection;
   if (active) {
     state.polling = setTimeout(() => loadBootstrap({preserveQuery: true}).catch(() => {}), 1400);
