@@ -14,8 +14,12 @@ aplicativo/frontend neste repositório e não copie código do repositório priv
   tarefa.
 - Cada fonte nova deve ser descrita no README, incluindo origem, campos
   coletados, limites de requisição e forma de execução.
-- Respeite termos de uso, robots.txt, direitos autorais, privacidade e limites
-  das fontes. Não contorne autenticação, CAPTCHA ou bloqueios de acesso.
+- Respeite termos de uso, direitos autorais, privacidade e os limites
+  administrativos de cada fonte. `robots.txt` e `Crawl-delay` são políticas
+  configuráveis por fonte: use `enforce` como padrão, e permita `observe` ou
+  `ignore` somente por escolha explícita do responsável, registrada no
+  manifesto e na telemetria. Não contorne autenticação, CAPTCHA ou bloqueios
+  de acesso.
 - Nunca inclua `.env`, senhas, tokens, cookies, chaves privadas ou a chave
   `service_role` em commits, logs, testes ou Pull Requests. Use variáveis de
   ambiente e GitHub Secrets.

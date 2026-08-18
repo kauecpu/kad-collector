@@ -205,10 +205,7 @@ class LinkParsingTests(unittest.TestCase):
                     body = b"User-agent: *\nAllow: /\n"
                 elif url == first_page:
                     headers["Content-Type"] = "text/html; charset=utf-8"
-                    body = (
-                        b'<a href="/prova-1.pdf">Prova 1</a>'
-                        b'<a href="?page=2">Proxima pagina</a>'
-                    )
+                    body = b'<a href="/prova-1.pdf">Prova 1</a><a href="?page=2">Proxima pagina</a>'
                 elif url == second_page:
                     headers["Content-Type"] = "text/html; charset=utf-8"
                     body = (
@@ -242,6 +239,22 @@ class LinkParsingTests(unittest.TestCase):
 
 
 class SecurityTests(unittest.TestCase):
+    def test_professional_collection_settings_accept_unbounded_file_count(self) -> None:
+        settings = CollectorSettings(
+            capacity_profile="high_performance",
+            request_interval_seconds=0,
+            max_files_per_source=None,
+            max_concurrency=8,
+        )
+        self.assertIsNone(settings.max_files_per_source)
+        self.assertEqual(settings.max_concurrency, 8)
+
+    def test_browser_strategy_requires_explicit_source_enablement(self) -> None:
+        with self.assertRaisesRegex(ValueError, "browser_enabled"):
+            source_definition(discovery_strategies=["html", "browser"])
+        source = source_definition(discovery_strategies=["html", "browser"], browser_enabled=True)
+        self.assertTrue(source.browser_enabled)
+
     def test_official_configuration_registers_authorized_sources(self) -> None:
         config = load_config(PROJECT_ROOT / "config" / "sources.official.toml")
         self.assertEqual(
@@ -346,6 +359,28 @@ class SecurityTests(unittest.TestCase):
                 resolve_dns=False,
             )
 
+    def test_explicit_subdomain_pattern_does_not_allow_apex_or_other_domains(self) -> None:
+        self.assertEqual(
+            validate_public_url(
+                "https://arquivos.provas.example.gov.br/prova.pdf",
+                ["*.provas.example.gov.br"],
+                resolve_dns=False,
+            ),
+            "https://arquivos.provas.example.gov.br/prova.pdf",
+        )
+        with self.assertRaises(UnsafeUrlError):
+            validate_public_url(
+                "https://provas.example.gov.br/prova.pdf",
+                ["*.provas.example.gov.br"],
+                resolve_dns=False,
+            )
+        with self.assertRaises(UnsafeUrlError):
+            validate_public_url(
+                "https://evil-example.gov.br/prova.pdf",
+                ["*.example.gov.br"],
+                resolve_dns=False,
+            )
+
     def test_rejects_enabled_source_without_authorization(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "sources.toml"
@@ -412,6 +447,64 @@ authorization_basis = ""
             policy.can_fetch("https://provas.example.gov.br/restrito/prova.pdf", hosts)
         )
         self.assertTrue(policy.can_fetch("https://provas.example.gov.br/publico/prova.pdf", hosts))
+
+    def test_robots_policy_observe_records_but_does_not_block(self) -> None:
+        class FixtureClient:
+            def get(self, url: str, allowed_hosts: list[str], max_bytes: int) -> HttpResult:
+                headers = Message()
+                headers["Content-Type"] = "text/plain; charset=utf-8"
+                return HttpResult(
+                    url=url,
+                    status_code=200,
+                    headers=headers,
+                    body=(FIXTURES / "robots.txt").read_bytes(),
+                )
+
+        policy = RobotsPolicy(  # type: ignore[arg-type]
+            FixtureClient(), "KADCollector/0.1", robots_policy="observe"
+        )
+        self.assertTrue(
+            policy.can_fetch(
+                "https://provas.example.gov.br/restrito/prova.pdf",
+                ["provas.example.gov.br"],
+            )
+        )
+        self.assertTrue(any("modo observe" in item for item in policy.observations))
+
+    def test_robots_policy_ignore_does_not_fetch_robots_file(self) -> None:
+        class FailIfCalled:
+            def get(self, url: str, allowed_hosts: list[str], max_bytes: int) -> HttpResult:
+                raise AssertionError("robots.txt nao deveria ser consultado")
+
+        policy = RobotsPolicy(  # type: ignore[arg-type]
+            FailIfCalled(), "KADCollector/0.1", robots_policy="ignore"
+        )
+        self.assertTrue(
+            policy.can_fetch(
+                "https://provas.example.gov.br/restrito/prova.pdf",
+                ["provas.example.gov.br"],
+            )
+        )
+
+    def test_crawl_delay_observe_records_but_does_not_wait(self) -> None:
+        class FixtureClient:
+            def get(self, url: str, allowed_hosts: list[str], max_bytes: int) -> HttpResult:
+                headers = Message()
+                headers["Content-Type"] = "text/plain; charset=utf-8"
+                return HttpResult(
+                    url=url,
+                    status_code=200,
+                    headers=headers,
+                    body=b"User-agent: *\nCrawl-delay: 7\nAllow: /\n",
+                )
+
+        policy = RobotsPolicy(  # type: ignore[arg-type]
+            FixtureClient(), "KADCollector/0.1", crawl_delay_policy="observe"
+        )
+        url = "https://provas.example.gov.br/publico/prova.pdf"
+        self.assertTrue(policy.can_fetch(url, ["provas.example.gov.br"]))
+        self.assertIsNone(policy.crawl_delay(url))
+        self.assertTrue(any("7s observado" in item for item in policy.observations))
 
 
 if __name__ == "__main__":

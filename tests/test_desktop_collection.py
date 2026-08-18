@@ -40,7 +40,15 @@ class DesktopCollectionTests(unittest.TestCase):
         javascript = package.joinpath("desktop_app.js").read_text(encoding="utf-8")
         self.assertIn('data-section="sources"', html)
         self.assertIn('id="source-form"', html)
+        self.assertIn('id="source-capacity-profile"', html)
+        self.assertIn('id="source-browser-enabled"', html)
+        self.assertIn('id="source-robots-policy"', html)
+        self.assertIn('id="source-crawl-delay-policy"', html)
         self.assertIn("/api/collections", javascript)
+        self.assertIn("capacityProfile", javascript)
+        self.assertIn("collectionAction", javascript)
+        self.assertIn("robotsPolicy", javascript)
+        self.assertIn("crawlDelayPolicy", javascript)
 
     def test_collection_downloads_then_creates_local_processing_job(self) -> None:
         pdf_path = self.root / "fgv_conhecimento-exam-fixture.pdf"
@@ -148,8 +156,7 @@ class DesktopCollectionTests(unittest.TestCase):
         metadata_by_path[str(paths[4].resolve()).casefold()] = base.model_copy(
             update={
                 "source_url": (
-                    "https://www.fuvest.br/wp-content/uploads/"
-                    "fuvest2026-fase1-gabarito.pdf"
+                    "https://www.fuvest.br/wp-content/uploads/fuvest2026-fase1-gabarito.pdf"
                 ),
                 "document_title": "Gabarito FUVEST 2026",
                 "document_type": "answer_key",
@@ -172,10 +179,7 @@ Enunciado completo da segunda questao.
 (B) Segunda alternativa.
 #####
 """
-        answer_key_text = (
-            "PROVA V1 PROVA V2 PROVA V3 PROVA V4\n"
-            "1 A 2 B 1 B 2 A 1 A 2 A 1 B 2 B"
-        )
+        answer_key_text = "PROVA V1 PROVA V2 PROVA V3 PROVA V4\n1 A 2 B 1 B 2 A 1 A 2 A 1 B 2 B"
         documents = self.store.documents_for_job(job_id)
         for document in documents:
             metadata = DesktopImportMetadata.model_validate(document["metadata"])
@@ -193,9 +197,7 @@ Enunciado completo da segunda questao.
         )
         self.assertEqual({item["filename"] for item in result["questions"]}, {"Prova 2026 V1"})
         self.assertTrue(all(item["status"] == "pending" for item in result["questions"]))
-        self.assertTrue(
-            all("without_answer" not in item["flags"] for item in result["questions"])
-        )
+        self.assertTrue(all("without_answer" not in item["flags"] for item in result["questions"]))
         skipped = [
             item
             for item in self.store.documents_for_job(job_id)
@@ -203,8 +205,7 @@ Enunciado completo da segunda questao.
         ]
         self.assertTrue(
             all(
-                any("não duplicadas" in warning for warning in item["warnings"])
-                for item in skipped
+                any("não duplicadas" in warning for warning in item["warnings"]) for item in skipped
             )
         )
 

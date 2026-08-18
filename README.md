@@ -187,6 +187,92 @@ prova de 90 itens produz 90 questoes, e nao 360 duplicatas. A coleta so aparece 
 quando o processamento termina; questoes sem resposta oficial deixam a rodada em
 `needs_attention`. Explicacoes continuam pendentes de enriquecimento e revisao editorial.
 
+## Motor de coleta profissional
+
+O motor separa transporte, descoberta, cache, checkpoints e telemetria. A coleta por link
+continua aceitando as configuracoes anteriores; os campos novos possuem valores padrao.
+
+O transporte usa pool de conexoes, HTTP/2 quando o servidor oferece suporte, streaming para
+PDFs, SHA-256 incremental, gravacao temporaria e troca atomica do arquivo concluido. Downloads
+interrompidos usam `Range` e `If-Range` quando o servidor aceita retomada. Respostas 408, 425,
+429, 500, 502, 503 e 504 entram em retentativa com backoff, jitter e `Retry-After` limitado pelo
+valor `retry_max_delay_seconds`.
+
+O cache persistente fica em `collection-engine.sqlite3`. Ele armazena ETag, Last-Modified,
+hash, tamanho, caminho e data de verificacao. Uma resposta 304 reutiliza o arquivo somente
+depois de confirmar tamanho e SHA-256. O banco tambem guarda checkpoints e telemetria sem
+cookies, tokens ou query strings.
+
+### Perfis de capacidade
+
+| Perfil | Concorrencia | Intervalo | Uso |
+| --- | ---: | ---: | --- |
+| Conservador | 2 | 3 s | Servidores pequenos ou instaveis |
+| Equilibrado | 4 | 1 s na interface | Coletas oficiais comuns |
+| Alto desempenho | 8 | 0 s | Acervos preparados para downloads paralelos |
+| Personalizado | 1 a 32 | 0 a 300 s | Ajuste administrativo por execucao |
+
+O perfil nao desativa seguranca de rede. Hosts cadastrados, DNS publico, redirects validados,
+TLS, quotas, limites de descompressao e cancelamento continuam ativos. `robots.txt` e
+`Crawl-delay` sao politicas administrativas independentes, sempre registradas no manifesto.
+
+Cada fonte aceita `enforce`, `observe` ou `ignore`. `enforce` consulta e aplica a regra;
+`observe` consulta e registra o que teria sido bloqueado sem interromper a coleta; `ignore`
+nao consulta o arquivo nem aplica o atraso. O padrao distribuido continua sendo `enforce`, e
+a tela mostra a escolha antes de iniciar. Nenhum desses modos autoriza atravessar login,
+CAPTCHA, autenticacao ou um bloqueio explicito do servidor.
+
+### Estrategias de descoberta
+
+Cada fonte escolhe uma sequencia:
+
+```toml
+discovery_strategies = ["html", "sitemap", "feed", "json", "browser"]
+sitemap_urls = ["https://www.example.gov.br/sitemap.xml"]
+feed_urls = ["https://www.example.gov.br/provas.xml"]
+browser_enabled = true
+```
+
+- `html` le links e paginacao visiveis no documento estatico;
+- `sitemap` aceita `urlset`, indices e gzip com limite de expansao;
+- `feed` aceita RSS e Atom;
+- `json` usa somente endpoints GET publicos declarados na fonte;
+- `browser` executa JavaScript com Playwright e Edge/Chromium sem modo stealth.
+
+O navegador bloqueia navegacao fora dos hosts da fonte e identifica CAPTCHA, login e acesso
+negado como `manual_action_required`. Ele nao resolve desafios nem importa cookies do navegador
+pessoal. No Windows, o adaptador tenta usar Microsoft Edge; uma instalacao Playwright Chromium
+tambem pode ser usada quando `PLAYWRIGHT_BROWSERS_PATH` estiver configurada.
+
+Exemplo de JSON publico:
+
+```toml
+[[sources.json_endpoints]]
+url = "https://www.example.gov.br/api/provas"
+items_path = "data.items"
+url_field = "download"
+title_field = "titulo"
+type_field = "tipo"
+next_page_field = "data.proxima"
+```
+
+Cabecalhos `Authorization`, `Cookie` e `Proxy-Authorization` sao rejeitados na configuracao.
+
+### Operacao e recuperacao
+
+A tela **Coletar de um link** permite escolher o perfil, ativar JavaScript, ajustar concorrencia
+e intervalo, pausar, continuar ou cancelar. Cada atividade mostra requisicoes, bytes, cache e
+retentativas. O checkpoint preserva paginas pendentes e documentos ja descobertos.
+
+Para rollback, encerre o Collector, preserve os PDFs em `collected/raw`, restaure uma copia do
+banco principal quando houver migracao editorial e remova somente `collection-engine.sqlite3`
+se quiser reconstruir cache, telemetria e checkpoints. Essa remocao nao apaga questoes do banco
+`collector.sqlite3`.
+
+A arquitetura tomou como referencia conceitos de cache, backoff e renderizacao publicados no
+artigo da Bright Data sobre bloqueios de scraping. O projeto nao incorporou proxies, falsificacao
+de TLS, navegadores stealth ou solucionadores de CAPTCHA.
+
 Os gabaritos da COPERVE podem usar respostas numericas por soma de proposicoes, enquanto o
 schema atual aceita alternativas A-H. Esses casos entram em `exception` e nao podem ser
 aprovados silenciosamente. A COMVEST autoriza reproducao parcial e nao exclusiva das questoes
@@ -204,9 +290,9 @@ kad-collector sync --config config\sources.toml
 As protecoes do coletor incluem:
 
 - obediencia a `robots.txt`, com bloqueio conservador quando ele nao pode ser consultado;
-- intervalo minimo de um segundo e valor padrao de tres segundos entre requisicoes;
-- limite padrao de 20 PDFs por fonte e por execucao;
-- limites de 5 MB para HTML e 50 MB para cada PDF;
+- intervalo configuravel por fonte, com valor padrao de tres segundos e suporte a zero;
+- limite padrao de 20 PDFs por fonte, removivel explicitamente com valor nulo;
+- limites configuraveis, por padrao 5 MB para HTML e 50 MB para cada PDF;
 - bloqueio de hosts fora da lista, credenciais em URL e enderecos de rede privada;
 - revalidacao de todos os redirecionamentos;
 - identificacao de arquivos por SHA-256 e manifesto de origem.

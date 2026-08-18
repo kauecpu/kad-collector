@@ -9,7 +9,7 @@ if (-not (Test-Path -LiteralPath $Python)) {
 
 Push-Location $ProjectRoot
 try {
-    & $Python -m pip install -e ".[desktop,build]"
+    & $Python -m pip install -e ".[desktop,browser,build]"
     if ($LASTEXITCODE -ne 0) { throw "Falha ao instalar dependencias do desktop." }
     & $Python -m PyInstaller --noconfirm --clean KADCollector.spec
     if ($LASTEXITCODE -ne 0) { throw "Falha ao gerar KAD-Collector.exe." }
