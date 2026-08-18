@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
 from typing import Any, Literal, cast
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
 from .collection_state import CollectionStateStore
 from .collector import CollectionPaused, collect_documents
@@ -82,6 +82,16 @@ def _year_from_url(url: str) -> int | None:
     return int(match.group(1)) if match else None
 
 
+def _canonical_url(url: str) -> str:
+    parsed = urlsplit(url)
+    host = (parsed.hostname or "").casefold()
+    port = parsed.port
+    netloc = host if port in {None, 443} else f"{host}:{port}"
+    path = re.sub(r"/{2,}", "/", parsed.path) or "/"
+    query = urlencode(sorted(parse_qsl(parsed.query, keep_blank_values=True)))
+    return urlunsplit(("https", netloc, path, query, ""))
+
+
 def _document_variant(document: DocumentRecord) -> str | None:
     candidate = f"{document.title} {document.original_url} {document.resolved_url}"
     match = re.search(
@@ -145,6 +155,9 @@ def _import_metadata(
     return DesktopImportMetadata(
         provider=source.id,
         source_url=document.original_url if document is not None else url,
+        canonical_url=(
+            _canonical_url(document.resolved_url) if document is not None else _canonical_url(url)
+        ),
         external_id=document.sha256 if document is not None else None,
         document_title=document.title if document is not None else None,
         variant=_document_variant(document) if document is not None else None,
@@ -158,19 +171,30 @@ def _import_metadata(
     )
 
 
+def _answer_key_batch_score(
+    document: DocumentRecord,
+    metadata_by_path: dict[str, DesktopImportMetadata],
+    concurso: object,
+    year: object,
+    role_words: set[str],
+) -> tuple[int, int, int, int]:
+    path = Path(document.local_path).resolve()
+    metadata = metadata_by_path[str(path).casefold()]
+    candidate = f"{document.title} {document.original_url}".casefold()
+    candidate_words = set(re.findall(r"[a-z0-9]+", candidate))
+    return (
+        int(metadata.concurso == concurso),
+        int(year is not None and metadata.year == year),
+        len(role_words & candidate_words),
+        int("definitiv" in candidate),
+    )
+
+
 def _processing_batches(
     documents: list[DocumentRecord],
     metadata_by_path: dict[str, DesktopImportMetadata],
 ) -> list[list[Path]]:
     answer_keys = [document for document in documents if document.document_type == "answer_key"]
-    answer_keys.sort(
-        key=lambda document: (
-            "definitiv" not in f"{document.title} {document.original_url}".casefold(),
-            document.title.casefold(),
-        )
-    )
-    shared_keys = answer_keys[: min(4, max(0, MAX_BATCH_PDFS - 1))]
-    shared_paths = [Path(document.local_path).resolve() for document in shared_keys]
     exam_groups: dict[tuple[object, ...], list[Path]] = {}
     for document in documents:
         if document.document_type != "exam":
@@ -186,8 +210,22 @@ def _processing_batches(
         exam_groups.setdefault(key, []).append(path)
 
     batches: list[list[Path]] = []
-    capacity = max(1, MAX_BATCH_PDFS - len(shared_paths))
-    for group in exam_groups.values():
+    key_limit = min(4, max(0, MAX_BATCH_PDFS - 1))
+    for group_key, group in exam_groups.items():
+        _, concurso, year, role = group_key
+        role_words = {
+            word for word in re.findall(r"[a-z0-9]+", str(role or "").casefold()) if len(word) > 2
+        }
+
+        selected_keys = sorted(
+            answer_keys,
+            key=lambda document: _answer_key_batch_score(
+                document, metadata_by_path, concurso, year, role_words
+            ),
+            reverse=True,
+        )[:key_limit]
+        shared_paths = [Path(document.local_path).resolve() for document in selected_keys]
+        capacity = max(1, MAX_BATCH_PDFS - len(shared_paths))
         for start in range(0, len(group), capacity):
             batches.append([*group[start : start + capacity], *shared_paths])
     if not batches and answer_keys:
@@ -345,6 +383,7 @@ class DesktopCollectionManager:
             "downloadedDocuments": 0,
             "processedDocuments": 0,
             "failedDocuments": 0,
+            "skippedDocuments": 0,
             "references": 0,
             "failures": 0,
             "questions": 0,
@@ -541,15 +580,33 @@ class DesktopCollectionManager:
                 stop_event=self._controls[job_id],
             )
             paths = [Path(document.local_path).resolve() for document in manifest.documents]
+            known_hashes = self.store.processed_sha256s(
+                document.sha256 for document in manifest.documents
+            )
+            skipped_documents = [
+                document for document in manifest.documents if document.sha256 in known_hashes
+            ]
+            processing_documents = [
+                document for document in manifest.documents if document.sha256 not in known_hashes
+            ]
+            if (
+                processing_documents
+                and not any(
+                    document.document_type == "exam" for document in processing_documents
+                )
+                and any(document.document_type == "exam" for document in skipped_documents)
+            ):
+                skipped_documents.extend(processing_documents)
+                processing_documents = []
             import_job_ids: list[str] = []
             metadata = _import_metadata(source, url)
             metadata_by_path = {
                 str(Path(document.local_path).resolve()).casefold(): _import_metadata(
                     source, url, document
                 )
-                for document in manifest.documents
+                for document in processing_documents
             }
-            for batch_paths in _processing_batches(manifest.documents, metadata_by_path):
+            for batch_paths in _processing_batches(processing_documents, metadata_by_path):
                 import_job_id = self.store.create_job(
                     batch_paths,
                     metadata,
@@ -562,6 +619,8 @@ class DesktopCollectionManager:
                 import_job_ids.append(import_job_id)
                 self.processor.start(import_job_id)
             warnings = list(manifest.warnings)
+            if skipped_documents:
+                warnings.append(f"{len(skipped_documents)} PDF(s): já processado — ignorado.")
             if not paths:
                 warnings.append("Nenhum PDF compativel foi encontrado neste link.")
             files = [
@@ -571,6 +630,9 @@ class DesktopCollectionManager:
                     "localPath": str(Path(document.local_path).resolve()),
                     "sourceUrl": document.original_url,
                     "sizeBytes": document.size_bytes,
+                    "processingStatus": (
+                        "already_processed" if document.sha256 in known_hashes else "new"
+                    ),
                 }
                 for document in manifest.documents
             ]
@@ -584,6 +646,7 @@ class DesktopCollectionManager:
                     + sum(failure.stage == "download" for failure in manifest.failures)
                 ),
                 downloadedDocuments=len(manifest.documents),
+                skippedDocuments=len(skipped_documents),
                 references=len(manifest.references),
                 failures=len(manifest.failures),
                 warnings=warnings,
@@ -612,7 +675,14 @@ class DesktopCollectionManager:
                     ),
                 },
             )
-            self._wait_for_processing(job_id, import_job_ids)
+            if import_job_ids:
+                self._wait_for_processing(job_id, import_job_ids)
+            else:
+                self._update(
+                    job_id,
+                    status="completed",
+                    completedAt=datetime.now(UTC).isoformat(),
+                )
         except CollectionPaused:
             with self._lock:
                 requested = self._jobs[job_id].get("requestedAction")

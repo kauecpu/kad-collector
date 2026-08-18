@@ -227,13 +227,13 @@ allowed_hosts = ["www.comvest.unicamp.br"]
 robots_policy = "ignore"
 crawl_delay_policy = "ignore"
 include_patterns = [
-  "(?is)(?:prova|quest(?:ao|oes|ão|ões)|caderno|conhecimentos?.?gerais|multipla.?escolha|múltipla.?escolha|(?:^|[/_-])F[12](?:[/_.-]|$)|CQ[_-]|gabarito|resposta|solucao|solução).*\\.pdf(?:$|[?#])",
+  "(?is)(?:prova|comentad[ao]s?|quest(?:ao|oes|ão|ões)|caderno|conhecimentos?.?gerais|multipla.?escolha|múltipla.?escolha|(?:^|[/_-])F[12](?:[/_.-]|$)|CQ[_-]|gabarito|resposta|solucao|solução).*\\.pdf(?:$|[?#])",
 ]
 exclude_patterns = [
   "(?i)(edital|manual|estatistica|relatorio|perfil|demanda|nota.?de.?corte|programa|anuario|desempenho|lista|chamada|convocad|aprovad|classificacao|resultado|declaracao|isencao|vagas?|normas?)",
 ]
-exam_patterns = ["(?i)(prova|quest(?:ao|oes|ão|ões)|caderno|fase|redacao|(?:^|[/_-])F[12](?:[/_.-]|$)|CQ[_-])"]
-answer_key_patterns = ["(?i)(gabarito|resposta|solucao)"]
+exam_patterns = ["(?i)(prova|comentad[ao]s?|quest(?:ao|oes|ão|ões)|caderno|fase|redacao|(?:^|[/_-])F[12](?:[/_.-]|$)|CQ[_-])"]
+answer_key_patterns = ["(?i)(gabarito|respostas?.?esperadas?|solu[cç][aã]o)"]
 pagination_patterns = [
   "(?i)/(?:ingresso-20\\d{2}|vestibulares-anteriores/1a-fase-2a-fase-comentadas)/?$",
 ]

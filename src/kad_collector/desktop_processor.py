@@ -74,6 +74,27 @@ def _document_group(document: dict[str, Any]) -> tuple[str | None, str | None]:
     return metadata.provider, metadata.concurso
 
 
+def _years_in(value: str) -> set[int]:
+    return {int(item) for item in re.findall(r"(?<!\d)(?:19|20)\d{2}(?!\d)", value)}
+
+
+def _periods_in(value: str) -> set[tuple[int, int]]:
+    periods = {
+        (int(year), int(term))
+        for year, term in re.findall(r"(?<!\d)((?:19|20)\d{2})\s*/\s*([12])(?!\d)", value)
+    }
+    for month, year in re.findall(
+        r"(?<!\d)\d{1,2}/(\d{1,2})/((?:19|20)\d{2})(?!\d)", value
+    ):
+        periods.add((int(year), 1 if int(month) <= 6 else 2))
+    return periods
+
+
+def _turn_from_text(value: str) -> str | None:
+    match = re.search(r"\b(MANH[AÃ]|TARDE)\b", value[:20_000], re.IGNORECASE)
+    return match.group(1) if match else None
+
+
 def _canonical_exam_documents(
     documents: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -112,8 +133,19 @@ def _select_answer_key(
         return None
     exam_metadata = DesktopImportMetadata.model_validate(exam["metadata"])
     role_words = set(re.findall(r"[a-z0-9]+", (exam_metadata.role or "").casefold()))
+    exam_text = cast(str, exam.get("exam_text", ""))[:20_000]
+    exam_years = _years_in(
+        " ".join(
+            (
+                exam_metadata.document_title or "",
+                exam_metadata.source_url or "",
+                exam_text,
+            )
+        )
+    )
+    exam_periods = _periods_in(exam_text)
 
-    def score(item: dict[str, Any]) -> tuple[int, int, int]:
+    def score(item: dict[str, Any]) -> tuple[int, int, int, int]:
         metadata = DesktopImportMetadata.model_validate(item["metadata"])
         haystack = " ".join(
             (
@@ -124,15 +156,19 @@ def _select_answer_key(
         ).casefold()
         role_score = sum(word in haystack for word in role_words if len(word) > 2)
         definitive = int("definitiv" in haystack)
-        year_score = int(
-            exam_metadata.year is not None and metadata.year == exam_metadata.year
-        )
-        return role_score, definitive, year_score
+        candidate_years = _years_in(haystack)
+        candidate_periods = _periods_in(haystack)
+        period_score = int(bool(exam_periods & candidate_periods))
+        year_score = int(bool(exam_years & candidate_years))
+        if exam_metadata.year is not None and metadata.year == exam_metadata.year:
+            year_score = 1
+        return period_score, year_score, role_score, definitive
 
     selected = max(candidates, key=score)
-    if score(selected)[0] or len(candidates) == 1:
+    selected_score = score(selected)
+    if selected_score[0] or selected_score[1] or selected_score[2] or len(candidates) == 1:
         return selected
-    definitive = [item for item in candidates if score(item)[1]]
+    definitive = [item for item in candidates if score(item)[3]]
     return definitive[0] if len(definitive) == 1 else None
 
 
@@ -420,7 +456,29 @@ class DesktopProcessor:
                 if text.strip():
                     answer_keys.append({**document, "answer_key_text": text})
                 continue
-            exam_documents.append(document)
+            exam_text = "\n".join(
+                str(page["text"]) for page in self.store.pages(cast(str, document["id"]))
+            )
+            exam_documents.append({**document, "exam_text": exam_text})
+
+        cached_hashes = {
+            cast(str, item["sha256"])
+            for item in answer_keys
+            if item.get("sha256") is not None
+        }
+        groups = {_document_group(document) for document in exam_documents}
+        for group_provider, concurso in groups:
+            for cached in self.store.cached_answer_keys(
+                provider=group_provider,
+                concurso=concurso,
+                exclude_job_id=job_id,
+            ):
+                digest = cast(str | None, cached.get("sha256"))
+                if digest is not None and digest in cached_hashes:
+                    continue
+                answer_keys.append(cached)
+                if digest is not None:
+                    cached_hashes.add(digest)
 
         canonical_exams, skipped_exams = _canonical_exam_documents(exam_documents)
         for document in skipped_exams:
@@ -469,6 +527,7 @@ class DesktopProcessor:
                     cast(str, answer_key["answer_key_text"]),
                     variant=variant,
                     role=metadata.role,
+                    turn=_turn_from_text(cast(str, document.get("exam_text", ""))),
                 )
                 if answer_key is not None
                 else {}

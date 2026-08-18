@@ -31,7 +31,9 @@ _TABULAR_PATTERN = re.compile(
 )
 _VARIANT_PATTERN = re.compile(r"\bV[1-9]\d*\b", re.IGNORECASE)
 _GRID_HEADING = re.compile(
-    r"^\s*(?P<label>.+?)\s*[-–—]\s*(?:TIPO|PROVA)\s*(?P<variant>[1-9]\d*)\s*$",
+    r"^\s*(?P<label>.+?)\s*[-–—]\s*(?:(?:TIPO|PROVA)\s*)?"
+    r"(?P<variant>[1-9]\d*)(?:\s*[-–—]\s*(?P<turn>Turno\s+[^()]+))?"
+    r"(?:\s*\((?P<section>[^)]*)\))?\s*$",
     re.IGNORECASE,
 )
 _GRID_NUMBER = re.compile(r"\d{1,3}(?:ING|ESP)?", re.IGNORECASE)
@@ -42,6 +44,7 @@ _GRID_ANSWER = re.compile(r"[A-HX*]", re.IGNORECASE)
 class _AnswerGrid:
     label: str
     variant: int
+    section: str | None
     entries: dict[int, AnswerEntry]
 
 
@@ -66,6 +69,7 @@ def _parse_answer_grids(text: str) -> list[_AnswerGrid]:
     grids: list[_AnswerGrid] = []
     active: _AnswerGrid | None = None
     pending_numbers: list[int] = []
+    pending_single_number: int | None = None
     for raw_line in text.splitlines():
         line = " ".join(raw_line.split())
         heading = _GRID_HEADING.match(line)
@@ -75,11 +79,25 @@ def _parse_answer_grids(text: str) -> list[_AnswerGrid]:
             active = _AnswerGrid(
                 label=heading.group("label"),
                 variant=int(heading.group("variant")),
+                section=heading.group("section") or heading.group("turn"),
                 entries={},
             )
             pending_numbers = []
+            pending_single_number = None
             continue
         if active is None:
+            continue
+        if re.fullmatch(r"\d{1,3}", line):
+            pending_single_number = int(line)
+            continue
+        if pending_single_number is not None and re.fullmatch(r"[A-HX*]", line, re.IGNORECASE):
+            answer = line.upper()
+            active.entries[pending_single_number] = AnswerEntry(
+                number=pending_single_number,
+                answer=None if answer in {"X", "*"} else answer,
+                annulled=answer in {"X", "*"},
+            )
+            pending_single_number = None
             continue
         number_tokens = _GRID_NUMBER.findall(line)
         if len(number_tokens) >= 2 and re.fullmatch(
@@ -99,13 +117,18 @@ def _parse_answer_grids(text: str) -> list[_AnswerGrid]:
                     annulled=answer in {"X", "*"},
                 )
             pending_numbers = []
+            pending_single_number = None
     if active is not None and active.entries:
         grids.append(active)
     return grids
 
 
 def _select_answer_grid(
-    grids: list[_AnswerGrid], *, variant: str | None, role: str | None
+    grids: list[_AnswerGrid],
+    *,
+    variant: str | None,
+    role: str | None,
+    turn: str | None,
 ) -> dict[int, AnswerEntry] | None:
     if not grids:
         return None
@@ -113,6 +136,13 @@ def _select_answer_grid(
     candidates = [grid for grid in grids if variant_number in {None, grid.variant}]
     if not candidates:
         return None
+    turn_words = _normalized_words(turn or "")
+    if turn_words:
+        matching_turn = [
+            grid for grid in candidates if turn_words & _normalized_words(grid.section or "")
+        ]
+        if matching_turn:
+            candidates = matching_turn
     role_words = _normalized_words(role or "")
     if role_words:
         scored = [
@@ -127,10 +157,14 @@ def _select_answer_grid(
 
 
 def parse_answer_key(
-    text: str, *, variant: str | None = None, role: str | None = None
+    text: str,
+    *,
+    variant: str | None = None,
+    role: str | None = None,
+    turn: str | None = None,
 ) -> dict[int, AnswerEntry]:
     grid_entries = _select_answer_grid(
-        _parse_answer_grids(text), variant=variant, role=role
+        _parse_answer_grids(text), variant=variant, role=role, turn=turn
     )
     if grid_entries is not None:
         return grid_entries

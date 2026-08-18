@@ -136,15 +136,24 @@ def parse_json_links(
 
 
 def _looks_blocked(title: str, content: str, url: str) -> str | None:
-    candidate = f"{title}\n{content[:20_000]}\n{url}".casefold()
-    markers = {
-        "captcha": ("recaptcha", "hcaptcha", "cf-turnstile", "captcha"),
-        "login": ('type="password"', "sign in", "entrar na conta", "/login"),
-        "access_denied": ("access denied", "acesso negado", "request blocked"),
-    }
-    for reason, values in markers.items():
-        if any(value in candidate for value in values):
-            return reason
+    page = f"{title}\n{content[:20_000]}".casefold()
+    if any(value in page for value in ("recaptcha", "hcaptcha", "cf-turnstile")):
+        return "captcha"
+    if any(value in page for value in ("access denied", "acesso negado", "request blocked")):
+        return "access_denied"
+    path = urlsplit(url).path.casefold()
+    login_path = re.search(r"(?:^|/)(?:login|signin|auth)(?:/|$)", path) is not None
+    password_field = re.search(
+        r"<input\b[^>]*\btype\s*=\s*['\"]?password\b", content, re.IGNORECASE
+    )
+    login_form = re.search(
+        r"<form\b[^>]*(?:action\s*=\s*['\"][^'\"]*(?:login|signin|auth)|"
+        r"id\s*=\s*['\"][^'\"]*login)",
+        content,
+        re.IGNORECASE,
+    )
+    if login_path or password_field or login_form:
+        return "login"
     return None
 
 

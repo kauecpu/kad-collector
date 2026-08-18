@@ -43,6 +43,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--data-dir", type=Path)
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--browser", action="store_true", help="abre a interface no navegador")
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="mantém apenas o servidor local, para validação automatizada",
+    )
     parser.add_argument("--smoke-test", action="store_true")
     return parser
 
@@ -63,6 +68,9 @@ def main(argv: list[str] | None = None) -> int:
     server, server_thread, url = start_desktop_server(application, port=args.port)
     del server_thread
     try:
+        if args.headless:
+            threading.Event().wait()
+            return 0
         if args.browser:
             webbrowser.open(url)
             threading.Event().wait()

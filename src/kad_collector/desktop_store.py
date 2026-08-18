@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 import unicodedata
 import uuid
@@ -251,18 +252,24 @@ class DesktopStore:
                 ).model_copy(deep=True)
                 if document_metadata.external_id is None:
                     document_metadata.external_id = path.stem
+                initial_sha256 = (
+                    document_metadata.external_id.casefold()
+                    if re.fullmatch(r"[0-9a-fA-F]{64}", document_metadata.external_id or "")
+                    else None
+                )
                 connection.execute(
                     """
                     INSERT INTO documents (
-                        id, job_id, local_path, filename, size_bytes, metadata_json,
+                        id, job_id, local_path, filename, sha256, size_bytes, metadata_json,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         document_id,
                         job_id,
                         str(path),
                         path.name,
+                        initial_sha256,
                         path.stat().st_size,
                         _json(document_metadata.model_dump(mode="json")),
                         created_at,
@@ -271,6 +278,60 @@ class DesktopStore:
                 )
             connection.commit()
         return job_id
+
+    def processed_sha256s(self, values: Iterable[str]) -> set[str]:
+        requested = {value.casefold() for value in values if value}
+        if not requested:
+            return set()
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                """
+                SELECT DISTINCT sha256
+                FROM documents
+                WHERE sha256 IS NOT NULL AND status IN ('extracted', 'processed')
+                """
+            ).fetchall()
+        return {cast(str, row["sha256"]).casefold() for row in rows} & requested
+
+    def cached_answer_keys(
+        self,
+        *,
+        provider: str | None,
+        concurso: str | None,
+        exclude_job_id: str,
+    ) -> list[dict[str, Any]]:
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM documents
+                WHERE job_id != ? AND status IN ('extracted', 'processed')
+                ORDER BY updated_at DESC
+                """,
+                (exclude_job_id,),
+            ).fetchall()
+        result: list[dict[str, Any]] = []
+        seen_hashes: set[str] = set()
+        for row in rows:
+            document = self._document_row(row)
+            metadata = DesktopImportMetadata.model_validate(document["metadata"])
+            if metadata.document_type != "answer_key":
+                continue
+            if provider is not None and metadata.provider != provider:
+                continue
+            if concurso is not None and metadata.concurso != concurso:
+                continue
+            digest = cast(str | None, document["sha256"])
+            if digest and digest in seen_hashes:
+                continue
+            text = "\n".join(
+                str(page["text"]) for page in self.pages(cast(str, document["id"]))
+            )
+            if not text.strip():
+                continue
+            if digest:
+                seen_hashes.add(digest)
+            result.append({**document, "answer_key_text": text})
+        return result
 
     def list_jobs(self, limit: int = 12) -> list[dict[str, Any]]:
         with closing(self._connect()) as connection:

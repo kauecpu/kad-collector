@@ -14,6 +14,7 @@ ClassifierProviderName = Literal["local", "openai"]
 class DesktopImportMetadata(StrictModel):
     provider: str | None = None
     source_url: str | None = None
+    canonical_url: str | None = None
     external_id: str | None = None
     document_title: str | None = None
     variant: str | None = None
@@ -32,6 +33,7 @@ class DesktopImportMetadata(StrictModel):
     @field_validator(
         "provider",
         "source_url",
+        "canonical_url",
         "external_id",
         "document_title",
         "variant",
@@ -50,7 +52,7 @@ class DesktopImportMetadata(StrictModel):
         normalized = " ".join(value.split())
         return normalized or None
 
-    @field_validator("source_url")
+    @field_validator("source_url", "canonical_url")
     @classmethod
     def require_https_when_present(cls, value: str | None) -> str | None:
         if value is not None and not value.startswith("https://"):
