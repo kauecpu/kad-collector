@@ -233,6 +233,14 @@ label { display: grid; gap: 6px; color: #5f596b; font-size: 10px; font-weight: 7
 .collection-row strong { margin-bottom: 4px; font-size: 10px; }
 .collection-row small { max-width: 850px; color: var(--muted); font-size: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .collection-result { text-align: right; }
+.collection-details { grid-column: 2 / -1; min-width: 0; padding-top: 4px; border-top: 1px solid #e4ddd4; }
+.collection-details summary { width: fit-content; color: var(--purple); cursor: pointer; font-size: 9px; font-weight: 800; }
+.collection-directory { display: block; margin: 8px 0; padding: 7px 9px; color: #4b3a5f; background: #eee8f4; border-radius: 7px; font-size: 8px; overflow-wrap: anywhere; user-select: text; }
+.collection-files, .collection-warnings { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.collection-files li, .collection-warnings li { padding: 7px 9px; background: #fffdf9; border: 1px solid #e4ddd4; border-radius: 8px; }
+.collection-files strong { margin-bottom: 3px; font-size: 9px; }
+.collection-files small { white-space: normal; overflow-wrap: anywhere; user-select: text; }
+.collection-warnings li { color: #7a4b18; background: #fff7e8; border-color: #efd7ae; font-size: 9px; }
 .collection-empty { display: grid; min-height: 72px; place-items: center; color: var(--muted); border: 1px dashed #d7cec3; border-radius: 12px; font-size: 10px; }
 
 .modal { width: min(980px, calc(100vw - 34px)); max-height: calc(100vh - 34px); padding: 0; color: var(--ink); background: #f8f5ef; border: 1px solid var(--line); border-radius: 22px; box-shadow: 0 28px 90px rgba(21,12,38,.34); overflow: auto; }

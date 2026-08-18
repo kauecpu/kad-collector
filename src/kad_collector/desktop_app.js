@@ -269,9 +269,57 @@ function renderCollections() {
     if (job.status === 'failed') summary.textContent = job.error || 'Falha não detalhada.';
     else if (job.status === 'completed') {
       summary.textContent = `${job.documents} PDF(s), ${job.failures} falha(s)`;
+      if (!job.documents) status.textContent = 'Concluída sem PDFs';
     } else summary.textContent = 'A página e os PDFs estão sendo verificados.';
     result.append(status, summary);
     row.append(signal, copy, result);
+    if (job.status === 'completed') {
+      const details = document.createElement('details');
+      details.className = 'collection-details';
+      const detailsSummary = document.createElement('summary');
+      detailsSummary.textContent = job.documents
+        ? `Ver ${job.documents} arquivo(s) e pasta de destino`
+        : 'Ver motivo e pasta de destino';
+      details.append(detailsSummary);
+
+      if (job.outputDirectory) {
+        const directory = document.createElement('code');
+        directory.className = 'collection-directory';
+        directory.textContent = job.outputDirectory;
+        details.append(directory);
+      }
+
+      if ((job.files || []).length) {
+        const files = document.createElement('ul');
+        files.className = 'collection-files';
+        job.files.forEach((file) => {
+          const item = document.createElement('li');
+          const name = document.createElement('strong');
+          name.textContent = file.title;
+          const path = document.createElement('small');
+          path.textContent = file.localPath;
+          item.append(name, path);
+          files.append(item);
+        });
+        details.append(files);
+      }
+
+      const notices = [
+        ...(job.warnings || []),
+        ...(job.failureDetails || []).map((failure) => failure.message),
+      ];
+      if (notices.length) {
+        const warnings = document.createElement('ul');
+        warnings.className = 'collection-warnings';
+        [...new Set(notices)].forEach((message) => {
+          const item = document.createElement('li');
+          item.textContent = message;
+          warnings.append(item);
+        });
+        details.append(warnings);
+      }
+      row.append(details);
+    }
     list.append(row);
   });
 }

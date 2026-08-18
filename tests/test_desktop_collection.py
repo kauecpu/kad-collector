@@ -86,6 +86,19 @@ class DesktopCollectionTests(unittest.TestCase):
 
         self.assertEqual(job["status"], "completed")
         self.assertEqual(job["documents"], 1)
+        self.assertEqual(job["outputDirectory"], str(pdf_path.parent.resolve()))
+        self.assertEqual(
+            job["files"],
+            [
+                {
+                    "title": "Prova de analista",
+                    "documentType": "exam",
+                    "localPath": str(pdf_path.resolve()),
+                    "sourceUrl": "https://conhecimento.fgv.br/prova.pdf",
+                    "sizeBytes": pdf_path.stat().st_size,
+                }
+            ],
+        )
         self.assertEqual(len(job["importJobIds"]), 1)
         start_processor.assert_called_once_with(job["importJobIds"][0])
         imported = self.store.documents_for_job(job["importJobIds"][0])[0]

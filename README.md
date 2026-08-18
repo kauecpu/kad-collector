@@ -171,7 +171,7 @@ data de coleta, banca, orgao, cargo/exame e ano quando conhecido.
 |---|---|---|---|
 | FUVEST | `fuvest.br`; provas e gabaritos de 2025 e 2026 | Ate 4 paginas | `content`; aba por link ou `sync` |
 | COPERVE | `vestibularunificado2026.ufsc.br`; provas e gabaritos definitivos de 2026 | 1 pagina | `content`; aba por link ou `sync` |
-| FGV Conhecimento | `conhecimento.fgv.br/concursos`; provas e gabaritos por concurso | Ate 12 paginas de concursos | `content`; prefira colar a pagina de um concurso na aba |
+| FGV Conhecimento | `conhecimento.fgv.br/concursos`; somente provas, cadernos e gabaritos por concurso; termos, avisos, editais e resultados sao excluidos | Ate 40 paginas de concursos | `content`; prefira colar a pagina de um concurso na aba; a pagina geral percorre o indice com limite |
 | INEP - ENEM | `gov.br/inep` e `download.inep.gov.br`; cadernos e gabaritos por edicao | Ate 30 paginas anuais | `content`; aba por ano/PDF ou `sync` |
 | INEP - ENADE | `gov.br/inep` e `download.inep.gov.br`; provas, gabaritos e padroes por curso | Ate 30 paginas anuais | `content`; aba por ano/PDF ou `sync` |
 | INEP - Encceja | `gov.br/inep` e `download.inep.gov.br`; cadernos e gabaritos por nivel | Ate 30 paginas anuais | `content`; aba por ano/PDF ou `sync` |
