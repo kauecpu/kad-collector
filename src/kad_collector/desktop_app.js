@@ -410,8 +410,11 @@ async function collectionAction(collectionId, action) {
 function renderMetrics() {
   const summary = state.bootstrap.summary || {};
   byId('metric-total').textContent = summary.total || 0;
+  byId('metric-answer-summary').textContent =
+    `${summary.answer_official || 0} vinculadas ao gabarito · ${summary.answer_missing || 0} sem resposta oficial`;
   byId('metric-pending').textContent = summary.pending || 0;
   byId('metric-exceptions').textContent = summary.exception || 0;
+  byId('metric-missing-answers').textContent = `${summary.answer_missing || 0} sem resposta oficial`;
   byId('metric-exportable').textContent = summary.exportable || 0;
   const activeStatus = state.filters.statuses.length === 1 ? state.filters.statuses[0] : null;
   byId('metric-card-pending').classList.toggle('active', activeStatus === 'pending');

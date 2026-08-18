@@ -915,6 +915,15 @@ class DesktopStore:
         counts = Counter(cast(str, view["status"]) for view in views)
         for status in ("pending", "approved", "rejected", "exception", "exported"):
             counts.setdefault(status, 0)
+        answer_statuses = Counter(
+            cast(str, view["question"]["answer_status"]) for view in views
+        )
+        counts["answer_matched"] = answer_statuses["matched"]
+        counts["answer_annulled"] = answer_statuses["annulled"]
+        counts["answer_official"] = (
+            answer_statuses["matched"] + answer_statuses["annulled"]
+        )
+        counts["answer_missing"] = answer_statuses["missing"]
         counts["exportable"] = sum(bool(view["exportable"]) for view in views)
         counts["total"] = len(views)
         return dict(counts)
