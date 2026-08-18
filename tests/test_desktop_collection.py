@@ -33,6 +33,12 @@ class DesktopCollectionTests(unittest.TestCase):
         self.assertTrue(catalog["comvest_unicamp"]["collectable"])
         self.assertFalse(catalog["obmep_referencias"]["collectable"])
         self.assertIn("robots.txt", catalog["obmep_referencias"]["notice"])
+        self.assertTrue(
+            all(source["engine"]["robotsPolicy"] == "ignore" for source in catalog.values())
+        )
+        self.assertTrue(
+            all(source["engine"]["crawlDelayPolicy"] == "ignore" for source in catalog.values())
+        )
 
     def test_packaged_interface_contains_link_collection_tab(self) -> None:
         package = resources.files("kad_collector")
@@ -49,6 +55,8 @@ class DesktopCollectionTests(unittest.TestCase):
         self.assertIn("collectionAction", javascript)
         self.assertIn("robotsPolicy", javascript)
         self.assertIn("crawlDelayPolicy", javascript)
+        self.assertNotIn("byId('source-robots-policy').value = 'ignore'", javascript)
+        self.assertNotIn("byId('source-crawl-delay-policy').value = 'ignore'", javascript)
 
     def test_collection_downloads_then_creates_local_processing_job(self) -> None:
         pdf_path = self.root / "fgv_conhecimento-exam-fixture.pdf"
