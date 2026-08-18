@@ -122,6 +122,7 @@ class DesktopCollectionTests(unittest.TestCase):
                     "localPath": str(pdf_path.resolve()),
                     "sourceUrl": "https://conhecimento.fgv.br/prova.pdf",
                     "sizeBytes": pdf_path.stat().st_size,
+                    "processingStatus": "new",
                 }
             ],
         )
@@ -137,6 +138,90 @@ class DesktopCollectionTests(unittest.TestCase):
         self.assertEqual(imported["metadata"]["document_title"], "Prova de analista")
         self.assertEqual(imported["metadata"]["document_type"], "exam")
         self.assertEqual(imported["metadata"]["external_id"], "a" * 64)
+        self.assertEqual(
+            imported["metadata"]["canonical_url"],
+            "https://conhecimento.fgv.br/prova.pdf",
+        )
+
+    def test_second_collection_skips_processed_sha_without_creating_another_job(self) -> None:
+        pdf_path = self.root / "fgv_conhecimento-exam-repeat.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4\nfixture\n%%EOF")
+        document = DocumentRecord(
+            source_id="fgv_conhecimento",
+            source_name="FGV Conhecimento - Concursos",
+            document_type="exam",
+            title="Prova repetida",
+            original_url="https://conhecimento.fgv.br/prova.pdf#download",
+            resolved_url="https://conhecimento.fgv.br/prova.pdf",
+            local_path=str(pdf_path),
+            sha256="c" * 64,
+            content_type="application/pdf",
+            size_bytes=pdf_path.stat().st_size,
+            downloaded_at=datetime.now(UTC),
+            authorization_basis="Fonte oficial.",
+            metadata={"banca": "FGV"},
+        )
+        documents = [document]
+        for index in range(6):
+            key_path = self.root / f"gabarito-repeat-{index}.pdf"
+            key_path.write_bytes(f"%PDF-1.4\nkey-{index}\n%%EOF".encode())
+            documents.append(
+                DocumentRecord(
+                    source_id="fgv_conhecimento",
+                    source_name="FGV Conhecimento - Concursos",
+                    document_type="answer_key",
+                    title=f"Gabarito {index}",
+                    original_url=f"https://conhecimento.fgv.br/gabarito-{index}.pdf",
+                    resolved_url=f"https://conhecimento.fgv.br/gabarito-{index}.pdf",
+                    local_path=str(key_path),
+                    sha256=f"{index + 1:064x}",
+                    content_type="application/pdf",
+                    size_bytes=key_path.stat().st_size,
+                    downloaded_at=datetime.now(UTC),
+                    authorization_basis="Fonte oficial.",
+                    metadata={"banca": "FGV"},
+                )
+            )
+        manifest = DownloadManifest(created_at=datetime.now(UTC), documents=documents)
+        manifest_path = self.root / "manifest-repeat.json"
+        manifest_path.write_text("{}", encoding="utf-8")
+
+        def complete_processing(job_id: str) -> None:
+            for imported in self.store.documents_for_job(job_id):
+                self.store.update_document(imported["id"], status="processed")
+            self.store.update_job(job_id, status="completed")
+
+        def wait_for_collection(collection_id: str) -> dict[str, object]:
+            for _ in range(200):
+                current = next(
+                    item for item in self.manager.list_jobs() if item["id"] == collection_id
+                )
+                if current["status"] not in {"queued", "running", "processing"}:
+                    return current
+                threading.Event().wait(0.01)
+            self.fail("coleta não terminou")
+
+        payload = {
+            "sourceId": "fgv_conhecimento",
+            "url": "https://conhecimento.fgv.br/concursos/rfb22",
+            "classifierProvider": "local",
+        }
+        with (
+            patch(
+                "kad_collector.desktop_collection.collect_documents",
+                return_value=(manifest, manifest_path),
+            ),
+            patch.object(self.processor, "start", side_effect=complete_processing),
+        ):
+            first = wait_for_collection(self.manager.start(payload))
+            second = wait_for_collection(self.manager.start(payload))
+
+        self.assertEqual(first["skippedDocuments"], 0)
+        self.assertEqual(second["status"], "completed")
+        self.assertEqual(second["skippedDocuments"], 7)
+        self.assertEqual(second["importJobIds"], [])
+        self.assertIn("já processado — ignorado", " ".join(second["warnings"]))
+        self.assertEqual(len(self.store.list_jobs()), 1)
 
     def test_fuvest_uses_v1_as_canonical_and_matches_versioned_answer_key(self) -> None:
         paths = [self.root / f"arquivo-{index}.pdf" for index in range(1, 6)]
@@ -257,6 +342,57 @@ Enunciado completo da segunda questao.
         self.assertEqual(len(questions), 1)
         self.assertEqual(questions[0]["question"]["answer_status"], "matched")
         self.assertEqual(questions[0]["question"]["correct_answer"], "B")
+
+    def test_new_exam_reuses_persisted_answer_key_without_reprocessing_it(self) -> None:
+        key_path = self.root / "gabarito-cached.pdf"
+        exam_path = self.root / "prova-nova.pdf"
+        key_path.write_bytes(b"%PDF-1.4\nkey\n%%EOF")
+        exam_path.write_bytes(b"%PDF-1.4\nexam\n%%EOF")
+        base = DesktopImportMetadata(
+            provider="banca",
+            concurso="Concurso 2026",
+            year=2026,
+            role="Analista",
+        )
+        key_metadata = base.model_copy(
+            update={
+                "document_type": "answer_key",
+                "document_title": "Gabarito Analista 2026",
+                "external_id": "d" * 64,
+            }
+        )
+        key_job = self.store.create_job([key_path], base, "local", metadata_by_path={
+            str(key_path.resolve()).casefold(): key_metadata
+        })
+        key_document = self.store.documents_for_job(key_job)[0]
+        self.store.save_page(key_document["id"], 1, "1 - C", status="text")
+        self.store.update_document(key_document["id"], status="extracted", page_count=1)
+
+        exam_metadata = base.model_copy(
+            update={
+                "document_type": "exam",
+                "document_title": "Prova Analista 2026",
+                "external_id": "e" * 64,
+            }
+        )
+        exam_job = self.store.create_job([exam_path], base, "local", metadata_by_path={
+            str(exam_path.resolve()).casefold(): exam_metadata
+        })
+        exam_document = self.store.documents_for_job(exam_job)[0]
+        self.store.save_page(
+            exam_document["id"],
+            1,
+            "QUESTAO 1\nEnunciado completo.\nA) Errada.\nB) Errada.\nC) Correta.",
+            status="text",
+        )
+        self.store.update_document(exam_document["id"], status="extracted", page_count=1)
+
+        self.processor._structure_job(exam_job, threading.Event())
+
+        question = self.store.query(DesktopFilterSet())["questions"][0]
+        self.assertEqual(question["question"]["correct_answer"], "C")
+        self.assertEqual(question["status"], "pending")
+        self.assertEqual(len(self.store.documents_for_job(exam_job)), 1)
 
     def test_collection_rejects_host_outside_selected_source(self) -> None:
         with self.assertRaisesRegex(ValueError, "host nao permitido"):

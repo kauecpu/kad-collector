@@ -14,7 +14,7 @@ from urllib.request import Request, urlopen
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 
-from kad_collector.desktop_app import _smoke_test
+from kad_collector.desktop_app import _smoke_test, build_parser
 from kad_collector.desktop_classifier import LocalRuleClassifier
 from kad_collector.desktop_export import export_filtered_questions
 from kad_collector.desktop_limits import MAX_BATCH_PDFS
@@ -115,6 +115,12 @@ def valid_question(number: int, statement: str | None = None) -> QuestionRecord:
 
 
 class DesktopPipelineTests(unittest.TestCase):
+    def test_headless_mode_is_available_for_packaged_end_to_end_validation(self) -> None:
+        arguments = build_parser().parse_args(["--headless", "--port", "8878"])
+
+        self.assertTrue(arguments.headless)
+        self.assertEqual(arguments.port, 8878)
+
     def test_generic_parser_supports_fgv_standalone_numbers_and_parentheses(self) -> None:
         questions, warnings = parse_question_pages(
             [

@@ -103,6 +103,64 @@ D A B C
         self.assertTrue(entries[3].annulled)
         self.assertEqual(entries[4].answer, "A")
 
+    def test_fgv_grid_accepts_turn_suffix_from_real_answer_key(self) -> None:
+        text = """
+Auditor-Fiscal da Receita Federal do Brasil – TIPO 1 (Manhã)
+1 2 3 4
+C B B A
+Auditor-Fiscal da Receita Federal do Brasil – TIPO 2 (Tarde)
+1 2 3 4
+A D C B
+"""
+
+        entries = parse_answer_key(
+            text,
+            variant="Tipo 1",
+            role="Auditor-Fiscal da Receita Federal do Brasil",
+            turn="Manhã",
+        )
+
+        self.assertEqual([entries[number].answer for number in range(1, 5)], ["C", "B", "B", "A"])
+
+        afternoon = parse_answer_key(
+            text,
+            variant="Tipo 2",
+            role="Auditor-Fiscal da Receita Federal do Brasil",
+            turn="Tarde",
+        )
+        self.assertEqual(
+            [afternoon[number].answer for number in range(1, 5)], ["A", "D", "C", "B"]
+        )
+
+    def test_fgv_vertical_grid_is_selected_by_role(self) -> None:
+        text = """
+Auditor Fiscal - 1 - Turno Manhã
+1
+C
+2
+D
+3
+*
+Analista Tributário - 1 - Turno Manhã
+1
+A
+2
+B
+3
+C
+"""
+
+        entries = parse_answer_key(
+            text,
+            variant="Tipo 1",
+            role="Auditor Fiscal",
+            turn="Manhã",
+        )
+
+        self.assertEqual(entries[1].answer, "C")
+        self.assertEqual(entries[2].answer, "D")
+        self.assertTrue(entries[3].annulled)
+
     def test_queue_matches_cached_answers_and_creates_local_review_session(self) -> None:
         exam = document(
             "exam",

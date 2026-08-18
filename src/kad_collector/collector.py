@@ -160,6 +160,22 @@ def extract_links(html: str, page_url: str) -> list[tuple[str, str]]:
     return [(urljoin(page_url, href), title) for href, title in parser.links]
 
 
+def _is_html_page(result: HttpResult | EngineHttpResult) -> bool:
+    """Accept mislabeled HTML only when the body has an HTML document signature."""
+    content_type = result.headers.get_content_type()
+    if content_type in {"text/html", "application/xhtml+xml"}:
+        return True
+    if content_type not in {"text/plain", "application/octet-stream"}:
+        return False
+    prefix = result.body[:16_384]
+    if b"\x00" in prefix:
+        return False
+    text = prefix.decode("utf-8", errors="ignore").lstrip("\ufeff\t\r\n ").casefold()
+    return text.startswith("<!doctype html") or (
+        "<html" in text and ("<head" in text or "<body" in text)
+    )
+
+
 def classify_document(url: str, title: str, source: SourceDefinition) -> DocumentType:
     candidate = f"{title}\n{url}"
     if any(re.search(pattern, candidate) for pattern in source.answer_key_patterns):
@@ -756,7 +772,7 @@ def collect_documents(
                                     documents.append(record)
                             continue
                         content_type = page.headers.get_content_type()
-                        if content_type not in {"text/html", "application/xhtml+xml"}:
+                        if not _is_html_page(page):
                             raise ValueError(
                                 f"pagina ignorada por Content-Type {content_type}: {page_url}"
                             )
@@ -1160,7 +1176,7 @@ def _collect_documents_legacy(
                         documents.append(record)
                     continue
                 content_type = page.headers.get_content_type()
-                if content_type not in {"text/html", "application/xhtml+xml"}:
+                if not _is_html_page(page):
                     message = (
                         f"{source.id}: pagina ignorada por Content-Type {content_type}: {page_url}"
                     )

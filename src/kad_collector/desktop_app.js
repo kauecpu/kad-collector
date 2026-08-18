@@ -313,6 +313,7 @@ function renderCollections() {
       `${job.discoveredDocuments || 0} descobertos`,
       `${job.downloadedDocuments || job.documents || 0} baixados`,
       `${job.processedDocuments || 0} processados`,
+      `${job.skippedDocuments || 0} já processados`,
       `${job.questions || 0} questões`,
       `${(job.failures || 0) + (job.failedDocuments || 0)} falhas`,
     ].join(' · ');
@@ -320,6 +321,7 @@ function renderCollections() {
     else if (collectionFinished) {
       summary.textContent = flowSummary;
       if (!job.documents) status.textContent = 'Concluída sem PDFs';
+      else if (job.skippedDocuments === job.documents) status.textContent = 'Já processado — ignorado';
     } else if (job.status === 'processing') {
       summary.textContent = flowSummary;
     } else summary.textContent = 'A página e os PDFs estão sendo verificados.';

@@ -16,6 +16,7 @@ from kad_collector.collector import (
     select_pagination_links,
 )
 from kad_collector.config import ConfigError, config_for_urls, load_config
+from kad_collector.discovery import _looks_blocked
 from kad_collector.filters import document_might_match_filters
 from kad_collector.models import (
     AppConfig,
@@ -53,6 +54,26 @@ def source_definition(**changes: object) -> SourceDefinition:
 
 
 class LinkParsingTests(unittest.TestCase):
+    def test_public_page_with_login_link_is_not_marked_as_authentication(self) -> None:
+        html = """
+        <!doctype html><html><body>
+        <nav><a href="/login">Área do candidato</a></nav>
+        <a href="/prova.pdf">Prova objetiva</a>
+        </body></html>
+        """
+
+        self.assertIsNone(
+            _looks_blocked("Concurso público", html, "https://provas.example.gov.br/concurso")
+        )
+        self.assertEqual(
+            _looks_blocked(
+                "Entrar",
+                '<form action="/login"><input type="password"></form>',
+                "https://provas.example.gov.br/login",
+            ),
+            "login",
+        )
+
     def test_extracts_nested_anchor_text(self) -> None:
         html = '<a href="/prova.pdf"><strong>Prova</strong> objetiva</a>'
         self.assertEqual(
@@ -186,6 +207,42 @@ class LinkParsingTests(unittest.TestCase):
         self.assertEqual(manifest.documents[0].document_type, "exam")
         self.assertEqual(manifest.duplicate_documents, 1)
 
+    def test_valid_html_served_as_text_plain_is_discovered(self) -> None:
+        page_url = "https://provas.example.gov.br/concurso"
+        pdf_url = "https://provas.example.gov.br/prova-tipo-1.pdf"
+
+        class FixtureClient:
+            def __init__(self, user_agent: str, timeout: float, interval_seconds: float) -> None:
+                pass
+
+            def get(self, url: str, allowed_hosts: list[str], max_bytes: int) -> HttpResult:
+                headers = Message()
+                if url.endswith("/robots.txt"):
+                    headers["Content-Type"] = "text/plain; charset=utf-8"
+                    body = b"User-agent: *\nAllow: /\n"
+                elif url == page_url:
+                    headers["Content-Type"] = "text/plain; charset=utf-8"
+                    body = (
+                        b"<!doctype html><html><head><title>Concurso</title></head>"
+                        b'<body><a href="/prova-tipo-1.pdf">Prova Tipo 1</a></body></html>'
+                    )
+                elif url == pdf_url:
+                    headers["Content-Type"] = "application/pdf"
+                    body = b"%PDF-1.4\nfixture\n%%EOF"
+                else:
+                    raise AssertionError(f"URL inesperada: {url}")
+                return HttpResult(url=url, status_code=200, headers=headers, body=body)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            config = AppConfig(
+                collector=CollectorSettings(data_dir=temporary),
+                sources=[source_definition(start_urls=[page_url])],
+            )
+            with patch("kad_collector.collector.SafeHttpClient", FixtureClient):
+                manifest, _ = collect_documents(config)
+
+        self.assertEqual([item.original_url for item in manifest.documents], [pdf_url])
+
     def test_static_pagination_follows_allowed_links_and_stops_at_limit(self) -> None:
         first_page = "https://provas.example.gov.br/lista?page=1"
         second_page = "https://provas.example.gov.br/lista?page=2"
@@ -318,7 +375,12 @@ class SecurityTests(unittest.TestCase):
         )
         self.assertEqual(
             [(Path(item[0]).name, item[2]) for item in comvest_selected],
-            [("F1_2026_Prova-Q.pdf", "exam"), ("F2_1o-dia_todos.pdf", "exam")],
+            [
+                ("F1_2026_Prova-Q.pdf", "exam"),
+                ("F2_1o-dia_todos.pdf", "exam"),
+                ("F1_historia.pdf", "exam"),
+                ("respostas-esperadas-2026.pdf", "answer_key"),
+            ],
         )
 
     def test_packaged_official_configuration_matches_cli_configuration(self) -> None:
