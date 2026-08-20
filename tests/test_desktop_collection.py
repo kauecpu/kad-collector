@@ -11,11 +11,16 @@ from unittest.mock import patch
 from kad_collector.desktop_collection import (
     DesktopCollectionManager,
     _import_metadata,
-    _processing_batches,
 )
 from kad_collector.desktop_models import DesktopFilterSet, DesktopImportMetadata
-from kad_collector.desktop_processor import DesktopProcessor, _document_type
+from kad_collector.desktop_processor import (
+    DesktopProcessor,
+    _canonical_exam_documents,
+    _document_type,
+    _select_answer_key,
+)
 from kad_collector.desktop_store import DesktopStore
+from kad_collector.document_pipeline import DocumentPipeline
 from kad_collector.models import DocumentRecord, DownloadManifest
 
 
@@ -78,7 +83,7 @@ class DesktopCollectionTests(unittest.TestCase):
             size_bytes=pdf_path.stat().st_size,
             downloaded_at=datetime.now(UTC),
             authorization_basis="Fonte oficial.",
-            metadata={"banca": "FGV"},
+            metadata={"banca": "FGV", "campo_conhecido": "preservado"},
         )
         manifest = DownloadManifest(created_at=datetime.now(UTC), documents=[document])
         manifest_path = self.root / "manifest.json"
@@ -129,6 +134,15 @@ class DesktopCollectionTests(unittest.TestCase):
         self.assertEqual(len(job["importJobIds"]), 1)
         start_processor.assert_called_once_with(job["importJobIds"][0])
         imported = self.store.documents_for_job(job["importJobIds"][0])[0]
+        normalized = imported["normalized_document"]
+        self.assertEqual(
+            normalized.source_page_url,
+            "https://conhecimento.fgv.br/concursos/mprj2025",
+        )
+        self.assertEqual(normalized.metadata["banca"], "FGV")
+        self.assertEqual(normalized.metadata["campo_conhecido"], "preservado")
+        self.assertNotIn("external_id", normalized.metadata)
+        self.assertIsNone(normalized.external_id)
         self.assertEqual(imported["metadata"]["board"], "FGV")
         self.assertEqual(imported["metadata"]["year"], 2025)
         self.assertEqual(
@@ -137,11 +151,46 @@ class DesktopCollectionTests(unittest.TestCase):
         )
         self.assertEqual(imported["metadata"]["document_title"], "Prova de analista")
         self.assertEqual(imported["metadata"]["document_type"], "exam")
-        self.assertEqual(imported["metadata"]["external_id"], "a" * 64)
+        self.assertIsNone(imported["metadata"]["external_id"])
         self.assertEqual(
             imported["metadata"]["canonical_url"],
             "https://conhecimento.fgv.br/prova.pdf",
         )
+
+    def test_acquisition_failure_starts_no_interpretation_job(self) -> None:
+        class RecordingRunner:
+            def __init__(self) -> None:
+                self.started_ids: list[str] = []
+
+            def start(self, job_id: str) -> None:
+                self.started_ids.append(job_id)
+
+        runner = RecordingRunner()
+        manager = DesktopCollectionManager(
+            self.root,
+            self.store,
+            self.processor,
+            DocumentPipeline(self.store, runner),
+        )
+        with patch(
+            "kad_collector.desktop_collection.collect_documents",
+            side_effect=RuntimeError("download indisponível"),
+        ):
+            collection_id = manager.start(
+                {
+                    "sourceId": "fgv_conhecimento",
+                    "url": "https://conhecimento.fgv.br/concursos/mprj2025",
+                }
+            )
+            for _ in range(100):
+                job = next(item for item in manager.list_jobs() if item["id"] == collection_id)
+                if job["status"] not in {"queued", "running", "processing"}:
+                    break
+                threading.Event().wait(0.01)
+
+        self.assertEqual(job["status"], "failed")
+        self.assertEqual(runner.started_ids, [])
+        self.assertEqual(self.store.list_jobs(), [])
 
     def test_second_collection_skips_processed_sha_without_creating_another_job(self) -> None:
         pdf_path = self.root / "fgv_conhecimento-exam-repeat.pdf"
@@ -343,6 +392,168 @@ Enunciado completo da segunda questao.
         self.assertEqual(questions[0]["question"]["answer_status"], "matched")
         self.assertEqual(questions[0]["question"]["correct_answer"], "B")
 
+    def test_fictitious_source_uses_v1_as_canonical_and_preserves_v2_evidence(self) -> None:
+        common = DesktopImportMetadata(
+            provider="fictitious_new_source",
+            concurso="Selecao Nacional",
+            board="Banca Ficticia",
+            year=2026,
+            role="Analista de Dados",
+            organization="Instituto Ficticio",
+            document_type="exam",
+        )
+        v1 = {
+            "filename": "selecao-2026-v1.pdf",
+            "metadata": common.model_copy(
+                update={"document_title": "Selecao Nacional 2026 V1", "variant": "V1"}
+            ).model_dump(mode="json"),
+        }
+        v2 = {
+            "filename": "selecao-2026-v2.pdf",
+            "metadata": common.model_copy(
+                update={"document_title": "Selecao Nacional 2026 V2", "variant": "V2"}
+            ).model_dump(mode="json"),
+        }
+
+        selected, evidence = _canonical_exam_documents([v2, v1])
+
+        self.assertEqual(selected, [v1])
+        self.assertEqual(evidence, [v2])
+
+    def test_explicit_tipo_variants_stay_distinct_despite_v_tokens(self) -> None:
+        common = DesktopImportMetadata(
+            concurso="Selecao Nacional",
+            year=2026,
+            role="Analista",
+            organization="Instituto Ficticio",
+            document_type="exam",
+        )
+        tipo_1 = {
+            "filename": "caderno-v1.pdf",
+            "metadata": common.model_copy(
+                update={"document_title": "Caderno V1", "variant": "Tipo 1"}
+            ).model_dump(mode="json"),
+        }
+        tipo_2 = {
+            "filename": "caderno-v2.pdf",
+            "metadata": common.model_copy(
+                update={"document_title": "Caderno V2", "variant": "Tipo 2"}
+            ).model_dump(mode="json"),
+        }
+
+        selected, evidence = _canonical_exam_documents([tipo_1, tipo_2])
+
+        self.assertEqual(selected, [tipo_1, tipo_2])
+        self.assertEqual(evidence, [])
+
+    def test_only_a_sole_in_batch_answer_key_gets_compatibility_shortcut(self) -> None:
+        exam = {
+            "job_id": "current-job",
+            "filename": "prova-direito.pdf",
+            "metadata": DesktopImportMetadata(
+                document_type="exam", document_title="Prova de Direito"
+            ).model_dump(mode="json"),
+            "exam_text": "Conteudo de Direito Administrativo",
+        }
+        in_batch = {
+            "job_id": "current-job",
+            "filename": "respostas.pdf",
+            "metadata": DesktopImportMetadata(
+                document_type="answer_key", document_title="Respostas"
+            ).model_dump(mode="json"),
+            "answer_key_text": "1 A",
+        }
+        cached = {
+            **in_batch,
+            "job_id": "historical-job",
+            "filename": "gabarito-quimica.pdf",
+            "metadata": DesktopImportMetadata(
+                document_type="answer_key",
+                document_title="Gabarito definitivo de Quimica",
+            ).model_dump(mode="json"),
+        }
+
+        self.assertIs(_select_answer_key(exam, [in_batch]), in_batch)
+        self.assertIsNone(_select_answer_key(exam, [cached]))
+
+        morning_exam = {
+            **exam,
+            "metadata": DesktopImportMetadata(
+                document_type="exam", document_title="Prova de Direito Manhã"
+            ).model_dump(mode="json"),
+        }
+        afternoon_key = {
+            **in_batch,
+            "metadata": DesktopImportMetadata(
+                document_type="answer_key", document_title="Respostas Tarde"
+            ).model_dump(mode="json"),
+        }
+        self.assertIsNone(_select_answer_key(morning_exam, [afternoon_key]))
+
+    def test_same_job_key_with_known_year_or_variant_conflict_keeps_answer_missing(self) -> None:
+        exam_text = (
+            "{01}\nEnunciado completo de Direito.\n"
+            "(A) Alternativa errada.\n(B) Alternativa correta.\n#####"
+        )
+        for label, answer_update in (
+            ("wrong-year", {"year": 2025, "variant": "V1"}),
+            ("wrong-variant", {"year": 2026, "variant": "V2"}),
+            ("wrong-role", {"role": "Auditor", "variant": "V1"}),
+        ):
+            with self.subTest(label=label):
+                root = self.root / label
+                root.mkdir()
+                store = DesktopStore(root / "collector.sqlite3")
+                processor = DesktopProcessor(store)
+                exam_path = root / "exam.pdf"
+                answer_path = root / "answer.pdf"
+                exam_path.write_bytes(b"%PDF-1.4\nexam\n%%EOF")
+                answer_path.write_bytes(b"%PDF-1.4\nanswer\n%%EOF")
+                common = DesktopImportMetadata(
+                    concurso="Concurso Fiscal",
+                    year=2026,
+                    role="Analista",
+                    organization="Secretaria da Fazenda",
+                )
+                exam_metadata = common.model_copy(
+                    update={
+                        "document_type": "exam",
+                        "document_title": f"Prova Fiscal 2026 V1 {label}",
+                        "variant": "V1",
+                    }
+                )
+                answer_metadata = common.model_copy(
+                    update={
+                        "document_type": "answer_key",
+                        "document_title": f"Gabarito Fiscal {label}",
+                        **answer_update,
+                    }
+                )
+                job_id = store.create_job(
+                    [exam_path, answer_path],
+                    common,
+                    "local",
+                    metadata_by_path={
+                        str(exam_path.resolve()).casefold(): exam_metadata,
+                        str(answer_path.resolve()).casefold(): answer_metadata,
+                    },
+                )
+                for stored in store.documents_for_job(job_id):
+                    metadata = DesktopImportMetadata.model_validate(stored["metadata"])
+                    text = "1 - B" if metadata.document_type == "answer_key" else exam_text
+                    store.save_page(stored["id"], 1, text, status="text")
+                    store.update_document(stored["id"], status="extracted", page_count=1)
+
+                processor._structure_job(job_id, threading.Event())
+
+                result = store.query(
+                    DesktopFilterSet(source_files=[exam_metadata.document_title or ""])
+                )
+                self.assertEqual(result["total"], 1)
+                question_payload = result["questions"][0]["question"]
+                self.assertIsNone(question_payload["correct_answer"])
+                self.assertEqual(question_payload["answer_status"], "missing")
+
     def test_new_exam_reuses_persisted_answer_key_without_reprocessing_it(self) -> None:
         key_path = self.root / "gabarito-cached.pdf"
         exam_path = self.root / "prova-nova.pdf"
@@ -524,10 +735,19 @@ Enunciado completo da segunda questao.
             source, "https://conhecimento.fgv.br/concursos/teste2026", answer_key
         )
 
-        batches = _processing_batches(documents, metadata_by_path)
+        from kad_collector.document_contract import normalize_collected_document
+        from kad_collector.document_pipeline import processing_batches
+
+        normalized_documents = [normalize_collected_document(document) for document in documents]
+        batches = processing_batches(normalized_documents)
 
         self.assertEqual(len(batches), 2)
-        self.assertTrue(all(key_path.resolve() in batch for batch in batches))
+        self.assertTrue(
+            all(
+                str(key_path.resolve()) in {document.local_path for document in batch}
+                for batch in batches
+            )
+        )
         self.assertTrue(all(len(batch) <= 20 for batch in batches))
 
     def test_reference_only_source_cannot_start_content_download(self) -> None:

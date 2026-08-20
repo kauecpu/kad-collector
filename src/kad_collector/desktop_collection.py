@@ -14,10 +14,11 @@ from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 from .collection_state import CollectionStateStore
 from .collector import CollectionPaused, collect_documents
 from .config import ConfigError, load_config_text
-from .desktop_limits import MAX_BATCH_PDFS
 from .desktop_models import DesktopDocumentType, DesktopImportMetadata
 from .desktop_processor import DesktopProcessor
 from .desktop_store import DesktopStore
+from .document_contract import normalize_collected_document
+from .document_pipeline import DocumentPipeline
 from .models import AppConfig, DocumentRecord, SourceDefinition
 from .security import UnsafeUrlError, validate_public_url
 
@@ -158,7 +159,7 @@ def _import_metadata(
         canonical_url=(
             _canonical_url(document.resolved_url) if document is not None else _canonical_url(url)
         ),
-        external_id=document.sha256 if document is not None else None,
+        external_id=None,
         document_title=document.title if document is not None else None,
         variant=_document_variant(document) if document is not None else None,
         document_type=document_type,
@@ -171,82 +172,18 @@ def _import_metadata(
     )
 
 
-def _answer_key_batch_score(
-    document: DocumentRecord,
-    metadata_by_path: dict[str, DesktopImportMetadata],
-    concurso: object,
-    year: object,
-    role_words: set[str],
-) -> tuple[int, int, int, int]:
-    path = Path(document.local_path).resolve()
-    metadata = metadata_by_path[str(path).casefold()]
-    candidate = f"{document.title} {document.original_url}".casefold()
-    candidate_words = set(re.findall(r"[a-z0-9]+", candidate))
-    return (
-        int(metadata.concurso == concurso),
-        int(year is not None and metadata.year == year),
-        len(role_words & candidate_words),
-        int("definitiv" in candidate),
-    )
-
-
-def _processing_batches(
-    documents: list[DocumentRecord],
-    metadata_by_path: dict[str, DesktopImportMetadata],
-) -> list[list[Path]]:
-    answer_keys = [document for document in documents if document.document_type == "answer_key"]
-    exam_groups: dict[tuple[object, ...], list[Path]] = {}
-    for document in documents:
-        if document.document_type != "exam":
-            continue
-        path = Path(document.local_path).resolve()
-        metadata = metadata_by_path[str(path).casefold()]
-        key = (
-            metadata.provider,
-            metadata.concurso,
-            metadata.year,
-            metadata.role,
-        )
-        exam_groups.setdefault(key, []).append(path)
-
-    batches: list[list[Path]] = []
-    key_limit = min(4, max(0, MAX_BATCH_PDFS - 1))
-    for group_key, group in exam_groups.items():
-        _, concurso, year, role = group_key
-        role_words = {
-            word for word in re.findall(r"[a-z0-9]+", str(role or "").casefold()) if len(word) > 2
-        }
-
-        selected_keys = sorted(
-            answer_keys,
-            key=lambda document: _answer_key_batch_score(
-                document, metadata_by_path, concurso, year, role_words
-            ),
-            reverse=True,
-        )[:key_limit]
-        shared_paths = [Path(document.local_path).resolve() for document in selected_keys]
-        capacity = max(1, MAX_BATCH_PDFS - len(shared_paths))
-        for start in range(0, len(group), capacity):
-            batches.append([*group[start : start + capacity], *shared_paths])
-    if not batches and answer_keys:
-        all_key_paths = [Path(document.local_path).resolve() for document in answer_keys]
-        batches.extend(
-            all_key_paths[start : start + MAX_BATCH_PDFS]
-            for start in range(0, len(all_key_paths), MAX_BATCH_PDFS)
-        )
-    return batches
-
-
 class DesktopCollectionManager:
     def __init__(
         self,
         data_dir: Path,
         store: DesktopStore,
         processor: DesktopProcessor,
+        pipeline: DocumentPipeline | None = None,
     ) -> None:
         self.data_dir = data_dir
         self.store = store
         self.processor = processor
+        self.pipeline = pipeline or DocumentPipeline(store, processor)
         self.config = load_desktop_source_config(data_dir)
         self._jobs: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
@@ -598,26 +535,28 @@ class DesktopCollectionManager:
             ):
                 skipped_documents.extend(processing_documents)
                 processing_documents = []
-            import_job_ids: list[str] = []
-            metadata = _import_metadata(source, url)
-            metadata_by_path = {
-                str(Path(document.local_path).resolve()).casefold(): _import_metadata(
-                    source, url, document
-                )
-                for document in processing_documents
-            }
-            for batch_paths in _processing_batches(processing_documents, metadata_by_path):
-                import_job_id = self.store.create_job(
-                    batch_paths,
-                    metadata,
-                    classifier_provider,
-                    metadata_by_path={
-                        str(path).casefold(): metadata_by_path[str(path).casefold()]
-                        for path in batch_paths
+            normalized_documents = []
+            for document in processing_documents:
+                editorial_metadata = _import_metadata(source, url, document).model_dump(
+                    mode="json",
+                    exclude_none=True,
+                    exclude={
+                        "provider",
+                        "source_url",
+                        "canonical_url",
+                        "external_id",
+                        "document_title",
+                        "document_type",
                     },
                 )
-                import_job_ids.append(import_job_id)
-                self.processor.start(import_job_id)
+                contract_metadata = {**document.metadata, **editorial_metadata}
+                contract_metadata.pop("external_id", None)
+                normalized_documents.append(
+                    normalize_collected_document(document, source_page_url=url).model_copy(
+                        update={"metadata": contract_metadata}
+                    )
+                )
+            import_job_ids = self.pipeline.submit(normalized_documents, classifier_provider)
             warnings = list(manifest.warnings)
             if skipped_documents:
                 warnings.append(f"{len(skipped_documents)} PDF(s): já processado — ignorado.")

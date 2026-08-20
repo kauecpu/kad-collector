@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import sqlite3
 import unicodedata
 import uuid
@@ -21,6 +20,7 @@ from .desktop_models import (
     DesktopQuestionStatus,
     QuestionClassification,
 )
+from .document_contract import NormalizedDocument, normalize_local_document
 from .models import QuestionRecord
 from .validation import validate_editorial_question
 
@@ -31,6 +31,41 @@ def _now() -> str:
 
 def _json(payload: Any) -> str:
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _editorial_metadata(document: NormalizedDocument) -> DesktopImportMetadata:
+    raw = dict(document.metadata)
+    values: dict[str, Any] = {
+        key: raw[key]
+        for key in DesktopImportMetadata.model_fields
+        if key in raw and raw[key] is not None
+    }
+    if document.source_id is not None:
+        values.setdefault("provider", document.source_id)
+    values.setdefault("source_url", document.original_url)
+    values.setdefault("canonical_url", document.resolved_url)
+    values.setdefault("external_id", document.external_id)
+    values.setdefault("document_title", document.title)
+    values.setdefault(
+        "document_type",
+        (
+            document.declared_type
+            if document.declared_type in {"auto", "exam", "answer_key"}
+            else "auto"
+        ),
+    )
+    aliases = {
+        "banca": "board",
+        "ano": "year",
+        "cargo": "role",
+        "orgao": "organization",
+    }
+    for source, target in aliases.items():
+        if target not in values and source in raw:
+            values[target] = raw[source]
+    return DesktopImportMetadata.model_validate(
+        {key: value for key, value in values.items() if value is not None}
+    )
 
 
 def _normalize(value: str) -> str:
@@ -159,6 +194,7 @@ class DesktopStore:
                     status TEXT NOT NULL DEFAULT 'queued',
                     needs_ocr INTEGER NOT NULL DEFAULT 0,
                     metadata_json TEXT NOT NULL,
+                    normalized_json TEXT,
                     warnings_json TEXT NOT NULL DEFAULT '[]',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
@@ -219,6 +255,12 @@ class DesktopStore:
                 connection.execute("ALTER TABLE jobs ADD COLUMN started_at TEXT")
             if "eta_seconds" not in job_columns:
                 connection.execute("ALTER TABLE jobs ADD COLUMN eta_seconds INTEGER")
+            document_columns = {
+                cast(str, row["name"])
+                for row in connection.execute("PRAGMA table_info(documents)").fetchall()
+            }
+            if "normalized_json" not in document_columns:
+                connection.execute("ALTER TABLE documents ADD COLUMN normalized_json TEXT")
             connection.commit()
 
     def create_job(
@@ -234,6 +276,30 @@ class DesktopStore:
             str(Path(path).resolve()).casefold(): value
             for path, value in (metadata_by_path or {}).items()
         }
+        documents: list[NormalizedDocument] = []
+        for path in resolved:
+            document_metadata = document_metadata_by_path.get(str(path).casefold(), metadata)
+            document_metadata = document_metadata.model_copy(deep=True)
+            if document_metadata.external_id is None:
+                document_metadata.external_id = path.stem
+            documents.append(
+                normalize_local_document(path).model_copy(
+                    update={
+                        "metadata": document_metadata.model_dump(
+                            mode="json", exclude_none=True
+                        )
+                    }
+                )
+            )
+        return self.create_interpretation_job(documents, classifier_provider)
+
+    def create_interpretation_job(
+        self,
+        documents: list[NormalizedDocument],
+        classifier_provider: ClassifierProviderName,
+    ) -> str:
+        if not documents:
+            raise ValueError("selecione ao menos um PDF")
         job_id = str(uuid.uuid4())
         created_at = _now()
         with closing(self._connect()) as connection:
@@ -245,33 +311,27 @@ class DesktopStore:
                 """,
                 (job_id, created_at, created_at, classifier_provider, "Aguardando processamento"),
             )
-            for path in resolved:
+            for normalized_document in documents:
                 document_id = str(uuid.uuid4())
-                document_metadata = document_metadata_by_path.get(
-                    str(path).casefold(), metadata
-                ).model_copy(deep=True)
-                if document_metadata.external_id is None:
-                    document_metadata.external_id = path.stem
-                initial_sha256 = (
-                    document_metadata.external_id.casefold()
-                    if re.fullmatch(r"[0-9a-fA-F]{64}", document_metadata.external_id or "")
-                    else None
-                )
+                document_metadata = _editorial_metadata(normalized_document)
+                path = Path(normalized_document.local_path).resolve()
                 connection.execute(
                     """
                     INSERT INTO documents (
                         id, job_id, local_path, filename, sha256, size_bytes, metadata_json,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        normalized_json, warnings_json, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         document_id,
                         job_id,
                         str(path),
                         path.name,
-                        initial_sha256,
-                        path.stat().st_size,
+                        normalized_document.sha256,
+                        normalized_document.size_bytes,
                         _json(document_metadata.model_dump(mode="json")),
+                        _json(normalized_document.model_dump(mode="json")),
+                        _json(normalized_document.warnings),
                         created_at,
                         created_at,
                     ),
@@ -296,8 +356,6 @@ class DesktopStore:
     def cached_answer_keys(
         self,
         *,
-        provider: str | None,
-        concurso: str | None,
         exclude_job_id: str,
     ) -> list[dict[str, Any]]:
         with closing(self._connect()) as connection:
@@ -315,10 +373,6 @@ class DesktopStore:
             document = self._document_row(row)
             metadata = DesktopImportMetadata.model_validate(document["metadata"])
             if metadata.document_type != "answer_key":
-                continue
-            if provider is not None and metadata.provider != provider:
-                continue
-            if concurso is not None and metadata.concurso != concurso:
                 continue
             digest = cast(str | None, document["sha256"])
             if digest and digest in seen_hashes:
@@ -395,11 +449,58 @@ class DesktopStore:
             raise ValueError("documento nao encontrado")
         return self._document_row(row)
 
+    def reprocessing_contract(self, document_id: str) -> NormalizedDocument:
+        """Return a local contract copy without changing historical document evidence."""
+        document = self.document(document_id)
+        normalized = cast(NormalizedDocument | None, document["normalized_document"])
+        if normalized is not None:
+            return normalized.model_copy(update={"entry_method": "reprocessing"})
+
+        metadata = cast(dict[str, Any], document["metadata"])
+        digest = document["sha256"]
+        size_bytes = int(document["size_bytes"])
+        if not isinstance(digest, str) or not digest or size_bytes < 1:
+            raise ValueError("documento legado nao possui integridade local comprovada")
+        declared_type = metadata.get("document_type", "auto")
+        if declared_type not in {"auto", "exam", "answer_key"}:
+            declared_type = "auto"
+        title = metadata.get("document_title")
+        original_url = metadata.get("source_url")
+        resolved_url = metadata.get("canonical_url")
+        return NormalizedDocument(
+            local_path=cast(str, document["local_path"]),
+            sha256=digest,
+            size_bytes=size_bytes,
+            declared_type=declared_type,
+            title=title if isinstance(title, str) and title else cast(str, document["filename"]),
+            original_url=original_url if isinstance(original_url, str) else None,
+            resolved_url=resolved_url if isinstance(resolved_url, str) else None,
+            entry_method="reprocessing",
+            metadata={
+                key: value for key, value in metadata.items() if isinstance(value, (str, int))
+            },
+            warnings=[
+                "contrato legado reprocessado com compatibilidade; campos de origem ausentes "
+                "foram preservados como desconhecidos"
+            ],
+            external_id=(
+                metadata["external_id"]
+                if isinstance(metadata.get("external_id"), str)
+                else None
+            ),
+        )
+
     @staticmethod
     def _document_row(row: sqlite3.Row) -> dict[str, Any]:
         payload = dict(row)
         payload["metadata"] = json.loads(cast(str, payload.pop("metadata_json")))
         payload["warnings"] = json.loads(cast(str, payload.pop("warnings_json")))
+        normalized_json = payload.pop("normalized_json", None)
+        payload["normalized_document"] = (
+            NormalizedDocument.model_validate(json.loads(cast(str, normalized_json)))
+            if normalized_json is not None
+            else None
+        )
         payload["needs_ocr"] = bool(payload["needs_ocr"])
         return payload
 
@@ -533,7 +634,8 @@ class DesktopStore:
         duplicate = self._duplicate_question_id(fingerprint, exclude_id=question_id)
         if duplicate is not None:
             flags.append("duplicate")
-            self._add_flag(duplicate, "duplicate")
+            if not self._is_reprocessing_document(document_id):
+                self._add_flag(duplicate, "duplicate")
         status: DesktopQuestionStatus = (
             "exception"
             if any(
@@ -622,6 +724,17 @@ class DesktopStore:
                 (fingerprint, exclude_id),
             ).fetchone()
         return cast(str, row["id"]) if row is not None else None
+
+    def _is_reprocessing_document(self, document_id: str) -> bool:
+        with closing(self._connect()) as connection:
+            row = connection.execute(
+                "SELECT normalized_json FROM documents WHERE id = ?", (document_id,)
+            ).fetchone()
+        if row is None or row["normalized_json"] is None:
+            return False
+        payload = json.loads(cast(str, row["normalized_json"]))
+        entry_method = cast(str | None, payload.get("entry_method"))
+        return entry_method == "reprocessing"
 
     def _add_flag(self, question_id: str, flag: str) -> None:
         with closing(self._connect()) as connection:

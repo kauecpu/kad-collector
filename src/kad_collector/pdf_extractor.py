@@ -7,6 +7,7 @@ from pathlib import Path
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
+from .document_contract import NormalizedDocument, normalize_collected_document
 from .json_utils import read_json, write_json
 from .models import (
     DocumentRecord,
@@ -17,25 +18,29 @@ from .models import (
 )
 
 
-def _verify_local_document(local_path: Path, record: DocumentRecord) -> None:
+def _verify_local_document(document: NormalizedDocument) -> None:
+    local_path = Path(document.local_path)
     digest = hashlib.sha256()
     size = 0
     with local_path.open("rb") as handle:
         while chunk := handle.read(1024 * 1024):
             digest.update(chunk)
             size += len(chunk)
-    if size != record.size_bytes:
+    if size != document.size_bytes:
         raise ValueError(
-            f"tamanho do PDF diverge do manifesto ({local_path}): {size} != {record.size_bytes}"
+            f"tamanho do PDF diverge do manifesto ({local_path}): {size} != {document.size_bytes}"
         )
-    if digest.hexdigest() != record.sha256:
+    if digest.hexdigest() != document.sha256:
         raise ValueError(f"SHA-256 do PDF diverge do manifesto: {local_path}")
 
 
-def _extract_document(local_path: Path, record: DocumentRecord) -> ExtractedDocument:
+def _extract_document(
+    normalized: NormalizedDocument, record: DocumentRecord
+) -> ExtractedDocument:
+    local_path = Path(normalized.local_path)
     warnings: list[str] = []
     pages: list[ExtractedPage] = []
-    _verify_local_document(local_path, record)
+    _verify_local_document(normalized)
     try:
         reader = PdfReader(local_path, strict=False)
         if reader.is_encrypted and not reader.decrypt(""):
@@ -84,8 +89,8 @@ def extract_manifest(
     manifest = DownloadManifest.model_validate(read_json(manifest_path))
     extracted: list[ExtractedDocument] = []
     for record in manifest.documents:
-        local_path = Path(record.local_path)
-        extracted.append(_extract_document(local_path, record))
+        normalized = normalize_collected_document(record)
+        extracted.append(_extract_document(normalized, record))
 
     result = ExtractionManifest(
         created_at=datetime.now(UTC),

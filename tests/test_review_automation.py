@@ -72,6 +72,44 @@ def question(number: int) -> QuestionRecord:
 
 
 class ReviewAutomationTests(unittest.TestCase):
+    def _queue_with_single_key(
+        self,
+        root: Path,
+        *,
+        exam: DocumentRecord,
+        answer_key: DocumentRecord,
+        batch_id: str,
+    ) -> tuple[QuestionBatch, list[str]]:
+        extraction_path = root / f"{batch_id}-extraction.json"
+        batch_path = root / f"{batch_id}.json"
+        write_json(
+            extraction_path,
+            ExtractionManifest(created_at=datetime.now(UTC), documents=[]).model_dump(
+                mode="json"
+            ),
+        )
+        write_json(
+            batch_path,
+            QuestionBatch(
+                batch_id=batch_id,
+                created_at=datetime.now(UTC),
+                model="fake-model",
+                source_document=exam,
+                questions=[question(1)],
+                validation=ValidationState(valid=True),
+            ).model_dump(mode="json"),
+        )
+        queue, _ = prepare_review_queue(
+            extraction_path=extraction_path,
+            batch_paths=[batch_path],
+            data_dir=root,
+            answer_key_documents=[
+                ExtractedDocument(document=answer_key, pages=[], text="1 B")
+            ],
+        )
+        reviewed = QuestionBatch.model_validate(read_json(Path(queue.items[0].batch_path)))
+        return reviewed, queue.items[0].issues
+
     def test_variant_table_is_parsed_without_mixing_answer_keys(self) -> None:
         text = "PROVA V1 PROVA V2\n1 A 2 B 1 C 2 D\n3 * 4 A 3 B 4 C"
         first = parse_answer_key(text, variant="V1")
@@ -264,6 +302,310 @@ C
             tampered = PromotionPackage.model_validate(raw)
             with self.assertRaisesRegex(ValueError, "conteudo mudou"):
                 verify_promotion_package(tampered)
+
+    def test_queue_matches_semantically_compatible_key_from_another_source(self) -> None:
+        exam = document(
+            "exam",
+            "Concurso Fiscal 2026 - Analista Tributario - V1",
+            "https://exam-source.test/prova-v1.pdf",
+            "e",
+        ).model_copy(
+            update={
+                "source_id": "exam_source",
+                "metadata": {
+                    "banca": "Banca Ficticia",
+                    "orgao": "Secretaria da Fazenda",
+                    "ano": "2026",
+                    "concurso": "Concurso Fiscal",
+                    "cargo": "Analista Tributario",
+                    "variant": "V1",
+                },
+            }
+        )
+        compatible = document(
+            "answer_key",
+            "Gabarito definitivo Concurso Fiscal 2026 Analista Tributario V1",
+            "https://answers-source.test/gabarito-analista-2026-v1.pdf",
+            "f",
+        ).model_copy(
+            update={
+                "source_id": "official_answers_source",
+                "metadata": {
+                    "banca": "Banca Ficticia",
+                    "orgao": "Secretaria da Fazenda",
+                    "ano": "2026",
+                    "concurso": "Concurso Fiscal",
+                    "cargo": "Analista Tributario",
+                    "variant": "V1",
+                },
+            }
+        )
+        incompatible = document(
+            "answer_key",
+            "Gabarito Professor 2025 V2",
+            "https://another-source.test/gabarito-professor-2025-v2.pdf",
+            "9",
+        ).model_copy(
+            update={
+                "source_id": "another_answers_source",
+                "metadata": {
+                    "banca": "Outra Banca",
+                    "orgao": "Secretaria da Educacao",
+                    "ano": "2025",
+                    "concurso": "Concurso Educacao",
+                    "cargo": "Professor",
+                    "variant": "V2",
+                },
+            }
+        )
+        batch = QuestionBatch(
+            batch_id="batch-cross-source",
+            created_at=datetime.now(UTC),
+            model="fake-model",
+            source_document=exam,
+            questions=[question(1)],
+            validation=ValidationState(valid=True),
+        )
+        candidates = [
+            ExtractedDocument(document=incompatible, pages=[], text="1 D"),
+            ExtractedDocument(document=compatible, pages=[], text="1 B"),
+        ]
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            extraction_path = root / "extraction.json"
+            batch_path = root / "batch.json"
+            write_json(
+                extraction_path,
+                ExtractionManifest(created_at=datetime.now(UTC), documents=[]).model_dump(
+                    mode="json"
+                ),
+            )
+            write_json(batch_path, batch.model_dump(mode="json"))
+
+            queue, _ = prepare_review_queue(
+                extraction_path=extraction_path,
+                batch_paths=[batch_path],
+                data_dir=root,
+                answer_key_documents=candidates,
+            )
+            reviewed = QuestionBatch.model_validate(read_json(Path(queue.items[0].batch_path)))
+
+        self.assertEqual(reviewed.questions[0].correct_answer, "B")
+        self.assertEqual(reviewed.answer_key_document, compatible)
+        self.assertEqual(queue.items[0].matched_answers, 1)
+
+    def test_queue_blocks_equal_answer_key_candidates_as_ambiguous(self) -> None:
+        exam = document(
+            "exam",
+            "Concurso Fiscal 2026 Analista V1",
+            "https://exam-source.test/prova-v1.pdf",
+            "1",
+        ).model_copy(update={"source_id": "exam_source"})
+        first = document(
+            "answer_key",
+            "Gabarito Concurso Fiscal 2026 Analista V1",
+            "https://first-source.test/gabarito-v1.pdf",
+            "2",
+        ).model_copy(update={"source_id": "first_answers_source"})
+        second = first.model_copy(
+            update={
+                "source_id": "second_answers_source",
+                "local_path": "data/raw/second.pdf",
+                "sha256": "3" * 64,
+            }
+        )
+        batch = QuestionBatch(
+            batch_id="batch-ambiguous",
+            created_at=datetime.now(UTC),
+            model="fake-model",
+            source_document=exam,
+            questions=[question(1)],
+            validation=ValidationState(valid=True),
+        )
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            extraction_path = root / "extraction.json"
+            batch_path = root / "batch.json"
+            write_json(
+                extraction_path,
+                ExtractionManifest(created_at=datetime.now(UTC), documents=[]).model_dump(
+                    mode="json"
+                ),
+            )
+            write_json(batch_path, batch.model_dump(mode="json"))
+            queue, _ = prepare_review_queue(
+                extraction_path=extraction_path,
+                batch_paths=[batch_path],
+                data_dir=root,
+                answer_key_documents=[
+                    ExtractedDocument(document=first, pages=[], text="1 A"),
+                    ExtractedDocument(document=second, pages=[], text="1 B"),
+                ],
+            )
+            reviewed = QuestionBatch.model_validate(read_json(Path(queue.items[0].batch_path)))
+
+        self.assertIsNone(reviewed.answer_key_document)
+        self.assertIsNone(reviewed.questions[0].correct_answer)
+        self.assertEqual(reviewed.questions[0].answer_status, "missing")
+        self.assertTrue(any("ambigua" in issue for issue in queue.items[0].issues))
+
+    def test_queue_rejects_sole_key_supported_only_by_candidate_weak_signals(self) -> None:
+        exam = document(
+            "exam",
+            "Prova de Direito",
+            "https://exam-source.test/direito.pdf",
+            "4",
+        ).model_copy(update={"metadata": {}})
+        unrelated = document(
+            "answer_key",
+            "Gabarito definitivo de Quimica",
+            "https://answers-source.test/quimica.pdf",
+            "5",
+        ).model_copy(update={"metadata": {}})
+
+        with tempfile.TemporaryDirectory() as temporary:
+            reviewed, issues = self._queue_with_single_key(
+                Path(temporary),
+                exam=exam,
+                answer_key=unrelated,
+                batch_id="batch-unrelated-weak-signals",
+            )
+
+        self.assertIsNone(reviewed.answer_key_document)
+        self.assertIsNone(reviewed.questions[0].correct_answer)
+        self.assertEqual(reviewed.questions[0].answer_status, "missing")
+        self.assertTrue(any("nenhum corresponde" in issue for issue in issues))
+
+    def test_queue_rejects_one_shared_boilerplate_title_token(self) -> None:
+        exam = document(
+            "exam",
+            "Concurso Direito",
+            "https://exam-source.test/concurso-direito.pdf",
+            "a",
+        ).model_copy(update={"metadata": {}})
+        unrelated = document(
+            "answer_key",
+            "Gabarito Concurso Quimica",
+            "https://answers-source.test/concurso-quimica.pdf",
+            "b",
+        ).model_copy(update={"metadata": {}})
+
+        with tempfile.TemporaryDirectory() as temporary:
+            reviewed, issues = self._queue_with_single_key(
+                Path(temporary),
+                exam=exam,
+                answer_key=unrelated,
+                batch_id="batch-one-boilerplate-token",
+            )
+
+        self.assertIsNone(reviewed.answer_key_document)
+        self.assertIsNone(reviewed.questions[0].correct_answer)
+        self.assertEqual(reviewed.questions[0].answer_status, "missing")
+        self.assertTrue(any("nenhum corresponde" in issue for issue in issues))
+
+    def test_queue_rejects_known_year_and_variant_contradictions(self) -> None:
+        exam = document(
+            "exam",
+            "Concurso Fiscal 2026 Analista V1 Manhã",
+            "https://exam-source.test/fiscal-2026-v1.pdf",
+            "6",
+        ).model_copy(
+            update={
+                "metadata": {
+                    "ano": "2026",
+                    "concurso": "Concurso Fiscal",
+                    "cargo": "Analista",
+                    "orgao": "Secretaria da Fazenda",
+                    "variant": "V1",
+                }
+            }
+        )
+        wrong_year = document(
+            "answer_key",
+            "Gabarito Concurso Fiscal 2025 Analista V1",
+            "https://answers-source.test/fiscal-2025-v1.pdf",
+            "7",
+        ).model_copy(
+            update={
+                "metadata": {
+                    "ano": "2025",
+                    "concurso": "Concurso Fiscal",
+                    "cargo": "Analista",
+                    "orgao": "Secretaria da Fazenda",
+                    "variant": "V1",
+                }
+            }
+        )
+        wrong_variant = document(
+            "answer_key",
+            "Gabarito Concurso Fiscal 2026 Analista V2",
+            "https://answers-source.test/fiscal-2026-v2.pdf",
+            "8",
+        ).model_copy(
+            update={
+                "metadata": {
+                    "ano": "2026",
+                    "concurso": "Concurso Fiscal",
+                    "cargo": "Analista",
+                    "orgao": "Secretaria da Fazenda",
+                    "variant": "V2",
+                }
+            }
+        )
+        wrong_role = document(
+            "answer_key",
+            "Gabarito Concurso Fiscal 2026 Auditor V1",
+            "https://answers-source.test/fiscal-2026-auditor-v1.pdf",
+            "9",
+        ).model_copy(
+            update={
+                "metadata": {
+                    "ano": "2026",
+                    "concurso": "Concurso Fiscal",
+                    "cargo": "Auditor",
+                    "orgao": "Secretaria da Fazenda",
+                    "variant": "V1",
+                }
+            }
+        )
+        wrong_turn = document(
+            "answer_key",
+            "Gabarito Concurso Fiscal 2026 Analista V1 Tarde",
+            "https://answers-source.test/fiscal-2026-analista-v1-tarde.pdf",
+            "a",
+        ).model_copy(
+            update={
+                "metadata": {
+                    "ano": "2026",
+                    "concurso": "Concurso Fiscal",
+                    "cargo": "Analista",
+                    "orgao": "Secretaria da Fazenda",
+                    "variant": "V1",
+                }
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for label, candidate in (
+                ("wrong-year", wrong_year),
+                ("wrong-variant", wrong_variant),
+                ("wrong-role", wrong_role),
+                ("wrong-turn", wrong_turn),
+            ):
+                with self.subTest(label=label):
+                    reviewed, issues = self._queue_with_single_key(
+                        root / label,
+                        exam=exam,
+                        answer_key=candidate,
+                        batch_id=f"batch-{label}",
+                    )
+                    self.assertIsNone(reviewed.answer_key_document)
+                    self.assertIsNone(reviewed.questions[0].correct_answer)
+                    self.assertEqual(reviewed.questions[0].answer_status, "missing")
+                    self.assertTrue(any("nenhum corresponde" in issue for issue in issues))
 
 
 if __name__ == "__main__":

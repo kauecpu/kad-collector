@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import re
-import unicodedata
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
-from urllib.parse import urlsplit
 
 from .answer_key import apply_answer_entries, parse_answer_key
+from .document_matching import DocumentEvidence, select_evidence_match
 from .json_utils import read_json, write_json
 from .local_review import load_or_create_review_session
 from .models import (
@@ -20,84 +19,62 @@ from .models import (
 )
 from .validation import batch_content_sha256, validate_questions
 
-_VARIANT_PATTERN = re.compile(r"\bV[1-9]\d*\b", re.IGNORECASE)
-_TOKEN_PATTERN = re.compile(r"[a-z0-9]+", re.IGNORECASE)
-_STOP_TOKENS = {
-    "arquivo",
-    "caderno",
-    "definitivo",
-    "esperada",
-    "esperadas",
-    "fase",
-    "files",
-    "gabarito",
-    "gabaritos",
-    "pdf",
-    "prova",
-    "provas",
-    "resposta",
-    "respostas",
-    "uploads",
-    "wp",
-    "content",
-}
+_VARIANT_PATTERN = re.compile(r"\b(?:V[1-9]\d*|TIPO\s*[1-9]\d*)\b", re.IGNORECASE)
 
 
-def _normalize(value: str) -> str:
-    decomposed = unicodedata.normalize("NFKD", value)
-    return "".join(
-        character for character in decomposed if not unicodedata.combining(character)
-    ).casefold()
+def _metadata_value(document: DocumentRecord, *names: str) -> str | None:
+    for name in names:
+        value = document.metadata.get(name)
+        if value is not None and str(value).strip():
+            return str(value)
+    return None
 
 
-def _document_tokens(document: DocumentRecord) -> set[str]:
-    path = urlsplit(document.resolved_url).path
-    tokens = set(_TOKEN_PATTERN.findall(_normalize(f"{document.title} {path}")))
-    return {token for token in tokens if token not in _STOP_TOKENS and len(token) > 1}
+def _evidence(document: DocumentRecord, content: str = "") -> DocumentEvidence:
+    raw_year = _metadata_value(document, "year", "ano")
+    year = int(raw_year) if raw_year and raw_year.isdigit() else None
+    return DocumentEvidence(
+        title=document.title,
+        content=content,
+        concurso=_metadata_value(document, "concurso"),
+        year=year,
+        role=_metadata_value(document, "role", "cargo"),
+        organization=_metadata_value(document, "organization", "orgao"),
+        variant=_metadata_value(document, "variant", "tipo"),
+        turn=_metadata_value(document, "turn", "turno"),
+    )
 
 
 def _variant(document: DocumentRecord) -> str | None:
-    candidate = _normalize(f"{document.title} {document.resolved_url}")
+    candidate = f"{_metadata_value(document, 'variant', 'tipo') or ''} {document.title}"
     match = _VARIANT_PATTERN.search(candidate)
-    return match.group(0).upper() if match else None
-
-
-def _pair_score(exam: DocumentRecord, answer_key: DocumentRecord) -> int:
-    common = _document_tokens(exam) & _document_tokens(answer_key)
-    score = 0
-    for token in common:
-        if re.fullmatch(r"(?:[a-z]+)?20\d{2}", token):
-            score += 4
-        elif re.fullmatch(r"(?:v|p|d|cd)\d+", token):
-            score += 3
-        else:
-            score += 1
-    return score
+    return " ".join(match.group(0).split()).title() if match else None
 
 
 def _select_answer_key(
-    exam: DocumentRecord, candidates: list[ExtractedDocument]
+    exam: DocumentRecord,
+    candidates: list[ExtractedDocument],
+    exam_content: str = "",
 ) -> tuple[ExtractedDocument | None, list[str]]:
-    same_source = [
+    textual = [
         candidate
         for candidate in candidates
-        if candidate.document.source_id == exam.source_id and not candidate.needs_ocr
+        if candidate.document.document_type == "answer_key"
+        and not candidate.needs_ocr
+        and candidate.text.strip()
     ]
-    if not same_source:
-        return None, ["nenhum gabarito textual encontrado para a fonte"]
-    ranked = sorted(
-        ((_pair_score(exam, candidate.document), candidate) for candidate in same_source),
-        key=lambda item: item[0],
-        reverse=True,
+    index, reason = select_evidence_match(
+        _evidence(exam, exam_content),
+        [_evidence(candidate.document, candidate.text) for candidate in textual],
     )
-    best_score, best = ranked[0]
-    if len(ranked) > 1 and best_score == 0:
+    if index is not None:
+        return textual[index], []
+    if reason == "missing":
+        return None, ["nenhum gabarito oficial textual encontrado"]
+    if reason == "no_evidence":
         return None, ["gabaritos encontrados, mas nenhum corresponde claramente a prova"]
-    tied = [candidate for score, candidate in ranked if score == best_score]
-    if len(tied) > 1:
-        titles = ", ".join(item.document.title for item in tied[:3])
-        return None, [f"associacao de gabarito ambigua: {titles}"]
-    return best, []
+    titles = ", ".join(item.document.title for item in textual[:3])
+    return None, [f"associacao de gabarito ambigua: {titles}"]
 
 
 def prepare_review_queue(
@@ -124,7 +101,15 @@ def prepare_review_queue(
         batch = QuestionBatch.model_validate(read_json(batch_path))
         issues: list[str] = []
         matched_paths: list[str] = []
-        answer_key, pairing_issues = _select_answer_key(batch.source_document, answer_keys)
+        exam_content = "\n".join(
+            " ".join(
+                [question.statement, *[item.text for item in question.alternatives]]
+            )
+            for question in batch.questions
+        )
+        answer_key, pairing_issues = _select_answer_key(
+            batch.source_document, answer_keys, exam_content
+        )
         issues.extend(pairing_issues)
         updated = batch
         if answer_key is not None:
