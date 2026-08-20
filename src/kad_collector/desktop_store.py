@@ -733,7 +733,8 @@ class DesktopStore:
         if row is None or row["normalized_json"] is None:
             return False
         payload = json.loads(cast(str, row["normalized_json"]))
-        return payload.get("entry_method") == "reprocessing"
+        entry_method = cast(str | None, payload.get("entry_method"))
+        return entry_method == "reprocessing"
 
     def _add_flag(self, question_id: str, flag: str) -> None:
         with closing(self._connect()) as connection:
