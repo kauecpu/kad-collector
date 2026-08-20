@@ -58,6 +58,8 @@ class SemanticContractTests(unittest.TestCase):
             )],
         )
         self.assertEqual(profile.answer_key_state, "definitive")
+        self.assertEqual(profile.coverage.roles.status, "known")
+        self.assertFalse(profile.has_conflict)
         self.assertEqual(profile.coverage.roles.normalized_values, ("analista", "auditor"))
         self.assertEqual(
             profile.coverage.variants.normalized_values,
@@ -72,6 +74,68 @@ class SemanticContractTests(unittest.TestCase):
         )
         self.assertEqual(profile.identity.year.status, "conflict")
         self.assertIsNone(profile.identity_key)
+
+    def test_incompatible_strong_set_assertions_conflict(self) -> None:
+        profile = extract_semantic_profile(
+            normalized_document(Path("prova.pdf")),
+            [(1, "Banca: X\nConcurso: Y\nAno: 2026\nCargo: Auditor\nCargos: Analista")],
+        )
+        self.assertEqual(profile.identity.roles.status, "conflict")
+        self.assertTrue(profile.has_conflict)
+
+    def test_single_human_override_sets_effective_value_and_preserves_evidence(self) -> None:
+        profile = extract_semantic_profile(
+            normalized_document(Path("prova.pdf"), metadata={"year": 2025}),
+            [(1, "Banca: X\nConcurso: Y\nAno: 2026")],
+            human_overrides={"year": 2027},
+        )
+        self.assertEqual(profile.identity.year.status, "known")
+        self.assertEqual(profile.identity.year.normalized_values, (2027,))
+        self.assertEqual(
+            tuple(evidence.normalized_value for evidence in profile.identity.year.evidence),
+            (2025, 2026, 2027),
+        )
+        self.assertEqual(profile.identity.year.method, "human_override")
+
+    def test_divergent_scalar_human_overrides_conflict(self) -> None:
+        profile = extract_semantic_profile(
+            normalized_document(Path("prova.pdf")),
+            [(1, "Banca: X\nConcurso: Y\nAno: 2026")],
+            human_overrides={"year": (2025, 2026)},
+        )
+        self.assertEqual(profile.identity.year.status, "conflict")
+
+    def test_extracts_accented_organization_labels_preserving_raw_value(self) -> None:
+        profile = extract_semantic_profile(
+            normalized_document(Path("prova.pdf")),
+            [(1, "Banca: X\nConcurso: Y\nAno: 2026\nÓrgão: Órgão Exemplo\nOrganização: Instituto")],
+        )
+        self.assertEqual(profile.identity.organization.status, "conflict")
+        self.assertIn("Órgão Exemplo", profile.identity.organization.raw_values)
+
+    def test_unique_body_year_beats_weak_title_year(self) -> None:
+        profile = extract_semantic_profile(
+            normalized_document(Path("prova.pdf"), title="prova-2025.pdf"),
+            [(1, "Banca: X\nConcurso: Y\nAplicação em 2026")],
+        )
+        self.assertEqual(profile.identity.year.normalized_values, (2026,))
+
+    def test_role_and_state_markers_require_word_boundaries(self) -> None:
+        false_positive = extract_semantic_profile(
+            normalized_document(
+                Path("documento.pdf"), title="comprovante-finalidade.pdf", declared_type="auto"
+            ),
+            [(1, "Texto")],
+        )
+        positive = extract_semantic_profile(
+            normalized_document(
+                Path("documento.pdf"), title="gabarito-definitivo.pdf", declared_type="auto"
+            ),
+            [(1, "Texto")],
+        )
+        self.assertEqual(false_positive.document_role, "unknown")
+        self.assertEqual(positive.document_role, "answer_key")
+        self.assertEqual(positive.answer_key_state, "definitive")
 
     def test_ambiguous_answer_key_state_is_unknown(self) -> None:
         profile = extract_semantic_profile(
@@ -188,6 +252,11 @@ class SemanticContractTests(unittest.TestCase):
         self.assertEqual(
             semantic_identity_key(ascii_identity), semantic_identity_key(spaced_case_identity)
         )
+
+    def test_identity_normalization_keeps_distinct_accents(self) -> None:
+        accented = identity(board="Órgão", concurso="Contest", year=2026)
+        plain = identity(board="Orgao", concurso="Contest", year=2026)
+        self.assertNotEqual(semantic_identity_key(accented), semantic_identity_key(plain))
 
     def test_evidence_sorting_discriminates_types_with_equal_location(self) -> None:
         first = SemanticField.from_evidence(

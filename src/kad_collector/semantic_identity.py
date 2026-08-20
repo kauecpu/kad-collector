@@ -45,7 +45,7 @@ METADATA_ALIASES = {
 _PDF_LABELS = {
     "board": ("banca",),
     "concurso": ("concurso",),
-    "organization": ("orgao", "organizacao", "organization"),
+    "organization": ("orgao", "órgão", "organizacao", "organização", "organization"),
     "year": ("ano", "year"),
     "roles": ("cargo", "role"),
     "stage": ("etapa", "fase", "stage"),
@@ -65,9 +65,7 @@ class FrozenSemanticModel(StrictModel):
 def _norm(value: SemanticValue) -> SemanticValue:
     if isinstance(value, int):
         return value
-    decomposed = unicodedata.normalize("NFD", value)
-    without_accents = "".join(char for char in decomposed if not unicodedata.combining(char))
-    return " ".join(without_accents.split()).casefold()
+    return " ".join(value.split()).casefold()
 
 
 def _typed_sort_key(value: SemanticValue) -> tuple[str, str]:
@@ -332,35 +330,115 @@ def _field_from_sources(
     pages: Sequence[tuple[int, str]],
     human_overrides: Mapping[str, str | int | Sequence[str]] | None,
 ) -> SemanticField:
-    evidence: list[SemanticEvidence] = []
+    human_groups: list[tuple[SemanticEvidence, ...]] = []
+    strong_groups: list[tuple[SemanticEvidence, ...]] = []
     if human_overrides is not None and name in human_overrides:
-        for value in _values(human_overrides[name], name):
-            evidence.append(SemanticEvidence.human_review(f"override:{name}", value))
+        values = _values(human_overrides[name], name)
+        if values:
+            human_groups.append(
+                tuple(SemanticEvidence.human_review(f"override:{name}", value) for value in values)
+            )
     for alias in METADATA_ALIASES[name]:
         if alias in document.metadata:
-            for value in _values(document.metadata[alias], name):
-                evidence.append(SemanticEvidence.metadata(f"metadata:{alias}", value))
+            values = _values(document.metadata[alias], name)
+            if values:
+                strong_groups.append(
+                    tuple(SemanticEvidence.metadata(f"metadata:{alias}", value) for value in values)
+                )
     for locator, raw_value in _labeled_values(pages, name):
-        for value in _values(raw_value, name):
-            evidence.append(SemanticEvidence.pdf_text(locator, value))
-    if evidence:
-        return SemanticField.from_evidence(name, tuple(evidence))
-    if name in {"year", "turns", "variants"}:
-        title_values = _title_values(document.title, name)
-        if title_values:
-            return SemanticField.from_evidence(
-                name,
-                tuple(SemanticEvidence.title("title", value) for value in title_values),
+        values = _values(raw_value, name)
+        if values:
+            strong_groups.append(
+                tuple(SemanticEvidence.pdf_text(locator, value) for value in values)
             )
     if name == "year":
         years = tuple(
             sorted({int(year) for _, text in pages for year in _YEAR_PATTERN.findall(text)})
         )
-        if len(years) == 1:
-            return SemanticField.from_evidence(
-                name, (SemanticEvidence.pdf_text("document:unique-year", years[0]),)
+        if not strong_groups and len(years) == 1:
+            strong_groups.append(
+                (SemanticEvidence.pdf_text("document:unique-year", years[0]),)
             )
-    return SemanticField.unknown(f"{name} sem evidência")
+    weak_groups: list[tuple[SemanticEvidence, ...]] = []
+    if not strong_groups and name in {"year", "turns", "variants"}:
+        title_values = _title_values(document.title, name)
+        if title_values:
+            weak_groups.append(
+                tuple(SemanticEvidence.title("title", value) for value in title_values)
+            )
+    return _resolve_field(
+        name,
+        human_groups=human_groups,
+        source_groups=strong_groups or weak_groups,
+        collection=name in {"roles", "stage", "turns", "variants"},
+    )
+
+
+def _resolve_field(
+    name: str,
+    *,
+    human_groups: Sequence[tuple[SemanticEvidence, ...]],
+    source_groups: Sequence[tuple[SemanticEvidence, ...]],
+    collection: bool,
+) -> SemanticField:
+    evidence = tuple(item for group in (*human_groups, *source_groups) for item in group)
+    if not evidence:
+        return SemanticField.unknown(f"{name} sem evidência")
+
+    human_values = _group_values(human_groups)
+    if human_groups:
+        if not collection and len(human_values) != 1:
+            return _semantic_field(name, evidence, (), "conflict", "human_conflict")
+        return _semantic_field(name, evidence, human_values, "known", "human_override")
+
+    sets = _group_sets(source_groups)
+    if not sets or (not collection and any(len(values) != 1 for values in sets)):
+        return _semantic_field(name, evidence, (), "conflict", "strong_conflict")
+    if len(set(sets)) != 1:
+        return _semantic_field(name, evidence, (), "conflict", "strong_conflict")
+    return _semantic_field(name, evidence, sets[0], "known", "source_evidence")
+
+
+def _group_values(groups: Sequence[tuple[SemanticEvidence, ...]]) -> tuple[SemanticValue, ...]:
+    return tuple(
+        sorted(
+            {item.normalized_value for group in groups for item in group}, key=_typed_sort_key
+        )
+    )
+
+
+def _group_sets(
+    groups: Sequence[tuple[SemanticEvidence, ...]]
+) -> tuple[tuple[SemanticValue, ...], ...]:
+    return tuple(_group_values((group,)) for group in groups)
+
+
+def _semantic_field(
+    name: str,
+    evidence: Sequence[SemanticEvidence],
+    values: Sequence[SemanticValue],
+    status: SemanticStatus,
+    method: str,
+) -> SemanticField:
+    ordered = tuple(sorted(evidence, key=lambda item: (
+        _typed_sort_key(item.normalized_value), _typed_sort_key(item.raw_value),
+        item.source, item.locator, item.strength,
+    )))
+    all_values = _group_values((ordered,))
+    if status == "conflict":
+        return SemanticField(
+            status="conflict", raw_values=tuple(item.raw_value for item in ordered),
+            normalized_values=all_values, evidence=ordered, method=method,
+            reason=f"{name} possui afirmações fortes incompatíveis",
+        )
+    return SemanticField(
+        status="known", raw_values=tuple(item.raw_value for item in ordered),
+        normalized_values=tuple(values), evidence=ordered, method=method, confidence=1.0,
+        reason=(
+            f"{name} definido por revisão humana; evidências anteriores preservadas"
+            if method == "human_override" else f"{name} derivado de evidências concordantes"
+        ),
+    )
 
 
 def _title_values(title: str, field: str) -> tuple[SemanticValue, ...]:
@@ -382,7 +460,7 @@ def _detect_role(document: NormalizedDocument, pages: Sequence[tuple[int, str]])
     matches = {
         role
         for role, markers in _ROLE_MARKERS.items()
-        if any(marker in sample for marker in markers)
+        if any(_has_marker(sample, marker) for marker in markers)
     }
     return cast(DocumentRole, next(iter(matches))) if len(matches) == 1 else "unknown"
 
@@ -391,11 +469,15 @@ def _answer_key_state(
     document: NormalizedDocument, pages: Sequence[tuple[int, str]]
 ) -> AnswerKeyState:
     text = f"{document.title}\n{''.join(value for _, value in pages)}".casefold()
-    preliminary = any(marker in text for marker in _PRELIMINARY_MARKERS)
-    definitive = any(marker in text for marker in _DEFINITIVE_MARKERS)
+    preliminary = any(_has_marker(text, marker) for marker in _PRELIMINARY_MARKERS)
+    definitive = any(_has_marker(text, marker) for marker in _DEFINITIVE_MARKERS)
     if preliminary == definitive:
         return "unknown"
     return "preliminary" if preliminary else "definitive"
+
+
+def _has_marker(text: str, marker: str) -> bool:
+    return re.search(rf"(?<!\w){re.escape(marker)}(?!\w)", text) is not None
 
 
 def extract_semantic_profile(
