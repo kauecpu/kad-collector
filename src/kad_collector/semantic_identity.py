@@ -4,12 +4,16 @@ import hashlib
 import json
 import re
 import unicodedata
-from collections.abc import Sequence
-from typing import Literal
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING, Literal, cast
 
 from pydantic import ConfigDict, model_validator
 
 from .models import StrictModel
+
+if TYPE_CHECKING:
+    from .document_contract import NormalizedDocument
+    from .models import DocumentRecord
 
 SEMANTIC_SCHEMA_VERSION = 1
 IDENTITY_ALGORITHM_VERSION = "semantic-identity-v1"
@@ -27,6 +31,32 @@ AssociationOutcome = Literal[
     "selected", "missing", "conflict", "insufficient_evidence", "ambiguous"
 ]
 
+METADATA_ALIASES = {
+    "board": ("board", "banca"),
+    "concurso": ("concurso",),
+    "organization": ("organization", "orgao"),
+    "year": ("year", "ano"),
+    "roles": ("role", "cargo"),
+    "stage": ("stage", "etapa", "fase"),
+    "turns": ("turn", "turno"),
+    "variants": ("variant", "tipo"),
+}
+
+_PDF_LABELS = {
+    "board": ("banca",),
+    "concurso": ("concurso",),
+    "organization": ("orgao", "organizacao", "organization"),
+    "year": ("ano", "year"),
+    "roles": ("cargo", "role"),
+    "stage": ("etapa", "fase", "stage"),
+    "turns": ("turno", "turn"),
+    "variants": ("tipo", "variant", "versao"),
+}
+_YEAR_PATTERN = re.compile(r"(?<!\d)((?:19|20)\d{2})(?!\d)")
+_ROLE_MARKERS = {"exam": ("prova", "exam"), "answer_key": ("gabarito", "answer key")}
+_PRELIMINARY_MARKERS = ("preliminar", "preliminary")
+_DEFINITIVE_MARKERS = ("definitivo", "definitive", "final")
+
 
 class FrozenSemanticModel(StrictModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
@@ -35,7 +65,9 @@ class FrozenSemanticModel(StrictModel):
 def _norm(value: SemanticValue) -> SemanticValue:
     if isinstance(value, int):
         return value
-    return " ".join(value.split()).casefold()
+    decomposed = unicodedata.normalize("NFD", value)
+    without_accents = "".join(char for char in decomposed if not unicodedata.combining(char))
+    return " ".join(without_accents.split()).casefold()
 
 
 def _typed_sort_key(value: SemanticValue) -> tuple[str, str]:
@@ -60,7 +92,21 @@ class SemanticEvidence(FrozenSemanticModel):
     def pdf_text(cls, locator: str, value: SemanticValue) -> SemanticEvidence:
         return cls(
             source="pdf_text", locator=locator, raw_value=value,
-            normalized_value=_norm(value), strength="medium"
+            normalized_value=_norm(value), strength="strong"
+        )
+
+    @classmethod
+    def title(cls, locator: str, value: SemanticValue) -> SemanticEvidence:
+        return cls(
+            source="document_title", locator=locator, raw_value=value,
+            normalized_value=_norm(value), strength="weak"
+        )
+
+    @classmethod
+    def human_review(cls, locator: str, value: SemanticValue) -> SemanticEvidence:
+        return cls(
+            source="human_review", locator=locator, raw_value=value,
+            normalized_value=_norm(value), strength="strong"
         )
 
 
@@ -83,8 +129,8 @@ class SemanticField(FrozenSemanticModel):
             ):
                 raise ValueError("campo unknown não pode conter valores, evidência ou confiança")
         elif self.status == "known":
-            if len(self.normalized_values) != 1:
-                raise ValueError("campo known exige exatamente um valor normalizado")
+            if not self.normalized_values:
+                raise ValueError("campo known exige valor normalizado")
         elif self.confidence is not None:
             raise ValueError("campo conflict não pode conter confiança")
         elif len(self.normalized_values) < 2:
@@ -238,3 +284,146 @@ def build_content_fingerprint(pages: Sequence[tuple[int, str]]) -> ContentFinger
     return ContentFingerprint(sha256=stable_sha256(payload),
                               page_sha256s=page_hashes, page_count=len(normalized),
                               character_count=sum(len(text) for _, text in normalized))
+
+
+def _values(raw_value: str | int | Sequence[str | int], field: str) -> tuple[SemanticValue, ...]:
+    values = (raw_value,) if isinstance(raw_value, (str, int)) else tuple(raw_value)
+    expanded: list[SemanticValue] = []
+    for value in values:
+        if isinstance(value, int):
+            expanded.append(value)
+            continue
+        text = value.strip()
+        if field == "year":
+            expanded.extend(int(year) for year in _YEAR_PATTERN.findall(text))
+        elif field == "variants":
+            interval = re.fullmatch(r"\s*(\d+)\s*(?:a|ate|até|[-–])\s*(\d+)\s*", text, re.I)
+            if interval is not None:
+                start, end = (int(item) for item in interval.groups())
+                if start <= end:
+                    expanded.extend(f"tipo {number}" for number in range(start, end + 1))
+            else:
+                parts = re.split(r"\s*[,;/]\s*", text)
+                expanded.extend(_variant_value(part) for part in parts if part.strip())
+        else:
+            parts = re.split(r"\s*[,;/]\s*", text)
+            expanded.extend(part.strip() for part in parts if part.strip())
+    return tuple(expanded)
+
+
+def _variant_value(value: str) -> str:
+    match = re.fullmatch(r"\s*(?:tipo|variant|versao|versão)?\s*(\d+)\s*", value, re.I)
+    return f"tipo {match.group(1)}" if match is not None else value.strip()
+
+
+def _labeled_values(pages: Sequence[tuple[int, str]], field: str) -> tuple[tuple[str, str], ...]:
+    labels = "|".join(re.escape(label) + "s?" for label in _PDF_LABELS[field])
+    pattern = re.compile(rf"(?im)^\s*(?:{labels})\s*:\s*(?P<value>[^\r\n]+)")
+    return tuple(
+        (f"page:{page_number}", match.group("value").strip())
+        for page_number, text in pages
+        for match in pattern.finditer(text)
+    )
+
+
+def _field_from_sources(
+    name: str,
+    document: NormalizedDocument,
+    pages: Sequence[tuple[int, str]],
+    human_overrides: Mapping[str, str | int | Sequence[str]] | None,
+) -> SemanticField:
+    evidence: list[SemanticEvidence] = []
+    if human_overrides is not None and name in human_overrides:
+        for value in _values(human_overrides[name], name):
+            evidence.append(SemanticEvidence.human_review(f"override:{name}", value))
+    for alias in METADATA_ALIASES[name]:
+        if alias in document.metadata:
+            for value in _values(document.metadata[alias], name):
+                evidence.append(SemanticEvidence.metadata(f"metadata:{alias}", value))
+    for locator, raw_value in _labeled_values(pages, name):
+        for value in _values(raw_value, name):
+            evidence.append(SemanticEvidence.pdf_text(locator, value))
+    if evidence:
+        return SemanticField.from_evidence(name, tuple(evidence))
+    if name in {"year", "turns", "variants"}:
+        title_values = _title_values(document.title, name)
+        if title_values:
+            return SemanticField.from_evidence(
+                name,
+                tuple(SemanticEvidence.title("title", value) for value in title_values),
+            )
+    if name == "year":
+        years = tuple(
+            sorted({int(year) for _, text in pages for year in _YEAR_PATTERN.findall(text)})
+        )
+        if len(years) == 1:
+            return SemanticField.from_evidence(
+                name, (SemanticEvidence.pdf_text("document:unique-year", years[0]),)
+            )
+    return SemanticField.unknown(f"{name} sem evidência")
+
+
+def _title_values(title: str, field: str) -> tuple[SemanticValue, ...]:
+    if field == "year":
+        return tuple(int(year) for year in _YEAR_PATTERN.findall(title))
+    if field == "variants":
+        matches = re.findall(r"(?:tipo|variant|versao|versão)\s*[-_ ]*(\d+)", title, re.I)
+        return tuple(f"tipo {number}" for number in matches)
+    if field == "turns":
+        matches = re.findall(r"(?:turno|turn)\s*[-_ ]*([\w]+)", title, re.I)
+        return tuple(f"turno {value}" for value in matches)
+    return ()
+
+
+def _detect_role(document: NormalizedDocument, pages: Sequence[tuple[int, str]]) -> DocumentRole:
+    if document.declared_type != "auto":
+        return document.declared_type
+    sample = f"{document.title}\n{''.join(text for _, text in pages)[:20000]}".casefold()
+    matches = {
+        role
+        for role, markers in _ROLE_MARKERS.items()
+        if any(marker in sample for marker in markers)
+    }
+    return cast(DocumentRole, next(iter(matches))) if len(matches) == 1 else "unknown"
+
+
+def _answer_key_state(
+    document: NormalizedDocument, pages: Sequence[tuple[int, str]]
+) -> AnswerKeyState:
+    text = f"{document.title}\n{''.join(value for _, value in pages)}".casefold()
+    preliminary = any(marker in text for marker in _PRELIMINARY_MARKERS)
+    definitive = any(marker in text for marker in _DEFINITIVE_MARKERS)
+    if preliminary == definitive:
+        return "unknown"
+    return "preliminary" if preliminary else "definitive"
+
+
+def extract_semantic_profile(
+    document: NormalizedDocument,
+    pages: Sequence[tuple[int, str]],
+    human_overrides: Mapping[str, str | int | Sequence[str]] | None = None,
+) -> DocumentSemanticProfile:
+    fields = {
+        name: _field_from_sources(name, document, pages, human_overrides)
+        for name in METADATA_ALIASES
+    }
+    identity = ExamSemanticIdentity(**fields)
+    coverage = AnswerKeyCoverage(
+        roles=fields["roles"], stage=fields["stage"], turns=fields["turns"],
+        variants=fields["variants"],
+    )
+    role = _detect_role(document, pages)
+    return DocumentSemanticProfile(
+        identity=identity, identity_key=semantic_identity_key(identity), document_role=role,
+        answer_key_state=_answer_key_state(document, pages) if role == "answer_key" else "unknown",
+        coverage=coverage, content_fingerprint=build_content_fingerprint(pages),
+        has_conflict=any(field.status == "conflict" for field in fields.values()),
+    )
+
+
+def profile_from_document_record(
+    record: DocumentRecord, pages: Sequence[tuple[int, str]]
+) -> DocumentSemanticProfile:
+    from .document_contract import normalize_collected_document
+
+    return extract_semantic_profile(normalize_collected_document(record), pages)

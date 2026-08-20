@@ -1,21 +1,97 @@
 import unittest
+from datetime import UTC, datetime
+from pathlib import Path
 
 from pydantic import ValidationError
 
+from kad_collector.models import DocumentRecord
 from kad_collector.semantic_identity import (
     SemanticEvidence,
     SemanticField,
     build_content_fingerprint,
+    extract_semantic_profile,
+    profile_from_document_record,
     semantic_identity_key,
 )
 
 try:
-    from .semantic_helpers import identity
+    from .semantic_helpers import identity, normalized_document
 except ImportError:
-    from semantic_helpers import identity
+    from semantic_helpers import identity, normalized_document
 
 
 class SemanticContractTests(unittest.TestCase):
+    def test_extracts_labeled_pdf_fields_without_source_rules(self) -> None:
+        profile = extract_semantic_profile(
+            normalized_document(Path("prova.pdf"), metadata={}),
+            [(1, "Banca: Instituto Exemplo\nConcurso: Auditoria 2026\nAno: 2026\nCargo: Auditor")],
+        )
+        self.assertEqual(profile.identity.board.normalized_values, ("instituto exemplo",))
+        self.assertEqual(profile.identity.year.normalized_values, (2026,))
+        self.assertIsNotNone(profile.identity_key)
+
+    def test_declared_year_conflicting_with_pdf_is_not_resolved(self) -> None:
+        profile = extract_semantic_profile(
+            normalized_document(
+                Path("prova.pdf"), metadata={"board": "X", "concurso": "Y", "year": 2025}
+            ),
+            [(1, "Banca: X\nConcurso: Y\nAno: 2026")],
+        )
+        self.assertEqual(profile.identity.year.status, "conflict")
+        self.assertIsNone(profile.identity_key)
+
+    def test_weak_title_does_not_invent_minimum_identity(self) -> None:
+        profile = extract_semantic_profile(
+            normalized_document(Path("prova.pdf"), title="prova-fiscal-2026.pdf"),
+            [(1, "Assinale a alternativa correta.")],
+        )
+        self.assertEqual(profile.identity.board.status, "unknown")
+        self.assertIsNone(profile.identity_key)
+
+    def test_answer_key_coverage_supports_multiple_roles_and_types(self) -> None:
+        profile = extract_semantic_profile(
+            normalized_document(Path("key.pdf"), declared_type="answer_key"),
+            [(
+                1,
+                "Banca: X\nConcurso: Y\nAno: 2026\nCargos: Auditor; Analista\n"
+                "Tipos: 1 a 4\nGabarito definitivo",
+            )],
+        )
+        self.assertEqual(profile.answer_key_state, "definitive")
+        self.assertEqual(profile.coverage.roles.normalized_values, ("analista", "auditor"))
+        self.assertEqual(
+            profile.coverage.variants.normalized_values,
+            ("tipo 1", "tipo 2", "tipo 3", "tipo 4"),
+        )
+
+    def test_conflicting_human_overrides_remain_unresolved(self) -> None:
+        profile = extract_semantic_profile(
+            normalized_document(Path("prova.pdf")),
+            [(1, "Banca: X\nConcurso: Y\nAno: 2026")],
+            human_overrides={"year": (2025, 2026)},
+        )
+        self.assertEqual(profile.identity.year.status, "conflict")
+        self.assertIsNone(profile.identity_key)
+
+    def test_ambiguous_answer_key_state_is_unknown(self) -> None:
+        profile = extract_semantic_profile(
+            normalized_document(Path("key.pdf"), declared_type="answer_key"),
+            [(1, "Banca: X\nConcurso: Y\nAno: 2026\nGabarito preliminar e definitivo")],
+        )
+        self.assertEqual(profile.answer_key_state, "unknown")
+
+    def test_document_record_adapter_uses_only_declared_record_fields(self) -> None:
+        record = DocumentRecord(
+            source_id="not-identity", source_name="not-identity", document_type="exam",
+            title="prova.pdf", original_url="https://example.test/prova.pdf",
+            resolved_url="https://example.test/prova.pdf", local_path="data/prova.pdf",
+            sha256="b" * 64, content_type="application/pdf", size_bytes=100,
+            downloaded_at=datetime(2026, 1, 1, tzinfo=UTC), authorization_basis="test",
+            metadata={"banca": "X", "concurso": "Y", "ano": "2026"},
+        )
+        profile = profile_from_document_record(record, [(1, "Assinale a alternativa correta.")])
+        self.assertIsNotNone(profile.identity_key)
+
     def test_unknown_field_has_no_value_or_confidence(self) -> None:
         field = SemanticField.unknown("ano não localizado")
         self.assertEqual(field.status, "unknown")
