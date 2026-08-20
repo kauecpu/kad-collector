@@ -300,7 +300,7 @@ def _stored_classification() -> QuestionClassification:
 
 
 class DocumentPipelinePersistenceTests(unittest.TestCase):
-    def test_legacy_database_adds_contract_column_without_losing_rows(self) -> None:
+    def test_legacy_database_adds_contract_and_semantic_columns_without_losing_rows(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             database_path = Path(directory) / "collector.sqlite3"
             store = DesktopStore(database_path)
@@ -349,6 +349,9 @@ class DocumentPipelinePersistenceTests(unittest.TestCase):
                 }
                 count = connection.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
             self.assertIn("normalized_json", columns)
+            self.assertTrue(
+                {"document_version_id", "observation_id", "semantic_resolution"} <= columns
+            )
             self.assertEqual(count, 1)
             del store, reopened
             gc.collect()

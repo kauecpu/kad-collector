@@ -22,6 +22,12 @@ from .desktop_models import (
 )
 from .document_contract import NormalizedDocument, normalize_local_document
 from .models import QuestionRecord
+from .semantic_registry import (
+    identity_events,
+    initialize_semantic_schema,
+    semantic_document_view,
+    semantic_summary,
+)
 from .validation import validate_editorial_question
 
 
@@ -261,6 +267,7 @@ class DesktopStore:
             }
             if "normalized_json" not in document_columns:
                 connection.execute("ALTER TABLE documents ADD COLUMN normalized_json TEXT")
+            initialize_semantic_schema(connection)
             connection.commit()
 
     def create_job(
@@ -448,6 +455,18 @@ class DesktopStore:
         if row is None:
             raise ValueError("documento nao encontrado")
         return self._document_row(row)
+
+    def semantic_document_view(self, document_id: str) -> dict[str, Any]:
+        with closing(self._connect()) as connection:
+            return semantic_document_view(connection, document_id)
+
+    def semantic_summary(self) -> dict[str, int]:
+        with closing(self._connect()) as connection:
+            return semantic_summary(connection)
+
+    def identity_events(self, document_id: str) -> list[dict[str, Any]]:
+        with closing(self._connect()) as connection:
+            return identity_events(connection, document_id)
 
     def reprocessing_contract(self, document_id: str) -> NormalizedDocument:
         """Return a local contract copy without changing historical document evidence."""
