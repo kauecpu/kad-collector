@@ -23,6 +23,7 @@ from .desktop_limits import (
     PDF_STREAM_CHUNK_BYTES,
 )
 from .desktop_models import (
+    ClassifierProviderName,
     DesktopFilterSet,
     DesktopImportMetadata,
     QuestionClassification,
@@ -105,6 +106,19 @@ class DesktopApplication:
         if len(job_ids) != 1:
             raise RuntimeError("a importação direta deve gerar um único lote")
         return job_ids[0]
+
+    def reprocess_documents(
+        self,
+        document_ids: list[str],
+        classifier_provider: ClassifierProviderName = "local",
+    ) -> list[str]:
+        if not document_ids or not all(document_id.strip() for document_id in document_ids):
+            raise ValueError("documentIds deve conter ao menos um identificador")
+        if classifier_provider not in {"local", "openai"}:
+            raise ValueError("classificador deve ser local ou openai")
+        if classifier_provider == "openai" and not os.environ.get("OPENAI_API_KEY"):
+            raise ValueError("OPENAI_API_KEY não está configurada nesta sessão")
+        return self.pipeline.reprocess(document_ids, classifier_provider)
 
     def collect_from_link(self, payload: dict[str, Any]) -> str:
         return self.collection_manager.start(payload)

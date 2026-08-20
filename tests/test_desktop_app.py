@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import threading
 import unittest
@@ -30,7 +31,9 @@ from kad_collector.desktop_parser import parse_question_pages
 from kad_collector.desktop_processor import DesktopProcessor
 from kad_collector.desktop_server import DesktopApplication, start_desktop_server
 from kad_collector.desktop_store import DesktopStore
-from kad_collector.models import Alternative, QuestionRecord
+from kad_collector.document_contract import normalize_collected_document
+from kad_collector.document_pipeline import DocumentPipeline
+from kad_collector.models import Alternative, DocumentRecord, QuestionRecord
 
 
 def write_text_pdf(path: Path, pages: list[list[str]]) -> None:
@@ -344,6 +347,124 @@ Informações editoriais da banca.
             self.assertEqual(question["status"], "exception")
             self.assertIn("without_explanation", question["flags"])
             self.assertEqual(question["question"]["source_pages"], [1])
+
+    def test_direct_import_and_automatic_collection_converge_with_the_real_processor(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "prova-compartilhada.pdf"
+            write_text_pdf(
+                pdf_path,
+                [
+                    [
+                        "QUESTAO 1",
+                        "A primeira questão possui texto suficiente para a extração.",
+                        "A) Primeira alternativa.",
+                        "B) Segunda alternativa.",
+                        "#####",
+                        "QUESTAO 2",
+                        "A segunda questão também possui texto suficiente para a extração.",
+                        "A) Terceira alternativa.",
+                        "B) Quarta alternativa.",
+                    ]
+                ],
+            )
+            shared_metadata = metadata(
+                document_type="exam",
+                document_title="Prova oficial de cartografia",
+                source_url="https://example.gov.br/provas/cartografia-2026.pdf",
+                canonical_url="https://cdn.example.gov.br/cartografia-2026.pdf",
+            )
+            direct_store = DesktopStore(root / "direct.sqlite3")
+            collected_store = DesktopStore(root / "collected.sqlite3")
+
+            class SynchronousRunner:
+                def __init__(self, processor: DesktopProcessor) -> None:
+                    self.processor = processor
+
+                def start(self, job_id: str) -> None:
+                    self.processor.run(job_id)
+
+            direct_processor = DesktopProcessor(direct_store)
+            collected_processor = DesktopProcessor(collected_store)
+            direct_job_id = DocumentPipeline(
+                direct_store, SynchronousRunner(direct_processor)
+            ).import_paths([pdf_path], shared_metadata, "local")[0]
+            payload = pdf_path.read_bytes()
+            collected_contract = normalize_collected_document(
+                DocumentRecord(
+                    source_id="fonte-oficial",
+                    source_name="Fonte oficial",
+                    document_type="exam",
+                    title="Prova oficial de cartografia",
+                    original_url="https://example.gov.br/provas/cartografia-2026.pdf",
+                    resolved_url="https://cdn.example.gov.br/cartografia-2026.pdf",
+                    local_path=str(pdf_path.resolve()),
+                    sha256=hashlib.sha256(payload).hexdigest(),
+                    content_type="application/pdf",
+                    size_bytes=len(payload),
+                    downloaded_at=datetime(2026, 8, 20, tzinfo=UTC),
+                    authorization_basis="Fonte pública autorizada.",
+                    metadata={},
+                ),
+                source_page_url="https://example.gov.br/provas/2026",
+            ).model_copy(
+                update={"metadata": shared_metadata.model_dump(mode="json", exclude_none=True)}
+            )
+            collected_job_id = DocumentPipeline(
+                collected_store, SynchronousRunner(collected_processor)
+            ).submit([collected_contract], "local")[0]
+
+            direct_questions = [
+                item["question"] for item in direct_store.query(DesktopFilterSet())["questions"]
+            ]
+            collected_questions = [
+                item["question"] for item in collected_store.query(DesktopFilterSet())["questions"]
+            ]
+            self.assertEqual(len(direct_questions), 2)
+            self.assertEqual(direct_questions, collected_questions)
+            direct_document = direct_store.documents_for_job(direct_job_id)[0]
+            collected_document = collected_store.documents_for_job(collected_job_id)[0]
+            self.assertEqual(direct_document["normalized_document"].entry_method, "direct_import")
+            self.assertEqual(direct_document["metadata"]["source_url"], shared_metadata.source_url)
+            self.assertEqual(
+                collected_document["normalized_document"].entry_method, "automated_collection"
+            )
+            self.assertEqual(
+                collected_document["normalized_document"].original_url, shared_metadata.source_url
+            )
+            self.assertEqual(
+                collected_document["normalized_document"].source_page_url,
+                "https://example.gov.br/provas/2026",
+            )
+            self.assertEqual(direct_document["local_path"], collected_document["local_path"])
+            self.assertEqual(direct_document["sha256"], collected_document["sha256"])
+            self.assertEqual(direct_document["size_bytes"], collected_document["size_bytes"])
+
+    def test_application_exposes_local_reprocessing_without_a_ui_route(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "reprocessar.pdf"
+            write_text_pdf(
+                pdf_path,
+                [
+                    [
+                        "QUESTAO 1",
+                        "Texto suficiente para reprocessar localmente.",
+                        "A) Uma.",
+                        "B) Duas.",
+                    ]
+                ],
+            )
+            application = DesktopApplication(root)
+            original_job_id = application.store.create_job([pdf_path], metadata(), "local")
+            original_document = application.store.documents_for_job(original_job_id)[0]
+
+            job_ids = application.reprocess_documents([original_document["id"]], "local")
+
+            self.assertEqual(len(job_ids), 1)
+            replacement = application.store.documents_for_job(job_ids[0])[0]
+            self.assertEqual(replacement["normalized_document"].entry_method, "reprocessing")
+            application.processor._executor.shutdown(wait=True)
 
     def test_blank_pdf_is_preserved_as_ocr_exception(self) -> None:
         with TemporaryDirectory() as directory:

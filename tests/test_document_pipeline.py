@@ -9,9 +9,13 @@ from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 
-from kad_collector.desktop_models import DesktopImportMetadata
+from kad_collector.desktop_models import (
+    ClassificationValue,
+    DesktopImportMetadata,
+    QuestionClassification,
+)
 from kad_collector.desktop_store import DesktopStore
-from kad_collector.models import DocumentRecord
+from kad_collector.models import Alternative, DocumentRecord, QuestionRecord
 
 
 class DocumentPipelineContractTests(unittest.TestCase):
@@ -200,6 +204,45 @@ class RecordingRunner:
         self.started_ids.append(job_id)
 
 
+def _stored_question() -> QuestionRecord:
+    return QuestionRecord(
+        number=1,
+        statement="Enunciado preservado para verificar o histórico editorial.",
+        alternatives=[
+            Alternative(letter="A", text="Alternativa A."),
+            Alternative(letter="B", text="Alternativa B."),
+        ],
+        matter="Matéria",
+        subject="Assunto",
+        discipline="Disciplina",
+        board="Banca",
+        organization="Órgão",
+        concurso="Concurso 2026",
+        role="Analista",
+        year=2026,
+        level="Superior",
+        difficulty="Média",
+        source_pages=[1],
+        explanation="Explicação editorial preservada.",
+    )
+
+
+def _stored_classification() -> QuestionClassification:
+    value = lambda item: ClassificationValue(value=item, confidence=1, evidence="fixture")  # noqa: E731
+    return QuestionClassification(
+        concurso=value("Concurso 2026"),
+        board=value("Banca"),
+        year=value(2026),
+        role=value("Analista"),
+        organization=value("Órgão"),
+        level=value("Superior"),
+        discipline=value("Disciplina"),
+        subject=value("Matéria"),
+        topic=value("Assunto"),
+        difficulty=value("Média"),
+    )
+
+
 class DocumentPipelinePersistenceTests(unittest.TestCase):
     def test_legacy_database_adds_contract_column_without_losing_rows(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -343,6 +386,116 @@ class DocumentPipelinePersistenceTests(unittest.TestCase):
             self.assertEqual(stored["normalized_document"].entry_method, "automated_collection")
             self.assertEqual(stored["metadata"]["board"], "Source Board")
             self.assertEqual(stored["metadata"]["year"], 2026)
+
+    def test_reprocesses_stored_documents_from_local_contracts_without_mutating_evidence(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "original.pdf"
+            path.write_bytes(b"%PDF-1.7\nlocal reprocessing fixture\n")
+            store = DesktopStore(root / "collector.sqlite3")
+            failed_runner = RecordingRunner()
+
+            from kad_collector.document_pipeline import DocumentPipeline
+
+            initial_pipeline = DocumentPipeline(store, failed_runner)
+            original_job_id = initial_pipeline.import_paths(
+                [path], DesktopImportMetadata(provider="manual", year=2026), "local"
+            )[0]
+            store.update_job(original_job_id, status="failed", error="interpretação indisponível")
+            original_document = store.documents_for_job(original_job_id)[0]
+            question_id = store.save_question(
+                original_document["id"], _stored_question(), _stored_classification()
+            )
+            store.decide_question(question_id, "exception", actor="revisor", notes="aguardar")
+            before_document = store.document(original_document["id"])
+            before_question = store.question(question_id)
+            before_audit = store.audit_log(question_id)
+
+            reprocessing_runner = RecordingRunner()
+            pipeline = DocumentPipeline(store, reprocessing_runner)
+            job_ids = pipeline.reprocess([original_document["id"]], "local")
+
+            self.assertEqual(reprocessing_runner.started_ids, job_ids)
+            self.assertEqual(len(job_ids), 1)
+            self.assertEqual(store.document(original_document["id"]), before_document)
+            self.assertEqual(store.question(question_id), before_question)
+            self.assertEqual(store.audit_log(question_id), before_audit)
+            replacement = store.documents_for_job(job_ids[0])[0]
+            self.assertNotEqual(replacement["id"], original_document["id"])
+            self.assertEqual(replacement["normalized_document"].entry_method, "reprocessing")
+            self.assertEqual(replacement["normalized_document"].local_path, str(path.resolve()))
+
+    def test_reprocess_rejects_missing_local_file_before_creating_a_job(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "missing.pdf"
+            path.write_bytes(b"%PDF-1.7\nmissing fixture\n")
+            store = DesktopStore(root / "collector.sqlite3")
+
+            from kad_collector.document_pipeline import DocumentPipeline
+
+            runner = RecordingRunner()
+            pipeline = DocumentPipeline(store, runner)
+            original_job_id = pipeline.import_paths([path], DesktopImportMetadata(), "local")[0]
+            original_document = store.documents_for_job(original_job_id)[0]
+            path.unlink()
+            jobs_before = store.list_jobs(limit=20)
+
+            with self.assertRaisesRegex(ValueError, "arquivo local nao existe"):
+                pipeline.reprocess([original_document["id"]], "local")
+
+            self.assertEqual(store.list_jobs(limit=20), jobs_before)
+            self.assertEqual(runner.started_ids, [original_job_id])
+            self.assertEqual(store.document(original_document["id"]), original_document)
+
+    def test_reprocesses_legacy_row_with_a_compatibility_warning(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "legacy.pdf"
+            payload = b"%PDF-1.7\nlegacy fixture\n"
+            path.write_bytes(payload)
+            store = DesktopStore(root / "collector.sqlite3")
+            legacy_job_id = "legacy-job"
+            legacy_document_id = "legacy-document"
+            now = "2026-08-20T00:00:00+00:00"
+            with closing(sqlite3.connect(store.path)) as connection:
+                connection.execute(
+                    "INSERT INTO jobs (id, created_at, updated_at, status, classifier_provider) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (legacy_job_id, now, now, "failed", "local"),
+                )
+                connection.execute(
+                    "INSERT INTO documents (id, job_id, local_path, filename, sha256, size_bytes, "
+                    "metadata_json, normalized_json, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)",
+                    (
+                        legacy_document_id,
+                        legacy_job_id,
+                        str(path.resolve()),
+                        path.name,
+                        hashlib.sha256(payload).hexdigest(),
+                        len(payload),
+                        '{"year":2026,"document_type":"exam"}',
+                        now,
+                        now,
+                    ),
+                )
+                connection.commit()
+
+            runner = RecordingRunner()
+            from kad_collector.document_pipeline import DocumentPipeline
+
+            replacement_job_id = DocumentPipeline(store, runner).reprocess(
+                [legacy_document_id], "local"
+            )[0]
+            replacement = store.documents_for_job(replacement_job_id)[0]["normalized_document"]
+
+            self.assertEqual(replacement.entry_method, "reprocessing")
+            self.assertIsNone(replacement.original_url)
+            self.assertIsNone(replacement.resolved_url)
+            self.assertTrue(any("compatibilidade" in warning for warning in replacement.warnings))
 
 
 if __name__ == "__main__":

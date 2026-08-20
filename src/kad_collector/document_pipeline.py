@@ -99,3 +99,15 @@ class DocumentPipeline:
             )
             documents.append(document)
         return self.submit(documents, classifier_provider)
+
+    def reprocess(
+        self,
+        document_ids: list[str],
+        classifier_provider: ClassifierProviderName,
+    ) -> list[str]:
+        if not document_ids:
+            raise ValueError("selecione ao menos um documento para reprocessar")
+        documents = [self.store.reprocessing_contract(document_id) for document_id in document_ids]
+        for document in documents:
+            document.validate_local_file()
+        return self.submit(documents, classifier_provider)

@@ -319,8 +319,8 @@ class DesktopStore:
                     """
                     INSERT INTO documents (
                         id, job_id, local_path, filename, sha256, size_bytes, metadata_json,
-                        normalized_json, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        normalized_json, warnings_json, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         document_id,
@@ -331,6 +331,7 @@ class DesktopStore:
                         normalized_document.size_bytes,
                         _json(document_metadata.model_dump(mode="json")),
                         _json(normalized_document.model_dump(mode="json")),
+                        _json(normalized_document.warnings),
                         created_at,
                         created_at,
                     ),
@@ -447,6 +448,47 @@ class DesktopStore:
         if row is None:
             raise ValueError("documento nao encontrado")
         return self._document_row(row)
+
+    def reprocessing_contract(self, document_id: str) -> NormalizedDocument:
+        """Return a local contract copy without changing historical document evidence."""
+        document = self.document(document_id)
+        normalized = cast(NormalizedDocument | None, document["normalized_document"])
+        if normalized is not None:
+            return normalized.model_copy(update={"entry_method": "reprocessing"})
+
+        metadata = cast(dict[str, Any], document["metadata"])
+        digest = document["sha256"]
+        size_bytes = int(document["size_bytes"])
+        if not isinstance(digest, str) or not digest or size_bytes < 1:
+            raise ValueError("documento legado nao possui integridade local comprovada")
+        declared_type = metadata.get("document_type", "auto")
+        if declared_type not in {"auto", "exam", "answer_key"}:
+            declared_type = "auto"
+        title = metadata.get("document_title")
+        original_url = metadata.get("source_url")
+        resolved_url = metadata.get("canonical_url")
+        return NormalizedDocument(
+            local_path=cast(str, document["local_path"]),
+            sha256=digest,
+            size_bytes=size_bytes,
+            declared_type=declared_type,
+            title=title if isinstance(title, str) and title else cast(str, document["filename"]),
+            original_url=original_url if isinstance(original_url, str) else None,
+            resolved_url=resolved_url if isinstance(resolved_url, str) else None,
+            entry_method="reprocessing",
+            metadata={
+                key: value for key, value in metadata.items() if isinstance(value, (str, int))
+            },
+            warnings=[
+                "contrato legado reprocessado com compatibilidade; campos de origem ausentes "
+                "foram preservados como desconhecidos"
+            ],
+            external_id=(
+                metadata["external_id"]
+                if isinstance(metadata.get("external_id"), str)
+                else None
+            ),
+        )
 
     @staticmethod
     def _document_row(row: sqlite3.Row) -> dict[str, Any]:

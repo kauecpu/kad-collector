@@ -20,6 +20,7 @@ from kad_collector.desktop_processor import (
     _select_answer_key,
 )
 from kad_collector.desktop_store import DesktopStore
+from kad_collector.document_pipeline import DocumentPipeline
 from kad_collector.models import DocumentRecord, DownloadManifest
 
 
@@ -146,6 +147,41 @@ class DesktopCollectionTests(unittest.TestCase):
             imported["metadata"]["canonical_url"],
             "https://conhecimento.fgv.br/prova.pdf",
         )
+
+    def test_acquisition_failure_starts_no_interpretation_job(self) -> None:
+        class RecordingRunner:
+            def __init__(self) -> None:
+                self.started_ids: list[str] = []
+
+            def start(self, job_id: str) -> None:
+                self.started_ids.append(job_id)
+
+        runner = RecordingRunner()
+        manager = DesktopCollectionManager(
+            self.root,
+            self.store,
+            self.processor,
+            DocumentPipeline(self.store, runner),
+        )
+        with patch(
+            "kad_collector.desktop_collection.collect_documents",
+            side_effect=RuntimeError("download indisponível"),
+        ):
+            collection_id = manager.start(
+                {
+                    "sourceId": "fgv_conhecimento",
+                    "url": "https://conhecimento.fgv.br/concursos/mprj2025",
+                }
+            )
+            for _ in range(100):
+                job = next(item for item in manager.list_jobs() if item["id"] == collection_id)
+                if job["status"] not in {"queued", "running", "processing"}:
+                    break
+                threading.Event().wait(0.01)
+
+        self.assertEqual(job["status"], "failed")
+        self.assertEqual(runner.started_ids, [])
+        self.assertEqual(self.store.list_jobs(), [])
 
     def test_second_collection_skips_processed_sha_without_creating_another_job(self) -> None:
         pdf_path = self.root / "fgv_conhecimento-exam-repeat.pdf"
