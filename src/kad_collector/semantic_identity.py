@@ -38,6 +38,10 @@ def _norm(value: SemanticValue) -> SemanticValue:
     return " ".join(unicodedata.normalize("NFKC", value).split()).casefold()
 
 
+def _typed_sort_key(value: SemanticValue) -> tuple[str, str]:
+    return (type(value).__name__, canonical_json(value))
+
+
 class SemanticEvidence(FrozenSemanticModel):
     source: EvidenceSource
     locator: str
@@ -73,7 +77,10 @@ class SemanticField(FrozenSemanticModel):
     @model_validator(mode="after")
     def validate_state(self) -> SemanticField:
         if self.status == "unknown":
-            if self.raw_values or self.normalized_values or self.evidence or self.confidence != 0.0:
+            if (
+                self.raw_values or self.normalized_values or self.evidence
+                or self.confidence is not None
+            ):
                 raise ValueError("campo unknown não pode conter valores, evidência ou confiança")
         elif self.status == "known":
             if len(self.normalized_values) != 1:
@@ -84,16 +91,17 @@ class SemanticField(FrozenSemanticModel):
 
     @classmethod
     def unknown(cls, reason: str) -> SemanticField:
-        return cls(status="unknown", method="unresolved", confidence=0.0, reason=reason)
+        return cls(status="unknown", method="unresolved", reason=reason)
 
     @classmethod
     def from_evidence(cls, name: str, evidence: tuple[SemanticEvidence, ...]) -> SemanticField:
-        ordered = tuple(sorted(
-            evidence, key=lambda item: (str(item.normalized_value), item.source, item.locator)
-        ))
+        ordered = tuple(sorted(evidence, key=lambda item: (
+            _typed_sort_key(item.normalized_value), _typed_sort_key(item.raw_value),
+            item.source, item.locator, item.strength,
+        )))
         values = tuple(sorted(
             {item.normalized_value for item in ordered},
-            key=lambda value: (type(value).__name__, str(value)),
+            key=_typed_sort_key,
         ))
         status: SemanticStatus = "known" if len(values) == 1 else "conflict"
         return cls(

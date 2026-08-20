@@ -20,7 +20,7 @@ class SemanticContractTests(unittest.TestCase):
         field = SemanticField.unknown("ano não localizado")
         self.assertEqual(field.status, "unknown")
         self.assertEqual(field.normalized_values, ())
-        self.assertEqual(field.confidence, 0.0)
+        self.assertIsNone(field.confidence)
 
     def test_conflicting_field_preserves_both_evidences(self) -> None:
         field = SemanticField.from_evidence(
@@ -74,7 +74,7 @@ class SemanticContractTests(unittest.TestCase):
             {"raw_values": (2026,)},
             {"normalized_values": (2026,)},
             {"evidence": evidence},
-            {"confidence": 0.1},
+            {"confidence": 0.0},
         ):
             with self.subTest(kwargs=kwargs), self.assertRaises(ValidationError):
                 SemanticField(status="unknown", method="test", reason="missing", **kwargs)
@@ -93,6 +93,21 @@ class SemanticContractTests(unittest.TestCase):
             "value", (SemanticEvidence.metadata("b", "1"), SemanticEvidence.metadata("a", 1))
         )
         self.assertEqual(first.normalized_values, (1, "1"))
+        self.assertEqual(first, second)
+
+    def test_evidence_sorting_discriminates_types_with_equal_location(self) -> None:
+        first = SemanticField.from_evidence(
+            "value", (
+                SemanticEvidence.metadata("same", 1),
+                SemanticEvidence.metadata("same", "1"),
+            )
+        )
+        second = SemanticField.from_evidence(
+            "value", (
+                SemanticEvidence.metadata("same", "1"),
+                SemanticEvidence.metadata("same", 1),
+            )
+        )
         self.assertEqual(first, second)
 
     def test_content_fingerprint_frames_literal_page_marker_structurally(self) -> None:
