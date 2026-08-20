@@ -22,6 +22,12 @@ from .desktop_models import (
 )
 from .desktop_parser import parse_question_pages
 from .desktop_store import DesktopStore
+from .document_matching import (
+    DocumentEvidence,
+    normalize_text,
+    select_evidence_match,
+    structural_v_number,
+)
 from .models import QuestionRecord
 
 
@@ -56,7 +62,6 @@ def _variant_number(document: dict[str, Any]) -> int | None:
         for value in (
             metadata.variant,
             metadata.document_title,
-            metadata.source_url,
             cast(str, document["filename"]),
         )
         if value
@@ -69,25 +74,16 @@ def _variant_number(document: dict[str, Any]) -> int | None:
     return int(match.group("number")) if match else None
 
 
-def _document_group(document: dict[str, Any]) -> tuple[str | None, str | None]:
+def _document_group(
+    document: dict[str, Any],
+) -> tuple[str | None, int | None, str | None, str | None]:
     metadata = DesktopImportMetadata.model_validate(document["metadata"])
-    return metadata.provider, metadata.concurso
-
-
-def _years_in(value: str) -> set[int]:
-    return {int(item) for item in re.findall(r"(?<!\d)(?:19|20)\d{2}(?!\d)", value)}
-
-
-def _periods_in(value: str) -> set[tuple[int, int]]:
-    periods = {
-        (int(year), int(term))
-        for year, term in re.findall(r"(?<!\d)((?:19|20)\d{2})\s*/\s*([12])(?!\d)", value)
-    }
-    for month, year in re.findall(
-        r"(?<!\d)\d{1,2}/(\d{1,2})/((?:19|20)\d{2})(?!\d)", value
-    ):
-        periods.add((int(year), 1 if int(month) <= 6 else 2))
-    return periods
+    return (
+        normalize_text(metadata.concurso) if metadata.concurso else None,
+        metadata.year,
+        normalize_text(metadata.role) if metadata.role else None,
+        normalize_text(metadata.organization) if metadata.organization else None,
+    )
 
 
 def _turn_from_text(value: str) -> str | None:
@@ -100,76 +96,83 @@ def _canonical_exam_documents(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     selected: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
-    fuvest_groups: dict[tuple[str | None, str | None], list[dict[str, Any]]] = {}
+    groups: dict[
+        tuple[str | None, int | None, str | None, str | None], list[dict[str, Any]]
+    ] = {}
     for document in documents:
-        metadata = DesktopImportMetadata.model_validate(document["metadata"])
-        if metadata.provider != "fuvest_vestibular":
+        group_key = _document_group(document)
+        if not any(value is not None for value in group_key):
             selected.append(document)
             continue
-        fuvest_groups.setdefault(_document_group(document), []).append(document)
+        groups.setdefault(group_key, []).append(document)
 
-    for group in fuvest_groups.values():
-        ranked = sorted(
-            group,
-            key=lambda item: (
-                _variant_number(item) is None,
-                _variant_number(item) or 10_000,
-                cast(str, item["filename"]),
-            ),
+    for group_documents in groups.values():
+        structural_variants = [
+            (number, document)
+            for document in group_documents
+            if (
+                number := structural_v_number(
+                    " ".join(
+                        value
+                        for value in (
+                            DesktopImportMetadata.model_validate(document["metadata"]).variant,
+                            DesktopImportMetadata.model_validate(
+                                document["metadata"]
+                            ).document_title,
+                            cast(str, document["filename"]),
+                        )
+                        if value
+                    )
+                )
+            )
+            is not None
+        ]
+        if len(structural_variants) < 2:
+            selected.extend(group_documents)
+            continue
+        structural_documents = {id(document) for _, document in structural_variants}
+        selected.extend(
+            document
+            for document in group_documents
+            if id(document) not in structural_documents
         )
-        selected.append(ranked[0])
-        skipped.extend(ranked[1:])
+        ranked = sorted(
+            structural_variants,
+            key=lambda item: (item[0], cast(str, item[1]["filename"])),
+        )
+        selected.append(ranked[0][1])
+        skipped.extend(document for _, document in ranked[1:])
     return selected, skipped
+
+
+def _matching_evidence(document: dict[str, Any], text_field: str) -> DocumentEvidence:
+    metadata = DesktopImportMetadata.model_validate(document["metadata"])
+    return DocumentEvidence(
+        title=metadata.document_title or cast(str, document["filename"]),
+        content=cast(str, document.get(text_field, "")),
+        concurso=metadata.concurso,
+        year=metadata.year,
+        role=metadata.role,
+        organization=metadata.organization,
+        variant=metadata.variant,
+    )
 
 
 def _select_answer_key(
     exam: dict[str, Any], answer_keys: list[dict[str, Any]]
 ) -> dict[str, Any] | None:
-    same_group = [item for item in answer_keys if _document_group(item) == _document_group(exam)]
-    if len(same_group) == 1:
-        return same_group[0]
-    candidates = same_group or answer_keys
-    if not candidates:
-        return None
-    exam_metadata = DesktopImportMetadata.model_validate(exam["metadata"])
-    role_words = set(re.findall(r"[a-z0-9]+", (exam_metadata.role or "").casefold()))
-    exam_text = cast(str, exam.get("exam_text", ""))[:20_000]
-    exam_years = _years_in(
-        " ".join(
-            (
-                exam_metadata.document_title or "",
-                exam_metadata.source_url or "",
-                exam_text,
-            )
-        )
+    in_batch = [
+        item
+        for item in answer_keys
+        if item.get("job_id") is not None and item.get("job_id") == exam.get("job_id")
+    ]
+    if len(in_batch) == 1:
+        return in_batch[0]
+    index, _reason = select_evidence_match(
+        _matching_evidence(exam, "exam_text"),
+        [_matching_evidence(item, "answer_key_text") for item in answer_keys],
     )
-    exam_periods = _periods_in(exam_text)
-
-    def score(item: dict[str, Any]) -> tuple[int, int, int, int]:
-        metadata = DesktopImportMetadata.model_validate(item["metadata"])
-        haystack = " ".join(
-            (
-                metadata.document_title or "",
-                metadata.source_url or "",
-                cast(str, item.get("answer_key_text", ""))[:20_000],
-            )
-        ).casefold()
-        role_score = sum(word in haystack for word in role_words if len(word) > 2)
-        definitive = int("definitiv" in haystack)
-        candidate_years = _years_in(haystack)
-        candidate_periods = _periods_in(haystack)
-        period_score = int(bool(exam_periods & candidate_periods))
-        year_score = int(bool(exam_years & candidate_years))
-        if exam_metadata.year is not None and metadata.year == exam_metadata.year:
-            year_score = 1
-        return period_score, year_score, role_score, definitive
-
-    selected = max(candidates, key=score)
-    selected_score = score(selected)
-    if selected_score[0] or selected_score[1] or selected_score[2] or len(candidates) == 1:
-        return selected
-    definitive = [item for item in candidates if score(item)[3]]
-    return definitive[0] if len(definitive) == 1 else None
+    return answer_keys[index] if index is not None else None
 
 
 def _apply_classification(
@@ -466,19 +469,13 @@ class DesktopProcessor:
             for item in answer_keys
             if item.get("sha256") is not None
         }
-        groups = {_document_group(document) for document in exam_documents}
-        for group_provider, concurso in groups:
-            for cached in self.store.cached_answer_keys(
-                provider=group_provider,
-                concurso=concurso,
-                exclude_job_id=job_id,
-            ):
-                digest = cast(str | None, cached.get("sha256"))
-                if digest is not None and digest in cached_hashes:
-                    continue
-                answer_keys.append(cached)
-                if digest is not None:
-                    cached_hashes.add(digest)
+        for cached in self.store.cached_answer_keys(exclude_job_id=job_id):
+            digest = cast(str | None, cached.get("sha256"))
+            if digest is not None and digest in cached_hashes:
+                continue
+            answer_keys.append(cached)
+            if digest is not None:
+                cached_hashes.add(digest)
 
         canonical_exams, skipped_exams = _canonical_exam_documents(exam_documents)
         for document in skipped_exams:

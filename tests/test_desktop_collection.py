@@ -13,7 +13,11 @@ from kad_collector.desktop_collection import (
     _import_metadata,
 )
 from kad_collector.desktop_models import DesktopFilterSet, DesktopImportMetadata
-from kad_collector.desktop_processor import DesktopProcessor, _document_type
+from kad_collector.desktop_processor import (
+    DesktopProcessor,
+    _canonical_exam_documents,
+    _document_type,
+)
 from kad_collector.desktop_store import DesktopStore
 from kad_collector.models import DocumentRecord, DownloadManifest
 
@@ -341,6 +345,34 @@ Enunciado completo da segunda questao.
         self.assertEqual(len(questions), 1)
         self.assertEqual(questions[0]["question"]["answer_status"], "matched")
         self.assertEqual(questions[0]["question"]["correct_answer"], "B")
+
+    def test_fictitious_source_uses_v1_as_canonical_and_preserves_v2_evidence(self) -> None:
+        common = DesktopImportMetadata(
+            provider="fictitious_new_source",
+            concurso="Selecao Nacional",
+            board="Banca Ficticia",
+            year=2026,
+            role="Analista de Dados",
+            organization="Instituto Ficticio",
+            document_type="exam",
+        )
+        v1 = {
+            "filename": "selecao-2026-v1.pdf",
+            "metadata": common.model_copy(
+                update={"document_title": "Selecao Nacional 2026 V1", "variant": "V1"}
+            ).model_dump(mode="json"),
+        }
+        v2 = {
+            "filename": "selecao-2026-v2.pdf",
+            "metadata": common.model_copy(
+                update={"document_title": "Selecao Nacional 2026 V2", "variant": "V2"}
+            ).model_dump(mode="json"),
+        }
+
+        selected, evidence = _canonical_exam_documents([v2, v1])
+
+        self.assertEqual(selected, [v1])
+        self.assertEqual(evidence, [v2])
 
     def test_new_exam_reuses_persisted_answer_key_without_reprocessing_it(self) -> None:
         key_path = self.root / "gabarito-cached.pdf"

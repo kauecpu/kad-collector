@@ -1,5 +1,7 @@
+import ast
 import gc
 import hashlib
+import importlib.util
 import sqlite3
 import tempfile
 import unittest
@@ -13,6 +15,49 @@ from kad_collector.models import DocumentRecord
 
 
 class DocumentPipelineContractTests(unittest.TestCase):
+    def test_interpretation_modules_do_not_import_acquisition_dependencies(self) -> None:
+        forbidden = {
+            "collector",
+            "collection_transport",
+            "collection_state",
+            "config",
+            "discovery",
+            "security",
+            "desktop_collection",
+        }
+        modules = (
+            "desktop_processor",
+            "desktop_parser",
+            "desktop_classifier",
+            "answer_key",
+            "document_matching",
+            "review_queue",
+        )
+        violations: list[str] = []
+
+        for module_name in modules:
+            qualified_name = f"kad_collector.{module_name}"
+            spec = importlib.util.find_spec(qualified_name)
+            self.assertIsNotNone(spec)
+            assert spec is not None and spec.origin is not None
+            tree = ast.parse(Path(spec.origin).read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                imported: list[str] = []
+                if isinstance(node, ast.Import):
+                    imported.extend(alias.name for alias in node.names)
+                elif isinstance(node, ast.ImportFrom):
+                    prefix = "kad_collector" if node.level else ""
+                    imported.append(
+                        ".".join(part for part in (prefix, node.module or "") if part)
+                    )
+                for name in imported:
+                    parts = name.split(".")
+                    dependency = parts[1] if parts[:1] == ["kad_collector"] else parts[0]
+                    if dependency in forbidden:
+                        violations.append(f"{module_name}: {name}")
+
+        self.assertEqual(violations, [])
+
     def test_normalizes_local_pdf_and_computes_integrity(self) -> None:
         payload = b"%PDF-1.7\ncontract fixture\n"
         with tempfile.TemporaryDirectory() as directory:

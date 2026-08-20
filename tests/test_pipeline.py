@@ -6,6 +6,7 @@ import unittest
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import httpx
 from openai import BadRequestError
@@ -273,6 +274,36 @@ class PipelineTests(unittest.TestCase):
             write_json(manifest_path, manifest.model_dump(mode="json"))
 
             with self.assertRaisesRegex(ValueError, "SHA-256"):
+                extract_manifest(manifest_path, root / "extracted.json")
+
+    def test_cli_extraction_validates_the_normalized_document_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            pdf_path = root / "normalized-boundary.pdf"
+            writer = PdfWriter()
+            writer.add_blank_page(width=612, height=792)
+            with pdf_path.open("wb") as handle:
+                writer.write(handle)
+            record = document_record(str(pdf_path))
+            record.size_bytes = pdf_path.stat().st_size
+            record.sha256 = hashlib.sha256(pdf_path.read_bytes()).hexdigest()
+            manifest = DownloadManifest(created_at=datetime.now(UTC), documents=[record])
+            manifest_path = root / "manifest.json"
+            write_json(manifest_path, manifest.model_dump(mode="json"))
+
+            from kad_collector.document_contract import normalize_collected_document
+
+            normalized = normalize_collected_document(record).model_copy(
+                update={"sha256": "0" * 64}
+            )
+            with (
+                patch(
+                    "kad_collector.pdf_extractor.normalize_collected_document",
+                    return_value=normalized,
+                    create=True,
+                ),
+                self.assertRaisesRegex(ValueError, "SHA-256"),
+            ):
                 extract_manifest(manifest_path, root / "extracted.json")
 
 

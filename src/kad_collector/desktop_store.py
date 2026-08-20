@@ -355,8 +355,6 @@ class DesktopStore:
     def cached_answer_keys(
         self,
         *,
-        provider: str | None,
-        concurso: str | None,
         exclude_job_id: str,
     ) -> list[dict[str, Any]]:
         with closing(self._connect()) as connection:
@@ -374,10 +372,6 @@ class DesktopStore:
             document = self._document_row(row)
             metadata = DesktopImportMetadata.model_validate(document["metadata"])
             if metadata.document_type != "answer_key":
-                continue
-            if provider is not None and metadata.provider != provider:
-                continue
-            if concurso is not None and metadata.concurso != concurso:
                 continue
             digest = cast(str | None, document["sha256"])
             if digest and digest in seen_hashes:

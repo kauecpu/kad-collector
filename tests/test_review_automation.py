@@ -265,6 +265,154 @@ C
             with self.assertRaisesRegex(ValueError, "conteudo mudou"):
                 verify_promotion_package(tampered)
 
+    def test_queue_matches_semantically_compatible_key_from_another_source(self) -> None:
+        exam = document(
+            "exam",
+            "Concurso Fiscal 2026 - Analista Tributario - V1",
+            "https://exam-source.test/prova-v1.pdf",
+            "e",
+        ).model_copy(
+            update={
+                "source_id": "exam_source",
+                "metadata": {
+                    "banca": "Banca Ficticia",
+                    "orgao": "Secretaria da Fazenda",
+                    "ano": "2026",
+                    "concurso": "Concurso Fiscal",
+                    "cargo": "Analista Tributario",
+                    "variant": "V1",
+                },
+            }
+        )
+        compatible = document(
+            "answer_key",
+            "Gabarito definitivo Concurso Fiscal 2026 Analista Tributario V1",
+            "https://answers-source.test/gabarito-analista-2026-v1.pdf",
+            "f",
+        ).model_copy(
+            update={
+                "source_id": "official_answers_source",
+                "metadata": {
+                    "banca": "Banca Ficticia",
+                    "orgao": "Secretaria da Fazenda",
+                    "ano": "2026",
+                    "concurso": "Concurso Fiscal",
+                    "cargo": "Analista Tributario",
+                    "variant": "V1",
+                },
+            }
+        )
+        incompatible = document(
+            "answer_key",
+            "Gabarito Professor 2025 V2",
+            "https://another-source.test/gabarito-professor-2025-v2.pdf",
+            "9",
+        ).model_copy(
+            update={
+                "source_id": "another_answers_source",
+                "metadata": {
+                    "banca": "Outra Banca",
+                    "orgao": "Secretaria da Educacao",
+                    "ano": "2025",
+                    "concurso": "Concurso Educacao",
+                    "cargo": "Professor",
+                    "variant": "V2",
+                },
+            }
+        )
+        batch = QuestionBatch(
+            batch_id="batch-cross-source",
+            created_at=datetime.now(UTC),
+            model="fake-model",
+            source_document=exam,
+            questions=[question(1)],
+            validation=ValidationState(valid=True),
+        )
+        candidates = [
+            ExtractedDocument(document=incompatible, pages=[], text="1 D"),
+            ExtractedDocument(document=compatible, pages=[], text="1 B"),
+        ]
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            extraction_path = root / "extraction.json"
+            batch_path = root / "batch.json"
+            write_json(
+                extraction_path,
+                ExtractionManifest(created_at=datetime.now(UTC), documents=[]).model_dump(
+                    mode="json"
+                ),
+            )
+            write_json(batch_path, batch.model_dump(mode="json"))
+
+            queue, _ = prepare_review_queue(
+                extraction_path=extraction_path,
+                batch_paths=[batch_path],
+                data_dir=root,
+                answer_key_documents=candidates,
+            )
+            reviewed = QuestionBatch.model_validate(read_json(Path(queue.items[0].batch_path)))
+
+        self.assertEqual(reviewed.questions[0].correct_answer, "B")
+        self.assertEqual(reviewed.answer_key_document, compatible)
+        self.assertEqual(queue.items[0].matched_answers, 1)
+
+    def test_queue_blocks_equal_answer_key_candidates_as_ambiguous(self) -> None:
+        exam = document(
+            "exam",
+            "Concurso Fiscal 2026 Analista V1",
+            "https://exam-source.test/prova-v1.pdf",
+            "1",
+        ).model_copy(update={"source_id": "exam_source"})
+        first = document(
+            "answer_key",
+            "Gabarito Concurso Fiscal 2026 Analista V1",
+            "https://first-source.test/gabarito-v1.pdf",
+            "2",
+        ).model_copy(update={"source_id": "first_answers_source"})
+        second = first.model_copy(
+            update={
+                "source_id": "second_answers_source",
+                "local_path": "data/raw/second.pdf",
+                "sha256": "3" * 64,
+            }
+        )
+        batch = QuestionBatch(
+            batch_id="batch-ambiguous",
+            created_at=datetime.now(UTC),
+            model="fake-model",
+            source_document=exam,
+            questions=[question(1)],
+            validation=ValidationState(valid=True),
+        )
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            extraction_path = root / "extraction.json"
+            batch_path = root / "batch.json"
+            write_json(
+                extraction_path,
+                ExtractionManifest(created_at=datetime.now(UTC), documents=[]).model_dump(
+                    mode="json"
+                ),
+            )
+            write_json(batch_path, batch.model_dump(mode="json"))
+            queue, _ = prepare_review_queue(
+                extraction_path=extraction_path,
+                batch_paths=[batch_path],
+                data_dir=root,
+                answer_key_documents=[
+                    ExtractedDocument(document=first, pages=[], text="1 A"),
+                    ExtractedDocument(document=second, pages=[], text="1 B"),
+                ],
+            )
+            reviewed = QuestionBatch.model_validate(read_json(Path(queue.items[0].batch_path)))
+
+        self.assertIsNone(reviewed.answer_key_document)
+        self.assertIsNone(reviewed.questions[0].correct_answer)
+        self.assertEqual(reviewed.questions[0].answer_status, "missing")
+        self.assertTrue(any("ambigua" in issue for issue in queue.items[0].issues))
+
 
 if __name__ == "__main__":
     unittest.main()
