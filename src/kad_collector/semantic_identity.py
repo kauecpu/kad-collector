@@ -35,7 +35,7 @@ class FrozenSemanticModel(StrictModel):
 def _norm(value: SemanticValue) -> SemanticValue:
     if isinstance(value, int):
         return value
-    return " ".join(unicodedata.normalize("NFKC", value).split()).casefold()
+    return " ".join(value.split()).casefold()
 
 
 def _typed_sort_key(value: SemanticValue) -> tuple[str, str]:
@@ -85,6 +85,8 @@ class SemanticField(FrozenSemanticModel):
         elif self.status == "known":
             if len(self.normalized_values) != 1:
                 raise ValueError("campo known exige exatamente um valor normalizado")
+        elif self.confidence is not None:
+            raise ValueError("campo conflict não pode conter confiança")
         elif len(self.normalized_values) < 2:
             raise ValueError("campo conflict exige ao menos dois valores normalizados")
         return self

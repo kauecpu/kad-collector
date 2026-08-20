@@ -85,6 +85,13 @@ class SemanticContractTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             SemanticField(status="conflict", method="test", reason="x", normalized_values=(1,))
 
+    def test_conflicting_field_rejects_confidence(self) -> None:
+        with self.assertRaises(ValidationError):
+            SemanticField(
+                status="conflict", method="test", reason="x",
+                normalized_values=(1, "1"), confidence=1.0,
+            )
+
     def test_value_sorting_discriminates_types(self) -> None:
         first = SemanticField.from_evidence(
             "value", (SemanticEvidence.metadata("a", 1), SemanticEvidence.metadata("b", "1"))
@@ -94,6 +101,17 @@ class SemanticContractTests(unittest.TestCase):
         )
         self.assertEqual(first.normalized_values, (1, "1"))
         self.assertEqual(first, second)
+
+    def test_identity_normalization_preserves_compatibility_characters(self) -> None:
+        ascii_identity = identity(board="A", concurso="Contest", year=2026)
+        compatibility_identity = identity(board="Ａ", concurso="Contest", year=2026)
+        spaced_case_identity = identity(board=" a ", concurso="  CONTEST ", year=2026)
+        self.assertNotEqual(
+            semantic_identity_key(ascii_identity), semantic_identity_key(compatibility_identity)
+        )
+        self.assertEqual(
+            semantic_identity_key(ascii_identity), semantic_identity_key(spaced_case_identity)
+        )
 
     def test_evidence_sorting_discriminates_types_with_equal_location(self) -> None:
         first = SemanticField.from_evidence(
