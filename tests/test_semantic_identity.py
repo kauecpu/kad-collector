@@ -1,5 +1,7 @@
 import unittest
 
+from pydantic import ValidationError
+
 from kad_collector.semantic_identity import (
     SemanticEvidence,
     SemanticField,
@@ -18,7 +20,7 @@ class SemanticContractTests(unittest.TestCase):
         field = SemanticField.unknown("ano não localizado")
         self.assertEqual(field.status, "unknown")
         self.assertEqual(field.normalized_values, ())
-        self.assertIsNone(field.confidence)
+        self.assertEqual(field.confidence, 0.0)
 
     def test_conflicting_field_preserves_both_evidences(self) -> None:
         field = SemanticField.from_evidence(
@@ -56,3 +58,44 @@ class SemanticContractTests(unittest.TestCase):
         changed = build_content_fingerprint([(1, "Questão 1\nA) azul B) vermelho")])
         self.assertEqual(first.sha256, second.sha256)
         self.assertNotEqual(first.sha256, changed.sha256)
+
+    def test_semantic_models_are_strict_and_immutable(self) -> None:
+        field = SemanticField.unknown("missing")
+        with self.assertRaises(ValidationError):
+            SemanticField(status="known", method="test", reason="x", confidence="1")
+        with self.assertRaises(ValidationError):
+            SemanticField(status="known", method="test", reason="x", extra="nope")
+        with self.assertRaises(ValidationError):
+            field.status = "known"
+
+    def test_unknown_field_rejects_values_evidence_and_confidence(self) -> None:
+        evidence = (SemanticEvidence.metadata("year", 2026),)
+        for kwargs in (
+            {"raw_values": (2026,)},
+            {"normalized_values": (2026,)},
+            {"evidence": evidence},
+            {"confidence": 0.1},
+        ):
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValidationError):
+                SemanticField(status="unknown", method="test", reason="missing", **kwargs)
+
+    def test_semantic_field_states_require_coherent_values(self) -> None:
+        with self.assertRaises(ValidationError):
+            SemanticField(status="known", method="test", reason="missing")
+        with self.assertRaises(ValidationError):
+            SemanticField(status="conflict", method="test", reason="x", normalized_values=(1,))
+
+    def test_value_sorting_discriminates_types(self) -> None:
+        first = SemanticField.from_evidence(
+            "value", (SemanticEvidence.metadata("a", 1), SemanticEvidence.metadata("b", "1"))
+        )
+        second = SemanticField.from_evidence(
+            "value", (SemanticEvidence.metadata("b", "1"), SemanticEvidence.metadata("a", 1))
+        )
+        self.assertEqual(first.normalized_values, (1, "1"))
+        self.assertEqual(first, second)
+
+    def test_content_fingerprint_frames_literal_page_marker_structurally(self) -> None:
+        literal = build_content_fingerprint([(1, "x\n--- PAGE 2 ---\ny")])
+        segmented = build_content_fingerprint([(1, "x"), (2, "y")])
+        self.assertNotEqual(literal.sha256, segmented.sha256)

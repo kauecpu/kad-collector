@@ -7,7 +7,7 @@ import unicodedata
 from collections.abc import Sequence
 from typing import Literal
 
-from pydantic import ConfigDict
+from pydantic import ConfigDict, model_validator
 
 from .models import StrictModel
 
@@ -29,7 +29,7 @@ AssociationOutcome = Literal[
 
 
 class FrozenSemanticModel(StrictModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
 
 def _norm(value: SemanticValue) -> SemanticValue:
@@ -70,16 +70,31 @@ class SemanticField(FrozenSemanticModel):
     reason: str
     algorithm_version: str = IDENTITY_ALGORITHM_VERSION
 
+    @model_validator(mode="after")
+    def validate_state(self) -> SemanticField:
+        if self.status == "unknown":
+            if self.raw_values or self.normalized_values or self.evidence or self.confidence != 0.0:
+                raise ValueError("campo unknown não pode conter valores, evidência ou confiança")
+        elif self.status == "known":
+            if len(self.normalized_values) != 1:
+                raise ValueError("campo known exige exatamente um valor normalizado")
+        elif len(self.normalized_values) < 2:
+            raise ValueError("campo conflict exige ao menos dois valores normalizados")
+        return self
+
     @classmethod
     def unknown(cls, reason: str) -> SemanticField:
-        return cls(status="unknown", method="unresolved", reason=reason)
+        return cls(status="unknown", method="unresolved", confidence=0.0, reason=reason)
 
     @classmethod
     def from_evidence(cls, name: str, evidence: tuple[SemanticEvidence, ...]) -> SemanticField:
         ordered = tuple(sorted(
             evidence, key=lambda item: (str(item.normalized_value), item.source, item.locator)
         ))
-        values = tuple(sorted({item.normalized_value for item in ordered}, key=str))
+        values = tuple(sorted(
+            {item.normalized_value for item in ordered},
+            key=lambda value: (type(value).__name__, str(value)),
+        ))
         status: SemanticStatus = "known" if len(values) == 1 else "conflict"
         return cls(
             status=status, raw_values=tuple(item.raw_value for item in ordered),
@@ -209,7 +224,7 @@ def build_content_fingerprint(pages: Sequence[tuple[int, str]]) -> ContentFinger
     page_hashes = tuple(
         stable_sha256({"page": number, "text": text}) for number, text in normalized
     )
-    payload = "".join(f"\n--- PAGE {number} ---\n{text}" for number, text in normalized)
-    return ContentFingerprint(sha256=hashlib.sha256(payload.encode("utf-8")).hexdigest(),
+    payload = {"pages": [{"number": number, "text": text} for number, text in normalized]}
+    return ContentFingerprint(sha256=stable_sha256(payload),
                               page_sha256s=page_hashes, page_count=len(normalized),
                               character_count=sum(len(text) for _, text in normalized))
