@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import re
+import socket
+import tempfile
 import tomllib
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, cast
+from unittest.mock import patch
 
 FixtureKind = Literal["official", "synthetic"]
 FixtureFormat = Literal["pdf", "text", "json"]
@@ -48,6 +56,9 @@ class RegressionManifest:
     coverage_topics: tuple[str, ...]
     fixtures: tuple[FixtureSpec, ...]
     cases: tuple[CaseSpec, ...]
+
+
+CaseExecutor = Callable[[CaseSpec, Mapping[str, Path]], dict[str, object]]
 
 
 def _require_table_rows(payload: object, field: str) -> list[dict[str, object]]:
@@ -204,3 +215,194 @@ def load_regression_manifest(path: Path) -> RegressionManifest:
     )
     _validate_manifest(manifest)
     return manifest
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def validate_fixture(spec: FixtureSpec, root: Path) -> Path:
+    path = (root / spec.path).resolve()
+    try:
+        path.relative_to(root.resolve())
+    except ValueError as exc:
+        raise RegressionError(f"fixture fora da raiz: {spec.id}") from exc
+    if not path.is_file():
+        raise RegressionError(f"fixture ausente: {spec.id} ({path})")
+    size = path.stat().st_size
+    if size != spec.size_bytes:
+        raise RegressionError(
+            f"tamanho divergente da fixture {spec.id}: {size} != {spec.size_bytes}"
+        )
+    digest = _sha256(path)
+    if digest != spec.sha256:
+        raise RegressionError(f"SHA-256 divergente da fixture {spec.id}: {digest}")
+    if spec.format == "pdf":
+        with path.open("rb") as handle:
+            if not handle.read(5).startswith(b"%PDF-"):
+                raise RegressionError(f"assinatura PDF inválida: {spec.id}")
+    elif spec.format == "text":
+        try:
+            path.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            raise RegressionError(f"texto UTF-8 inválido: {spec.id}") from exc
+    else:
+        try:
+            json.loads(path.read_text(encoding="utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RegressionError(f"JSON inválido: {spec.id}") from exc
+    return path
+
+
+@contextmanager
+def _offline_guard() -> Iterator[None]:
+    def blocked(*_args: object, **_kwargs: object) -> None:
+        raise RegressionError("acesso à rede bloqueado durante a regressão offline")
+
+    with (
+        patch("socket.create_connection", side_effect=blocked),
+        patch.object(socket.socket, "connect", blocked),
+        patch.object(socket.socket, "connect_ex", blocked),
+    ):
+        yield
+
+
+def _write_report(path: Path, report: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_name: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            newline="\n",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            json.dump(report, handle, ensure_ascii=False, indent=2, sort_keys=True)
+            handle.write("\n")
+            temporary_name = handle.name
+        Path(temporary_name).replace(path)
+    finally:
+        if temporary_name is not None:
+            temporary_path = Path(temporary_name)
+            if temporary_path.exists():
+                temporary_path.unlink()
+
+
+def _coverage_rows(
+    manifest: RegressionManifest, case_results: Mapping[str, str]
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for topic in manifest.coverage_topics:
+        cases = [case for case in manifest.cases if topic in case.covers]
+        supported = [case for case in cases if case.status == "supported"]
+        if supported:
+            state = (
+                "passed"
+                if all(case_results.get(case.id) == "passed" for case in supported)
+                else "failed"
+            )
+        else:
+            state = "planned"
+        rows.append(
+            {
+                "topic": topic,
+                "state": state,
+                "cases": [case.id for case in cases],
+            }
+        )
+    return rows
+
+
+def run_regression(
+    manifest_path: Path,
+    report_path: Path,
+    *,
+    executors: Mapping[str, CaseExecutor] | None = None,
+) -> dict[str, object]:
+    manifest = load_regression_manifest(manifest_path)
+    registry = dict(executors or {})
+    fixture_paths = {
+        fixture.id: validate_fixture(fixture, manifest.path.parent)
+        for fixture in manifest.fixtures
+    }
+    case_rows: list[dict[str, object]] = []
+    case_states: dict[str, str] = {}
+    passed = 0
+    planned = 0
+    for case in manifest.cases:
+        if case.status == "planned":
+            planned += 1
+            case_states[case.id] = "planned"
+            case_rows.append(
+                {
+                    "id": case.id,
+                    "title": case.title,
+                    "status": "planned",
+                    "gap": case.gap,
+                    "covers": list(case.covers),
+                }
+            )
+            continue
+        executor = registry.get(case.executor or "")
+        if executor is None:
+            raise RegressionError(f"executor desconhecido: {case.executor}")
+        selected_fixtures = {item: fixture_paths[item] for item in case.fixtures}
+        try:
+            with _offline_guard():
+                first = executor(case, selected_fixtures)
+                second = executor(case, selected_fixtures)
+        except RegressionError:
+            raise
+        except Exception as exc:
+            raise RegressionError(f"caso {case.id} falhou: {type(exc).__name__}: {exc}") from exc
+        if first != second:
+            raise RegressionError(f"caso não determinístico: {case.id}")
+        if first != case.expected:
+            raise RegressionError(
+                f"resultado inesperado no caso {case.id}: {first!r} != {case.expected!r}"
+            )
+        passed += 1
+        case_states[case.id] = "passed"
+        case_rows.append(
+            {
+                "id": case.id,
+                "title": case.title,
+                "status": "passed",
+                "covers": list(case.covers),
+                "result": first,
+            }
+        )
+
+    report: dict[str, object] = {
+        "schema_version": manifest.schema_version,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "manifest": str(manifest.path),
+        "manifest_sha256": _sha256(manifest.path),
+        "offline": True,
+        "fixtures": [
+            {
+                "id": fixture.id,
+                "kind": fixture.kind,
+                "path": fixture.path.as_posix(),
+                "size_bytes": fixture.size_bytes,
+                "sha256": fixture.sha256,
+            }
+            for fixture in manifest.fixtures
+        ],
+        "cases": case_rows,
+        "coverage": _coverage_rows(manifest, case_states),
+        "summary": {
+            "supported": len(manifest.cases) - planned,
+            "passed": passed,
+            "planned": planned,
+        },
+    }
+    _write_report(report_path, report)
+    return report

@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import socket
 import tempfile
 import unittest
 from pathlib import Path
 
-from kad_collector.regression import RegressionError, load_regression_manifest
+from kad_collector.regression import (
+    FixtureSpec,
+    RegressionError,
+    load_regression_manifest,
+    run_regression,
+    validate_fixture,
+)
 
 TOPICS = [
     "exam_answer_separate",
@@ -76,7 +84,7 @@ class RegressionManifestTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
         (self.root / "synthetic").mkdir()
-        (self.root / "synthetic" / "one.txt").write_text("fixture\n", encoding="utf-8")
+        (self.root / "synthetic" / "one.txt").write_bytes(b"fixture\n")
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
@@ -163,6 +171,111 @@ covers = [{planned_topics}]
 
         with self.assertRaisesRegex(RegressionError, "cobertura sem caso: unrelated_document"):
             load_regression_manifest(path)
+
+
+class RegressionRunnerTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        (self.root / "synthetic").mkdir()
+        self.fixture_path = self.root / "synthetic" / "one.txt"
+        self.fixture_path.write_bytes(b"fixture\n")
+        self.manifest_path = self.root / "manifest.toml"
+        self.manifest_path.write_text(
+            manifest_text(fixture_rows=fixture_row(), case_rows=supported_case_row()),
+            encoding="utf-8",
+        )
+        self.report_path = self.root / "report.json"
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def executor(self, *_args: object) -> dict[str, object]:
+        return {"question_count": 1}
+
+    def fixture_spec(self, *, format: str = "text", sha256: str | None = None) -> FixtureSpec:
+        return FixtureSpec(
+            id="fixture",
+            kind="synthetic",
+            path=Path("synthetic/one.txt"),
+            format=format,  # type: ignore[arg-type]
+            size_bytes=self.fixture_path.stat().st_size,
+            sha256=sha256 or hashlib.sha256(self.fixture_path.read_bytes()).hexdigest(),
+            description="Fixture sintética fictícia.",
+        )
+
+    def test_missing_fixture_fails_before_case_execution(self) -> None:
+        self.fixture_path.unlink()
+
+        with self.assertRaisesRegex(RegressionError, "fixture ausente: synthetic-one"):
+            run_regression(
+                self.manifest_path,
+                self.report_path,
+                executors={"inline_answer": self.executor},
+            )
+
+    def test_fixture_size_and_hash_must_match(self) -> None:
+        original_spec = self.fixture_spec()
+        self.fixture_path.write_text("changed\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(RegressionError, "tamanho divergente"):
+            validate_fixture(original_spec, self.root)
+
+        digest = hashlib.sha256(self.fixture_path.read_bytes()).hexdigest()
+        wrong_digest = ("0" if digest[0] != "0" else "1") + digest[1:]
+        with self.assertRaisesRegex(RegressionError, "SHA-256 divergente"):
+            validate_fixture(self.fixture_spec(sha256=wrong_digest), self.root)
+
+    def test_pdf_fixture_requires_pdf_signature(self) -> None:
+        with self.assertRaisesRegex(RegressionError, "assinatura PDF inválida"):
+            validate_fixture(self.fixture_spec(format="pdf"), self.root)
+
+    def test_runner_blocks_network_access(self) -> None:
+        def network_executor(*_args: object) -> dict[str, object]:
+            socket.create_connection(("example.com", 443))
+            return {"question_count": 1}
+
+        with self.assertRaisesRegex(RegressionError, "acesso à rede bloqueado"):
+            run_regression(
+                self.manifest_path,
+                self.report_path,
+                executors={"inline_answer": network_executor},
+            )
+
+    def test_runner_rejects_nondeterministic_executor(self) -> None:
+        calls = 0
+
+        def changing_executor(*_args: object) -> dict[str, object]:
+            nonlocal calls
+            calls += 1
+            return {"question_count": calls}
+
+        with self.assertRaisesRegex(RegressionError, "caso não determinístico: case-one"):
+            run_regression(
+                self.manifest_path,
+                self.report_path,
+                executors={"inline_answer": changing_executor},
+            )
+
+    def test_valid_run_writes_deterministic_report_payload(self) -> None:
+        first = run_regression(
+            self.manifest_path,
+            self.report_path,
+            executors={"inline_answer": self.executor},
+        )
+        first_disk = json.loads(self.report_path.read_text(encoding="utf-8"))
+        second = run_regression(
+            self.manifest_path,
+            self.report_path,
+            executors={"inline_answer": self.executor},
+        )
+
+        self.assertEqual(first, first_disk)
+        self.assertEqual(first["summary"], {"supported": 1, "passed": 1, "planned": 0})
+        self.assertTrue(first["offline"])
+        first.pop("generated_at")
+        second.pop("generated_at")
+        self.assertEqual(first, second)
 
 
 if __name__ == "__main__":
