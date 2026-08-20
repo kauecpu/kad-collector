@@ -456,7 +456,8 @@ def _title_values(title: str, field: str) -> tuple[SemanticValue, ...]:
 def _detect_role(document: NormalizedDocument, pages: Sequence[tuple[int, str]]) -> DocumentRole:
     if document.declared_type != "auto":
         return document.declared_type
-    sample = f"{document.title}\n{''.join(text for _, text in pages)[:20000]}".casefold()
+    content = "\n".join(text for _, text in pages)[:20000]
+    sample = f"{document.title}\n{content}".casefold()
     matches = {
         role
         for role, markers in _ROLE_MARKERS.items()
@@ -468,7 +469,8 @@ def _detect_role(document: NormalizedDocument, pages: Sequence[tuple[int, str]])
 def _answer_key_state(
     document: NormalizedDocument, pages: Sequence[tuple[int, str]]
 ) -> AnswerKeyState:
-    text = f"{document.title}\n{''.join(value for _, value in pages)}".casefold()
+    content = "\n".join(value for _, value in pages)
+    text = f"{document.title}\n{content}".casefold()
     preliminary = any(_has_marker(text, marker) for marker in _PRELIMINARY_MARKERS)
     definitive = any(_has_marker(text, marker) for marker in _DEFINITIVE_MARKERS)
     if preliminary == definitive:

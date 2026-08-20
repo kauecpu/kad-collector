@@ -137,6 +137,26 @@ class SemanticContractTests(unittest.TestCase):
         self.assertEqual(positive.document_role, "answer_key")
         self.assertEqual(positive.answer_key_state, "definitive")
 
+    def test_page_boundaries_do_not_join_role_or_state_markers(self) -> None:
+        split_role = extract_semantic_profile(
+            normalized_document(Path("documento.pdf"), title="documento.pdf", declared_type="auto"),
+            [(1, "gaba"), (2, "rito")],
+        )
+        split_state = extract_semantic_profile(
+            normalized_document(
+                Path("documento.pdf"), title="documento.pdf", declared_type="answer_key"
+            ),
+            [(1, "defini"), (2, "tivo")],
+        )
+        positive = extract_semantic_profile(
+            normalized_document(Path("documento.pdf"), title="documento.pdf", declared_type="auto"),
+            [(1, "gabarito definitivo")],
+        )
+        self.assertEqual(split_role.document_role, "unknown")
+        self.assertEqual(split_state.answer_key_state, "unknown")
+        self.assertEqual(positive.document_role, "answer_key")
+        self.assertEqual(positive.answer_key_state, "definitive")
+
     def test_ambiguous_answer_key_state_is_unknown(self) -> None:
         profile = extract_semantic_profile(
             normalized_document(Path("key.pdf"), declared_type="answer_key"),
