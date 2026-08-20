@@ -131,6 +131,7 @@ class DocumentEvidence:
 def has_known_conflict(exam: DocumentEvidence, candidate: DocumentEvidence) -> bool:
     for exam_value, candidate_value in (
         (exam.concurso, candidate.concurso),
+        (exam.role, candidate.role),
         (exam.organization, candidate.organization),
     ):
         if (

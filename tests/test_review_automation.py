@@ -554,12 +554,29 @@ C
                 }
             }
         )
+        wrong_role = document(
+            "answer_key",
+            "Gabarito Concurso Fiscal 2026 Auditor V1",
+            "https://answers-source.test/fiscal-2026-auditor-v1.pdf",
+            "9",
+        ).model_copy(
+            update={
+                "metadata": {
+                    "ano": "2026",
+                    "concurso": "Concurso Fiscal",
+                    "cargo": "Auditor",
+                    "orgao": "Secretaria da Fazenda",
+                    "variant": "V1",
+                }
+            }
+        )
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             for label, candidate in (
                 ("wrong-year", wrong_year),
                 ("wrong-variant", wrong_variant),
+                ("wrong-role", wrong_role),
             ):
                 with self.subTest(label=label):
                     reviewed, issues = self._queue_with_single_key(

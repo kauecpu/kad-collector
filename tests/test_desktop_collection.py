@@ -83,7 +83,7 @@ class DesktopCollectionTests(unittest.TestCase):
             size_bytes=pdf_path.stat().st_size,
             downloaded_at=datetime.now(UTC),
             authorization_basis="Fonte oficial.",
-            metadata={"banca": "FGV"},
+            metadata={"banca": "FGV", "campo_conhecido": "preservado"},
         )
         manifest = DownloadManifest(created_at=datetime.now(UTC), documents=[document])
         manifest_path = self.root / "manifest.json"
@@ -134,6 +134,15 @@ class DesktopCollectionTests(unittest.TestCase):
         self.assertEqual(len(job["importJobIds"]), 1)
         start_processor.assert_called_once_with(job["importJobIds"][0])
         imported = self.store.documents_for_job(job["importJobIds"][0])[0]
+        normalized = imported["normalized_document"]
+        self.assertEqual(
+            normalized.source_page_url,
+            "https://conhecimento.fgv.br/concursos/mprj2025",
+        )
+        self.assertEqual(normalized.metadata["banca"], "FGV")
+        self.assertEqual(normalized.metadata["campo_conhecido"], "preservado")
+        self.assertNotIn("external_id", normalized.metadata)
+        self.assertIsNone(normalized.external_id)
         self.assertEqual(imported["metadata"]["board"], "FGV")
         self.assertEqual(imported["metadata"]["year"], 2025)
         self.assertEqual(
@@ -142,7 +151,7 @@ class DesktopCollectionTests(unittest.TestCase):
         )
         self.assertEqual(imported["metadata"]["document_title"], "Prova de analista")
         self.assertEqual(imported["metadata"]["document_type"], "exam")
-        self.assertEqual(imported["metadata"]["external_id"], "a" * 64)
+        self.assertIsNone(imported["metadata"]["external_id"])
         self.assertEqual(
             imported["metadata"]["canonical_url"],
             "https://conhecimento.fgv.br/prova.pdf",
@@ -475,6 +484,7 @@ Enunciado completo da segunda questao.
         for label, answer_update in (
             ("wrong-year", {"year": 2025, "variant": "V1"}),
             ("wrong-variant", {"year": 2026, "variant": "V2"}),
+            ("wrong-role", {"role": "Auditor", "variant": "V1"}),
         ):
             with self.subTest(label=label):
                 root = self.root / label

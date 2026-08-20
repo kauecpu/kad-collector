@@ -159,7 +159,7 @@ def _import_metadata(
         canonical_url=(
             _canonical_url(document.resolved_url) if document is not None else _canonical_url(url)
         ),
-        external_id=document.sha256 if document is not None else None,
+        external_id=None,
         document_title=document.title if document is not None else None,
         variant=_document_variant(document) if document is not None else None,
         document_type=document_type,
@@ -535,16 +535,27 @@ class DesktopCollectionManager:
             ):
                 skipped_documents.extend(processing_documents)
                 processing_documents = []
-            normalized_documents = [
-                normalize_collected_document(document).model_copy(
-                    update={
-                        "metadata": _import_metadata(source, url, document).model_dump(
-                            mode="json", exclude_none=True
-                        )
-                    }
+            normalized_documents = []
+            for document in processing_documents:
+                editorial_metadata = _import_metadata(source, url, document).model_dump(
+                    mode="json",
+                    exclude_none=True,
+                    exclude={
+                        "provider",
+                        "source_url",
+                        "canonical_url",
+                        "external_id",
+                        "document_title",
+                        "document_type",
+                    },
                 )
-                for document in processing_documents
-            ]
+                contract_metadata = {**document.metadata, **editorial_metadata}
+                contract_metadata.pop("external_id", None)
+                normalized_documents.append(
+                    normalize_collected_document(document, source_page_url=url).model_copy(
+                        update={"metadata": contract_metadata}
+                    )
+                )
             import_job_ids = self.pipeline.submit(normalized_documents, classifier_provider)
             warnings = list(manifest.warnings)
             if skipped_documents:
