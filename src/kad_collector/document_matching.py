@@ -15,17 +15,29 @@ _VARIANT_PATTERN = re.compile(
 _STOP_TOKENS = {
     "arquivo",
     "caderno",
+    "com",
+    "da",
+    "das",
+    "de",
     "definitivo",
     "definitiva",
+    "do",
+    "dos",
+    "em",
     "fase",
     "gabarito",
     "gabaritos",
     "oficial",
     "pdf",
+    "para",
+    "por",
     "prova",
     "provas",
+    "questao",
+    "questoes",
     "resposta",
     "respostas",
+    "sem",
 }
 
 
@@ -47,6 +59,13 @@ def _variant(value: str) -> tuple[str, int] | None:
         return None
     label = match.group("label").casefold()
     return label, int(match.group("number"))
+
+
+def _variants(value: str) -> set[tuple[str, int]]:
+    return {
+        (match.group("label").casefold(), int(match.group("number")))
+        for match in _VARIANT_PATTERN.finditer(value)
+    }
 
 
 def _tokens(value: str) -> set[str]:
@@ -97,17 +116,30 @@ class DocumentEvidence:
         )
 
 
-def evidence_score(exam: DocumentEvidence, candidate: DocumentEvidence) -> int:
-    score = 0
+def _evidence_rank(
+    exam: DocumentEvidence, candidate: DocumentEvidence
+) -> tuple[int, int] | None:
+    evidence = 0
     for exam_value, candidate_value in (
         (exam.concurso, candidate.concurso),
         (exam.organization, candidate.organization),
     ):
         if exam_value and candidate_value:
-            if normalize_text(exam_value) == normalize_text(candidate_value):
-                score += 12
-            else:
-                score -= 4
+            if normalize_text(exam_value) != normalize_text(candidate_value):
+                return None
+            evidence += 12
+
+    if exam.year is not None and candidate.year is not None:
+        if exam.year != candidate.year:
+            return None
+        evidence += 10
+
+    explicit_exam_variant = _variant(exam.variant or "")
+    explicit_candidate_variant = _variant(candidate.variant or "")
+    if explicit_exam_variant is not None and explicit_candidate_variant is not None:
+        if explicit_exam_variant != explicit_candidate_variant:
+            return None
+        evidence += 9
 
     exam_text = exam.searchable_text
     candidate_text = candidate.searchable_text
@@ -118,37 +150,49 @@ def evidence_score(exam: DocumentEvidence, candidate: DocumentEvidence) -> int:
     if candidate.year is not None:
         candidate_years.add(candidate.year)
     if exam_years and candidate_years:
-        score += 10 if exam_years & candidate_years else -10
+        if not exam_years & candidate_years:
+            return None
+        if exam.year is None or candidate.year is None:
+            evidence += 10
 
     exam_periods = _periods(exam_text)
     candidate_periods = _periods(candidate_text)
-    if exam_periods and candidate_periods:
-        score += 14 if exam_periods & candidate_periods else -8
+    if exam_periods & candidate_periods:
+        evidence += 14
 
     if exam.role:
         role = normalize_text(exam.role)
         candidate_haystack = normalize_text(candidate_text)
         if candidate.role and role == normalize_text(candidate.role):
-            score += 12
+            evidence += 12
         else:
-            score += 2 * sum(
+            evidence += 2 * sum(
                 word in candidate_haystack
                 for word in _tokens(exam.role)
                 if len(word) > 2
             )
 
-    exam_variant = _variant(f"{exam.variant or ''} {exam.title}")
-    candidate_variant = _variant(f"{candidate.variant or ''} {candidate.title} {candidate.content}")
-    if exam_variant is not None and candidate_variant is not None:
-        score += 9 if exam_variant == candidate_variant else -9
+    exam_variants = _variants(f"{exam.variant or ''} {exam.title}")
+    candidate_variants = _variants(
+        f"{candidate.variant or ''} {candidate.title} {candidate.content}"
+    )
+    if exam_variants and candidate_variants:
+        if not exam_variants & candidate_variants:
+            return None
+        if explicit_exam_variant is None or explicit_candidate_variant is None:
+            evidence += 9
 
     common_title_tokens = _tokens(exam.title) & _tokens(candidate.title)
-    score += min(8, len(common_title_tokens))
+    evidence += min(8, len(common_title_tokens))
+    if evidence <= 0:
+        return None
+
+    tie_break = 0
     if "definitiv" in normalize_text(candidate_text):
-        score += 1
+        tie_break += 1
     if candidate.content.strip():
-        score += 1
-    return score
+        tie_break += 1
+    return evidence, tie_break
 
 
 def select_evidence_match(
@@ -156,14 +200,15 @@ def select_evidence_match(
 ) -> tuple[int | None, str | None]:
     if not candidates:
         return None, "missing"
-    if len(candidates) == 1:
-        return 0, None
-
-    scores = [evidence_score(exam, candidate) for candidate in candidates]
-    best_score = max(scores)
-    if best_score <= 0:
+    ranked = [
+        (rank, index)
+        for index, candidate in enumerate(candidates)
+        if (rank := _evidence_rank(exam, candidate)) is not None
+    ]
+    if not ranked:
         return None, "no_evidence"
-    best = [index for index, score in enumerate(scores) if score == best_score]
+    best_rank = max(rank for rank, _index in ranked)
+    best = [index for rank, index in ranked if rank == best_rank]
     if len(best) != 1:
         return None, "ambiguous"
     return best[0], None

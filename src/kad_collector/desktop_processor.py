@@ -111,19 +111,7 @@ def _canonical_exam_documents(
             (number, document)
             for document in group_documents
             if (
-                number := structural_v_number(
-                    " ".join(
-                        value
-                        for value in (
-                            DesktopImportMetadata.model_validate(document["metadata"]).variant,
-                            DesktopImportMetadata.model_validate(
-                                document["metadata"]
-                            ).document_title,
-                            cast(str, document["filename"]),
-                        )
-                        if value
-                    )
-                )
+                number := _canonical_variant_number(document)
             )
             is not None
         ]
@@ -143,6 +131,25 @@ def _canonical_exam_documents(
         selected.append(ranked[0][1])
         skipped.extend(document for _, document in ranked[1:])
     return selected, skipped
+
+
+def _canonical_variant_number(document: dict[str, Any]) -> int | None:
+    metadata = DesktopImportMetadata.model_validate(document["metadata"])
+    if metadata.variant and re.fullmatch(
+        r"TIPO[-_ ]*[1-9]\d*", metadata.variant, re.IGNORECASE
+    ):
+        return None
+    return structural_v_number(
+        " ".join(
+            value
+            for value in (
+                metadata.variant,
+                metadata.document_title,
+                cast(str, document["filename"]),
+            )
+            if value
+        )
+    )
 
 
 def _matching_evidence(document: dict[str, Any], text_field: str) -> DocumentEvidence:

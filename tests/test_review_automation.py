@@ -72,6 +72,44 @@ def question(number: int) -> QuestionRecord:
 
 
 class ReviewAutomationTests(unittest.TestCase):
+    def _queue_with_single_key(
+        self,
+        root: Path,
+        *,
+        exam: DocumentRecord,
+        answer_key: DocumentRecord,
+        batch_id: str,
+    ) -> tuple[QuestionBatch, list[str]]:
+        extraction_path = root / f"{batch_id}-extraction.json"
+        batch_path = root / f"{batch_id}.json"
+        write_json(
+            extraction_path,
+            ExtractionManifest(created_at=datetime.now(UTC), documents=[]).model_dump(
+                mode="json"
+            ),
+        )
+        write_json(
+            batch_path,
+            QuestionBatch(
+                batch_id=batch_id,
+                created_at=datetime.now(UTC),
+                model="fake-model",
+                source_document=exam,
+                questions=[question(1)],
+                validation=ValidationState(valid=True),
+            ).model_dump(mode="json"),
+        )
+        queue, _ = prepare_review_queue(
+            extraction_path=extraction_path,
+            batch_paths=[batch_path],
+            data_dir=root,
+            answer_key_documents=[
+                ExtractedDocument(document=answer_key, pages=[], text="1 B")
+            ],
+        )
+        reviewed = QuestionBatch.model_validate(read_json(Path(queue.items[0].batch_path)))
+        return reviewed, queue.items[0].issues
+
     def test_variant_table_is_parsed_without_mixing_answer_keys(self) -> None:
         text = "PROVA V1 PROVA V2\n1 A 2 B 1 C 2 D\n3 * 4 A 3 B 4 C"
         first = parse_answer_key(text, variant="V1")
@@ -412,6 +450,101 @@ C
         self.assertIsNone(reviewed.questions[0].correct_answer)
         self.assertEqual(reviewed.questions[0].answer_status, "missing")
         self.assertTrue(any("ambigua" in issue for issue in queue.items[0].issues))
+
+    def test_queue_rejects_sole_key_supported_only_by_candidate_weak_signals(self) -> None:
+        exam = document(
+            "exam",
+            "Prova de Direito",
+            "https://exam-source.test/direito.pdf",
+            "4",
+        ).model_copy(update={"metadata": {}})
+        unrelated = document(
+            "answer_key",
+            "Gabarito definitivo de Quimica",
+            "https://answers-source.test/quimica.pdf",
+            "5",
+        ).model_copy(update={"metadata": {}})
+
+        with tempfile.TemporaryDirectory() as temporary:
+            reviewed, issues = self._queue_with_single_key(
+                Path(temporary),
+                exam=exam,
+                answer_key=unrelated,
+                batch_id="batch-unrelated-weak-signals",
+            )
+
+        self.assertIsNone(reviewed.answer_key_document)
+        self.assertIsNone(reviewed.questions[0].correct_answer)
+        self.assertEqual(reviewed.questions[0].answer_status, "missing")
+        self.assertTrue(any("nenhum corresponde" in issue for issue in issues))
+
+    def test_queue_rejects_known_year_and_variant_contradictions(self) -> None:
+        exam = document(
+            "exam",
+            "Concurso Fiscal 2026 Analista V1",
+            "https://exam-source.test/fiscal-2026-v1.pdf",
+            "6",
+        ).model_copy(
+            update={
+                "metadata": {
+                    "ano": "2026",
+                    "concurso": "Concurso Fiscal",
+                    "cargo": "Analista",
+                    "orgao": "Secretaria da Fazenda",
+                    "variant": "V1",
+                }
+            }
+        )
+        wrong_year = document(
+            "answer_key",
+            "Gabarito Concurso Fiscal 2025 Analista V1",
+            "https://answers-source.test/fiscal-2025-v1.pdf",
+            "7",
+        ).model_copy(
+            update={
+                "metadata": {
+                    "ano": "2025",
+                    "concurso": "Concurso Fiscal",
+                    "cargo": "Analista",
+                    "orgao": "Secretaria da Fazenda",
+                    "variant": "V1",
+                }
+            }
+        )
+        wrong_variant = document(
+            "answer_key",
+            "Gabarito Concurso Fiscal 2026 Analista V2",
+            "https://answers-source.test/fiscal-2026-v2.pdf",
+            "8",
+        ).model_copy(
+            update={
+                "metadata": {
+                    "ano": "2026",
+                    "concurso": "Concurso Fiscal",
+                    "cargo": "Analista",
+                    "orgao": "Secretaria da Fazenda",
+                    "variant": "V2",
+                }
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for label, candidate in (
+                ("wrong-year", wrong_year),
+                ("wrong-variant", wrong_variant),
+            ):
+                with self.subTest(label=label):
+                    reviewed, issues = self._queue_with_single_key(
+                        root / label,
+                        exam=exam,
+                        answer_key=candidate,
+                        batch_id=f"batch-{label}",
+                    )
+                    self.assertIsNone(reviewed.answer_key_document)
+                    self.assertIsNone(reviewed.questions[0].correct_answer)
+                    self.assertEqual(reviewed.questions[0].answer_status, "missing")
+                    self.assertTrue(any("nenhum corresponde" in issue for issue in issues))
 
 
 if __name__ == "__main__":

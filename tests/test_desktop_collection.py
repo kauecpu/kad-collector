@@ -17,6 +17,7 @@ from kad_collector.desktop_processor import (
     DesktopProcessor,
     _canonical_exam_documents,
     _document_type,
+    _select_answer_key,
 )
 from kad_collector.desktop_store import DesktopStore
 from kad_collector.models import DocumentRecord, DownloadManifest
@@ -373,6 +374,62 @@ Enunciado completo da segunda questao.
 
         self.assertEqual(selected, [v1])
         self.assertEqual(evidence, [v2])
+
+    def test_explicit_tipo_variants_stay_distinct_despite_v_tokens(self) -> None:
+        common = DesktopImportMetadata(
+            concurso="Selecao Nacional",
+            year=2026,
+            role="Analista",
+            organization="Instituto Ficticio",
+            document_type="exam",
+        )
+        tipo_1 = {
+            "filename": "caderno-v1.pdf",
+            "metadata": common.model_copy(
+                update={"document_title": "Caderno V1", "variant": "Tipo 1"}
+            ).model_dump(mode="json"),
+        }
+        tipo_2 = {
+            "filename": "caderno-v2.pdf",
+            "metadata": common.model_copy(
+                update={"document_title": "Caderno V2", "variant": "Tipo 2"}
+            ).model_dump(mode="json"),
+        }
+
+        selected, evidence = _canonical_exam_documents([tipo_1, tipo_2])
+
+        self.assertEqual(selected, [tipo_1, tipo_2])
+        self.assertEqual(evidence, [])
+
+    def test_only_a_sole_in_batch_answer_key_gets_compatibility_shortcut(self) -> None:
+        exam = {
+            "job_id": "current-job",
+            "filename": "prova-direito.pdf",
+            "metadata": DesktopImportMetadata(
+                document_type="exam", document_title="Prova de Direito"
+            ).model_dump(mode="json"),
+            "exam_text": "Conteudo de Direito Administrativo",
+        }
+        in_batch = {
+            "job_id": "current-job",
+            "filename": "respostas.pdf",
+            "metadata": DesktopImportMetadata(
+                document_type="answer_key", document_title="Respostas"
+            ).model_dump(mode="json"),
+            "answer_key_text": "1 A",
+        }
+        cached = {
+            **in_batch,
+            "job_id": "historical-job",
+            "filename": "gabarito-quimica.pdf",
+            "metadata": DesktopImportMetadata(
+                document_type="answer_key",
+                document_title="Gabarito definitivo de Quimica",
+            ).model_dump(mode="json"),
+        }
+
+        self.assertIs(_select_answer_key(exam, [in_batch]), in_batch)
+        self.assertIsNone(_select_answer_key(exam, [cached]))
 
     def test_new_exam_reuses_persisted_answer_key_without_reprocessing_it(self) -> None:
         key_path = self.root / "gabarito-cached.pdf"
