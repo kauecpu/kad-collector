@@ -40,10 +40,11 @@ def _editorial_metadata(document: NormalizedDocument) -> DesktopImportMetadata:
         for key in DesktopImportMetadata.model_fields
         if key in raw and raw[key] is not None
     }
-    values.setdefault("provider", document.source_id or "manual")
+    if document.source_id is not None:
+        values.setdefault("provider", document.source_id)
     values.setdefault("source_url", document.original_url)
     values.setdefault("canonical_url", document.resolved_url)
-    values.setdefault("external_id", document.external_id or document.sha256)
+    values.setdefault("external_id", document.external_id)
     values.setdefault("document_title", document.title)
     values.setdefault(
         "document_type",

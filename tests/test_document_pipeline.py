@@ -236,6 +236,33 @@ class DocumentPipelinePersistenceTests(unittest.TestCase):
                 self.assertEqual(normalized.entry_method, "direct_import")
                 normalized.validate_local_file()
 
+    def test_direct_import_with_empty_metadata_preserves_contract_absence(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "plain.pdf"
+            path.write_bytes(b"%PDF-1.7\nplain local fixture\n")
+            store = DesktopStore(root / "collector.sqlite3")
+
+            from kad_collector.document_pipeline import DocumentPipeline
+
+            pipeline = DocumentPipeline(store, RecordingRunner())
+
+            job_id = pipeline.import_paths([path], DesktopImportMetadata(), "local")[0]
+
+            stored = store.documents_for_job(job_id)[0]
+            document = stored["normalized_document"]
+            self.assertEqual(document.metadata, {})
+            self.assertIsNone(document.external_id)
+            self.assertIsNone(document.source_id)
+            self.assertIsNone(document.source_name)
+            self.assertIsNone(document.original_url)
+            self.assertIsNone(document.resolved_url)
+            self.assertIsNone(document.source_page_url)
+            self.assertIsNone(stored["metadata"]["provider"])
+            self.assertIsNone(stored["metadata"]["external_id"])
+            self.assertIsNone(stored["metadata"]["source_url"])
+            self.assertIsNone(stored["metadata"]["canonical_url"])
+
     def test_collected_submission_persists_automated_contract_and_uses_same_runner(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

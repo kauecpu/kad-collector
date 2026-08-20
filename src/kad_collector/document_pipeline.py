@@ -16,19 +16,8 @@ class InterpretationRunner(Protocol):
 
 def _editorial_metadata(document: NormalizedDocument) -> dict[str, str | int]:
     values = dict(document.metadata)
-    values.setdefault("provider", document.source_id or "manual")
-    values.setdefault("source_url", document.original_url)
-    values.setdefault("canonical_url", document.resolved_url)
-    values.setdefault("external_id", document.external_id or document.sha256)
-    values.setdefault("document_title", document.title)
-    values.setdefault(
-        "document_type",
-        (
-            document.declared_type
-            if document.declared_type in {"auto", "exam", "answer_key"}
-            else "auto"
-        ),
-    )
+    if document.source_id is not None:
+        values.setdefault("provider", document.source_id)
     if "board" not in values and "banca" in values:
         values["board"] = values["banca"]
     if "year" not in values and "ano" in values:
@@ -101,12 +90,10 @@ class DocumentPipeline:
         documents: list[NormalizedDocument] = []
         for path in validate_pdf_batch(paths):
             document_metadata = metadata.model_copy(deep=True)
-            if document_metadata.external_id is None:
-                document_metadata.external_id = path.stem
             document = normalize_local_document(path).model_copy(
                 update={
                     "metadata": document_metadata.model_dump(
-                        mode="json", exclude_none=True
+                        mode="json", exclude_none=True, exclude_defaults=True
                     )
                 }
             )
