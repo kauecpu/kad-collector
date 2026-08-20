@@ -4,16 +4,22 @@ import hashlib
 import importlib.util
 import sqlite3
 import tempfile
+import threading
 import unittest
 from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 
+from reportlab.pdfgen import canvas
+
+from kad_collector.desktop_limits import MAX_BATCH_PDFS
 from kad_collector.desktop_models import (
     ClassificationValue,
+    DesktopFilterSet,
     DesktopImportMetadata,
     QuestionClassification,
 )
+from kad_collector.desktop_processor import DesktopProcessor
 from kad_collector.desktop_store import DesktopStore
 from kad_collector.models import Alternative, DocumentRecord, QuestionRecord
 
@@ -496,6 +502,79 @@ class DocumentPipelinePersistenceTests(unittest.TestCase):
             self.assertIsNone(replacement.original_url)
             self.assertIsNone(replacement.resolved_url)
             self.assertTrue(any("compatibilidade" in warning for warning in replacement.warnings))
+
+    def test_real_reprocessing_never_mutates_historical_duplicate_question(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "duplicate.pdf"
+            pdf = canvas.Canvas(str(path))
+            for index, line in enumerate((
+                "QUESTAO 1",
+                "Este enunciado completo reproduz a mesma questão no reprocessamento.",
+                "A) Primeira alternativa.",
+                "B) Segunda alternativa.",
+            )):
+                pdf.drawString(54, 800 - (20 * index), line)
+            pdf.save()
+            store = DesktopStore(root / "collector.sqlite3")
+            runner = RecordingRunner()
+
+            from kad_collector.document_pipeline import DocumentPipeline
+
+            pipeline = DocumentPipeline(store, runner)
+            original_job_id = pipeline.import_paths(
+                [path], DesktopImportMetadata(document_type="exam", year=2026), "local"
+            )[0]
+            processor = DesktopProcessor(store)
+            processor.run(original_job_id, threading.Event())
+            original_document = store.documents_for_job(original_job_id)[0]
+            original_question = store.query(DesktopFilterSet())["questions"][0]
+            store.decide_question(
+                original_question["id"], "exception", actor="revisor", notes="preservar histórico"
+            )
+            before_document = store.document(original_document["id"])
+            before_question = store.question(original_question["id"])
+            before_audit = store.audit_log(original_question["id"])
+
+            reprocessing_job_id = pipeline.reprocess([original_document["id"]], "local")[0]
+            processor.run(reprocessing_job_id, threading.Event())
+
+            self.assertEqual(store.document(original_document["id"]), before_document)
+            self.assertEqual(store.question(original_question["id"]), before_question)
+            self.assertEqual(store.audit_log(original_question["id"]), before_audit)
+
+    def test_reprocess_rejects_duplicate_ids_before_multi_batch_submission(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = []
+            for number in range(MAX_BATCH_PDFS + 1):
+                path = root / f"document-{number}.pdf"
+                path.write_bytes(b"%PDF-1.7\npreflight fixture\n")
+                paths.append(path)
+            store = DesktopStore(root / "collector.sqlite3")
+            runner = RecordingRunner()
+
+            from kad_collector.document_pipeline import DocumentPipeline
+
+            pipeline = DocumentPipeline(store, runner)
+            first_job_id = pipeline.import_paths(
+                paths[:MAX_BATCH_PDFS], DesktopImportMetadata(), "local"
+            )[0]
+            second_job_id = pipeline.import_paths(
+                paths[MAX_BATCH_PDFS:], DesktopImportMetadata(), "local"
+            )[0]
+            document_ids = [
+                *(document["id"] for document in store.documents_for_job(first_job_id)),
+                *(document["id"] for document in store.documents_for_job(second_job_id)),
+            ]
+            jobs_before = store.list_jobs(limit=MAX_BATCH_PDFS + 5)
+            starts_before = list(runner.started_ids)
+
+            with self.assertRaisesRegex(ValueError, "documentos duplicados"):
+                pipeline.reprocess([*document_ids, document_ids[0]], "local")
+
+            self.assertEqual(store.list_jobs(limit=MAX_BATCH_PDFS + 5), jobs_before)
+            self.assertEqual(runner.started_ids, starts_before)
 
 
 if __name__ == "__main__":

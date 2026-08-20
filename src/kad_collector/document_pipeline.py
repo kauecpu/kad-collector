@@ -107,6 +107,8 @@ class DocumentPipeline:
     ) -> list[str]:
         if not document_ids:
             raise ValueError("selecione ao menos um documento para reprocessar")
+        if len(set(document_ids)) != len(document_ids):
+            raise ValueError("documentos duplicados nao podem ser reprocessados no mesmo lote")
         documents = [self.store.reprocessing_contract(document_id) for document_id in document_ids]
         for document in documents:
             document.validate_local_file()

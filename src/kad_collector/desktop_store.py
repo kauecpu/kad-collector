@@ -634,7 +634,8 @@ class DesktopStore:
         duplicate = self._duplicate_question_id(fingerprint, exclude_id=question_id)
         if duplicate is not None:
             flags.append("duplicate")
-            self._add_flag(duplicate, "duplicate")
+            if not self._is_reprocessing_document(document_id):
+                self._add_flag(duplicate, "duplicate")
         status: DesktopQuestionStatus = (
             "exception"
             if any(
@@ -723,6 +724,16 @@ class DesktopStore:
                 (fingerprint, exclude_id),
             ).fetchone()
         return cast(str, row["id"]) if row is not None else None
+
+    def _is_reprocessing_document(self, document_id: str) -> bool:
+        with closing(self._connect()) as connection:
+            row = connection.execute(
+                "SELECT normalized_json FROM documents WHERE id = ?", (document_id,)
+            ).fetchone()
+        if row is None or row["normalized_json"] is None:
+            return False
+        payload = json.loads(cast(str, row["normalized_json"]))
+        return payload.get("entry_method") == "reprocessing"
 
     def _add_flag(self, question_id: str, flag: str) -> None:
         with closing(self._connect()) as connection:
