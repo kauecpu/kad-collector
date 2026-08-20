@@ -24,6 +24,7 @@ from .desktop_parser import parse_question_pages
 from .desktop_store import DesktopStore
 from .document_matching import (
     DocumentEvidence,
+    has_known_conflict,
     normalize_text,
     select_evidence_match,
     structural_v_number,
@@ -173,10 +174,13 @@ def _select_answer_key(
         for item in answer_keys
         if item.get("job_id") is not None and item.get("job_id") == exam.get("job_id")
     ]
-    if len(in_batch) == 1:
+    exam_evidence = _matching_evidence(exam, "exam_text")
+    if len(in_batch) == 1 and not has_known_conflict(
+        exam_evidence, _matching_evidence(in_batch[0], "answer_key_text")
+    ):
         return in_batch[0]
     index, _reason = select_evidence_match(
-        _matching_evidence(exam, "exam_text"),
+        exam_evidence,
         [_matching_evidence(item, "answer_key_text") for item in answer_keys],
     )
     return answer_keys[index] if index is not None else None

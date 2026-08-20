@@ -478,6 +478,33 @@ C
         self.assertEqual(reviewed.questions[0].answer_status, "missing")
         self.assertTrue(any("nenhum corresponde" in issue for issue in issues))
 
+    def test_queue_rejects_one_shared_boilerplate_title_token(self) -> None:
+        exam = document(
+            "exam",
+            "Concurso Direito",
+            "https://exam-source.test/concurso-direito.pdf",
+            "a",
+        ).model_copy(update={"metadata": {}})
+        unrelated = document(
+            "answer_key",
+            "Gabarito Concurso Quimica",
+            "https://answers-source.test/concurso-quimica.pdf",
+            "b",
+        ).model_copy(update={"metadata": {}})
+
+        with tempfile.TemporaryDirectory() as temporary:
+            reviewed, issues = self._queue_with_single_key(
+                Path(temporary),
+                exam=exam,
+                answer_key=unrelated,
+                batch_id="batch-one-boilerplate-token",
+            )
+
+        self.assertIsNone(reviewed.answer_key_document)
+        self.assertIsNone(reviewed.questions[0].correct_answer)
+        self.assertEqual(reviewed.questions[0].answer_status, "missing")
+        self.assertTrue(any("nenhum corresponde" in issue for issue in issues))
+
     def test_queue_rejects_known_year_and_variant_contradictions(self) -> None:
         exam = document(
             "exam",

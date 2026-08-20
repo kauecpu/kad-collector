@@ -16,6 +16,8 @@ _STOP_TOKENS = {
     "arquivo",
     "caderno",
     "com",
+    "concurso",
+    "concursos",
     "da",
     "das",
     "de",
@@ -24,6 +26,8 @@ _STOP_TOKENS = {
     "do",
     "dos",
     "em",
+    "exame",
+    "exames",
     "fase",
     "gabarito",
     "gabaritos",
@@ -31,12 +35,20 @@ _STOP_TOKENS = {
     "pdf",
     "para",
     "por",
+    "processo",
+    "processos",
     "prova",
     "provas",
     "questao",
     "questoes",
     "resposta",
     "respostas",
+    "selecao",
+    "selecoes",
+    "seletiva",
+    "seletivas",
+    "seletivo",
+    "seletivos",
     "sem",
 }
 
@@ -116,29 +128,83 @@ class DocumentEvidence:
         )
 
 
+def has_known_conflict(exam: DocumentEvidence, candidate: DocumentEvidence) -> bool:
+    for exam_value, candidate_value in (
+        (exam.concurso, candidate.concurso),
+        (exam.organization, candidate.organization),
+    ):
+        if (
+            exam_value
+            and candidate_value
+            and normalize_text(exam_value) != normalize_text(candidate_value)
+        ):
+            return True
+
+    if (
+        exam.year is not None
+        and candidate.year is not None
+        and exam.year != candidate.year
+    ):
+        return True
+
+    explicit_exam_variant = _variant(exam.variant or "")
+    explicit_candidate_variant = _variant(candidate.variant or "")
+    if (
+        explicit_exam_variant is not None
+        and explicit_candidate_variant is not None
+        and explicit_exam_variant != explicit_candidate_variant
+    ):
+        return True
+
+    exam_text = exam.searchable_text
+    candidate_text = candidate.searchable_text
+    exam_years = _years(exam_text)
+    candidate_years = _years(candidate_text)
+    if exam.year is not None:
+        exam_years.add(exam.year)
+    if candidate.year is not None:
+        candidate_years.add(candidate.year)
+    if exam_years and candidate_years and not exam_years & candidate_years:
+        return True
+
+    exam_variants = _variants(f"{exam.variant or ''} {exam.title}")
+    candidate_variants = _variants(
+        f"{candidate.variant or ''} {candidate.title} {candidate.content}"
+    )
+    return bool(
+        exam_variants and candidate_variants and not exam_variants & candidate_variants
+    )
+
+
+def _meaningful_title_evidence(common_tokens: set[str]) -> int:
+    identifier_tokens = {
+        token for token in common_tokens if any(character.isdigit() for character in token)
+    }
+    if identifier_tokens:
+        return min(8, len(identifier_tokens))
+    return min(8, len(common_tokens)) if len(common_tokens) >= 2 else 0
+
+
 def _evidence_rank(
     exam: DocumentEvidence, candidate: DocumentEvidence
 ) -> tuple[int, int] | None:
+    if has_known_conflict(exam, candidate):
+        return None
+
     evidence = 0
     for exam_value, candidate_value in (
         (exam.concurso, candidate.concurso),
         (exam.organization, candidate.organization),
     ):
         if exam_value and candidate_value:
-            if normalize_text(exam_value) != normalize_text(candidate_value):
-                return None
             evidence += 12
 
     if exam.year is not None and candidate.year is not None:
-        if exam.year != candidate.year:
-            return None
         evidence += 10
 
     explicit_exam_variant = _variant(exam.variant or "")
     explicit_candidate_variant = _variant(candidate.variant or "")
     if explicit_exam_variant is not None and explicit_candidate_variant is not None:
-        if explicit_exam_variant != explicit_candidate_variant:
-            return None
         evidence += 9
 
     exam_text = exam.searchable_text
@@ -149,11 +215,8 @@ def _evidence_rank(
         exam_years.add(exam.year)
     if candidate.year is not None:
         candidate_years.add(candidate.year)
-    if exam_years and candidate_years:
-        if not exam_years & candidate_years:
-            return None
-        if exam.year is None or candidate.year is None:
-            evidence += 10
+    if exam_years & candidate_years and (exam.year is None or candidate.year is None):
+        evidence += 10
 
     exam_periods = _periods(exam_text)
     candidate_periods = _periods(candidate_text)
@@ -176,18 +239,17 @@ def _evidence_rank(
     candidate_variants = _variants(
         f"{candidate.variant or ''} {candidate.title} {candidate.content}"
     )
-    if exam_variants and candidate_variants:
-        if not exam_variants & candidate_variants:
-            return None
-        if explicit_exam_variant is None or explicit_candidate_variant is None:
-            evidence += 9
+    if exam_variants & candidate_variants and (
+        explicit_exam_variant is None or explicit_candidate_variant is None
+    ):
+        evidence += 9
 
     common_title_tokens = _tokens(exam.title) & _tokens(candidate.title)
-    evidence += min(8, len(common_title_tokens))
+    evidence += _meaningful_title_evidence(common_title_tokens)
     if evidence <= 0:
         return None
 
-    tie_break = 0
+    tie_break = min(2, len(common_title_tokens))
     if "definitiv" in normalize_text(candidate_text):
         tie_break += 1
     if candidate.content.strip():

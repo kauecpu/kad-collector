@@ -431,6 +431,69 @@ Enunciado completo da segunda questao.
         self.assertIs(_select_answer_key(exam, [in_batch]), in_batch)
         self.assertIsNone(_select_answer_key(exam, [cached]))
 
+    def test_same_job_key_with_known_year_or_variant_conflict_keeps_answer_missing(self) -> None:
+        exam_text = (
+            "{01}\nEnunciado completo de Direito.\n"
+            "(A) Alternativa errada.\n(B) Alternativa correta.\n#####"
+        )
+        for label, answer_update in (
+            ("wrong-year", {"year": 2025, "variant": "V1"}),
+            ("wrong-variant", {"year": 2026, "variant": "V2"}),
+        ):
+            with self.subTest(label=label):
+                root = self.root / label
+                root.mkdir()
+                store = DesktopStore(root / "collector.sqlite3")
+                processor = DesktopProcessor(store)
+                exam_path = root / "exam.pdf"
+                answer_path = root / "answer.pdf"
+                exam_path.write_bytes(b"%PDF-1.4\nexam\n%%EOF")
+                answer_path.write_bytes(b"%PDF-1.4\nanswer\n%%EOF")
+                common = DesktopImportMetadata(
+                    concurso="Concurso Fiscal",
+                    year=2026,
+                    role="Analista",
+                    organization="Secretaria da Fazenda",
+                )
+                exam_metadata = common.model_copy(
+                    update={
+                        "document_type": "exam",
+                        "document_title": f"Prova Fiscal 2026 V1 {label}",
+                        "variant": "V1",
+                    }
+                )
+                answer_metadata = common.model_copy(
+                    update={
+                        "document_type": "answer_key",
+                        "document_title": f"Gabarito Fiscal {label}",
+                        **answer_update,
+                    }
+                )
+                job_id = store.create_job(
+                    [exam_path, answer_path],
+                    common,
+                    "local",
+                    metadata_by_path={
+                        str(exam_path.resolve()).casefold(): exam_metadata,
+                        str(answer_path.resolve()).casefold(): answer_metadata,
+                    },
+                )
+                for stored in store.documents_for_job(job_id):
+                    metadata = DesktopImportMetadata.model_validate(stored["metadata"])
+                    text = "1 - B" if metadata.document_type == "answer_key" else exam_text
+                    store.save_page(stored["id"], 1, text, status="text")
+                    store.update_document(stored["id"], status="extracted", page_count=1)
+
+                processor._structure_job(job_id, threading.Event())
+
+                result = store.query(
+                    DesktopFilterSet(source_files=[exam_metadata.document_title or ""])
+                )
+                self.assertEqual(result["total"], 1)
+                question_payload = result["questions"][0]["question"]
+                self.assertIsNone(question_payload["correct_answer"])
+                self.assertEqual(question_payload["answer_status"], "missing")
+
     def test_new_exam_reuses_persisted_answer_key_without_reprocessing_it(self) -> None:
         key_path = self.root / "gabarito-cached.pdf"
         exam_path = self.root / "prova-nova.pdf"
