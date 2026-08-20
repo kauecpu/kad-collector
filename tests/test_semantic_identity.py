@@ -7,7 +7,10 @@ from kad_collector.semantic_identity import (
     semantic_identity_key,
 )
 
-from .semantic_helpers import identity
+try:
+    from .semantic_helpers import identity
+except ImportError:
+    from semantic_helpers import identity
 
 
 class SemanticContractTests(unittest.TestCase):
