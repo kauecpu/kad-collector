@@ -1,0 +1,15 @@
+Técnico – Tipo 1 (Manhã)
+1 2 3
+A B *
+Técnico – Tipo 2 (Manhã)
+1 2 3
+B C D
+Técnico – Tipo 3 (Tarde)
+1 2 3
+C D A
+Técnico – Tipo 4 (Tarde)
+1 2 3
+D A B
+Analista – Tipo 2 (Manhã)
+1 2 3
+A A C

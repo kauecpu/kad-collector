@@ -1,0 +1,18 @@
+{
+  "exam": {
+    "filename": "prova-sintetica.pdf",
+    "metadata": {}
+  },
+  "answer_keys": [
+    {
+      "id": "candidate-a",
+      "filename": "gabarito-a-sintetico.pdf",
+      "metadata": {}
+    },
+    {
+      "id": "candidate-b",
+      "filename": "gabarito-b-sintetico.pdf",
+      "metadata": {}
+    }
+  ]
+}
