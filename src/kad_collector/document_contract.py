@@ -34,6 +34,17 @@ class NormalizedDocument(StrictModel):
     content_type: str | None = None
     acquired_at: datetime | None = None
 
+    def validate_content(self, payload: bytes) -> None:
+        actual_size = len(payload)
+        if actual_size < 1:
+            raise ValueError("arquivo local vazio")
+        if actual_size != self.size_bytes:
+            raise ValueError(
+                f"tamanho local divergente: esperado {self.size_bytes}, encontrado {actual_size}"
+            )
+        if hashlib.sha256(payload).hexdigest() != self.sha256:
+            raise ValueError("sha256 local divergente")
+
     def validate_local_file(self) -> None:
         path = Path(self.local_path)
         if not path.exists():
@@ -41,17 +52,7 @@ class NormalizedDocument(StrictModel):
         if not path.is_file():
             raise ValueError(f"caminho local nao e arquivo: {self.local_path}")
 
-        actual_size = path.stat().st_size
-        if actual_size < 1:
-            raise ValueError("arquivo local vazio")
-        if actual_size != self.size_bytes:
-            raise ValueError(
-                f"tamanho local divergente: esperado {self.size_bytes}, encontrado {actual_size}"
-            )
-
-        digest = _sha256_file(path)
-        if digest != self.sha256:
-            raise ValueError("sha256 local divergente")
+        self.validate_content(path.read_bytes())
 
 
 def _sha256_file(path: Path) -> str:

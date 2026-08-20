@@ -508,7 +508,7 @@ C
     def test_queue_rejects_known_year_and_variant_contradictions(self) -> None:
         exam = document(
             "exam",
-            "Concurso Fiscal 2026 Analista V1",
+            "Concurso Fiscal 2026 Analista V1 Manhã",
             "https://exam-source.test/fiscal-2026-v1.pdf",
             "6",
         ).model_copy(
@@ -570,6 +570,22 @@ C
                 }
             }
         )
+        wrong_turn = document(
+            "answer_key",
+            "Gabarito Concurso Fiscal 2026 Analista V1 Tarde",
+            "https://answers-source.test/fiscal-2026-analista-v1-tarde.pdf",
+            "a",
+        ).model_copy(
+            update={
+                "metadata": {
+                    "ano": "2026",
+                    "concurso": "Concurso Fiscal",
+                    "cargo": "Analista",
+                    "orgao": "Secretaria da Fazenda",
+                    "variant": "V1",
+                }
+            }
+        )
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -577,6 +593,7 @@ C
                 ("wrong-year", wrong_year),
                 ("wrong-variant", wrong_variant),
                 ("wrong-role", wrong_role),
+                ("wrong-turn", wrong_turn),
             ):
                 with self.subTest(label=label):
                     reviewed, issues = self._queue_with_single_key(

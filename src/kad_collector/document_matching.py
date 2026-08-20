@@ -8,6 +8,7 @@ _TOKEN_PATTERN = re.compile(r"[a-z0-9]+", re.IGNORECASE)
 _YEAR_PATTERN = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
 _PERIOD_PATTERN = re.compile(r"(?<!\d)((?:19|20)\d{2})\s*/\s*([12])(?!\d)")
 _DATE_PATTERN = re.compile(r"(?<!\d)\d{1,2}/(\d{1,2})/((?:19|20)\d{2})(?!\d)")
+_TURN_PATTERN = re.compile(r"\b(?:manha|tarde)\b", re.IGNORECASE)
 _VARIANT_PATTERN = re.compile(
     r"(?<![A-Z0-9])(?P<label>V|TIPO)[-_ ]*(?P<number>[1-9]\d*)(?!\d)",
     re.IGNORECASE,
@@ -101,6 +102,13 @@ def _periods(value: str) -> set[tuple[int, int]]:
     return periods
 
 
+def _turns(value: str) -> set[str]:
+    return {
+        match.group(0).casefold()
+        for match in _TURN_PATTERN.finditer(normalize_text(value))
+    }
+
+
 @dataclass(frozen=True)
 class DocumentEvidence:
     title: str
@@ -110,6 +118,7 @@ class DocumentEvidence:
     role: str | None = None
     organization: str | None = None
     variant: str | None = None
+    turn: str | None = None
 
     @property
     def searchable_text(self) -> str:
@@ -123,9 +132,17 @@ class DocumentEvidence:
                 self.role,
                 self.organization,
                 self.variant,
+                self.turn,
             )
             if value
         )
+
+    @property
+    def known_turns(self) -> set[str]:
+        for value in (self.turn or "", self.title, self.content):
+            if turns := _turns(value):
+                return turns
+        return set()
 
 
 def has_known_conflict(exam: DocumentEvidence, candidate: DocumentEvidence) -> bool:
@@ -166,6 +183,11 @@ def has_known_conflict(exam: DocumentEvidence, candidate: DocumentEvidence) -> b
     if candidate.year is not None:
         candidate_years.add(candidate.year)
     if exam_years and candidate_years and not exam_years & candidate_years:
+        return True
+
+    exam_turns = exam.known_turns
+    candidate_turns = candidate.known_turns
+    if exam_turns and candidate_turns and not exam_turns & candidate_turns:
         return True
 
     exam_variants = _variants(f"{exam.variant or ''} {exam.title}")

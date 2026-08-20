@@ -476,6 +476,20 @@ Enunciado completo da segunda questao.
         self.assertIs(_select_answer_key(exam, [in_batch]), in_batch)
         self.assertIsNone(_select_answer_key(exam, [cached]))
 
+        morning_exam = {
+            **exam,
+            "metadata": DesktopImportMetadata(
+                document_type="exam", document_title="Prova de Direito Manhã"
+            ).model_dump(mode="json"),
+        }
+        afternoon_key = {
+            **in_batch,
+            "metadata": DesktopImportMetadata(
+                document_type="answer_key", document_title="Respostas Tarde"
+            ).model_dump(mode="json"),
+        }
+        self.assertIsNone(_select_answer_key(morning_exam, [afternoon_key]))
+
     def test_same_job_key_with_known_year_or_variant_conflict_keeps_answer_missing(self) -> None:
         exam_text = (
             "{01}\nEnunciado completo de Direito.\n"

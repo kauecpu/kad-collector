@@ -6,6 +6,7 @@ import re
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
+from io import BytesIO
 from pathlib import Path
 from typing import Any, cast
 
@@ -31,14 +32,6 @@ from .document_matching import (
     structural_v_number,
 )
 from .models import QuestionRecord
-
-
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        while chunk := handle.read(1024 * 1024):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _document_type(filename: str, metadata: DesktopImportMetadata) -> str:
@@ -238,14 +231,14 @@ class DesktopProcessor:
             event.set()
         self.store.update_job(job_id, status="cancelling", message="Pausando com segurança")
 
-    def _validate_persisted_integrity(
+    def _read_validated_snapshot(
         self, document: dict[str, Any], warnings: list[str]
-    ) -> bool:
+    ) -> bytes | None:
         normalized = cast(NormalizedDocument | None, document["normalized_document"])
-        if normalized is None:
-            return True
         try:
-            normalized.validate_local_file()
+            payload = Path(cast(str, document["local_path"])).read_bytes()
+            if normalized is not None:
+                normalized.validate_content(payload)
         except (OSError, ValueError) as exc:
             warnings.append(f"integridade local divergente: {exc}")
             self.store.update_document(
@@ -253,8 +246,8 @@ class DesktopProcessor:
                 status="exception",
                 warnings_json=json.dumps(warnings, ensure_ascii=False),
             )
-            return False
-        return True
+            return None
+        return payload
 
     def run(self, job_id: str, cancel_event: threading.Event | None = None) -> None:
         event = cancel_event or threading.Event()
@@ -270,13 +263,13 @@ class DesktopProcessor:
             documents = self.store.documents_for_job(job_id)
             total_pages = 0
             for document in documents:
-                path = Path(cast(str, document["local_path"]))
                 document_id = cast(str, document["id"])
                 warnings = list(cast(list[str], document["warnings"]))
-                if not self._validate_persisted_integrity(document, warnings):
+                payload = self._read_validated_snapshot(document, warnings)
+                if payload is None:
                     continue
                 try:
-                    size = path.stat().st_size
+                    size = len(payload)
                     if size > MAX_PDF_BYTES:
                         warnings.append(
                             f"PDF excede o limite de {MAX_PDF_BYTES // (1024 * 1024)} MB"
@@ -290,7 +283,7 @@ class DesktopProcessor:
                         continue
                     page_count = int(document["page_count"])
                     if not page_count:
-                        reader = PdfReader(path, strict=False)
+                        reader = PdfReader(BytesIO(payload), strict=False)
                         page_count = len(reader.pages)
                 except (OSError, PdfReadError, DependencyError, ValueError) as exc:
                     self.store.update_document(
@@ -388,10 +381,11 @@ class DesktopProcessor:
         path = Path(cast(str, document["local_path"]))
         warnings = list(cast(list[str], document["warnings"]))
         self.store.update_job(job_id, current_file=path.name, message=f"Lendo {path.name}")
-        if not self._validate_persisted_integrity(document, warnings):
+        payload = self._read_validated_snapshot(document, warnings)
+        if payload is None:
             return
         try:
-            size = path.stat().st_size
+            size = len(payload)
             if size > MAX_PDF_BYTES:
                 warnings.append(f"PDF excede o limite de {MAX_PDF_BYTES // (1024 * 1024)} MB")
                 self.store.update_document(
@@ -401,7 +395,7 @@ class DesktopProcessor:
                     warnings_json=json.dumps(warnings, ensure_ascii=False),
                 )
                 return
-            reader = PdfReader(path, strict=False)
+            reader = PdfReader(BytesIO(payload), strict=False)
             page_count = len(reader.pages)
             if page_count > MAX_PDF_PAGES:
                 warnings.append(f"PDF excede o limite de {MAX_PDF_PAGES} páginas")
@@ -433,7 +427,7 @@ class DesktopProcessor:
 
         self.store.update_document(
             document_id,
-            sha256=_sha256(path),
+            sha256=hashlib.sha256(payload).hexdigest(),
             size_bytes=size,
             page_count=page_count,
             status="processing",

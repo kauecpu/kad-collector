@@ -41,6 +41,7 @@ def _evidence(document: DocumentRecord, content: str = "") -> DocumentEvidence:
         role=_metadata_value(document, "role", "cargo"),
         organization=_metadata_value(document, "organization", "orgao"),
         variant=_metadata_value(document, "variant", "tipo"),
+        turn=_metadata_value(document, "turn", "turno"),
     )
 
 

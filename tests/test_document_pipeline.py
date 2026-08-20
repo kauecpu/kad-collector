@@ -5,10 +5,12 @@ import importlib.util
 import sqlite3
 import tempfile
 import threading
+import time
 import unittest
 from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import patch
 
 from reportlab.pdfgen import canvas
 
@@ -432,6 +434,52 @@ class DocumentPipelinePersistenceTests(unittest.TestCase):
             self.assertEqual(stored["size_bytes"], expected_size)
             self.assertEqual(store.pages(submitted["id"]), [])
             self.assertTrue(any("integridade" in warning for warning in stored["warnings"]))
+
+    def test_processor_interprets_the_same_pdf_snapshot_it_validated(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "snapshot.pdf"
+            replacement_path = root / "replacement.pdf"
+            original = canvas.Canvas(str(path))
+            original.drawString(54, 800, "CONTEUDO ORIGINAL PRESERVADO NO SNAPSHOT")
+            original.save()
+            replacement = canvas.Canvas(str(replacement_path))
+            replacement.drawString(54, 800, "CONTEUDO ALTERADO DEPOIS DA LEITURA")
+            replacement.save()
+            original_payload = path.read_bytes()
+            replacement_payload = replacement_path.read_bytes()
+            store = DesktopStore(root / "collector.sqlite3")
+            from kad_collector.document_pipeline import DocumentPipeline
+
+            job_id = DocumentPipeline(store, RecordingRunner()).import_paths(
+                [path], DesktopImportMetadata(), "local"
+            )[0]
+            submitted = store.documents_for_job(job_id)[0]
+            real_read_bytes = Path.read_bytes
+
+            def read_then_replace(candidate: Path) -> bytes:
+                payload = real_read_bytes(candidate)
+                if candidate == path:
+                    path.write_bytes(replacement_payload)
+                return payload
+
+            with patch.object(Path, "read_bytes", autospec=True, side_effect=read_then_replace):
+                DesktopProcessor(store)._extract_document(
+                    job_id,
+                    submitted,
+                    threading.Event(),
+                    time.monotonic(),
+                )
+
+            self.assertEqual(path.read_bytes(), replacement_payload)
+            pages = store.pages(submitted["id"])
+            self.assertEqual(len(pages), 1)
+            self.assertIn("CONTEUDO ORIGINAL PRESERVADO", pages[0]["text"])
+            self.assertNotIn("CONTEUDO ALTERADO", pages[0]["text"])
+            self.assertEqual(
+                store.document(submitted["id"])["sha256"],
+                hashlib.sha256(original_payload).hexdigest(),
+            )
 
     def test_collected_submission_persists_automated_contract_and_uses_same_runner(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
