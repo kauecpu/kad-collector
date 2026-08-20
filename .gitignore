@@ -165,3 +165,7 @@ data/promotion/
 data/results/
 data/state/
 config/sources.toml
+
+# Local regression artifacts (official PDFs may be copyrighted)
+tests/regression/official/
+tests/regression/report.json

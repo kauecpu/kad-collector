@@ -14,6 +14,13 @@ from pathlib import Path
 from typing import Literal, cast
 from unittest.mock import patch
 
+from pypdf import PdfReader
+
+from .answer_key import AnswerEntry, parse_answer_key
+from .desktop_parser import parse_question_pages
+from .desktop_processor import _select_answer_key
+from .static_parser import FuvestStaticExtractor
+
 FixtureKind = Literal["official", "synthetic"]
 FixtureFormat = Literal["pdf", "text", "json"]
 CaseStatus = Literal["supported", "planned"]
@@ -225,6 +232,145 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _payload_sha256(payload: object, *, ensure_ascii: bool = True) -> str:
+    serialized = json.dumps(
+        payload,
+        ensure_ascii=ensure_ascii,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(serialized).hexdigest()
+
+
+def _only_fixture(fixtures: Mapping[str, Path]) -> Path:
+    if len(fixtures) != 1:
+        raise RegressionError(f"executor exige uma fixture, recebeu {len(fixtures)}")
+    return next(iter(fixtures.values()))
+
+
+def _answer_tokens(entries: Mapping[int, AnswerEntry]) -> list[str]:
+    return ["*" if entry.annulled else str(entry.answer) for _, entry in sorted(entries.items())]
+
+
+def _execute_inline_answer(
+    _case: CaseSpec, fixtures: Mapping[str, Path]
+) -> dict[str, object]:
+    text = _only_fixture(fixtures).read_text(encoding="utf-8")
+    questions, warnings = parse_question_pages([{"page_number": 1, "text": text}])
+    if len(questions) != 1:
+        raise RegressionError(f"esperada uma questão no documento comentado: {len(questions)}")
+    question = questions[0]
+    return {
+        "question_count": 1,
+        "question_number": question.number,
+        "answer": question.correct_answer,
+        "warnings": warnings,
+    }
+
+
+def _execute_answer_grid(
+    _case: CaseSpec, fixtures: Mapping[str, Path]
+) -> dict[str, object]:
+    text = _only_fixture(fixtures).read_text(encoding="utf-8")
+    selections = {
+        "1": parse_answer_key(text, variant="Tipo 1", role="Técnico", turn="Manhã"),
+        "2": parse_answer_key(text, variant="Tipo 2", role="Técnico", turn="Manhã"),
+        "3": parse_answer_key(text, variant="Tipo 3", role="Técnico", turn="Tarde"),
+        "4": parse_answer_key(text, variant="Tipo 4", role="Técnico", turn="Tarde"),
+    }
+    other_role = parse_answer_key(
+        text,
+        variant="Tipo 2",
+        role="Analista",
+        turn="Manhã",
+    )
+    return {
+        "types": {variant: _answer_tokens(entries) for variant, entries in selections.items()},
+        "annulled": sum(
+            entry.annulled for entries in selections.values() for entry in entries.values()
+        ),
+        "other_role_type_2": _answer_tokens(other_role),
+    }
+
+
+def _execute_selection(
+    _case: CaseSpec, fixtures: Mapping[str, Path]
+) -> dict[str, object]:
+    payload = json.loads(_only_fixture(fixtures).read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise RegressionError("fixture de associação deve conter um objeto JSON")
+    exam = payload.get("exam")
+    answer_keys = payload.get("answer_keys")
+    if not isinstance(exam, dict) or not isinstance(answer_keys, list):
+        raise RegressionError("fixture de associação exige exam e answer_keys")
+    if not all(isinstance(item, dict) for item in answer_keys):
+        raise RegressionError("answer_keys deve conter objetos")
+    selected = _select_answer_key(
+        cast(dict[str, object], exam),
+        cast(list[dict[str, object]], answer_keys),
+    )
+    return {"selected_id": selected.get("id") if selected is not None else "blocked"}
+
+
+def _execute_fuvest_official(
+    _case: CaseSpec, fixtures: Mapping[str, Path]
+) -> dict[str, object]:
+    try:
+        exam_path = fixtures["fuvest-exam-v1"]
+        answer_key_path = fixtures["fuvest-answer-key"]
+    except KeyError as exc:
+        raise RegressionError(f"fixture FUVEST ausente no caso: {exc}") from exc
+
+    exam_reader = PdfReader(exam_path, strict=False)
+    exam_text = "\n\n".join(
+        f"--- Pagina {number} ---\n"
+        f"{(page.extract_text() or '').replace(chr(0), '').strip()}"
+        for number, page in enumerate(exam_reader.pages, start=1)
+    )
+    questions = FuvestStaticExtractor().extract(exam_text, {}).questions
+    question_payload = [
+        [
+            question.number,
+            question.statement,
+            [[alternative.letter, alternative.text] for alternative in question.alternatives],
+            question.source_pages,
+        ]
+        for question in questions
+    ]
+
+    answer_reader = PdfReader(answer_key_path, strict=False)
+    answer_text = "\n".join((page.extract_text() or "") for page in answer_reader.pages)
+    answers: dict[str, object] = {}
+    for variant in ("V1", "V2", "V3", "V4"):
+        entries = parse_answer_key(answer_text, variant=variant)
+        payload = [
+            [number, entry.answer, entry.annulled] for number, entry in sorted(entries.items())
+        ]
+        answers[variant] = {
+            "count": len(entries),
+            "digest": _payload_sha256(payload),
+            "annulled": sum(entry.annulled for entry in entries.values()),
+        }
+    numbers = [question.number for question in questions]
+    return {
+        "exam_pages": len(exam_reader.pages),
+        "question_count": len(questions),
+        "first_question": numbers[0] if numbers else None,
+        "last_question": numbers[-1] if numbers else None,
+        "exam_digest": _payload_sha256(question_payload, ensure_ascii=False),
+        "answer_keys": answers,
+    }
+
+
+def production_executors() -> Mapping[str, CaseExecutor]:
+    return {
+        "fuvest_official": _execute_fuvest_official,
+        "inline_answer": _execute_inline_answer,
+        "answer_grid": _execute_answer_grid,
+        "definitive_selection": _execute_selection,
+        "ambiguous_selection": _execute_selection,
+    }
+
+
 def validate_fixture(spec: FixtureSpec, root: Path) -> Path:
     path = (root / spec.path).resolve()
     try:
@@ -327,7 +473,7 @@ def run_regression(
     executors: Mapping[str, CaseExecutor] | None = None,
 ) -> dict[str, object]:
     manifest = load_regression_manifest(manifest_path)
-    registry = dict(executors or {})
+    registry = dict(production_executors() if executors is None else executors)
     fixture_paths = {
         fixture.id: validate_fixture(fixture, manifest.path.parent)
         for fixture in manifest.fixtures

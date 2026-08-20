@@ -1,0 +1,168 @@
+schema_version = 1
+coverage_topics = [
+  "exam_answer_separate",
+  "same_pdf",
+  "types_1_4",
+  "preliminary_definitive",
+  "annulled",
+  "republication_version",
+  "scanned_ocr",
+  "multirole_turn_version",
+  "ambiguous_association_blocked",
+  "unrelated_document",
+]
+
+[[fixtures]]
+id = "fuvest-exam-v1"
+kind = "official"
+path = "official/fuvest2026-fase1-prova-v1.pdf"
+format = "pdf"
+size_bytes = 8019288
+sha256 = "93b417ad6ea7e81a3b6adc46337920fd71c213306849846723f13583074f9025"
+source_url = "https://www.fuvest.br/wp-content/uploads/fuvest2026-fase1-prova-V1.pdf"
+description = "Prova V1 da primeira fase do Vestibular FUVEST 2026, publicada no acervo oficial."
+
+[[fixtures]]
+id = "fuvest-answer-key"
+kind = "official"
+path = "official/fuvest2026-fase1-gabarito.pdf"
+format = "pdf"
+size_bytes = 218795
+sha256 = "a9e1084a125fa35bcefb875610328c0a8cb9b1a298880f2f0c75b928bd860e8e"
+source_url = "https://www.fuvest.br/wp-content/uploads/fuvest2026-fase1-gabarito.pdf"
+description = "Gabarito retificado da primeira fase FUVEST 2026, publicado no acervo oficial."
+
+[[fixtures]]
+id = "synthetic-inline-answer"
+kind = "synthetic"
+path = "synthetic/comvest-inline-answer.txt"
+format = "text"
+size_bytes = 189
+sha256 = "4820f88256104664be66979b1034289a12b1fb1781932f3cd7bf8c8d6bf715e2"
+description = "Questão comentada fictícia; a resposta C não pertence a prova oficial."
+
+[[fixtures]]
+id = "synthetic-answer-grid"
+kind = "synthetic"
+path = "synthetic/multi-grid-answer-key.txt"
+format = "text"
+size_bytes = 203
+sha256 = "4e36341f422f865643ca047efeedc327468d507ce9a9f87dc2b399d07d355a83"
+description = "Gabarito fictício com quatro tipos, dois cargos, turnos e uma anulação."
+
+[[fixtures]]
+id = "synthetic-definitive-selection"
+kind = "synthetic"
+path = "synthetic/definitive-selection.json"
+format = "json"
+size_bytes = 532
+sha256 = "52d4e501a85cb6ec7f75a21a0f44babddf60501a0ef768b313af7b22aabcda18"
+description = "Metadados fictícios para seleção entre gabarito preliminar e definitivo."
+
+[[fixtures]]
+id = "synthetic-ambiguous-selection"
+kind = "synthetic"
+path = "synthetic/ambiguous-selection.json"
+format = "json"
+size_bytes = 315
+sha256 = "88d53d82767032f45e797585ac34f3fe1ff15300e148a11999e21915427fddcf"
+description = "Metadados fictícios de dois gabaritos sem evidência para desempate."
+
+[[cases]]
+id = "fuvest-2026-separated-official"
+title = "Prova e gabarito oficiais separados da FUVEST 2026"
+status = "supported"
+executor = "fuvest_official"
+fixtures = ["fuvest-exam-v1", "fuvest-answer-key"]
+covers = ["exam_answer_separate"]
+
+[cases.expected]
+exam_pages = 38
+question_count = 90
+first_question = 1
+last_question = 90
+exam_digest = "e5f4c85527dd252c4a55e32b6e0caf35183d63b7a4dfe17a9b8b595fd181e81e"
+
+[cases.expected.answer_keys.V1]
+count = 90
+digest = "d3d1bebe77d523c8e62f04c9c70664c84a3adf6c98e4f75a527e8c06748873a7"
+annulled = 1
+
+[cases.expected.answer_keys.V2]
+count = 90
+digest = "30cf550188076510a07f3bce5cb05b1b254365e608b462ae8a5ceffdd13930b1"
+annulled = 1
+
+[cases.expected.answer_keys.V3]
+count = 90
+digest = "c7881f6d8e549359653815fe5fbd29a81ad3b40c0caaaec19fb41a07ba619efc"
+annulled = 1
+
+[cases.expected.answer_keys.V4]
+count = 90
+digest = "dce9f558a698e5d52ed62a66a04f3948ae1ecf33976651c91b1f330f5e18c490"
+annulled = 1
+
+[[cases]]
+id = "same-pdf-inline-answer"
+title = "Questão e resposta no mesmo documento"
+status = "supported"
+executor = "inline_answer"
+fixtures = ["synthetic-inline-answer"]
+covers = ["same_pdf"]
+expected = { question_count = 1, question_number = 1, answer = "C", warnings = [] }
+
+[[cases]]
+id = "multi-grid-answer-key"
+title = "Tipos 1 a 4, anulação e seleção por cargo e turno"
+status = "supported"
+executor = "answer_grid"
+fixtures = ["synthetic-answer-grid"]
+covers = ["types_1_4", "annulled", "multirole_turn_version"]
+
+[cases.expected]
+types = { "1" = ["A", "B", "*"], "2" = ["B", "C", "D"], "3" = ["C", "D", "A"], "4" = ["D", "A", "B"] }
+annulled = 1
+other_role_type_2 = ["A", "A", "C"]
+
+[[cases]]
+id = "preliminary-definitive-selection"
+title = "Gabarito definitivo vence a versão preliminar"
+status = "supported"
+executor = "definitive_selection"
+fixtures = ["synthetic-definitive-selection"]
+covers = ["preliminary_definitive"]
+expected = { selected_id = "definitive" }
+
+[[cases]]
+id = "ambiguous-association-blocked"
+title = "Associação ambígua permanece bloqueada"
+status = "supported"
+executor = "ambiguous_selection"
+fixtures = ["synthetic-ambiguous-selection"]
+covers = ["ambiguous_association_blocked"]
+expected = { selected_id = "blocked" }
+
+[[cases]]
+id = "republication-identity"
+title = "Republicação identificada sem depender do nome do arquivo"
+status = "planned"
+fixtures = []
+covers = ["republication_version"]
+gap = "O Collector ainda não possui identificador de revisão que diferencie uma correção editorial de uma duplicata por conteúdo."
+
+[[cases]]
+id = "scanned-document-ocr"
+title = "Documento digitalizado processado por OCR"
+status = "planned"
+fixtures = []
+covers = ["scanned_ocr"]
+gap = "O Collector detecta ausência de camada textual e envia o PDF para exceção; ele ainda não executa OCR."
+
+[[cases]]
+id = "unrelated-document-rejection"
+title = "Documento não relacionado rejeitado antes da estruturação"
+status = "planned"
+fixtures = []
+covers = ["unrelated_document"]
+gap = "A importação desktop não oferece o tipo explícito other e classifica todo arquivo automático que não parece gabarito como prova."

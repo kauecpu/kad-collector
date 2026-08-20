@@ -8,9 +8,11 @@ import unittest
 from pathlib import Path
 
 from kad_collector.regression import (
+    CaseSpec,
     FixtureSpec,
     RegressionError,
     load_regression_manifest,
+    production_executors,
     run_regression,
     validate_fixture,
 )
@@ -276,6 +278,164 @@ class RegressionRunnerTests(unittest.TestCase):
         first.pop("generated_at")
         second.pop("generated_at")
         self.assertEqual(first, second)
+
+    def test_planned_case_never_calls_an_executor(self) -> None:
+        topic_rows = ", ".join(f'"{item}"' for item in TOPICS)
+        self.manifest_path.write_text(
+            manifest_text(
+                case_rows=f"""
+[[cases]]
+id = "planned-one"
+title = "Lacuna conhecida"
+status = "planned"
+fixtures = []
+covers = [{topic_rows}]
+gap = "Contrato ausente no produto."
+"""
+            ),
+            encoding="utf-8",
+        )
+        called = False
+
+        def forbidden(*_args: object) -> dict[str, object]:
+            nonlocal called
+            called = True
+            return {}
+
+        report = run_regression(
+            self.manifest_path,
+            self.report_path,
+            executors={"planned-one": forbidden},
+        )
+
+        self.assertFalse(called)
+        self.assertEqual(report["summary"], {"supported": 0, "passed": 0, "planned": 1})
+        self.assertEqual(report["cases"][0]["status"], "planned")  # type: ignore[index]
+
+
+class RegressionExecutorTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def case(self, executor: str) -> CaseSpec:
+        return CaseSpec(
+            id=f"{executor}-case",
+            title="Caso sintético",
+            status="supported",
+            executor=executor,
+            fixtures=(),
+            covers=(),
+            expected={},
+        )
+
+    def test_inline_answer_executor_reads_answer_from_same_document(self) -> None:
+        path = self.root / "inline.txt"
+        path.write_text(
+            """QUESTÃO 1
+Assinale a opção correta neste caso fictício.
+A) Primeira opção sintética.
+B) Segunda opção sintética.
+C) Terceira opção sintética.
+Alternativa Correta: C
+""",
+            encoding="utf-8",
+        )
+
+        result = production_executors()["inline_answer"](
+            self.case("inline_answer"), {"inline": path}
+        )
+
+        self.assertEqual(
+            result,
+            {"question_count": 1, "question_number": 1, "answer": "C", "warnings": []},
+        )
+
+    def test_answer_grid_executor_selects_types_role_turn_and_annulment(self) -> None:
+        path = self.root / "grid.txt"
+        path.write_text(
+            """Técnico – Tipo 1 (Manhã)
+1 2 3
+A B *
+Técnico – Tipo 2 (Manhã)
+1 2 3
+B C D
+Técnico – Tipo 3 (Tarde)
+1 2 3
+C D A
+Técnico – Tipo 4 (Tarde)
+1 2 3
+D A B
+Analista – Tipo 2 (Manhã)
+1 2 3
+A A C
+""",
+            encoding="utf-8",
+        )
+
+        result = production_executors()["answer_grid"](
+            self.case("answer_grid"), {"grid": path}
+        )
+
+        self.assertEqual(
+            result,
+            {
+                "types": {"1": ["A", "B", "*"], "2": ["B", "C", "D"],
+                          "3": ["C", "D", "A"], "4": ["D", "A", "B"]},
+                "annulled": 1,
+                "other_role_type_2": ["A", "A", "C"],
+            },
+        )
+
+    def test_answer_key_selection_prefers_definitive_and_blocks_ambiguity(self) -> None:
+        definitive = self.root / "definitive.json"
+        definitive.write_text(
+            json.dumps(
+                {
+                    "exam": {"filename": "prova.pdf", "metadata": {"year": 2026}},
+                    "answer_keys": [
+                        {
+                            "id": "preliminary",
+                            "filename": "preliminar.pdf",
+                            "metadata": {"document_title": "Gabarito preliminar", "year": 2026},
+                        },
+                        {
+                            "id": "definitive",
+                            "filename": "definitivo.pdf",
+                            "metadata": {"document_title": "Gabarito definitivo", "year": 2026},
+                        },
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        ambiguous = self.root / "ambiguous.json"
+        ambiguous.write_text(
+            json.dumps(
+                {
+                    "exam": {"filename": "prova.pdf", "metadata": {}},
+                    "answer_keys": [
+                        {"id": "a", "filename": "a.pdf", "metadata": {}},
+                        {"id": "b", "filename": "b.pdf", "metadata": {}},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        selected = production_executors()["definitive_selection"](
+            self.case("definitive_selection"), {"selection": definitive}
+        )
+        blocked = production_executors()["ambiguous_selection"](
+            self.case("ambiguous_selection"), {"selection": ambiguous}
+        )
+
+        self.assertEqual(selected, {"selected_id": "definitive"})
+        self.assertEqual(blocked, {"selected_id": "blocked"})
 
 
 if __name__ == "__main__":
