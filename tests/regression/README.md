@@ -43,7 +43,8 @@ assinatura PDF divergirem.
 
 O script de preparação é o único comando deste pacote que usa rede. Ele não contorna
 autenticação, CAPTCHA, `robots.txt` ou bloqueios. As duas URLs apontam direto para documentos
-públicos cadastrados na configuração oficial do Collector.
+públicos cadastrados na configuração oficial do Collector. O script rejeita redirects; uma
+mudança da URL final exige atualização e revisão do manifesto.
 
 ## Comando único
 
@@ -68,6 +69,7 @@ O JSON registra:
 - hash e caminho do manifesto usado;
 - identificador, tipo, tamanho e SHA-256 de cada fixture;
 - estado e resultado resumido de cada caso;
+- erro e expectativa do caso quando uma regressão suportada falha;
 - linha de cobertura para cada requisito;
 - totais separados de casos suportados aprovados e lacunas planejadas.
 

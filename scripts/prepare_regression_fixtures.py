@@ -6,9 +6,10 @@ import time
 import urllib.robotparser
 from collections.abc import Sequence
 from dataclasses import replace
+from email.message import Message
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from kad_collector.regression import (
     FixtureSpec,
@@ -18,6 +19,27 @@ from kad_collector.regression import (
 )
 
 USER_AGENT = "KADCollector-RegressionFixturePreparation/1.0"
+
+
+class RejectRedirects(HTTPRedirectHandler):
+    def redirect_request(
+        self,
+        request: Request,
+        file_pointer: object,
+        code: int,
+        message: str,
+        headers: Message,
+        new_url: str,
+    ) -> Request | None:
+        del request, file_pointer, code, message, headers
+        raise RegressionError(f"redirecionamento não permitido: {new_url}")
+
+
+_URL_OPENER = build_opener(RejectRedirects())
+
+
+def urlopen(request: Request, *, timeout: int) -> object:
+    return _URL_OPENER.open(request, timeout=timeout)
 
 
 def _apply_access_policy(fixture: FixtureSpec) -> None:

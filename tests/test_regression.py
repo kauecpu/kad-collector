@@ -6,9 +6,11 @@ import socket
 import tempfile
 import unittest
 from contextlib import redirect_stderr
+from email.message import Message
 from io import BytesIO, StringIO
 from pathlib import Path
 from unittest.mock import patch
+from urllib.request import Request
 
 from kad_collector.cli import _run, build_parser, main
 from kad_collector.regression import (
@@ -292,7 +294,10 @@ class RegressionRunnerTests(unittest.TestCase):
         )
 
         self.assertEqual(first, first_disk)
-        self.assertEqual(first["summary"], {"supported": 1, "passed": 1, "planned": 0})
+        self.assertEqual(
+            first["summary"],
+            {"supported": 1, "passed": 1, "failed": 0, "planned": 0},
+        )
         self.assertTrue(first["offline"])
         first.pop("generated_at")
         second.pop("generated_at")
@@ -328,8 +333,27 @@ gap = "Contrato ausente no produto."
         )
 
         self.assertFalse(called)
-        self.assertEqual(report["summary"], {"supported": 0, "passed": 0, "planned": 1})
+        self.assertEqual(
+            report["summary"],
+            {"supported": 0, "passed": 0, "failed": 0, "planned": 1},
+        )
         self.assertEqual(report["cases"][0]["status"], "planned")  # type: ignore[index]
+
+    def test_failed_case_writes_report_with_failed_coverage(self) -> None:
+        def wrong_executor(*_args: object) -> dict[str, object]:
+            return {"question_count": 2}
+
+        with self.assertRaisesRegex(RegressionError, "resultado inesperado"):
+            run_regression(
+                self.manifest_path,
+                self.report_path,
+                executors={"inline_answer": wrong_executor},
+            )
+
+        report = json.loads(self.report_path.read_text(encoding="utf-8"))
+        self.assertEqual(report["summary"]["failed"], 1)
+        self.assertEqual(report["cases"][0]["status"], "failed")
+        self.assertEqual({row["state"] for row in report["coverage"]}, {"failed"})
 
 
 class RegressionExecutorTests(unittest.TestCase):
@@ -539,6 +563,18 @@ policy_basis = "Decisão explícita do teste."
                 prepare_official_fixtures(manifest_path)
             self.assertEqual(destination.read_bytes(), b"preserve-me")
 
+            same_size_wrong_hash = b"%PDF-fixturx\n"
+            self.assertEqual(len(same_size_wrong_hash), len(payload))
+            with (
+                patch(
+                    "scripts.prepare_regression_fixtures.urlopen",
+                    return_value=BytesIO(same_size_wrong_hash),
+                ),
+                self.assertRaisesRegex(RegressionError, "SHA-256 divergente"),
+            ):
+                prepare_official_fixtures(manifest_path)
+            self.assertEqual(destination.read_bytes(), b"preserve-me")
+
     def test_preparation_enforces_robots_policy_by_default(self) -> None:
         from scripts.prepare_regression_fixtures import prepare_official_fixtures
 
@@ -570,6 +606,22 @@ description = "PDF oficial de teste."
                 self.assertRaisesRegex(RegressionError, "robots.txt bloqueia"),
             ):
                 prepare_official_fixtures(manifest_path)
+
+    def test_preparation_rejects_every_redirect(self) -> None:
+        from scripts.prepare_regression_fixtures import RejectRedirects
+
+        handler = RejectRedirects()
+        request = Request("https://example.test/one.pdf")
+
+        with self.assertRaisesRegex(RegressionError, "redirecionamento não permitido"):
+            handler.redirect_request(
+                request,
+                BytesIO(),
+                302,
+                "Found",
+                Message(),
+                "http://other.test/one.pdf",
+            )
 
 
 if __name__ == "__main__":

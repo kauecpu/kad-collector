@@ -498,7 +498,9 @@ def run_regression(
     case_rows: list[dict[str, object]] = []
     case_states: dict[str, str] = {}
     passed = 0
+    failed = 0
     planned = 0
+    failure_messages: list[str] = []
     for case in manifest.cases:
         if case.status == "planned":
             planned += 1
@@ -513,24 +515,45 @@ def run_regression(
                 }
             )
             continue
+        failure: str | None = None
+        first: dict[str, object] | None = None
         executor = registry.get(case.executor or "")
         if executor is None:
-            raise RegressionError(f"executor desconhecido: {case.executor}")
+            failure = f"executor desconhecido: {case.executor}"
         selected_fixtures = {item: fixture_paths[item] for item in case.fixtures}
-        try:
-            with _offline_guard():
-                first = executor(case, selected_fixtures)
-                second = executor(case, selected_fixtures)
-        except RegressionError:
-            raise
-        except Exception as exc:
-            raise RegressionError(f"caso {case.id} falhou: {type(exc).__name__}: {exc}") from exc
-        if first != second:
-            raise RegressionError(f"caso não determinístico: {case.id}")
-        if first != case.expected:
-            raise RegressionError(
-                f"resultado inesperado no caso {case.id}: {first!r} != {case.expected!r}"
-            )
+        if executor is not None:
+            try:
+                with _offline_guard():
+                    first = executor(case, selected_fixtures)
+                    second = executor(case, selected_fixtures)
+            except Exception as exc:
+                failure = f"{type(exc).__name__}: {exc}"
+            else:
+                if first != second:
+                    failure = f"caso não determinístico: {case.id}"
+                elif first != case.expected:
+                    failure = (
+                        f"resultado inesperado no caso {case.id}: "
+                        f"{first!r} != {case.expected!r}"
+                    )
+        if failure is not None:
+            failed += 1
+            case_states[case.id] = "failed"
+            failure_messages.append(f"{case.id}: {failure}")
+            failed_row: dict[str, object] = {
+                "id": case.id,
+                "title": case.title,
+                "status": "failed",
+                "covers": list(case.covers),
+                "error": failure,
+            }
+            if first is not None:
+                failed_row["result"] = first
+                failed_row["expected"] = case.expected
+            case_rows.append(failed_row)
+            continue
+        if first is None:
+            raise AssertionError(f"caso {case.id} terminou sem resultado ou falha")
         passed += 1
         case_states[case.id] = "passed"
         case_rows.append(
@@ -567,8 +590,14 @@ def run_regression(
         "summary": {
             "supported": len(manifest.cases) - planned,
             "passed": passed,
+            "failed": failed,
             "planned": planned,
         },
     }
     _write_report(report_path, report)
+    if failure_messages:
+        raise RegressionError(
+            f"regressão falhou; relatório: {report_path}\n- "
+            + "\n- ".join(failure_messages)
+        )
     return report
