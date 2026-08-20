@@ -5,8 +5,12 @@ import json
 import socket
 import tempfile
 import unittest
+from contextlib import redirect_stderr
+from io import BytesIO, StringIO
 from pathlib import Path
+from unittest.mock import patch
 
+from kad_collector.cli import _run, build_parser, main
 from kad_collector.regression import (
     CaseSpec,
     FixtureSpec,
@@ -152,6 +156,21 @@ covers = [{planned_topics}]
         path = self.write_manifest(manifest_text(case_rows=planned))
 
         with self.assertRaisesRegex(RegressionError, "caso planned exige gap"):
+            load_regression_manifest(path)
+
+    def test_rejects_observe_or_ignore_policy_without_recorded_decision(self) -> None:
+        fixture = fixture_row().replace(
+            'kind = "synthetic"',
+            'kind = "official"\n'
+            'source_url = "https://example.test/file.txt"\n'
+            'robots_policy = "ignore"\n'
+            'crawl_delay_policy = "observe"',
+        )
+        path = self.write_manifest(
+            manifest_text(fixture_rows=fixture, case_rows=supported_case_row())
+        )
+
+        with self.assertRaisesRegex(RegressionError, "política exige decisão registrada"):
             load_regression_manifest(path)
 
     def test_rejects_supported_case_without_executor_or_known_fixture(self) -> None:
@@ -436,6 +455,121 @@ A A C
 
         self.assertEqual(selected, {"selected_id": "definitive"})
         self.assertEqual(blocked, {"selected_id": "blocked"})
+
+
+class RegressionCommandTests(unittest.TestCase):
+    def test_cli_forwards_manifest_and_report_to_runner(self) -> None:
+        args = build_parser().parse_args(
+            ["regression", "--manifest", "custom.toml", "--report", "custom.json"]
+        )
+        result = {
+            "summary": {"supported": 5, "passed": 5, "planned": 3},
+            "coverage": [],
+        }
+
+        with patch("kad_collector.cli.run_regression", return_value=result) as runner:
+            exit_code = _run(args)
+
+        self.assertEqual(exit_code, 0)
+        runner.assert_called_once_with(Path("custom.toml"), Path("custom.json"))
+
+    def test_cli_returns_two_for_regression_error(self) -> None:
+        error_output = StringIO()
+        with (
+            patch(
+                "kad_collector.cli.run_regression",
+                side_effect=RegressionError("fixture ausente"),
+            ),
+            redirect_stderr(error_output),
+        ):
+            exit_code = main(["regression"])
+
+        self.assertEqual(exit_code, 2)
+        self.assertIn("fixture ausente", error_output.getvalue())
+
+    def test_preparation_downloads_and_verifies_before_atomic_replace(self) -> None:
+        from scripts.prepare_regression_fixtures import prepare_official_fixtures
+
+        payload = b"%PDF-fixture\n"
+        digest = hashlib.sha256(payload).hexdigest()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path = root / "manifest.toml"
+            manifest_path.write_text(
+                manifest_text(
+                    fixture_rows=f"""
+[[fixtures]]
+id = "official-one"
+kind = "official"
+path = "official/one.pdf"
+format = "pdf"
+size_bytes = {len(payload)}
+sha256 = "{digest}"
+source_url = "https://example.test/one.pdf"
+description = "PDF oficial de teste."
+robots_policy = "ignore"
+crawl_delay_policy = "ignore"
+policy_basis = "Decisão explícita do teste."
+""",
+                    case_rows=supported_case_row(fixture_id="official-one"),
+                ),
+                encoding="utf-8",
+            )
+
+            with patch(
+                "scripts.prepare_regression_fixtures.urlopen",
+                return_value=BytesIO(payload),
+            ) as urlopen:
+                prepared = prepare_official_fixtures(manifest_path)
+
+            destination = root / "official" / "one.pdf"
+            self.assertEqual(prepared, [destination])
+            self.assertEqual(destination.read_bytes(), payload)
+            request = urlopen.call_args.args[0]
+            self.assertEqual(request.full_url, "https://example.test/one.pdf")
+
+            destination.write_bytes(b"preserve-me")
+            with (
+                patch(
+                    "scripts.prepare_regression_fixtures.urlopen",
+                    return_value=BytesIO(b"%PDF-" + b"x" * 100),
+                ),
+                self.assertRaisesRegex(RegressionError, "limite de tamanho"),
+            ):
+                prepare_official_fixtures(manifest_path)
+            self.assertEqual(destination.read_bytes(), b"preserve-me")
+
+    def test_preparation_enforces_robots_policy_by_default(self) -> None:
+        from scripts.prepare_regression_fixtures import prepare_official_fixtures
+
+        payload = b"%PDF-fixture\n"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path = root / "manifest.toml"
+            manifest_path.write_text(
+                manifest_text(
+                    fixture_rows=f"""
+[[fixtures]]
+id = "official-one"
+kind = "official"
+path = "official/one.pdf"
+format = "pdf"
+size_bytes = {len(payload)}
+sha256 = "{hashlib.sha256(payload).hexdigest()}"
+source_url = "https://example.test/one.pdf"
+description = "PDF oficial de teste."
+""",
+                    case_rows=supported_case_row(fixture_id="official-one"),
+                ),
+                encoding="utf-8",
+            )
+            robots = BytesIO(b"User-agent: *\nDisallow: /one.pdf\n")
+
+            with (
+                patch("scripts.prepare_regression_fixtures.urlopen", return_value=robots),
+                self.assertRaisesRegex(RegressionError, "robots.txt bloqueia"),
+            ):
+                prepare_official_fixtures(manifest_path)
 
 
 if __name__ == "__main__":

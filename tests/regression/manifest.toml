@@ -21,6 +21,9 @@ size_bytes = 8019288
 sha256 = "93b417ad6ea7e81a3b6adc46337920fd71c213306849846723f13583074f9025"
 source_url = "https://www.fuvest.br/wp-content/uploads/fuvest2026-fase1-prova-V1.pdf"
 description = "Prova V1 da primeira fase do Vestibular FUVEST 2026, publicada no acervo oficial."
+robots_policy = "ignore"
+crawl_delay_policy = "ignore"
+policy_basis = "Decisão administrativa de 2026-08-18 registrada em config/sources.official.toml."
 
 [[fixtures]]
 id = "fuvest-answer-key"
@@ -31,6 +34,9 @@ size_bytes = 218795
 sha256 = "a9e1084a125fa35bcefb875610328c0a8cb9b1a298880f2f0c75b928bd860e8e"
 source_url = "https://www.fuvest.br/wp-content/uploads/fuvest2026-fase1-gabarito.pdf"
 description = "Gabarito retificado da primeira fase FUVEST 2026, publicado no acervo oficial."
+robots_policy = "ignore"
+crawl_delay_policy = "ignore"
+policy_basis = "Decisão administrativa de 2026-08-18 registrada em config/sources.official.toml."
 
 [[fixtures]]
 id = "synthetic-inline-answer"

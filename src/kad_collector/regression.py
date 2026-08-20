@@ -24,6 +24,7 @@ from .static_parser import FuvestStaticExtractor
 FixtureKind = Literal["official", "synthetic"]
 FixtureFormat = Literal["pdf", "text", "json"]
 CaseStatus = Literal["supported", "planned"]
+AccessPolicy = Literal["enforce", "observe", "ignore"]
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
@@ -42,6 +43,9 @@ class FixtureSpec:
     sha256: str
     description: str
     source_url: str | None = None
+    robots_policy: AccessPolicy = "enforce"
+    crawl_delay_policy: AccessPolicy = "enforce"
+    policy_basis: str | None = None
 
 
 @dataclass(frozen=True)
@@ -98,6 +102,12 @@ def _parse_fixture(row: dict[str, object]) -> FixtureSpec:
     if raw_format not in {"pdf", "text", "json"}:
         raise RegressionError(f"formato de fixture desconhecido: {raw_format}")
     source_url = row.get("source_url")
+    raw_robots_policy = str(row.get("robots_policy", "enforce"))
+    raw_crawl_delay_policy = str(row.get("crawl_delay_policy", "enforce"))
+    for policy in (raw_robots_policy, raw_crawl_delay_policy):
+        if policy not in {"enforce", "observe", "ignore"}:
+            raise RegressionError(f"política de acesso desconhecida: {policy}")
+    policy_basis = row.get("policy_basis")
     return FixtureSpec(
         id=fixture_id,
         kind=cast(FixtureKind, raw_kind),
@@ -107,6 +117,9 @@ def _parse_fixture(row: dict[str, object]) -> FixtureSpec:
         sha256=sha256,
         description=description,
         source_url=str(source_url) if source_url is not None else None,
+        robots_policy=cast(AccessPolicy, raw_robots_policy),
+        crawl_delay_policy=cast(AccessPolicy, raw_crawl_delay_policy),
+        policy_basis=str(policy_basis) if policy_basis is not None else None,
     )
 
 
@@ -172,6 +185,10 @@ def _validate_manifest(manifest: RegressionManifest) -> None:
             errors.append(f"SHA-256 inválido: {fixture.id}")
         if fixture.kind == "official" and not (fixture.source_url or "").startswith("https://"):
             errors.append(f"origem oficial deve usar HTTPS: {fixture.id}")
+        if (
+            fixture.robots_policy != "enforce" or fixture.crawl_delay_policy != "enforce"
+        ) and not (fixture.policy_basis or "").strip():
+            errors.append(f"política exige decisão registrada: {fixture.id}")
         if fixture.format == "pdf" and fixture.path.suffix.casefold() != ".pdf":
             errors.append(f"fixture PDF deve usar extensão .pdf: {fixture.id}")
 
@@ -539,6 +556,9 @@ def run_regression(
                 "path": fixture.path.as_posix(),
                 "size_bytes": fixture.size_bytes,
                 "sha256": fixture.sha256,
+                "robots_policy": fixture.robots_policy,
+                "crawl_delay_policy": fixture.crawl_delay_policy,
+                "policy_basis": fixture.policy_basis,
             }
             for fixture in manifest.fixtures
         ],

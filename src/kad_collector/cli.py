@@ -16,6 +16,7 @@ from .json_utils import read_json
 from .models import CollectionFilters, QuestionBatch
 from .pdf_extractor import extract_manifest
 from .promotion import build_promotion_package, dry_run_promotion
+from .regression import RegressionError, run_regression
 from .review import approve_batch
 from .review_server import serve_review_application
 from .validation import validate_questions
@@ -169,6 +170,21 @@ def build_parser() -> argparse.ArgumentParser:
         "promote", help="valida e simula a promocao de um pacote, sem acessar o KAD"
     )
     promote.add_argument("package", type=_path)
+
+    regression = subparsers.add_parser(
+        "regression",
+        help="executa o pacote local de regressao sem rede nem banco operacional",
+    )
+    regression.add_argument(
+        "--manifest",
+        type=_path,
+        default=Path("tests/regression/manifest.toml"),
+    )
+    regression.add_argument(
+        "--report",
+        type=_path,
+        default=Path("tests/regression/report.json"),
+    )
     return parser
 
 
@@ -295,6 +311,23 @@ def _run(args: argparse.Namespace) -> int:
             f"{promotion_result.question_count} questoes, nenhuma escrita no KAD)"
         )
         return 0
+    if args.command == "regression":
+        report = run_regression(args.manifest, args.report)
+        summary = report["summary"]
+        if not isinstance(summary, dict):
+            raise RegressionError("relatório de regressão sem resumo")
+        print(
+            "Regressão offline: "
+            f"{summary['passed']}/{summary['supported']} casos suportados passaram; "
+            f"{summary['planned']} lacunas planejadas. Relatório: {args.report}"
+        )
+        coverage = report["coverage"]
+        if not isinstance(coverage, list):
+            raise RegressionError("relatório de regressão sem matriz de cobertura")
+        for row in coverage:
+            if isinstance(row, dict) and row.get("state") == "planned":
+                print(f"PLANNED: {row['topic']}")
+        return 0
     if args.command == "approve":
         batch, path = approve_batch(
             args.batch,
@@ -342,6 +375,9 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         print("\nTeste encerrado pelo usuario.")
         return 130
+    except RegressionError as exc:
+        print(f"ERRO DE REGRESSÃO: {exc}", file=sys.stderr)
+        return 2
     except (OSError, RuntimeError, ValueError) as exc:
         print(f"ERRO: {exc}", file=sys.stderr)
         return 1

@@ -589,5 +589,29 @@ ruff check .
 mypy src
 ```
 
+### Pacote hibrido de regressao
+
+O pacote em `tests/regression/` combina fixtures sinteticas ficticias versionadas com dois
+PDFs oficiais da FUVEST 2026 mantidos fora do Git. O manifesto registra URL de origem,
+tamanho, SHA-256, formato, caso e estado de cobertura. A preparacao local baixa no maximo a
+prova V1 e o gabarito retificado, uma requisicao por arquivo, sem descoberta ou paginacao:
+
+```cmd
+.venv\Scripts\python.exe scripts\prepare_regression_fixtures.py
+```
+
+Depois da preparacao, um comando valida integridade, bloqueia rede, executa cada caso
+suportado duas vezes e grava um relatorio local sem acessar banco operacional:
+
+```cmd
+.venv\Scripts\kad-collector.exe regression
+```
+
+O pacote cobre prova e gabarito separados, resposta no mesmo documento, tipos 1 a 4,
+preliminar e definitivo, anulacao, grades por cargo e turno e associacao ambigua bloqueada.
+Republicacao, OCR real e rejeicao explicita de documento nao relacionado permanecem marcados
+como `planned`. A [documentacao de manutencao](tests/regression/README.md) e a
+[matriz final](tests/regression/COVERAGE.md) explicam os limites e o processo de atualizacao.
+
 Artefatos dentro de `data/` podem conter material protegido e nao devem ser enviados ao
 GitHub. Nunca contorne autenticacao, CAPTCHA, bloqueios, paywalls ou restricoes tecnicas.
