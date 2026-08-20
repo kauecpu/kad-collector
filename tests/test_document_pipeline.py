@@ -1,9 +1,14 @@
+import gc
 import hashlib
+import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 
+from kad_collector.desktop_models import DesktopImportMetadata
+from kad_collector.desktop_store import DesktopStore
 from kad_collector.models import DocumentRecord
 
 
@@ -140,6 +145,132 @@ class DocumentPipelineContractTests(unittest.TestCase):
                 document.model_copy(update={"size_bytes": len(payload) + 1}).validate_local_file()
             with self.assertRaises(ValueError):
                 document.model_copy(update={"sha256": "0" * 64}).validate_local_file()
+
+
+class RecordingRunner:
+    def __init__(self) -> None:
+        self.started_ids: list[str] = []
+
+    def start(self, job_id: str) -> None:
+        self.started_ids.append(job_id)
+
+
+class DocumentPipelinePersistenceTests(unittest.TestCase):
+    def test_legacy_database_adds_contract_column_without_losing_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "collector.sqlite3"
+            store = DesktopStore(database_path)
+            job_id = "legacy-job"
+            document_id = "legacy-document"
+            with closing(sqlite3.connect(database_path)) as connection:
+                connection.execute(
+                    "INSERT INTO jobs (id, created_at, updated_at, status, classifier_provider) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (
+                        job_id,
+                        "2026-08-20T00:00:00+00:00",
+                        "2026-08-20T00:00:00+00:00",
+                        "queued",
+                        "local",
+                    ),
+                )
+                connection.execute(
+                    "INSERT INTO documents ("
+                    "id, job_id, local_path, filename, metadata_json, created_at, updated_at"
+                    ") VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        document_id,
+                        job_id,
+                        "/tmp/legacy.pdf",
+                        "legacy.pdf",
+                        "{}",
+                        "2026-08-20T00:00:00+00:00",
+                        "2026-08-20T00:00:00+00:00",
+                    ),
+                )
+                columns = {
+                    row[1] for row in connection.execute("PRAGMA table_info(documents)")
+                }
+                if "normalized_json" in columns:
+                    connection.execute("ALTER TABLE documents DROP COLUMN normalized_json")
+                connection.commit()
+
+            reopened = DesktopStore(database_path)
+
+            self.assertEqual(len(reopened.documents_for_job(job_id)), 1)
+            self.assertIsNone(reopened.documents_for_job(job_id)[0]["normalized_document"])
+            with closing(sqlite3.connect(database_path)) as connection:
+                columns = {
+                    row[1] for row in connection.execute("PRAGMA table_info(documents)")
+                }
+                count = connection.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
+            self.assertIn("normalized_json", columns)
+            self.assertEqual(count, 1)
+            del store, reopened
+            gc.collect()
+
+    def test_direct_import_persists_validated_normalized_documents_and_starts_runner(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = [root / "first.pdf", root / "second.pdf"]
+            for path in paths:
+                path.write_bytes(b"%PDF-1.7\nlocal fixture\n")
+            store = DesktopStore(root / "collector.sqlite3")
+            runner = RecordingRunner()
+
+            from kad_collector.document_pipeline import DocumentPipeline
+
+            pipeline = DocumentPipeline(store, runner)
+            job_ids = pipeline.import_paths(
+                paths,
+                DesktopImportMetadata(provider="manual", board="Manual Board", year=2026),
+                "local",
+            )
+
+            self.assertEqual(runner.started_ids, job_ids)
+            self.assertEqual(len(job_ids), 1)
+            documents = store.documents_for_job(job_ids[0])
+            self.assertEqual(len(documents), 2)
+            for document in documents:
+                normalized = document["normalized_document"]
+                self.assertEqual(normalized.entry_method, "direct_import")
+                normalized.validate_local_file()
+
+    def test_collected_submission_persists_automated_contract_and_uses_same_runner(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "collected.pdf"
+            payload = b"%PDF-1.7\ncollected fixture\n"
+            path.write_bytes(payload)
+            record = DocumentRecord(
+                source_id="source-1",
+                source_name="Source One",
+                document_type="exam",
+                title="Collected exam",
+                original_url="https://example.test/exam.pdf",
+                resolved_url="https://example.test/exam.pdf",
+                local_path=str(path),
+                sha256=hashlib.sha256(payload).hexdigest(),
+                content_type="application/pdf",
+                size_bytes=len(payload),
+                downloaded_at=datetime(2026, 8, 20, tzinfo=UTC),
+                authorization_basis="permission",
+                metadata={"banca": "Source Board", "ano": "2026"},
+            )
+            store = DesktopStore(root / "collector.sqlite3")
+            runner = RecordingRunner()
+
+            from kad_collector.document_contract import normalize_collected_document
+            from kad_collector.document_pipeline import DocumentPipeline
+
+            pipeline = DocumentPipeline(store, runner)
+            job_ids = pipeline.submit([normalize_collected_document(record)], "local")
+
+            self.assertEqual(runner.started_ids, job_ids)
+            stored = store.documents_for_job(job_ids[0])[0]
+            self.assertEqual(stored["normalized_document"].entry_method, "automated_collection")
+            self.assertEqual(stored["metadata"]["board"], "Source Board")
+            self.assertEqual(stored["metadata"]["year"], 2026)
 
 
 if __name__ == "__main__":

@@ -11,7 +11,6 @@ from unittest.mock import patch
 from kad_collector.desktop_collection import (
     DesktopCollectionManager,
     _import_metadata,
-    _processing_batches,
 )
 from kad_collector.desktop_models import DesktopFilterSet, DesktopImportMetadata
 from kad_collector.desktop_processor import DesktopProcessor, _document_type
@@ -524,10 +523,19 @@ Enunciado completo da segunda questao.
             source, "https://conhecimento.fgv.br/concursos/teste2026", answer_key
         )
 
-        batches = _processing_batches(documents, metadata_by_path)
+        from kad_collector.document_contract import normalize_collected_document
+        from kad_collector.document_pipeline import processing_batches
+
+        normalized_documents = [normalize_collected_document(document) for document in documents]
+        batches = processing_batches(normalized_documents)
 
         self.assertEqual(len(batches), 2)
-        self.assertTrue(all(key_path.resolve() in batch for batch in batches))
+        self.assertTrue(
+            all(
+                str(key_path.resolve()) in {document.local_path for document in batch}
+                for batch in batches
+            )
+        )
         self.assertTrue(all(len(batch) <= 20 for batch in batches))
 
     def test_reference_only_source_cannot_start_content_download(self) -> None:

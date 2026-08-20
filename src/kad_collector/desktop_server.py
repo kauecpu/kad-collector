@@ -29,6 +29,7 @@ from .desktop_models import (
 )
 from .desktop_processor import DesktopProcessor
 from .desktop_store import DesktopStore
+from .document_pipeline import DocumentPipeline
 from .models import QuestionRecord
 
 MAX_REQUEST_BYTES = 5_000_000
@@ -47,10 +48,12 @@ class DesktopApplication:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.store = DesktopStore(self.data_dir / "collector.sqlite3")
         self.processor = DesktopProcessor(self.store)
+        self.pipeline = DocumentPipeline(self.store, self.processor)
         self.collection_manager = DesktopCollectionManager(
             self.data_dir,
             self.store,
             self.processor,
+            self.pipeline,
         )
         self.token = secrets.token_urlsafe(32)
 
@@ -98,9 +101,10 @@ class DesktopApplication:
             raise ValueError("classificador deve ser local ou openai")
         if classifier_provider == "openai" and not os.environ.get("OPENAI_API_KEY"):
             raise ValueError("OPENAI_API_KEY não está configurada nesta sessão")
-        job_id = self.store.create_job(paths, metadata, classifier_provider)
-        self.processor.start(job_id)
-        return job_id
+        job_ids = self.pipeline.import_paths(paths, metadata, classifier_provider)
+        if len(job_ids) != 1:
+            raise RuntimeError("a importação direta deve gerar um único lote")
+        return job_ids[0]
 
     def collect_from_link(self, payload: dict[str, Any]) -> str:
         return self.collection_manager.start(payload)
