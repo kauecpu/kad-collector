@@ -173,7 +173,7 @@ desconhecido ou nao aplicavel, nunca um valor inferido para preencher o contrato
 
 | Campo | Regra e semantica de ausencia |
 |---|---|
-| `local_path` | Caminho absoluto do PDF local, obrigatorio. |
+| `local_path` | Caminho local preservado do PDF, obrigatorio. Importacoes diretas o resolvem para caminho absoluto; registros coletados pela CLI podem preservar caminho relativo. |
 | `sha256` | Hash SHA-256 do arquivo local, obrigatorio; divergencia impede o processamento. |
 | `size_bytes` | Tamanho do arquivo em bytes, obrigatorio e maior que zero. |
 | `declared_type` | `auto`, `exam`, `answer_key` ou `other`; `auto` significa que o tipo nao foi declarado e sera identificado estruturalmente. |
@@ -191,9 +191,11 @@ desconhecido ou nao aplicavel, nunca um valor inferido para preencher o contrato
 | `content_type` | MIME observado na aquisicao; `null` quando nao foi observado. |
 | `acquired_at` | Data e hora da aquisicao; `null` quando nao existem. |
 
-O contrato completo e gravado em `documents.normalized_json` no SQLite. O arquivo, hash,
-metadados e evidencias ficam associados ao documento para auditoria e revisao, inclusive
-quando a interpretacao falha.
+No pipeline desktop, o contrato completo e gravado em `documents.normalized_json` no SQLite.
+O arquivo, hash, metadados e evidencias ficam associados ao documento para auditoria e revisao,
+inclusive quando a interpretacao falha. Os fluxos de CLI `collect`, `run` e `sync` mantem os
+schemas de manifesto e relatorio existentes e normalizam o documento na fronteira local de
+extracao, sem `DesktopStore`.
 
 ### Como cada entrada chega ao mesmo fluxo
 

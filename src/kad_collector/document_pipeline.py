@@ -32,10 +32,10 @@ def _editorial_metadata(document: NormalizedDocument) -> dict[str, str | int]:
 def _batch_key(document: NormalizedDocument) -> tuple[object, ...]:
     metadata = _editorial_metadata(document)
     return (
-        metadata.get("provider"),
         metadata.get("concurso"),
         metadata.get("year"),
         metadata.get("role"),
+        metadata.get("organization"),
     )
 
 

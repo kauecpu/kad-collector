@@ -179,6 +179,52 @@ class DocumentPipelineContractTests(unittest.TestCase):
                 reprocessed.model_dump(exclude={"entry_method"}),
             )
 
+    def test_batches_collected_documents_by_semantic_metadata_not_source_id(self) -> None:
+        acquired_at = datetime(2026, 8, 20, tzinfo=UTC)
+
+        def collected(
+            source_id: str, document_type: str, title: str, suffix: str
+        ) -> DocumentRecord:
+            return DocumentRecord(
+                source_id=source_id,
+                source_name=f"Fonte {source_id}",
+                document_type=document_type,
+                title=title,
+                original_url=f"https://{source_id}.example.test/{suffix}.pdf",
+                resolved_url=f"https://{source_id}.example.test/{suffix}.pdf",
+                local_path=f"/tmp/{suffix}.pdf",
+                sha256=(suffix[0] * 64),
+                content_type="application/pdf",
+                size_bytes=1,
+                downloaded_at=acquired_at,
+                authorization_basis="permission",
+                metadata={
+                    "concurso": "Concurso 2026",
+                    "ano": "2026",
+                    "cargo": "Analista",
+                    "orgao": "Instituto",
+                },
+            )
+
+        from kad_collector.document_contract import normalize_collected_document
+        from kad_collector.document_pipeline import processing_batches
+
+        documents = [
+            normalize_collected_document(collected("source-a", "exam", "Prova A", "a")),
+            normalize_collected_document(collected("source-b", "exam", "Prova B", "b")),
+            normalize_collected_document(
+                collected("source-c", "answer_key", "Gabarito", "c")
+            ),
+        ]
+
+        batches = processing_batches(documents)
+
+        self.assertEqual(len(batches), 1)
+        self.assertEqual(
+            {document.local_path for document in batches[0]},
+            {"/tmp/a.pdf", "/tmp/b.pdf", "/tmp/c.pdf"},
+        )
+
     def test_local_validation_rejects_missing_directory_empty_wrong_size_and_hash(self) -> None:
         payload = b"%PDF-valid"
         with tempfile.TemporaryDirectory() as directory:
