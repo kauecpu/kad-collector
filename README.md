@@ -147,6 +147,121 @@ consultar o PDF na pagina de origem, enviar para excecoes com justificativa, adi
 aprovar individualmente ou em lote. Somente uma aprovacao humana move a questao para
 **Exportaveis**.
 
+## Documento normalizado: aquisicao e interpretacao
+
+O Collector separa a **aquisicao** da **interpretacao**. Aquisicao e a etapa que conhece a
+fonte e aceita ou rejeita um download. Ela descobre links, valida hosts e redirecionamentos,
+aplica `robots.txt`, `Crawl-delay`, quotas, MIME, tamanho, SHA-256, termos e autorizacao. A
+interpretacao recebe somente um PDF local validado e seu contrato normalizado. Ela extrai
+paginas, identifica prova e gabarito pela estrutura, associa documentos com evidencia,
+estrutura questoes, valida, preserva duplicatas para revisao e persiste o resultado.
+
+```text
+Fonte oficial -> aquisição -> documento local normalizado -> interpretação genérica -> revisão -> exportação
+```
+
+As regras de hosts, descoberta, paginacao, padroes de prova e gabarito, politicas de crawl e
+metadados declarados por fonte continuam exclusivamente na aquisicao. Elas existem antes de
+haver um arquivo aceito e provam de onde ele veio. O interpretador nao escolhe comportamento
+por `source_id`, nome de fonte ou configuracao TOML, para que o mesmo PDF local tenha a mesma
+entrada quando veio de coleta ou de importacao.
+
+### Contrato `NormalizedDocument`
+
+Todo documento entregue ao interpretador possui os campos abaixo. Ausencia significa
+desconhecido ou nao aplicavel, nunca um valor inferido para preencher o contrato.
+
+| Campo | Regra e semantica de ausencia |
+|---|---|
+| `local_path` | Caminho absoluto do PDF local, obrigatorio. |
+| `sha256` | Hash SHA-256 do arquivo local, obrigatorio; divergencia impede o processamento. |
+| `size_bytes` | Tamanho do arquivo em bytes, obrigatorio e maior que zero. |
+| `declared_type` | `auto`, `exam`, `answer_key` ou `other`; `auto` significa que o tipo nao foi declarado e sera identificado estruturalmente. |
+| `title` | Titulo obrigatorio; na importacao local e o nome do arquivo. |
+| `original_url` | URL originalmente solicitada; `null` quando o documento nao veio de URL conhecida. |
+| `resolved_url` | URL final apos redirecionamentos; `null` quando nao existe URL conhecida. |
+| `source_page_url` | Pagina que levou a descoberta; `null` quando nao foi registrada. |
+| `entry_method` | `automated_collection`, `direct_import` ou `reprocessing`, sempre informado. |
+| `metadata` | Somente metadados conhecidos, como banca, ano, cargo e orgao; `{}` quando nenhum foi comprovado. Chaves ausentes nao sao inventadas. |
+| `evidence` | Evidencias de autorizacao e termos da coleta; `[]` quando nao houve evidencia registrada. |
+| `warnings` | Avisos de compatibilidade ou de entrada; `[]` quando nao ha avisos. |
+| `external_id` | Identificador externo; `null` quando a fonte nao o forneceu. |
+| `source_id` | Identificador interno da fonte de aquisicao; `null` na importacao sem fonte. |
+| `source_name` | Nome da fonte de aquisicao; `null` na importacao sem fonte. |
+| `content_type` | MIME observado na aquisicao; `null` quando nao foi observado. |
+| `acquired_at` | Data e hora da aquisicao; `null` quando nao existem. |
+
+O contrato completo e gravado em `documents.normalized_json` no SQLite. O arquivo, hash,
+metadados e evidencias ficam associados ao documento para auditoria e revisao, inclusive
+quando a interpretacao falha.
+
+### Como cada entrada chega ao mesmo fluxo
+
+- **Coleta automatica:** na aba **Coletar links** ou nos comandos `collect`, `run` e `sync`, a
+  configuracao da fonte primeiro aplica as regras de aquisicao. Cada download aprovado e
+  adaptado para `entry_method = "automated_collection"`; falhas de download nao criam trabalho
+  de interpretacao.
+- **Importacao direta:** no aplicativo desktop, selecione um PDF, varios PDFs ou uma pasta. A
+  pasta e expandida para seus PDFs e todos passam pela mesma submissao de documentos locais,
+  com `entry_method = "direct_import"`. O hash e o tamanho sao calculados localmente; campos de
+  origem que nao existem permanecem `null` ou vazios.
+- **Reprocessamento local:** o servico da aplicacao cria um novo trabalho a partir do contrato
+  armazenado, valida novamente o arquivo local e usa `entry_method = "reprocessing"`. Ele nao
+  chama descoberta, downloader ou configuracao de fonte. Este recurso esta disponivel somente
+  como servico da aplicacao; esta versao nao documenta um comando de CLI nem uma rota de UI para
+  acionamento manual.
+
+O reprocessamento nunca sobrescreve o documento, a questao, a decisao editorial ou a auditoria
+historicos. O novo trabalho preserva sua propria evidencia. Se gerar a mesma questao, a nova
+questao recebe a flag `duplicate`; a questao historica continua intacta para comparacao e
+revisao.
+
+### Nova fonte e nova estrategia estrutural
+
+Para cadastrar uma nova fonte, altere somente sua configuracao de aquisicao, seguindo
+**Configurando uma fonte**: origem autorizada, `allowed_hosts`, estrategias de descoberta,
+padroes de links e tipos, limites, politica de `robots.txt` e `Crawl-delay`, base de uso e
+metadados comprovados. Comece com `enabled = false` e habilite somente apos a conferencia
+administrativa. Nenhuma nova fonte deve introduzir regra de identificador no interpretador.
+
+Uma nova estrategia de documento so e justificada quando a estrutura do PDF nao puder ser
+representada por `declared_type`, metadados, titulo, conteudo e evidencia ja disponiveis, e a
+mesma estrutura puder ocorrer em mais de uma fonte. Exemplos sao um formato novo de variante,
+uma relacao prova-gabarito ou uma organizacao de itens que a interpretacao generica nao consiga
+identificar com evidencia. Diferencas de host, URL, catalogo ou politica continuam sendo
+configuracao de aquisicao, nao estrategia de interpretacao.
+
+### SQLite, compatibilidade e rollback
+
+A migracao adiciona somente a coluna anulavel `normalized_json` a `documents` com `ALTER TABLE`.
+Nao remove nem altera colunas, questoes, paginas, auditoria ou decisoes existentes. Bancos
+anteriores continuam legiveis. Ao reprocessar uma linha antiga sem contrato salvo, o Collector
+reconstroi apenas os campos comprovados pelas colunas existentes e registra um aviso de
+compatibilidade; campos de origem ausentes continuam desconhecidos.
+
+Para rollback desta mudanca:
+
+1. Encerre o Collector.
+2. Preserve `collector.sqlite3`, os arquivos `collector.sqlite3-wal` e
+   `collector.sqlite3-shm`, e os PDFs locais.
+3. Instale ou execute a versao anterior do Collector. Ela ignora a coluna adicional
+   `normalized_json` e le as colunas anteriores sem restauracao do banco.
+4. Nao apague documentos, questoes, auditoria ou decisoes para desfazer a versao. Se for
+   necessario reconstruir somente cache, telemetria e checkpoints de coleta, remova apenas
+   `collection-engine.sqlite3`, como descrito em **Operacao e recuperacao**.
+
+Uma copia de seguranca do banco continua recomendada antes de atualizar o aplicativo.
+
+### Limitacoes conhecidas
+
+- O Collector detecta PDF digitalizado ou com pouco texto, mas nao executa OCR.
+- Prova e gabarito no mesmo PDF nao recebem suporte completo neste fluxo.
+- Associacoes sem evidencia suficiente, inclusive empates, seguem para excecao sem resposta
+  oficial aplicada.
+- Parsers locais legados permanecem apenas para o teste guiado e a regressao.
+- A separacao nao cria fonte, agendamento, identidade semantica completa, publicacao no KAD,
+  comando de CLI ou rota de UI para reprocessamento.
+
 ## Configurando uma fonte
 
 Copie o bloco `[[sources]]` do exemplo e preencha:

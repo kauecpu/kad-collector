@@ -151,7 +151,9 @@ class DocumentPipelineContractTests(unittest.TestCase):
         document = normalize_collected_document(record)
 
         self.assertEqual(document.evidence, [])
+        self.assertEqual(document.warnings, [])
         self.assertEqual(document.metadata, {})
+        self.assertIsNone(document.external_id)
         self.assertIsNone(document.source_page_url)
 
     def test_reprocessing_changes_only_entry_method(self) -> None:
@@ -542,6 +544,15 @@ class DocumentPipelinePersistenceTests(unittest.TestCase):
             self.assertEqual(store.document(original_document["id"]), before_document)
             self.assertEqual(store.question(original_question["id"]), before_question)
             self.assertEqual(store.audit_log(original_question["id"]), before_audit)
+            reprocessed_questions = store.query(DesktopFilterSet())["questions"]
+            self.assertEqual(len(reprocessed_questions), 2)
+            reprocessed_question = next(
+                question
+                for question in reprocessed_questions
+                if question["document_id"] != original_document["id"]
+            )
+            self.assertIn("duplicate", reprocessed_question["flags"])
+            self.assertNotIn("duplicate", before_question["flags"])
 
     def test_reprocess_rejects_duplicate_ids_before_multi_batch_submission(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
