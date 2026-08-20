@@ -22,6 +22,7 @@ from .desktop_models import (
 )
 from .desktop_parser import parse_question_pages
 from .desktop_store import DesktopStore
+from .document_contract import NormalizedDocument
 from .document_matching import (
     DocumentEvidence,
     has_known_conflict,
@@ -237,6 +238,24 @@ class DesktopProcessor:
             event.set()
         self.store.update_job(job_id, status="cancelling", message="Pausando com segurança")
 
+    def _validate_persisted_integrity(
+        self, document: dict[str, Any], warnings: list[str]
+    ) -> bool:
+        normalized = cast(NormalizedDocument | None, document["normalized_document"])
+        if normalized is None:
+            return True
+        try:
+            normalized.validate_local_file()
+        except (OSError, ValueError) as exc:
+            warnings.append(f"integridade local divergente: {exc}")
+            self.store.update_document(
+                cast(str, document["id"]),
+                status="exception",
+                warnings_json=json.dumps(warnings, ensure_ascii=False),
+            )
+            return False
+        return True
+
     def run(self, job_id: str, cancel_event: threading.Event | None = None) -> None:
         event = cancel_event or threading.Event()
         started = time.monotonic()
@@ -254,6 +273,8 @@ class DesktopProcessor:
                 path = Path(cast(str, document["local_path"]))
                 document_id = cast(str, document["id"])
                 warnings = list(cast(list[str], document["warnings"]))
+                if not self._validate_persisted_integrity(document, warnings):
+                    continue
                 try:
                     size = path.stat().st_size
                     if size > MAX_PDF_BYTES:
@@ -367,6 +388,8 @@ class DesktopProcessor:
         path = Path(cast(str, document["local_path"]))
         warnings = list(cast(list[str], document["warnings"]))
         self.store.update_job(job_id, current_file=path.name, message=f"Lendo {path.name}")
+        if not self._validate_persisted_integrity(document, warnings):
+            return
         try:
             size = path.stat().st_size
             if size > MAX_PDF_BYTES:

@@ -405,6 +405,34 @@ class DocumentPipelinePersistenceTests(unittest.TestCase):
             self.assertIsNone(stored["metadata"]["source_url"])
             self.assertIsNone(stored["metadata"]["canonical_url"])
 
+    def test_processor_rejects_pdf_changed_after_submission_without_replacing_integrity(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "mutable.pdf"
+            pdf = canvas.Canvas(str(path))
+            pdf.drawString(54, 800, "QUESTAO 1")
+            pdf.save()
+            store = DesktopStore(root / "collector.sqlite3")
+            from kad_collector.document_pipeline import DocumentPipeline
+
+            pipeline = DocumentPipeline(store, RecordingRunner())
+            job_id = pipeline.import_paths([path], DesktopImportMetadata(), "local")[0]
+            submitted = store.documents_for_job(job_id)[0]
+            expected_sha256 = submitted["sha256"]
+            expected_size = submitted["size_bytes"]
+
+            path.write_bytes(b"%PDF-1.7\nmutated after submission\n")
+            DesktopProcessor(store).run(job_id, threading.Event())
+
+            stored = store.document(submitted["id"])
+            self.assertEqual(stored["status"], "exception")
+            self.assertEqual(stored["sha256"], expected_sha256)
+            self.assertEqual(stored["size_bytes"], expected_size)
+            self.assertEqual(store.pages(submitted["id"]), [])
+            self.assertTrue(any("integridade" in warning for warning in stored["warnings"]))
+
     def test_collected_submission_persists_automated_contract_and_uses_same_runner(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
