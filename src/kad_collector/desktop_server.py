@@ -91,7 +91,7 @@ class DesktopApplication:
                         raise ValueError(f"o lote excede o limite de {MAX_BATCH_PDFS} PDFs")
         return selected
 
-    def import_pdfs(self, payload: dict[str, Any]) -> str:
+    def import_pdfs(self, payload: dict[str, Any]) -> list[str]:
         raw_paths = payload.get("paths")
         if not isinstance(raw_paths, list) or not all(isinstance(item, str) for item in raw_paths):
             raise ValueError("paths deve ser uma lista de caminhos locais")
@@ -102,10 +102,7 @@ class DesktopApplication:
             raise ValueError("classificador deve ser local ou openai")
         if classifier_provider == "openai" and not os.environ.get("OPENAI_API_KEY"):
             raise ValueError("OPENAI_API_KEY não está configurada nesta sessão")
-        job_ids = self.pipeline.import_paths(paths, metadata, classifier_provider)
-        if len(job_ids) != 1:
-            raise RuntimeError("a importação direta deve gerar um único lote")
-        return job_ids[0]
+        return self.pipeline.import_paths(paths, metadata, classifier_provider)
 
     def reprocess_documents(
         self,
@@ -275,8 +272,11 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                     self._send_json(application.store.query(filters))
                     return
                 if path == "/api/import":
-                    job_id = application.import_pdfs(payload)
-                    self._send_json({"jobId": job_id}, HTTPStatus.CREATED)
+                    job_ids = application.import_pdfs(payload)
+                    self._send_json(
+                        {"jobIds": job_ids, "exactDuplicate": not job_ids},
+                        HTTPStatus.CREATED,
+                    )
                     return
                 if path == "/api/collections":
                     collection_id = application.collect_from_link(payload)

@@ -73,10 +73,18 @@ class DocumentPipeline:
         self,
         documents: list[NormalizedDocument],
         classifier_provider: ClassifierProviderName,
+        *,
+        force_reprocess: bool = False,
     ) -> list[str]:
         job_ids: list[str] = []
         for batch in processing_batches(documents):
-            job_id = self.store.create_interpretation_job(batch, classifier_provider)
+            job_id = self.store.create_interpretation_job(
+                batch,
+                classifier_provider,
+                force_reprocess=force_reprocess,
+            )
+            if job_id is None:
+                continue
             self.runner.start(job_id)
             job_ids.append(job_id)
         return job_ids
@@ -112,4 +120,4 @@ class DocumentPipeline:
         documents = [self.store.reprocessing_contract(document_id) for document_id in document_ids]
         for document in documents:
             document.validate_local_file()
-        return self.submit(documents, classifier_provider)
+        return self.submit(documents, classifier_provider, force_reprocess=True)

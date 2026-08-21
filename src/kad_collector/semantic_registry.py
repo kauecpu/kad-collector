@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from dataclasses import dataclass
 from typing import Any, cast
+
+from .document_contract import NormalizedDocument
+from .semantic_identity import IDENTITY_ALGORITHM_VERSION, canonical_json, stable_sha256
 
 SEMANTIC_TABLES = frozenset(
     {
@@ -15,6 +19,143 @@ SEMANTIC_TABLES = frozenset(
         "document_identity_events",
     }
 )
+
+
+@dataclass(frozen=True)
+class ObservationClaim:
+    observation_id: str
+    origin_key: str
+    exact_duplicate: bool
+    document_id: str | None
+    document_version_id: str | None
+    resolution_status: str
+
+
+def _observation_origin(document: NormalizedDocument) -> dict[str, object]:
+    return {
+        "entry_method": document.entry_method,
+        "original_url": document.original_url,
+        "resolved_url": document.resolved_url,
+        "source_page_url": document.source_page_url,
+        "title": document.title,
+        "external_id": document.external_id,
+        "source_id": document.source_id,
+        "metadata": document.metadata,
+    }
+
+
+def claim_document_observation(
+    connection: sqlite3.Connection,
+    document: NormalizedDocument,
+    observed_at: str,
+) -> ObservationClaim:
+    """Claim a binary document inside the caller's write transaction."""
+    origin = _observation_origin(document)
+    origin_json = canonical_json(origin)
+    origin_key = stable_sha256(origin)
+    row = connection.execute(
+        "SELECT id, document_id, document_version_id, resolution_status "
+        "FROM document_observations WHERE binary_sha256 = ?",
+        (document.sha256,),
+    ).fetchone()
+    if row is None:
+        observation_id = stable_sha256({"binary_sha256": document.sha256})
+        connection.execute(
+            "INSERT INTO document_observations ("
+            "id, binary_sha256, size_bytes, resolution_status, first_seen_at, last_seen_at"
+            ") VALUES (?, ?, ?, 'observed', ?, ?)",
+            (
+                observation_id,
+                document.sha256,
+                document.size_bytes,
+                observed_at,
+                observed_at,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO document_observation_origins ("
+            "observation_id, origin_key, normalized_json, first_seen_at, last_seen_at"
+            ") VALUES (?, ?, ?, ?, ?)",
+            (observation_id, origin_key, origin_json, observed_at, observed_at),
+        )
+        event_payload = {
+            "binarySha256": document.sha256,
+            "observationId": observation_id,
+            "origin": {"originKey": origin_key, "normalized": origin},
+        }
+        connection.execute(
+            "INSERT OR IGNORE INTO document_identity_events ("
+            "event_key, action, actor, algorithm_version, payload_json, created_at"
+            ") VALUES (?, 'observed', 'system', ?, ?, ?)",
+            (
+                stable_sha256(
+                    {
+                        "action": "observed",
+                        "observation_id": observation_id,
+                        "origin_key": origin_key,
+                    }
+                ),
+                IDENTITY_ALGORITHM_VERSION,
+                canonical_json(event_payload),
+                observed_at,
+            ),
+        )
+        return ObservationClaim(
+            observation_id=observation_id,
+            origin_key=origin_key,
+            exact_duplicate=False,
+            document_id=None,
+            document_version_id=None,
+            resolution_status="observed",
+        )
+
+    observation_id = cast(str, row["id"])
+    connection.execute(
+        "UPDATE document_observations SET last_seen_at = ? WHERE id = ?",
+        (observed_at, observation_id),
+    )
+    connection.execute(
+        "INSERT INTO document_observation_origins ("
+        "observation_id, origin_key, normalized_json, first_seen_at, last_seen_at"
+        ") VALUES (?, ?, ?, ?, ?) "
+        "ON CONFLICT(observation_id, origin_key) DO UPDATE SET "
+        "last_seen_at = excluded.last_seen_at",
+        (observation_id, origin_key, origin_json, observed_at, observed_at),
+    )
+    event_payload = {
+        "binarySha256": document.sha256,
+        "existingDocumentVersionId": row["document_version_id"],
+        "observationId": observation_id,
+        "origin": {"originKey": origin_key, "normalized": origin},
+    }
+    connection.execute(
+        "INSERT OR IGNORE INTO document_identity_events ("
+        "event_key, document_id, document_version_id, action, actor, algorithm_version, "
+        "payload_json, created_at"
+        ") VALUES (?, ?, ?, 'exact_duplicate', 'system', ?, ?, ?)",
+        (
+            stable_sha256(
+                {
+                    "action": "exact_duplicate",
+                    "observation_id": observation_id,
+                    "origin_key": origin_key,
+                }
+            ),
+            row["document_id"],
+            row["document_version_id"],
+            IDENTITY_ALGORITHM_VERSION,
+            canonical_json(event_payload),
+            observed_at,
+        ),
+    )
+    return ObservationClaim(
+        observation_id=observation_id,
+        origin_key=origin_key,
+        exact_duplicate=True,
+        document_id=cast(str | None, row["document_id"]),
+        document_version_id=cast(str | None, row["document_version_id"]),
+        resolution_status=cast(str, row["resolution_status"]),
+    )
 
 
 def initialize_semantic_schema(connection: sqlite3.Connection) -> None:

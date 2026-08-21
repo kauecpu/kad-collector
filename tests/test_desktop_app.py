@@ -264,6 +264,7 @@ Informações editoriais da banca.
             second = root / "segundo.pdf"
             write_blank_pdf(first)
             write_blank_pdf(second)
+            second.write_bytes(second.read_bytes() + b"\n% distinct second fixture")
             store = DesktopStore(root / "collector.sqlite3")
 
             with (
@@ -305,6 +306,7 @@ Informações editoriais da banca.
             second = root / "b-segundo.pdf"
             write_blank_pdf(first)
             write_blank_pdf(second)
+            second.write_bytes(second.read_bytes() + b"\n% distinct batch fixture")
             store = DesktopStore(root / "collector.sqlite3")
             job_id = store.create_job([first, second], metadata(), "local")
 
@@ -852,6 +854,7 @@ class DesktopSmokeTests(unittest.TestCase):
         self.assertIn("activateEditorialQueue('pending')", javascript)
         self.assertIn("vinculadas ao gabarito", html)
         self.assertIn("Resposta oficial (gabarito)", html)
+        self.assertIn("Arquivo já conhecido; nenhuma nova tarefa foi criada.", javascript)
 
     def test_packaged_resources_and_database_bootstrap(self) -> None:
         with TemporaryDirectory() as directory:
@@ -937,6 +940,54 @@ class DesktopSmokeTests(unittest.TestCase):
                 )
                 with urlopen(authorized, timeout=3) as response:
                     self.assertEqual(response.status, HTTPStatus.OK)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
+    def test_import_api_reports_exact_duplicate_without_creating_an_empty_job(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "prova-repetida.pdf"
+            write_blank_pdf(pdf_path)
+            application = DesktopApplication(root / "data")
+            server, thread, url = start_desktop_server(application)
+            try:
+                origin = url.rstrip("/")
+                body = json.dumps(
+                    {
+                        "paths": [str(pdf_path)],
+                        "metadata": {"document_type": "exam", "year": 2026},
+                        "classifierProvider": "local",
+                    }
+                ).encode("utf-8")
+
+                def import_once() -> tuple[int, dict[str, object]]:
+                    request = Request(
+                        f"{url}api/import",
+                        data=body,
+                        method="POST",
+                        headers={
+                            "Content-Type": "application/json",
+                            "Origin": origin,
+                            "X-KAD-Desktop-Token": application.token,
+                        },
+                    )
+                    with urlopen(request, timeout=3) as response:
+                        return response.status, json.loads(response.read())
+
+                with patch.object(application.processor, "start") as start:
+                    first_status, first = import_once()
+                    second_status, second = import_once()
+
+                self.assertEqual(first_status, HTTPStatus.CREATED)
+                self.assertEqual(set(first), {"jobIds", "exactDuplicate"})
+                self.assertEqual(len(first["jobIds"]), 1)
+                self.assertFalse(first["exactDuplicate"])
+                self.assertEqual(second_status, HTTPStatus.CREATED)
+                self.assertEqual(second, {"jobIds": [], "exactDuplicate": True})
+                start.assert_called_once_with(first["jobIds"][0])
+                self.assertEqual(len(application.store.list_jobs()), 1)
             finally:
                 server.shutdown()
                 server.server_close()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import threading
 import unittest
 from datetime import UTC, datetime
@@ -192,6 +193,75 @@ class DesktopCollectionTests(unittest.TestCase):
         self.assertEqual(runner.started_ids, [])
         self.assertEqual(self.store.list_jobs(), [])
 
+    def test_repeated_collection_uses_transactional_duplicate_barrier(self) -> None:
+        pdf_path = self.root / "repeated-collection.pdf"
+        payload = b"%PDF-1.7\nrepeated collection fixture\n"
+        pdf_path.write_bytes(payload)
+        document = DocumentRecord(
+            source_id="fgv_conhecimento",
+            source_name="FGV Conhecimento - Concursos",
+            document_type="exam",
+            title="Prova oficial repetida",
+            original_url="https://conhecimento.fgv.br/prova.pdf",
+            resolved_url="https://conhecimento.fgv.br/prova.pdf",
+            local_path=str(pdf_path.resolve()),
+            sha256=hashlib.sha256(payload).hexdigest(),
+            content_type="application/pdf",
+            size_bytes=len(payload),
+            downloaded_at=datetime(2026, 8, 20, tzinfo=UTC),
+            authorization_basis="Fonte oficial.",
+            metadata={"ano": "2026"},
+        )
+        manifest = DownloadManifest(
+            created_at=datetime(2026, 8, 20, tzinfo=UTC),
+            documents=[document],
+        )
+        manifest_path = self.root / "manifest.json"
+        manifest_path.write_text("{}", encoding="utf-8")
+
+        class CompletingRunner:
+            def __init__(self, store: DesktopStore) -> None:
+                self.store = store
+                self.started_ids: list[str] = []
+
+            def start(self, job_id: str) -> None:
+                self.started_ids.append(job_id)
+                self.store.update_job(job_id, status="completed")
+
+        runner = CompletingRunner(self.store)
+        manager = DesktopCollectionManager(
+            self.root,
+            self.store,
+            self.processor,
+            DocumentPipeline(self.store, runner),
+        )
+
+        def wait_until_done(collection_id: str) -> dict[str, object]:
+            for _ in range(200):
+                current = next(item for item in manager.list_jobs() if item["id"] == collection_id)
+                if current["status"] not in {"queued", "running", "processing"}:
+                    return current
+                threading.Event().wait(0.01)
+            self.fail("a coleta não terminou")
+
+        request = {
+            "sourceId": "fgv_conhecimento",
+            "url": "https://conhecimento.fgv.br/concursos/mprj2025",
+        }
+        with patch(
+            "kad_collector.desktop_collection.collect_documents",
+            return_value=(manifest, manifest_path),
+        ):
+            first = wait_until_done(manager.start(request))
+            second = wait_until_done(manager.start(request))
+
+        self.assertIn(first["status"], {"completed", "needs_attention"})
+        self.assertEqual(len(first["importJobIds"]), 1)
+        self.assertIn(second["status"], {"completed", "needs_attention"})
+        self.assertEqual(second["importJobIds"], [])
+        self.assertEqual(len(runner.started_ids), 1)
+        self.assertEqual(len(self.store.list_jobs()), 1)
+
     def test_second_collection_skips_processed_sha_without_creating_another_job(self) -> None:
         pdf_path = self.root / "fgv_conhecimento-exam-repeat.pdf"
         pdf_path.write_bytes(b"%PDF-1.4\nfixture\n%%EOF")
@@ -274,8 +344,8 @@ class DesktopCollectionTests(unittest.TestCase):
 
     def test_fuvest_uses_v1_as_canonical_and_matches_versioned_answer_key(self) -> None:
         paths = [self.root / f"arquivo-{index}.pdf" for index in range(1, 6)]
-        for path in paths:
-            path.write_bytes(b"%PDF-1.4\nfixture\n%%EOF")
+        for index, path in enumerate(paths, start=1):
+            path.write_bytes(f"%PDF-1.4\nfixture {index}\n%%EOF".encode())
 
         base = DesktopImportMetadata(
             provider="fuvest_vestibular",

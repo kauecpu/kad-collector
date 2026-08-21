@@ -7,7 +7,9 @@ import unittest
 from contextlib import closing
 from pathlib import Path
 
+from kad_collector import semantic_registry
 from kad_collector.desktop_store import DesktopStore
+from kad_collector.document_contract import normalize_local_document
 
 SEMANTIC_TABLES = {
     "semantic_identities", "document_versions", "document_observations",
@@ -283,6 +285,115 @@ class SemanticRegistryMigrationTests(unittest.TestCase):
             self.assertEqual(events[0]["documentVersionId"], "exam-version")
             self.assertEqual(events[0]["payload"], {"score": 2})
             self.assertEqual(json.loads(json.dumps(events)), events)
+
+
+class DocumentObservationClaimTests(unittest.TestCase):
+    def test_repeated_origin_updates_last_seen_and_emits_one_idempotent_duplicate_event(
+        self,
+    ) -> None:
+        self.assertTrue(
+            hasattr(semantic_registry, "claim_document_observation"),
+            "o registro ainda não expõe a barreira de observação",
+        )
+        claim_document_observation = semantic_registry.claim_document_observation
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "prova.pdf"
+            path.write_bytes(b"%PDF-1.7\nsemantic claim fixture\n")
+            store = DesktopStore(root / "collector.sqlite3")
+            document = normalize_local_document(path).model_copy(
+                update={
+                    "title": "Prova oficial",
+                    "metadata": {"board": "Banca", "year": 2026},
+                }
+            )
+
+            with closing(store._connect()) as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                first = claim_document_observation(connection, document, TIMESTAMP)
+                connection.commit()
+                before = connection.execute(
+                    "SELECT COUNT(*) FROM document_identity_events WHERE action = 'exact_duplicate'"
+                ).fetchone()[0]
+
+                connection.execute("BEGIN IMMEDIATE")
+                second = claim_document_observation(
+                    connection, document, "2026-08-20T00:00:01+00:00"
+                )
+                connection.commit()
+                after_second = connection.execute(
+                    "SELECT COUNT(*) FROM document_identity_events WHERE action = 'exact_duplicate'"
+                ).fetchone()[0]
+
+                connection.execute("BEGIN IMMEDIATE")
+                third = claim_document_observation(
+                    connection, document, "2026-08-20T00:00:02+00:00"
+                )
+                connection.commit()
+                after_third = connection.execute(
+                    "SELECT COUNT(*) FROM document_identity_events WHERE action = 'exact_duplicate'"
+                ).fetchone()[0]
+                observation = connection.execute(
+                    "SELECT last_seen_at FROM document_observations WHERE binary_sha256 = ?",
+                    (document.sha256,),
+                ).fetchone()
+                origin_count = connection.execute(
+                    "SELECT COUNT(*) FROM document_observation_origins"
+                ).fetchone()[0]
+
+            self.assertFalse(first.exact_duplicate)
+            self.assertTrue(second.exact_duplicate)
+            self.assertTrue(third.exact_duplicate)
+            self.assertEqual(first.observation_id, second.observation_id)
+            self.assertEqual(second.observation_id, third.observation_id)
+            self.assertEqual(origin_count, 1)
+            self.assertEqual(observation["last_seen_at"], "2026-08-20T00:00:02+00:00")
+            self.assertEqual(after_second, before + 1)
+            self.assertEqual(after_third, after_second)
+
+    def test_same_sha_from_a_new_origin_preserves_both_origins(self) -> None:
+        self.assertTrue(
+            hasattr(semantic_registry, "claim_document_observation"),
+            "o registro ainda não expõe a barreira de observação",
+        )
+        claim_document_observation = semantic_registry.claim_document_observation
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "prova.pdf"
+            path.write_bytes(b"%PDF-1.7\nmultiple origin fixture\n")
+            store = DesktopStore(root / "collector.sqlite3")
+            direct = normalize_local_document(path)
+            collected = direct.model_copy(
+                update={
+                    "entry_method": "automated_collection",
+                    "original_url": "https://example.test/prova.pdf",
+                    "resolved_url": "https://cdn.example.test/prova.pdf",
+                    "source_id": "official-source",
+                }
+            )
+
+            with closing(store._connect()) as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                first = claim_document_observation(connection, direct, TIMESTAMP)
+                connection.commit()
+                connection.execute("BEGIN IMMEDIATE")
+                second = claim_document_observation(
+                    connection, collected, "2026-08-20T00:00:01+00:00"
+                )
+                connection.commit()
+                origins = connection.execute(
+                    "SELECT origin_key, normalized_json FROM document_observation_origins "
+                    "ORDER BY origin_key"
+                ).fetchall()
+
+            self.assertFalse(first.exact_duplicate)
+            self.assertTrue(second.exact_duplicate)
+            self.assertEqual(len(origins), 2)
+            self.assertNotEqual(first.origin_key, second.origin_key)
+            self.assertEqual(
+                {json.loads(row["normalized_json"])["entry_method"] for row in origins},
+                {"direct_import", "automated_collection"},
+            )
 
 
 if __name__ == "__main__":

@@ -886,7 +886,7 @@ async function submitImport(event) {
   }
   byId('import-submit').disabled = true;
   try {
-    await request('/api/import', {
+    const result = await request('/api/import', {
       method: 'POST',
       body: JSON.stringify({
         paths: state.selectedPaths,
@@ -897,7 +897,9 @@ async function submitImport(event) {
     byId('import-dialog').close();
     state.selectedPaths = [];
     renderSelectedPaths();
-    toast('Lote iniciado. Você pode pausar e retomar sem perder páginas processadas.');
+    toast(result.jobIds.length
+      ? 'Lote iniciado. Você pode pausar e retomar sem perder páginas processadas.'
+      : 'Arquivo já conhecido; nenhuma nova tarefa foi criada.');
     await loadBootstrap({preserveQuery: true});
   } catch (error) { toast(error.message, 'error'); }
   finally { byId('import-submit').disabled = false; }

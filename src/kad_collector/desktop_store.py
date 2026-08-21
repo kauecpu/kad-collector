@@ -23,6 +23,8 @@ from .desktop_models import (
 from .document_contract import NormalizedDocument, normalize_local_document
 from .models import QuestionRecord
 from .semantic_registry import (
+    ObservationClaim,
+    claim_document_observation,
     identity_events,
     initialize_semantic_schema,
     semantic_document_view,
@@ -298,53 +300,99 @@ class DesktopStore:
                     }
                 )
             )
-        return self.create_interpretation_job(documents, classifier_provider)
+        job_id = self.create_interpretation_job(documents, classifier_provider)
+        if job_id is None:
+            raise ValueError("todos os PDFs selecionados ja sao conhecidos")
+        return job_id
 
     def create_interpretation_job(
         self,
         documents: list[NormalizedDocument],
         classifier_provider: ClassifierProviderName,
-    ) -> str:
+        *,
+        force_reprocess: bool = False,
+    ) -> str | None:
         if not documents:
             raise ValueError("selecione ao menos um PDF")
-        job_id = str(uuid.uuid4())
-        created_at = _now()
-        with closing(self._connect()) as connection:
-            connection.execute(
-                """
-                INSERT INTO jobs (
-                    id, created_at, updated_at, status, classifier_provider, message
-                ) VALUES (?, ?, ?, 'queued', ?, ?)
-                """,
-                (job_id, created_at, created_at, classifier_provider, "Aguardando processamento"),
-            )
-            for normalized_document in documents:
-                document_id = str(uuid.uuid4())
-                document_metadata = _editorial_metadata(normalized_document)
-                path = Path(normalized_document.local_path).resolve()
-                connection.execute(
-                    """
-                    INSERT INTO documents (
-                        id, job_id, local_path, filename, sha256, size_bytes, metadata_json,
-                        normalized_json, warnings_json, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        document_id,
-                        job_id,
-                        str(path),
-                        path.name,
-                        normalized_document.sha256,
-                        normalized_document.size_bytes,
-                        _json(document_metadata.model_dump(mode="json")),
-                        _json(normalized_document.model_dump(mode="json")),
-                        _json(normalized_document.warnings),
-                        created_at,
-                        created_at,
-                    ),
-                )
-            connection.commit()
-        return job_id
+        observed_at = _now()
+        for attempt in range(2):
+            job_id = str(uuid.uuid4())
+            with closing(self._connect()) as connection:
+                try:
+                    connection.execute("BEGIN IMMEDIATE")
+                    claimed: list[tuple[NormalizedDocument, ObservationClaim]] = [
+                        (
+                            normalized_document,
+                            claim_document_observation(
+                                connection, normalized_document, observed_at
+                            ),
+                        )
+                        for normalized_document in documents
+                    ]
+                    selected = [
+                        item
+                        for item in claimed
+                        if force_reprocess or not item[1].exact_duplicate
+                    ]
+                    if not selected:
+                        connection.commit()
+                        return None
+                    connection.execute(
+                        """
+                        INSERT INTO jobs (
+                            id, created_at, updated_at, status, classifier_provider, message
+                        ) VALUES (?, ?, ?, 'queued', ?, ?)
+                        """,
+                        (
+                            job_id,
+                            observed_at,
+                            observed_at,
+                            classifier_provider,
+                            "Aguardando processamento",
+                        ),
+                    )
+                    for normalized_document, claim in selected:
+                        document_id = str(uuid.uuid4())
+                        document_metadata = _editorial_metadata(normalized_document)
+                        path = Path(normalized_document.local_path).resolve()
+                        connection.execute(
+                            """
+                            INSERT INTO documents (
+                                id, job_id, local_path, filename, sha256, size_bytes,
+                                metadata_json, normalized_json, warnings_json, created_at,
+                                updated_at, document_version_id, observation_id,
+                                semantic_resolution
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                document_id,
+                                job_id,
+                                str(path),
+                                path.name,
+                                normalized_document.sha256,
+                                normalized_document.size_bytes,
+                                _json(document_metadata.model_dump(mode="json")),
+                                _json(normalized_document.model_dump(mode="json")),
+                                _json(normalized_document.warnings),
+                                observed_at,
+                                observed_at,
+                                claim.document_version_id,
+                                claim.observation_id,
+                                claim.resolution_status,
+                            ),
+                        )
+                        if not claim.exact_duplicate:
+                            connection.execute(
+                                "UPDATE document_observations SET document_id = ? WHERE id = ?",
+                                (document_id, claim.observation_id),
+                            )
+                    connection.commit()
+                    return job_id
+                except sqlite3.IntegrityError:
+                    connection.rollback()
+                    if attempt == 1:
+                        raise
+        raise RuntimeError("nao foi possivel registrar a tarefa de interpretacao")
 
     def processed_sha256s(self, values: Iterable[str]) -> set[str]:
         requested = {value.casefold() for value in values if value}

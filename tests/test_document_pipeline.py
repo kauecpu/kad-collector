@@ -7,6 +7,7 @@ import tempfile
 import threading
 import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
@@ -23,6 +24,7 @@ from kad_collector.desktop_models import (
 )
 from kad_collector.desktop_processor import DesktopProcessor
 from kad_collector.desktop_store import DesktopStore
+from kad_collector.document_contract import normalize_collected_document
 from kad_collector.models import Alternative, DocumentRecord, QuestionRecord
 
 
@@ -300,6 +302,205 @@ def _stored_classification() -> QuestionClassification:
 
 
 class DocumentPipelinePersistenceTests(unittest.TestCase):
+    def test_same_pdf_twice_creates_one_document_job_and_observation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "prova.pdf"
+            path.write_bytes(b"%PDF-1.7\nexact duplicate exam fixture\n")
+            store = DesktopStore(root / "collector.sqlite3")
+            runner = RecordingRunner()
+
+            from kad_collector.document_pipeline import DocumentPipeline
+
+            pipeline = DocumentPipeline(store, runner)
+            metadata = DesktopImportMetadata(document_type="exam", year=2026)
+            first = pipeline.import_paths([path], metadata, "local")
+            second = pipeline.import_paths([path], metadata, "local")
+
+            with closing(store._connect()) as connection:
+                counts = {
+                    table: connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                    for table in ("jobs", "documents", "document_observations")
+                }
+            self.assertEqual(len(first), 1)
+            self.assertEqual(second, [])
+            self.assertEqual(counts, {"jobs": 1, "documents": 1, "document_observations": 1})
+            self.assertEqual(runner.started_ids, first)
+
+    def test_partially_duplicate_batch_creates_job_only_for_new_document(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            known = root / "known.pdf"
+            new = root / "new.pdf"
+            known.write_bytes(b"%PDF-1.7\nknown document fixture\n")
+            new.write_bytes(b"%PDF-1.7\nnew document fixture\n")
+            store = DesktopStore(root / "collector.sqlite3")
+            runner = RecordingRunner()
+
+            from kad_collector.document_pipeline import DocumentPipeline
+
+            pipeline = DocumentPipeline(store, runner)
+            metadata = DesktopImportMetadata(document_type="exam", year=2026)
+            first = pipeline.import_paths([known], metadata, "local")
+            second = pipeline.import_paths([known, new], metadata, "local")
+
+            with closing(store._connect()) as connection:
+                second_documents = connection.execute(
+                    "SELECT filename FROM documents WHERE job_id = ?",
+                    (second[0],),
+                ).fetchall()
+                counts = {
+                    table: connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                    for table in ("jobs", "documents", "document_observations")
+                }
+                duplicate_events = connection.execute(
+                    "SELECT COUNT(*) FROM document_identity_events "
+                    "WHERE action = 'exact_duplicate'"
+                ).fetchone()[0]
+
+            self.assertEqual(len(first), 1)
+            self.assertEqual(len(second), 1)
+            self.assertEqual([row["filename"] for row in second_documents], ["new.pdf"])
+            self.assertEqual(counts, {"jobs": 2, "documents": 2, "document_observations": 2})
+            self.assertEqual(duplicate_events, 1)
+            self.assertEqual(runner.started_ids, [first[0], second[0]])
+
+    def test_force_reprocess_reuses_observation_and_creates_operational_job(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "reprocess.pdf"
+            path.write_bytes(b"%PDF-1.7\nforced reprocessing fixture\n")
+            store = DesktopStore(root / "collector.sqlite3")
+            runner = RecordingRunner()
+
+            from kad_collector.document_pipeline import DocumentPipeline
+
+            pipeline = DocumentPipeline(store, runner)
+            first = pipeline.import_paths(
+                [path], DesktopImportMetadata(document_type="exam", year=2026), "local"
+            )
+            original = store.documents_for_job(first[0])[0]
+            second = pipeline.reprocess([original["id"]], "local")
+
+            with closing(store._connect()) as connection:
+                documents = connection.execute(
+                    "SELECT observation_id, document_version_id FROM documents "
+                    "ORDER BY created_at, id"
+                ).fetchall()
+                observations = connection.execute(
+                    "SELECT COUNT(*) FROM document_observations"
+                ).fetchone()[0]
+
+            self.assertEqual(len(second), 1)
+            self.assertEqual(len(documents), 2)
+            self.assertEqual(
+                {row["observation_id"] for row in documents},
+                {documents[0]["observation_id"]},
+            )
+            self.assertEqual(
+                {row["document_version_id"] for row in documents},
+                {documents[0]["document_version_id"]},
+            )
+            self.assertEqual(observations, 1)
+            self.assertEqual(runner.started_ids, [first[0], second[0]])
+
+    def test_same_answer_key_twice_creates_no_second_job(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "gabarito.pdf"
+            path.write_bytes(b"%PDF-1.7\nexact duplicate answer key fixture\n")
+            store = DesktopStore(root / "collector.sqlite3")
+            runner = RecordingRunner()
+
+            from kad_collector.document_pipeline import DocumentPipeline
+
+            pipeline = DocumentPipeline(store, runner)
+            metadata = DesktopImportMetadata(document_type="answer_key", year=2026)
+            first = pipeline.import_paths([path], metadata, "local")
+            second = pipeline.import_paths([path], metadata, "local")
+
+            with closing(store._connect()) as connection:
+                jobs = connection.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+                documents = connection.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
+                questions = connection.execute("SELECT COUNT(*) FROM questions").fetchone()[0]
+            self.assertEqual(len(first), 1)
+            self.assertEqual(second, [])
+            self.assertEqual((jobs, documents, questions), (1, 1, 0))
+            self.assertEqual(runner.started_ids, first)
+
+    def test_collection_and_direct_import_with_same_sha_converge(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "shared.pdf"
+            payload = b"%PDF-1.7\ncollection and import convergence fixture\n"
+            path.write_bytes(payload)
+            store = DesktopStore(root / "collector.sqlite3")
+            runner = RecordingRunner()
+            record = DocumentRecord(
+                source_id="official-source",
+                source_name="Official Source",
+                document_type="exam",
+                title="Official exam",
+                original_url="https://example.test/exam.pdf",
+                resolved_url="https://cdn.example.test/exam.pdf",
+                local_path=str(path.resolve()),
+                sha256=hashlib.sha256(payload).hexdigest(),
+                content_type="application/pdf",
+                size_bytes=len(payload),
+                downloaded_at=datetime(2026, 8, 20, tzinfo=UTC),
+                authorization_basis="permission",
+                metadata={"year": "2026"},
+            )
+
+            from kad_collector.document_pipeline import DocumentPipeline
+
+            pipeline = DocumentPipeline(store, runner)
+            collected = pipeline.submit([normalize_collected_document(record)], "local")
+            imported = pipeline.import_paths(
+                [path], DesktopImportMetadata(document_type="exam", year=2026), "local"
+            )
+
+            with closing(store._connect()) as connection:
+                origin_count = connection.execute(
+                    "SELECT COUNT(*) FROM document_observation_origins origins "
+                    "JOIN document_observations observations "
+                    "ON observations.id = origins.observation_id "
+                    "WHERE observations.binary_sha256 = ?",
+                    (record.sha256,),
+                ).fetchone()[0]
+                jobs = connection.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+            self.assertEqual(len(collected), 1)
+            self.assertEqual(imported, [])
+            self.assertEqual(origin_count, 2)
+            self.assertEqual(jobs, 1)
+
+    def test_concurrent_claims_have_one_winner(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "race.pdf"
+            path.write_bytes(b"%PDF-1.7\nconcurrent duplicate fixture\n")
+            store = DesktopStore(root / "collector.sqlite3")
+            runner = RecordingRunner()
+            metadata = DesktopImportMetadata(document_type="exam", year=2026)
+
+            from kad_collector.document_pipeline import DocumentPipeline
+
+            def submit_once(_: int) -> list[str]:
+                return DocumentPipeline(store, runner).import_paths([path], metadata, "local")
+
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                results = list(executor.map(submit_once, range(2)))
+
+            with closing(store._connect()) as connection:
+                jobs = connection.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+                documents = connection.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
+                observations = connection.execute(
+                    "SELECT COUNT(*) FROM document_observations"
+                ).fetchone()[0]
+            self.assertEqual(sorted(len(result) for result in results), [0, 1])
+            self.assertEqual((jobs, documents, observations), (1, 1, 1))
+            self.assertEqual(len(runner.started_ids), 1)
+
     def test_legacy_database_adds_contract_column_without_losing_rows(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             database_path = Path(directory) / "collector.sqlite3"
@@ -357,8 +558,8 @@ class DocumentPipelinePersistenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             paths = [root / "first.pdf", root / "second.pdf"]
-            for path in paths:
-                path.write_bytes(b"%PDF-1.7\nlocal fixture\n")
+            for index, path in enumerate(paths):
+                path.write_bytes(f"%PDF-1.7\nlocal fixture {index}\n".encode())
             store = DesktopStore(root / "collector.sqlite3")
             runner = RecordingRunner()
 
@@ -682,7 +883,7 @@ class DocumentPipelinePersistenceTests(unittest.TestCase):
             paths = []
             for number in range(MAX_BATCH_PDFS + 1):
                 path = root / f"document-{number}.pdf"
-                path.write_bytes(b"%PDF-1.7\npreflight fixture\n")
+                path.write_bytes(f"%PDF-1.7\npreflight fixture {number}\n".encode())
                 paths.append(path)
             store = DesktopStore(root / "collector.sqlite3")
             runner = RecordingRunner()
