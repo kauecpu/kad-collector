@@ -91,9 +91,7 @@ def _canonical_exam_documents(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     selected: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
-    groups: dict[
-        tuple[str | None, int | None, str | None, str | None], list[dict[str, Any]]
-    ] = {}
+    groups: dict[tuple[str | None, int | None, str | None, str | None], list[dict[str, Any]]] = {}
     for document in documents:
         group_key = _document_group(document)
         if not any(value is not None for value in group_key):
@@ -105,19 +103,14 @@ def _canonical_exam_documents(
         structural_variants = [
             (number, document)
             for document in group_documents
-            if (
-                number := _canonical_variant_number(document)
-            )
-            is not None
+            if (number := _canonical_variant_number(document)) is not None
         ]
         if len(structural_variants) < 2:
             selected.extend(group_documents)
             continue
         structural_documents = {id(document) for _, document in structural_variants}
         selected.extend(
-            document
-            for document in group_documents
-            if id(document) not in structural_documents
+            document for document in group_documents if id(document) not in structural_documents
         )
         ranked = sorted(
             structural_variants,
@@ -130,9 +123,7 @@ def _canonical_exam_documents(
 
 def _canonical_variant_number(document: dict[str, Any]) -> int | None:
     metadata = DesktopImportMetadata.model_validate(document["metadata"])
-    if metadata.variant and re.fullmatch(
-        r"TIPO[-_ ]*[1-9]\d*", metadata.variant, re.IGNORECASE
-    ):
+    if metadata.variant and re.fullmatch(r"TIPO[-_ ]*[1-9]\d*", metadata.variant, re.IGNORECASE):
         return None
     return structural_v_number(
         " ".join(
@@ -358,7 +349,8 @@ class DesktopProcessor:
                     warnings = list(cast(list[str], self.store.document(document_id)["warnings"]))
                     warnings.append(f"resolução semântica falhou: {type(exc).__name__}: {exc}")
                     self.store.update_document(
-                        document_id, status="exception",
+                        document_id,
+                        status="exception",
                         warnings_json=json.dumps(warnings, ensure_ascii=False),
                     )
                     continue
@@ -366,7 +358,8 @@ class DesktopProcessor:
                     warnings = list(cast(list[str], self.store.document(document_id)["warnings"]))
                     warnings.append(resolution.reason)
                     self.store.update_document(
-                        document_id, status="exception",
+                        document_id,
+                        status="exception",
                         warnings_json=json.dumps(warnings, ensure_ascii=False),
                     )
                 elif resolution.outcome == "republication":
@@ -376,7 +369,8 @@ class DesktopProcessor:
                         "questões não duplicadas"
                     )
                     self.store.update_document(
-                        document_id, status="processed",
+                        document_id,
+                        status="processed",
                         warnings_json=json.dumps(warnings, ensure_ascii=False),
                     )
 
@@ -514,7 +508,7 @@ class DesktopProcessor:
         answer_keys: list[dict[str, Any]] = []
         exam_documents: list[dict[str, Any]] = []
         for document in documents:
-            if document.get("semantic_resolution") in {"uncertain", "republication"}:
+            if document.get("semantic_resolution") not in {"new_identity", "new_version"}:
                 continue
             metadata = DesktopImportMetadata.model_validate(document["metadata"])
             if _document_type(cast(str, document["filename"]), metadata) == "answer_key":
@@ -530,9 +524,7 @@ class DesktopProcessor:
             exam_documents.append({**document, "exam_text": exam_text})
 
         cached_hashes = {
-            cast(str, item["sha256"])
-            for item in answer_keys
-            if item.get("sha256") is not None
+            cast(str, item["sha256"]) for item in answer_keys if item.get("sha256") is not None
         }
         for cached in self.store.cached_answer_keys(exclude_job_id=job_id):
             digest = cast(str | None, cached.get("sha256"))

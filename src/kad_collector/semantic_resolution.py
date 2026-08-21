@@ -135,6 +135,40 @@ def resolve_document_version(
     if owns_transaction:
         connection.execute("BEGIN IMMEDIATE")
     try:
+        existing = connection.execute(
+            "SELECT semantic_resolution, document_version_id FROM documents WHERE id = ?",
+            (document_id,),
+        ).fetchone()
+        if existing is None:
+            raise ValueError("documento não encontrado")
+        existing_outcome = existing["semantic_resolution"]
+        if existing_outcome in {"uncertain", "new_identity", "new_version", "republication"}:
+            existing_version = existing["document_version_id"]
+            if existing_outcome == "uncertain":
+                result = IdentityResolution(
+                    outcome="uncertain",
+                    profile=profile,
+                    reason="identidade semântica insuficiente ou conflitante",
+                )
+            else:
+                version = connection.execute(
+                    "SELECT version_number, predecessor_version_id "
+                    "FROM document_versions WHERE id = ?",
+                    (existing_version,),
+                ).fetchone()
+                if version is None:
+                    raise RuntimeError("documento resolvido aponta para versão ausente")
+                result = IdentityResolution(
+                    outcome=existing_outcome,
+                    profile=profile,
+                    document_version_id=existing_version,
+                    predecessor_version_id=version["predecessor_version_id"],
+                    version_number=version["version_number"],
+                    reason="resolução já persistida para este documento",
+                )
+            if owns_transaction:
+                connection.commit()
+            return result
         decision = decide_document_version(profile, _known_versions(connection, profile))
         if decision.outcome == "uncertain":
             connection.execute(

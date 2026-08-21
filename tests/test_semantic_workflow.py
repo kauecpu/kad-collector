@@ -9,6 +9,7 @@ from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 
+from kad_collector.desktop_processor import DesktopProcessor
 from kad_collector.desktop_store import DesktopStore
 from kad_collector.document_contract import NormalizedDocument
 from kad_collector.semantic_identity import (
@@ -192,6 +193,19 @@ class SemanticWorkflowIntegrationTests(unittest.TestCase):
         self.assertEqual(second.predecessor_version_id, first.document_version_id)
         self.assertEqual(second.version_number, 2)
 
+    def test_repeating_resolution_for_same_document_is_idempotent(self) -> None:
+        metadata = {"board": "Banca", "concurso": "Concurso", "year": 2026}
+        self.add_document(
+            "first", binary=b"pdf-one", text="Prova 2026\nQuestão 1\nA) Azul", metadata=metadata
+        )
+        first = self.resolve("first")
+        event_count = self.store.semantic_summary()["events"]
+        second = self.resolve("first")
+        self.assertEqual(second.outcome, first.outcome)
+        self.assertEqual(second.document_version_id, first.document_version_id)
+        self.assertEqual(second.version_number, first.version_number)
+        self.assertEqual(self.store.semantic_summary()["events"], event_count)
+
     def test_changed_content_with_question_added_creates_successor(self) -> None:
         metadata = {"board": "Banca", "concurso": "Concurso", "year": 2026}
         self.add_document(
@@ -229,6 +243,23 @@ class SemanticWorkflowIntegrationTests(unittest.TestCase):
         self.assertIsNone(result.document_version_id)
         self.assertEqual(self.store.semantic_summary()["versions"], 0)
         self.assertIn("identidade semântica insuficiente", result.reason)
+
+    def test_processor_does_not_structure_resolution_failure(self) -> None:
+        self.add_document(
+            "unknown", binary=b"pdf-one", text="Questão 1\nA) Azul B) Verde", metadata={}
+        )
+        self.resolve("unknown")
+        processor = DesktopProcessor(self.store)
+        try:
+            with patch(
+                "kad_collector.desktop_processor.parse_question_pages",
+                side_effect=AssertionError("parser não deveria ser chamado"),
+            ):
+                processor._structure_job("job-unknown", threading.Event())
+        finally:
+            processor._executor.shutdown(wait=True)
+        with closing(self.store._connect()) as connection:
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM questions").fetchone()[0], 0)
 
     def test_new_identity_and_changed_content_are_structurable_once(self) -> None:
         self.add_document(
