@@ -22,16 +22,24 @@ from .desktop_models import (
 )
 from .document_contract import NormalizedDocument, normalize_local_document
 from .models import QuestionRecord
+from .semantic_identity import (
+    AssociationCandidate,
+    DocumentSemanticProfile,
+    IdentityResolution,
+    extract_semantic_profile,
+)
 from .semantic_registry import (
     ObservationClaim,
+    active_answer_key_candidates,
     claim_document_observation,
+    exam_documents_affected_by_answer_key,
     identity_events,
     initialize_semantic_schema,
+    record_document_link,
     semantic_document_view,
     semantic_summary,
 )
-from .semantic_identity import extract_semantic_profile
-from .semantic_resolution import IdentityResolution, resolve_document_version
+from .semantic_resolution import resolve_document_version, select_answer_key
 from .validation import validate_editorial_question
 
 
@@ -296,6 +304,8 @@ class DesktopStore:
             documents.append(
                 normalize_local_document(path).model_copy(
                     update={
+                        "declared_type": document_metadata.document_type,
+                        "title": document_metadata.document_title or path.name,
                         "metadata": document_metadata.model_dump(
                             mode="json", exclude_none=True
                         )
@@ -517,6 +527,196 @@ class DesktopStore:
     def identity_events(self, document_id: str) -> list[dict[str, Any]]:
         with closing(self._connect()) as connection:
             return identity_events(connection, document_id)
+
+    def answer_key_candidates(self, exam_version_id: str) -> list[dict[str, Any]]:
+        with closing(self._connect()) as connection:
+            return active_answer_key_candidates(connection, exam_version_id)
+
+    def exams_affected_by_answer_key(
+        self, answer_key_version_id: str
+    ) -> list[dict[str, Any]]:
+        with closing(self._connect()) as connection:
+            return exam_documents_affected_by_answer_key(connection, answer_key_version_id)
+
+    def active_answer_key_version(self, exam_version_id: str) -> str | None:
+        with closing(self._connect()) as connection:
+            row = connection.execute(
+                "SELECT answer_key_version_id FROM document_links "
+                "WHERE exam_version_id = ? AND status = 'active'",
+                (exam_version_id,),
+            ).fetchone()
+        return cast(str, row["answer_key_version_id"]) if row is not None else None
+
+    def answer_key_document(self, answer_key_version_id: str) -> dict[str, Any] | None:
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                "SELECT id FROM documents WHERE document_version_id = ? "
+                "ORDER BY created_at, id",
+                (answer_key_version_id,),
+            ).fetchall()
+        for row in rows:
+            document = self.document(cast(str, row["id"]))
+            text = "\n".join(str(page["text"]) for page in self.pages(cast(str, row["id"])))
+            if text.strip():
+                return {
+                    **document,
+                    "answer_key_text": text,
+                    "version_id": answer_key_version_id,
+                }
+        return None
+
+    def question_records(
+        self, document_id: str
+    ) -> list[tuple[QuestionRecord, QuestionClassification]]:
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                "SELECT payload_json, classification_json FROM questions "
+                "WHERE document_id = ? ORDER BY question_number",
+                (document_id,),
+            ).fetchall()
+        return [
+            (
+                QuestionRecord.model_validate(json.loads(cast(str, row["payload_json"]))),
+                QuestionClassification.model_validate(
+                    json.loads(cast(str, row["classification_json"]))
+                ),
+            )
+            for row in rows
+        ]
+
+    def persist_document_link(
+        self,
+        exam_version_id: str,
+        answer_key_version_id: str,
+        decision: Any,
+    ) -> str | None:
+        with closing(self._connect()) as connection:
+            link_id = record_document_link(
+                connection, exam_version_id, answer_key_version_id, decision, _now()
+            )
+            connection.commit()
+        return link_id
+
+    def apply_answer_key_updates(
+        self,
+        document_id: str,
+        exam_version_id: str,
+        answer_key_version_id: str,
+        decision: Any,
+        updates: dict[int, tuple[str, str | None]],
+    ) -> bool:
+        """Atomically update recognized answers and replace the active semantic link."""
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                current = connection.execute(
+                    "SELECT answer_key_version_id FROM document_links "
+                    "WHERE exam_version_id = ? AND status = 'active'",
+                    (exam_version_id,),
+                ).fetchone()
+                if (
+                    current is not None
+                    and current["answer_key_version_id"] == answer_key_version_id
+                ):
+                    connection.commit()
+                    return False
+                exam_row = connection.execute(
+                    "SELECT profile_json FROM document_versions "
+                    "WHERE id = ? AND document_role = 'exam'",
+                    (exam_version_id,),
+                ).fetchone()
+                if exam_row is None:
+                    connection.rollback()
+                    return False
+                candidates = active_answer_key_candidates(connection, exam_version_id)
+                current_decision = select_answer_key(
+                    DocumentSemanticProfile.model_validate_json(
+                        cast(str, exam_row["profile_json"])
+                    ),
+                    [
+                        AssociationCandidate(
+                            version_id=cast(str, candidate["answer_key_version_id"]),
+                            profile=DocumentSemanticProfile.model_validate_json(
+                                _json(candidate["profile"])
+                            ),
+                            predecessor_version_id=cast(
+                                str | None, candidate["predecessor_version_id"]
+                            ),
+                        )
+                        for candidate in candidates
+                    ],
+                )
+                if current_decision.selected_version_id != answer_key_version_id:
+                    connection.commit()
+                    return False
+                rows = connection.execute(
+                    "SELECT * FROM questions WHERE document_id = ? ORDER BY question_number",
+                    (document_id,),
+                ).fetchall()
+                applied = 0
+                now = _now()
+                for row in rows:
+                    update = updates.get(int(row["question_number"]))
+                    if update is None:
+                        continue
+                    question = QuestionRecord.model_validate(
+                        json.loads(cast(str, row["payload_json"]))
+                    ).model_copy(
+                        update={"answer_status": update[0], "correct_answer": update[1]}
+                    )
+                    classification = QuestionClassification.model_validate(
+                        json.loads(cast(str, row["classification_json"]))
+                    )
+                    fingerprint = question_fingerprint(question)
+                    flags = question_quality_flags(question, classification)
+                    duplicate = connection.execute(
+                        "SELECT 1 FROM questions WHERE fingerprint = ? AND id != ? LIMIT 1",
+                        (fingerprint, row["id"]),
+                    ).fetchone()
+                    if duplicate is not None:
+                        flags.append("duplicate")
+                    confidence = min(_classification_confidences(classification), default=0)
+                    next_status: DesktopQuestionStatus = (
+                        "exception"
+                        if any(
+                            flag in flags
+                            for flag in ("annulled", "visual", "without_answer", "incomplete")
+                        )
+                        else "pending"
+                    )
+                    status = (
+                        cast(DesktopQuestionStatus, row["status"])
+                        if row["fingerprint"] == fingerprint
+                        and row["status"] in {"approved", "rejected", "exported"}
+                        else next_status
+                    )
+                    connection.execute(
+                        "UPDATE questions SET payload_json = ?, fingerprint = ?, confidence = ?, "
+                        "flags_json = ?, status = ?, updated_at = ? WHERE id = ?",
+                        (
+                            _json(question.model_dump(mode="json")), fingerprint, confidence,
+                            _json(list(dict.fromkeys(flags))), status, now, row["id"],
+                        ),
+                    )
+                    applied += 1
+                if not applied:
+                    connection.rollback()
+                    return False
+                link_id = record_document_link(
+                    connection,
+                    exam_version_id,
+                    answer_key_version_id,
+                    current_decision,
+                    now,
+                )
+                if link_id is None:
+                    connection.rollback()
+                    return False
+                connection.commit()
+                return True
+            except Exception:
+                connection.rollback()
+                raise
 
     def resolve_extracted_document(self, document_id: str) -> IdentityResolution:
         document = self.document(document_id)

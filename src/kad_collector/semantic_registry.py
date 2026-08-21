@@ -355,22 +355,44 @@ def active_answer_key_candidates(
     connection: sqlite3.Connection, exam_version_id: str | None = None
 ) -> list[dict[str, Any]]:
     """Return active keys in stable order, optionally scoped to one exam version."""
-    clause = "" if exam_version_id is None else " AND l.exam_version_id = ?"
+    exam_profile: dict[str, Any] | None = None
+    if exam_version_id is not None:
+        exam_row = connection.execute(
+            "SELECT profile_json FROM document_versions "
+            "WHERE id = ? AND document_role = 'exam'",
+            (exam_version_id,),
+        ).fetchone()
+        if exam_row is None:
+            return []
+        exam_profile = json.loads(cast(str, exam_row["profile_json"]))
+    join_scope = (
+        "AND l.exam_version_id = ?" if exam_version_id is not None
+        else "AND l.id = (SELECT MIN(active.id) FROM document_links active "
+        "WHERE active.answer_key_version_id = v.id AND active.status = 'active')"
+    )
     parameters: tuple[str, ...] = () if exam_version_id is None else (exam_version_id,)
     rows = connection.execute(
         """
-        SELECT l.id AS link_id, l.exam_version_id, l.answer_key_version_id,
+        SELECT l.id AS link_id, l.exam_version_id, v.id AS answer_key_version_id,
                l.decision_json, l.algorithm_version, l.predecessor_link_id,
                v.identity_key, v.answer_key_state, v.coverage_json, v.profile_json,
                v.predecessor_version_id, v.version_number
         FROM document_versions v
-        LEFT JOIN document_links l ON l.answer_key_version_id = v.id AND l.status = 'active'
-        WHERE v.document_role = 'answer_key'""" + clause
-        + " ORDER BY v.identity_key, v.version_number, v.id",
+        LEFT JOIN document_links l ON l.answer_key_version_id = v.id AND l.status = 'active' """
+        + join_scope
+        + " WHERE v.document_role = 'answer_key' "
+        "ORDER BY v.identity_key, v.version_number, v.id",
         parameters,
     ).fetchall()
-    return [
-        {
+    candidates: list[dict[str, Any]] = []
+    for row in rows:
+        profile = json.loads(cast(str, row["profile_json"]))
+        if exam_profile is not None and not (
+            _profiles_share_core(exam_profile, profile)
+            and _profiles_match_scope(exam_profile, profile)
+        ):
+            continue
+        candidates.append({
             "link_id": row["link_id"], "exam_version_id": row["exam_version_id"],
             "answer_key_version_id": row["answer_key_version_id"],
             "decision": json.loads(row["decision_json"]) if row["decision_json"] else None,
@@ -378,12 +400,11 @@ def active_answer_key_candidates(
             "predecessor_link_id": row["predecessor_link_id"],
             "identity_key": row["identity_key"], "answer_key_state": row["answer_key_state"],
             "coverage": json.loads(row["coverage_json"]),
-            "profile": json.loads(row["profile_json"]),
+            "profile": profile,
             "predecessor_version_id": row["predecessor_version_id"],
             "version_number": row["version_number"],
-        }
-        for row in rows
-    ]
+        })
+    return candidates
 
 
 def record_document_link(
@@ -431,7 +452,8 @@ def record_document_link(
                  exam_version_id, decision.algorithm_version, canonical_json(event), recorded_at),
             )
         link_id = str(uuid.uuid5(
-            uuid.NAMESPACE_URL, f"kad:document-link:{exam_version_id}:{answer_key_version_id}"
+            uuid.NAMESPACE_URL,
+            f"kad:document-link:{exam_version_id}:{answer_key_version_id}:{predecessor or 'root'}",
         ))
         connection.execute(
             "INSERT INTO document_links (id, exam_version_id, answer_key_version_id, status, "
@@ -470,7 +492,6 @@ def exam_documents_affected_by_answer_key(
     if key_row is None:
         return []
     key_profile = json.loads(cast(str, key_row["profile_json"]))
-    key_identity = key_profile.get("identity", {})
 
     rows = connection.execute(
         """
@@ -483,17 +504,39 @@ def exam_documents_affected_by_answer_key(
     affected: list[dict[str, Any]] = []
     for row in rows:
         profile = json.loads(cast(str, row["profile_json"]))
-        identity = profile.get("identity", {})
-        core_match = all(
-            key_identity.get(name, {}).get("status") != "known"
-            or identity.get(name, {}).get("status") == "known"
-            and set(key_identity[name].get("normalized_values", ()))
-            & set(identity[name].get("normalized_values", ()))
-            for name in ("board", "concurso", "year")
-        )
-        if core_match:
+        if _profiles_share_core(profile, key_profile) and _profiles_match_scope(
+            profile, key_profile
+        ):
             affected.append(dict(row))
     return affected
+
+
+def _profiles_share_core(exam_profile: dict[str, Any], key_profile: dict[str, Any]) -> bool:
+    exam_identity = exam_profile.get("identity", {})
+    key_identity = key_profile.get("identity", {})
+    return all(
+        key_identity.get(name, {}).get("status") != "known"
+        or exam_identity.get(name, {}).get("status") == "known"
+        and bool(
+            set(key_identity[name].get("normalized_values", ()))
+            & set(exam_identity[name].get("normalized_values", ()))
+        )
+        for name in ("board", "concurso", "year")
+    )
+
+
+def _profiles_match_scope(exam_profile: dict[str, Any], key_profile: dict[str, Any]) -> bool:
+    exam_identity = exam_profile.get("identity", {})
+    key_coverage = key_profile.get("coverage", {})
+    return all(
+        key_coverage.get(name, {}).get("status") != "known"
+        or exam_identity.get(name, {}).get("status") == "known"
+        and bool(
+            set(key_coverage[name].get("normalized_values", ()))
+            & set(exam_identity[name].get("normalized_values", ()))
+        )
+        for name in ("roles", "stage", "turns", "variants")
+    )
 
 
 def _decode_json(value: object) -> object | None:

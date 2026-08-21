@@ -30,7 +30,12 @@ from .document_matching import (
     structural_v_number,
 )
 from .models import QuestionRecord
-from .semantic_identity import AssociationCandidate, extract_semantic_profile
+from .semantic_identity import (
+    AssociationCandidate,
+    DocumentAssociationDecision,
+    DocumentSemanticProfile,
+    extract_semantic_profile,
+)
 from .semantic_resolution import select_answer_key
 
 
@@ -537,34 +542,21 @@ class DesktopProcessor:
 
     def _structure_job(self, job_id: str, event: threading.Event) -> None:
         documents = self.store.documents_for_job(job_id)
-        answer_keys: list[dict[str, Any]] = []
+        new_answer_key_versions: list[str] = []
         exam_documents: list[dict[str, Any]] = []
         for document in documents:
             if document.get("semantic_resolution") not in {"new_identity", "new_version"}:
                 continue
             metadata = DesktopImportMetadata.model_validate(document["metadata"])
             if _document_type(cast(str, document["filename"]), metadata) == "answer_key":
-                text = "\n".join(
-                    str(page["text"]) for page in self.store.pages(cast(str, document["id"]))
-                )
-                if text.strip():
-                    answer_keys.append({**document, "answer_key_text": text})
+                version_id = cast(str | None, document.get("document_version_id"))
+                if version_id is not None:
+                    new_answer_key_versions.append(version_id)
                 continue
             exam_text = "\n".join(
                 str(page["text"]) for page in self.store.pages(cast(str, document["id"]))
             )
             exam_documents.append({**document, "exam_text": exam_text})
-
-        cached_hashes = {
-            cast(str, item["sha256"]) for item in answer_keys if item.get("sha256") is not None
-        }
-        for cached in self.store.cached_answer_keys(exclude_job_id=job_id):
-            digest = cast(str | None, cached.get("sha256"))
-            if digest is not None and digest in cached_hashes:
-                continue
-            answer_keys.append(cached)
-            if digest is not None:
-                cached_hashes.add(digest)
 
         canonical_exams, skipped_exams = _canonical_exam_documents(exam_documents)
         for document in skipped_exams:
@@ -588,6 +580,9 @@ class DesktopProcessor:
             ):
                 continue
             document_id = cast(str, document["id"])
+            if self.store.question_records(document_id):
+                self._associate_exam(document)
+                continue
             pages = self.store.pages(document_id)
             questions, warnings = parse_question_pages(pages)
             existing_warnings = list(cast(list[str], document["warnings"]))
@@ -603,30 +598,6 @@ class DesktopProcessor:
                 )
                 continue
             metadata = DesktopImportMetadata.model_validate(document["metadata"])
-            answer_key = _select_answer_key(document, answer_keys)
-            variant_number = _variant_number(document)
-            variant = metadata.variant or (
-                f"Tipo {variant_number}" if variant_number is not None else None
-            )
-            answer_entries = (
-                parse_answer_key(
-                    cast(str, answer_key["answer_key_text"]),
-                    variant=variant,
-                    role=metadata.role,
-                    turn=_turn_from_text(cast(str, document.get("exam_text", ""))),
-                )
-                if answer_key is not None
-                else {}
-            )
-            if answer_key is None and any(
-                question.answer_status == "missing" for question in questions
-            ):
-                existing_warnings.append("nenhum gabarito correspondente foi localizado")
-            elif not answer_entries:
-                existing_warnings.append(
-                    "gabarito localizado, mas sem respostas reconhecidas para "
-                    f"{variant or 'a prova'}"
-                )
             requests = [
                 ClassificationRequest(
                     question_number=question.number,
@@ -649,18 +620,17 @@ class DesktopProcessor:
             for question in questions:
                 classification = by_number.get(question.number, QuestionClassification())
                 updated = _apply_classification(question, classification)
-                entry = answer_entries.get(question.number)
-                if entry is not None:
-                    payload = updated.model_dump(mode="json")
-                    payload.update(
-                        {
-                            "answer_status": "annulled" if entry.annulled else "matched",
-                            "correct_answer": None if entry.annulled else entry.answer,
-                        }
-                    )
-                    updated = QuestionRecord.model_validate(payload)
                 self.store.save_question(document_id, updated, classification)
                 structured_questions.append(updated)
+            applied, located = self._associate_exam(document)
+            if not applied:
+                existing_warnings.append(
+                    "gabarito localizado, mas sem respostas reconhecidas para a prova"
+                    if located else "nenhum gabarito correspondente foi localizado"
+                )
+            structured_questions = [
+                question for question, _ in self.store.question_records(document_id)
+            ]
             missing_answers = sum(
                 question.answer_status == "missing" for question in structured_questions
             )
@@ -675,3 +645,86 @@ class DesktopProcessor:
                     list(dict.fromkeys(existing_warnings)), ensure_ascii=False
                 ),
             )
+
+        for answer_key_version_id in dict.fromkeys(new_answer_key_versions):
+            if event.is_set():
+                return
+            self._reconcile_answer_key(answer_key_version_id)
+
+    def _association_for_exam(
+        self, exam: dict[str, Any]
+    ) -> tuple[dict[str, Any] | None, DocumentAssociationDecision]:
+        exam_version_id = cast(str, exam["document_version_id"])
+        exam_profile = DocumentSemanticProfile.model_validate_json(
+            json.dumps(self.store.semantic_document_view(cast(str, exam["id"]))["profile"])
+        )
+        candidates = self.store.answer_key_candidates(exam_version_id)
+        decision = select_answer_key(
+            exam_profile,
+            [
+                AssociationCandidate(
+                    version_id=cast(str, candidate["answer_key_version_id"]),
+                    profile=DocumentSemanticProfile.model_validate_json(
+                        json.dumps(candidate["profile"])
+                    ),
+                    predecessor_version_id=cast(
+                        str | None, candidate["predecessor_version_id"]
+                    ),
+                )
+                for candidate in candidates
+            ],
+        )
+        if decision.selected_version_id is None:
+            return None, decision
+        return self.store.answer_key_document(decision.selected_version_id), decision
+
+    def _associate_exam(self, exam: dict[str, Any]) -> tuple[bool, bool]:
+        answer_key, decision = self._association_for_exam(exam)
+        if answer_key is None:
+            return False, False
+        return self._apply_answer_key_to_exam(exam, answer_key, decision), True
+
+    def _apply_answer_key_to_exam(
+        self,
+        exam: dict[str, Any],
+        answer_key: dict[str, Any],
+        decision: DocumentAssociationDecision,
+    ) -> bool:
+        exam_version_id = cast(str, exam["document_version_id"])
+        answer_key_version_id = cast(str, answer_key["version_id"])
+        if decision.selected_version_id != answer_key_version_id:
+            return False
+        metadata = DesktopImportMetadata.model_validate(exam["metadata"])
+        variant_number = _variant_number(exam)
+        variant = metadata.variant or (
+            f"Tipo {variant_number}" if variant_number is not None else None
+        )
+        entries = parse_answer_key(
+            cast(str, answer_key["answer_key_text"]),
+            variant=variant,
+            role=metadata.role,
+            turn=_turn_from_text(cast(str, exam.get("exam_text", ""))),
+        )
+        updates = {
+            number: (
+                "annulled" if entry.annulled else "matched",
+                None if entry.annulled else entry.answer,
+            )
+            for number, entry in entries.items()
+        }
+        return self.store.apply_answer_key_updates(
+            cast(str, exam["id"]), exam_version_id, answer_key_version_id, decision, updates
+        )
+
+    def _reconcile_answer_key(self, answer_key_version_id: str) -> int:
+        applied = 0
+        for affected in self.store.exams_affected_by_answer_key(answer_key_version_id):
+            document_id = cast(str, affected["id"])
+            exam = self.store.document(document_id)
+            exam["exam_text"] = "\n".join(
+                str(page["text"]) for page in self.store.pages(document_id)
+            )
+            changed, _ = self._associate_exam(exam)
+            if changed:
+                applied += 1
+        return applied

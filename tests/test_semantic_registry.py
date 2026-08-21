@@ -170,6 +170,91 @@ def _semantic_store(database_path: Path) -> DesktopStore:
 
 
 class SemanticRegistryMigrationTests(unittest.TestCase):
+    def test_answer_key_scope_excludes_each_known_mismatch_and_accepts_multicoverage(
+        self,
+    ) -> None:
+        def known(*values: str | int) -> dict[str, object]:
+            return {"status": "known", "normalized_values": list(values)}
+
+        core = {"board": known("board"), "concurso": known("contest"), "year": known(2026)}
+        exam_profile = {
+            "identity": {
+                **core,
+                "roles": known("analista"), "stage": known("fase 1"),
+                "turns": known("manha"), "variants": known("tipo 1"),
+            }
+        }
+        matching_coverage = {
+            "roles": known("analista", "tecnico"), "stage": known("fase 1", "fase 2"),
+            "turns": known("manha", "tarde"), "variants": known("tipo 1", "tipo 2"),
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            store = _semantic_store(Path(directory) / "collector.sqlite3")
+            with closing(store._connect()) as connection:
+                connection.execute(
+                    "UPDATE document_versions SET profile_json = ? WHERE id = 'exam-version'",
+                    (json.dumps(exam_profile),),
+                )
+                for field, mismatch in (
+                    ("roles", "auditor"), ("stage", "fase 3"),
+                    ("turns", "noite"), ("variants", "tipo 4"),
+                ):
+                    with self.subTest(field=field):
+                        coverage = {**matching_coverage, field: known(mismatch)}
+                        key_profile = {"identity": core, "coverage": coverage}
+                        connection.execute(
+                            "UPDATE document_versions SET profile_json = ?, coverage_json = ? "
+                            "WHERE id = 'answer-version-1'",
+                            (json.dumps(key_profile), json.dumps(coverage)),
+                        )
+                        self.assertEqual(
+                            semantic_registry.exam_documents_affected_by_answer_key(
+                                connection, "answer-version-1"
+                            ),
+                            [],
+                        )
+                        self.assertNotIn(
+                            "answer-version-1",
+                            {
+                                item["answer_key_version_id"]
+                                for item in semantic_registry.active_answer_key_candidates(
+                                    connection, "exam-version"
+                                )
+                            },
+                        )
+                key_profile = {"identity": core, "coverage": matching_coverage}
+                connection.execute(
+                    "UPDATE document_versions SET profile_json = ?, coverage_json = ? "
+                    "WHERE id = 'answer-version-1'",
+                    (json.dumps(key_profile), json.dumps(matching_coverage)),
+                )
+                affected = semantic_registry.exam_documents_affected_by_answer_key(
+                    connection, "answer-version-1"
+                )
+                candidates = semantic_registry.active_answer_key_candidates(
+                    connection, "exam-version"
+                )
+
+            self.assertEqual([row["id"] for row in affected], ["exam-document"])
+            self.assertIn(
+                "answer-version-1",
+                {item["answer_key_version_id"] for item in candidates},
+            )
+
+    def test_active_candidates_include_new_key_not_yet_linked_to_exam(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = _semantic_store(Path(directory) / "collector.sqlite3")
+            with closing(store._connect()) as connection:
+                candidates = semantic_registry.active_answer_key_candidates(
+                    connection, "exam-version"
+                )
+
+            self.assertEqual(
+                [candidate["answer_key_version_id"] for candidate in candidates],
+                ["answer-version-1", "answer-version-2"],
+            )
+            self.assertTrue(all(candidate["link_id"] is None for candidate in candidates))
+
     def test_record_document_link_persists_complete_decision_and_is_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             store = _semantic_store(Path(directory) / "collector.sqlite3")
@@ -200,6 +285,47 @@ class SemanticRegistryMigrationTests(unittest.TestCase):
             self.assertEqual(len(links), 1)
             self.assertEqual(json.loads(links[0][1])["selected_version_id"], "answer-version-1")
             self.assertEqual([row[0] for row in events], ["association_selected"])
+
+    def test_record_document_link_preserves_each_active_period_across_a_b_a(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = _semantic_store(Path(directory) / "collector.sqlite3")
+            from kad_collector.semantic_identity import DocumentAssociationDecision
+
+            def decision(version_id: str) -> DocumentAssociationDecision:
+                return DocumentAssociationDecision(
+                    outcome="selected", selected_version_id=version_id,
+                    assessments=(), minimum_score=36, minimum_margin=8,
+                    achieved_margin=None, reason="test",
+                    algorithm_version="semantic-association-v1",
+                )
+
+            with closing(store._connect()) as connection:
+                first = semantic_registry.record_document_link(
+                    connection, "exam-version", "answer-version-1",
+                    decision("answer-version-1"), TIMESTAMP,
+                )
+                second = semantic_registry.record_document_link(
+                    connection, "exam-version", "answer-version-2",
+                    decision("answer-version-2"), "2026-08-20T00:00:01+00:00",
+                )
+                third = semantic_registry.record_document_link(
+                    connection, "exam-version", "answer-version-1",
+                    decision("answer-version-1"), "2026-08-20T00:00:02+00:00",
+                )
+                connection.commit()
+                links = connection.execute(
+                    "SELECT id, status, predecessor_link_id FROM document_links "
+                    "ORDER BY created_at, id"
+                ).fetchall()
+
+            self.assertEqual(len({first, second, third}), 3)
+            self.assertEqual([row["status"] for row in links], [
+                "superseded", "superseded", "active",
+            ])
+            by_id = {row["id"]: row for row in links}
+            self.assertIsNone(by_id[first]["predecessor_link_id"])
+            self.assertEqual(by_id[second]["predecessor_link_id"], first)
+            self.assertEqual(by_id[third]["predecessor_link_id"], second)
 
     def test_legacy_database_adds_semantic_schema_without_touching_rows(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
