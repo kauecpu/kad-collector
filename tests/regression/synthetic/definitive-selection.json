@@ -2,6 +2,8 @@
   "exam": {
     "filename": "prova-sintetica.pdf",
     "metadata": {
+      "board": "Banca sintética",
+      "concurso": "Concurso sintético",
       "year": 2026
     }
   },
@@ -10,6 +12,8 @@
       "id": "preliminary",
       "filename": "gabarito-preliminar-sintetico.pdf",
       "metadata": {
+        "board": "Banca sintética",
+        "concurso": "Concurso sintético",
         "document_title": "Gabarito preliminar sintético",
         "year": 2026
       }
@@ -18,9 +22,12 @@
       "id": "definitive",
       "filename": "gabarito-definitivo-sintetico.pdf",
       "metadata": {
+        "board": "Banca sintética",
+        "concurso": "Concurso sintético",
         "document_title": "Gabarito definitivo sintético",
         "year": 2026
-      }
+      },
+      "predecessor_version_id": "preliminary"
     }
   ]
 }

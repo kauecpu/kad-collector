@@ -476,4 +476,3 @@ executados, quais cenários novos foram cobertos e qualquer limitação restante
 - interface, relatório e auditoria explicam cada decisão;
 - o motor não contém condição específica de banca ou origem;
 - nenhum segredo, `.env` ou dado sensível é incluído em código, teste, log ou commit.
-
