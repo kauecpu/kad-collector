@@ -182,7 +182,12 @@ def select_answer_key(
         successors = [item for item in definitives if any(
             item.predecessor_version_id == preliminary.version_id for preliminary in preliminaries
         )]
-        if len(definitives) == 1 and len(preliminaries) == 1 and len(successors) == 1:
+        if (
+            len(tied_candidates) == 2
+            and len(definitives) == 1
+            and len(preliminaries) == 1
+            and len(successors) == 1
+        ):
             definitive = successors[0]
             top = next(item for item in compatible if item.version_id == definitive.version_id)
             second = next((item for item in compatible if item.version_id != top.version_id), None)

@@ -190,6 +190,105 @@ class SemanticResolutionDecisionTests(unittest.TestCase):
         ])
         self.assertEqual(decision.outcome, "ambiguous")
 
+    def test_linked_definitive_wins_equal_semantics_despite_preliminary_title_bonus(self) -> None:
+        weak_variant = SemanticField(
+            status="known", normalized_values=("tipo 1",), raw_values=("Tipo 1",),
+            evidence=(SemanticEvidence.title("title", "Tipo 1"),),
+            method="title", reason="title", confidence=1.0,
+        )
+        exam = self._exam(variants=weak_variant)
+        preliminary = self._key("pre", variants=weak_variant).profile.model_copy(
+            update={"answer_key_state": "preliminary"}
+        )
+        definitive_variant = weak_variant.model_copy(update={"evidence": ()})
+        definitive = self._key("def", variants=definitive_variant).profile.model_copy(
+            update={"answer_key_state": "definitive"}
+        )
+        decision = select_answer_key(exam, [
+            AssociationCandidate(version_id="pre", profile=preliminary),
+            AssociationCandidate(
+                version_id="def", profile=definitive, predecessor_version_id="pre"
+            ),
+        ])
+        self.assertEqual(decision.selected_version_id, "def")
+
+    def test_definitive_does_not_override_more_compatible_preliminary(self) -> None:
+        organization = SemanticField.from_evidence(
+            "organization", (SemanticEvidence.metadata("organization", "Org"),)
+        )
+        exam = self._exam(organization=organization)
+        preliminary = self._key("pre", organization=organization).profile.model_copy(
+            update={"answer_key_state": "preliminary"}
+        )
+        definitive = self._key("def").profile.model_copy(
+            update={"answer_key_state": "definitive"}
+        )
+        decision = select_answer_key(exam, [
+            AssociationCandidate(version_id="pre", profile=preliminary),
+            AssociationCandidate(
+                version_id="def", profile=definitive, predecessor_version_id="pre"
+            ),
+        ])
+        self.assertEqual(decision.selected_version_id, "pre")
+
+    def test_third_equivalent_candidate_keeps_successor_pair_ambiguous(self) -> None:
+        preliminary = self._key("pre").profile.model_copy(
+            update={"answer_key_state": "preliminary"}
+        )
+        definitive = self._key("def").profile.model_copy(
+            update={"answer_key_state": "definitive"}
+        )
+        third = self._key("third").profile
+        decision = select_answer_key(self._exam(), [
+            AssociationCandidate(version_id="pre", profile=preliminary),
+            AssociationCandidate(
+                version_id="def", profile=definitive, predecessor_version_id="pre"
+            ),
+            AssociationCandidate(version_id="third", profile=third),
+        ])
+        self.assertIsNone(decision.selected_version_id)
+        self.assertEqual(decision.outcome, "ambiguous")
+
+    def test_minimum_margin_six_is_ambiguous_and_eight_selects(self) -> None:
+        weak_variant = SemanticField(
+            status="known", normalized_values=("tipo 1",), raw_values=("Tipo 1",),
+            evidence=(SemanticEvidence.title("title", "Tipo 1"),),
+            method="title", reason="title", confidence=1.0,
+        )
+        organization = SemanticField.from_evidence(
+            "organization", (SemanticEvidence.metadata("organization", "Org"),)
+        )
+        exam = self._exam(variants=weak_variant, organization=organization)
+        known_variant = SemanticField(
+            status="known", normalized_values=("tipo 1",), method="test",
+            reason="known", confidence=1.0,
+        )
+        better = self._key("better", organization=organization, variants=known_variant)
+        weaker = self._key("weaker", variants=weak_variant)
+        ambiguous = select_answer_key(exam, [better, weaker])
+        self.assertEqual(ambiguous.outcome, "ambiguous")
+        clear = select_answer_key(
+            self._exam(organization=organization), [better, self._key("weaker")]
+        )
+        self.assertEqual(clear.selected_version_id, "better")
+        self.assertEqual(clear.achieved_margin, 8)
+
+    def test_candidate_assessments_are_complete_and_stably_ordered(self) -> None:
+        selected = self._key("z")
+        conflicting = self._key("a", year=SemanticField(
+            status="known", normalized_values=(2025,), method="test", reason="wrong",
+            confidence=1.0, evidence=(SemanticEvidence.metadata("year", 2025),),
+        ))
+        insufficient = self._key("m", roles=SemanticField.unknown("missing"))
+        first = select_answer_key(self._exam(), [insufficient, conflicting, selected])
+        second = select_answer_key(self._exam(), [selected, insufficient, conflicting])
+        self.assertEqual(
+            [item.version_id for item in first.assessments],
+            [item.version_id for item in second.assessments],
+        )
+        self.assertEqual({item.version_id for item in first.assessments}, {"a", "m", "z"})
+        self.assertTrue(all(item.reasons or item.conflicts for item in first.assessments))
+
     def test_equal_candidates_are_ambiguous(self) -> None:
         decision = select_answer_key(self._exam(), [self._key("a"), self._key("b")])
         self.assertIsNone(decision.selected_version_id)
