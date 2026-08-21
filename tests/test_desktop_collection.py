@@ -36,6 +36,11 @@ class DesktopCollectionTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.directory.cleanup()
 
+    def resolve_job_documents(self, job_id: str) -> None:
+        for document in self.store.documents_for_job(job_id):
+            if self.store.pages(document["id"]):
+                self.store.resolve_extracted_document(document["id"])
+
     def test_catalog_exposes_collectable_sources_and_reference_only_obmep(self) -> None:
         catalog = {source["id"]: source for source in self.manager.catalog()}
         self.assertTrue(catalog["fgv_conhecimento"]["collectable"])
@@ -403,6 +408,7 @@ Enunciado completo da segunda questao.
             self.store.save_page(document["id"], 1, text, status="text")
             self.store.update_document(document["id"], status="extracted", page_count=1)
 
+        self.resolve_job_documents(job_id)
         self.processor._structure_job(job_id, threading.Event())
 
         result = self.store.query(DesktopFilterSet())
@@ -430,7 +436,9 @@ Enunciado completo da segunda questao.
         answer_path = self.root / "gabarito.pdf"
         exam_path.write_bytes(b"%PDF-1.4\nexam\n%%EOF")
         answer_path.write_bytes(b"%PDF-1.4\nanswer\n%%EOF")
-        base = DesktopImportMetadata(provider="banca", year=2026)
+        base = DesktopImportMetadata(
+            provider="banca", board="Banca", concurso="Concurso", year=2026
+        )
         job_id = self.store.create_job(
             [exam_path, answer_path],
             base,
@@ -455,6 +463,7 @@ Enunciado completo da segunda questao.
             self.store.save_page(document["id"], 1, text, status="text")
             self.store.update_document(document["id"], status="extracted", page_count=1)
 
+        self.resolve_job_documents(job_id)
         self.processor._structure_job(job_id, threading.Event())
 
         questions = self.store.query(DesktopFilterSet())["questions"]
@@ -581,6 +590,7 @@ Enunciado completo da segunda questao.
                 answer_path.write_bytes(b"%PDF-1.4\nanswer\n%%EOF")
                 common = DesktopImportMetadata(
                     concurso="Concurso Fiscal",
+                    board="Banca Fiscal",
                     year=2026,
                     role="Analista",
                     organization="Secretaria da Fazenda",
@@ -614,6 +624,8 @@ Enunciado completo da segunda questao.
                     store.save_page(stored["id"], 1, text, status="text")
                     store.update_document(stored["id"], status="extracted", page_count=1)
 
+                for stored in store.documents_for_job(job_id):
+                    store.resolve_extracted_document(stored["id"])
                 processor._structure_job(job_id, threading.Event())
 
                 result = store.query(
@@ -631,6 +643,7 @@ Enunciado completo da segunda questao.
         exam_path.write_bytes(b"%PDF-1.4\nexam\n%%EOF")
         base = DesktopImportMetadata(
             provider="banca",
+            board="Banca Oficial",
             concurso="Concurso 2026",
             year=2026,
             role="Analista",
@@ -642,9 +655,12 @@ Enunciado completo da segunda questao.
                 "external_id": "d" * 64,
             }
         )
-        key_job = self.store.create_job([key_path], base, "local", metadata_by_path={
-            str(key_path.resolve()).casefold(): key_metadata
-        })
+        key_job = self.store.create_job(
+            [key_path],
+            base,
+            "local",
+            metadata_by_path={str(key_path.resolve()).casefold(): key_metadata},
+        )
         key_document = self.store.documents_for_job(key_job)[0]
         self.store.save_page(key_document["id"], 1, "1 - C", status="text")
         self.store.update_document(key_document["id"], status="extracted", page_count=1)
@@ -656,9 +672,12 @@ Enunciado completo da segunda questao.
                 "external_id": "e" * 64,
             }
         )
-        exam_job = self.store.create_job([exam_path], base, "local", metadata_by_path={
-            str(exam_path.resolve()).casefold(): exam_metadata
-        })
+        exam_job = self.store.create_job(
+            [exam_path],
+            base,
+            "local",
+            metadata_by_path={str(exam_path.resolve()).casefold(): exam_metadata},
+        )
         exam_document = self.store.documents_for_job(exam_job)[0]
         self.store.save_page(
             exam_document["id"],
@@ -668,6 +687,8 @@ Enunciado completo da segunda questao.
         )
         self.store.update_document(exam_document["id"], status="extracted", page_count=1)
 
+        self.store.resolve_extracted_document(key_document["id"])
+        self.store.resolve_extracted_document(exam_document["id"])
         self.processor._structure_job(exam_job, threading.Event())
 
         question = self.store.query(DesktopFilterSet())["questions"][0]
@@ -711,9 +732,7 @@ Enunciado completo da segunda questao.
                 }
             )
             for _ in range(100):
-                job = next(
-                    item for item in self.manager.list_jobs() if item["id"] == collection_id
-                )
+                job = next(item for item in self.manager.list_jobs() if item["id"] == collection_id)
                 if job["status"] not in {"queued", "running", "processing"}:
                     break
                 threading.Event().wait(0.01)

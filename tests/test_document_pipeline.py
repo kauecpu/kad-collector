@@ -61,9 +61,7 @@ class DocumentPipelineContractTests(unittest.TestCase):
                     imported.extend(alias.name for alias in node.names)
                 elif isinstance(node, ast.ImportFrom):
                     prefix = "kad_collector" if node.level else ""
-                    imported.append(
-                        ".".join(part for part in (prefix, node.module or "") if part)
-                    )
+                    imported.append(".".join(part for part in (prefix, node.module or "") if part))
                 for name in imported:
                     parts = name.split(".")
                     dependency = parts[1] if parts[:1] == ["kad_collector"] else parts[0]
@@ -216,9 +214,7 @@ class DocumentPipelineContractTests(unittest.TestCase):
         documents = [
             normalize_collected_document(collected("source-a", "exam", "Prova A", "a")),
             normalize_collected_document(collected("source-b", "exam", "Prova B", "b")),
-            normalize_collected_document(
-                collected("source-c", "answer_key", "Gabarito", "c")
-            ),
+            normalize_collected_document(collected("source-c", "answer_key", "Gabarito", "c")),
         ]
 
         batches = processing_batches(documents)
@@ -354,8 +350,7 @@ class DocumentPipelinePersistenceTests(unittest.TestCase):
                     for table in ("jobs", "documents", "document_observations")
                 }
                 duplicate_events = connection.execute(
-                    "SELECT COUNT(*) FROM document_identity_events "
-                    "WHERE action = 'exact_duplicate'"
+                    "SELECT COUNT(*) FROM document_identity_events WHERE action = 'exact_duplicate'"
                 ).fetchone()[0]
 
             self.assertEqual(len(first), 1)
@@ -533,9 +528,7 @@ class DocumentPipelinePersistenceTests(unittest.TestCase):
                         "2026-08-20T00:00:00+00:00",
                     ),
                 )
-                columns = {
-                    row[1] for row in connection.execute("PRAGMA table_info(documents)")
-                }
+                columns = {row[1] for row in connection.execute("PRAGMA table_info(documents)")}
                 if "normalized_json" in columns:
                     connection.execute("ALTER TABLE documents DROP COLUMN normalized_json")
                 connection.commit()
@@ -545,9 +538,7 @@ class DocumentPipelinePersistenceTests(unittest.TestCase):
             self.assertEqual(len(reopened.documents_for_job(job_id)), 1)
             self.assertIsNone(reopened.documents_for_job(job_id)[0]["normalized_document"])
             with closing(sqlite3.connect(database_path)) as connection:
-                columns = {
-                    row[1] for row in connection.execute("PRAGMA table_info(documents)")
-                }
+                columns = {row[1] for row in connection.execute("PRAGMA table_info(documents)")}
                 count = connection.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
             self.assertIn("normalized_json", columns)
             self.assertEqual(count, 1)
@@ -833,12 +824,14 @@ class DocumentPipelinePersistenceTests(unittest.TestCase):
             root = Path(directory)
             path = root / "duplicate.pdf"
             pdf = canvas.Canvas(str(path))
-            for index, line in enumerate((
-                "QUESTAO 1",
-                "Este enunciado completo reproduz a mesma questão no reprocessamento.",
-                "A) Primeira alternativa.",
-                "B) Segunda alternativa.",
-            )):
+            for index, line in enumerate(
+                (
+                    "QUESTAO 1",
+                    "Este enunciado completo reproduz a mesma questão no reprocessamento.",
+                    "A) Primeira alternativa.",
+                    "B) Segunda alternativa.",
+                )
+            ):
                 pdf.drawString(54, 800 - (20 * index), line)
             pdf.save()
             store = DesktopStore(root / "collector.sqlite3")
@@ -848,7 +841,11 @@ class DocumentPipelinePersistenceTests(unittest.TestCase):
 
             pipeline = DocumentPipeline(store, runner)
             original_job_id = pipeline.import_paths(
-                [path], DesktopImportMetadata(document_type="exam", year=2026), "local"
+                [path],
+                DesktopImportMetadata(
+                    document_type="exam", board="Banca", concurso="Concurso", year=2026
+                ),
+                "local",
             )[0]
             processor = DesktopProcessor(store)
             processor.run(original_job_id, threading.Event())
@@ -868,13 +865,10 @@ class DocumentPipelinePersistenceTests(unittest.TestCase):
             self.assertEqual(store.question(original_question["id"]), before_question)
             self.assertEqual(store.audit_log(original_question["id"]), before_audit)
             reprocessed_questions = store.query(DesktopFilterSet())["questions"]
-            self.assertEqual(len(reprocessed_questions), 2)
-            reprocessed_question = next(
-                question
-                for question in reprocessed_questions
-                if question["document_id"] != original_document["id"]
-            )
-            self.assertIn("duplicate", reprocessed_question["flags"])
+            self.assertEqual(len(reprocessed_questions), 1)
+            reprocessed_document = store.documents_for_job(reprocessing_job_id)[0]
+            self.assertEqual(reprocessed_document["semantic_resolution"], "republication")
+            self.assertIn("questões não duplicadas", " ".join(reprocessed_document["warnings"]))
             self.assertNotIn("duplicate", before_question["flags"])
 
     def test_reprocess_rejects_duplicate_ids_before_multi_batch_submission(self) -> None:
