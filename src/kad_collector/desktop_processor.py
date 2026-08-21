@@ -345,6 +345,41 @@ class DesktopProcessor:
                     )
                     return
 
+            for document in self.store.documents_for_job(job_id):
+                if event.is_set():
+                    self.store.update_job(
+                        job_id, status="paused", message="Lote pausado; pronto para retomar"
+                    )
+                    return
+                document_id = cast(str, document["id"])
+                try:
+                    resolution = self.store.resolve_extracted_document(document_id)
+                except Exception as exc:
+                    warnings = list(cast(list[str], self.store.document(document_id)["warnings"]))
+                    warnings.append(f"resolução semântica falhou: {type(exc).__name__}: {exc}")
+                    self.store.update_document(
+                        document_id, status="exception",
+                        warnings_json=json.dumps(warnings, ensure_ascii=False),
+                    )
+                    continue
+                if resolution.outcome == "uncertain":
+                    warnings = list(cast(list[str], self.store.document(document_id)["warnings"]))
+                    warnings.append(resolution.reason)
+                    self.store.update_document(
+                        document_id, status="exception",
+                        warnings_json=json.dumps(warnings, ensure_ascii=False),
+                    )
+                elif resolution.outcome == "republication":
+                    warnings = list(cast(list[str], self.store.document(document_id)["warnings"]))
+                    warnings.append(
+                        f"republicação vinculada à versão {resolution.document_version_id}; "
+                        "questões não duplicadas"
+                    )
+                    self.store.update_document(
+                        document_id, status="processed",
+                        warnings_json=json.dumps(warnings, ensure_ascii=False),
+                    )
+
             self.store.update_job(
                 job_id, status="running", message="Separando e classificando questões"
             )
@@ -479,6 +514,8 @@ class DesktopProcessor:
         answer_keys: list[dict[str, Any]] = []
         exam_documents: list[dict[str, Any]] = []
         for document in documents:
+            if document.get("semantic_resolution") in {"uncertain", "republication"}:
+                continue
             metadata = DesktopImportMetadata.model_validate(document["metadata"])
             if _document_type(cast(str, document["filename"]), metadata) == "answer_key":
                 text = "\n".join(

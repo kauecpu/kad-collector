@@ -30,6 +30,8 @@ from .semantic_registry import (
     semantic_document_view,
     semantic_summary,
 )
+from .semantic_identity import extract_semantic_profile
+from .semantic_resolution import IdentityResolution, resolve_document_version
 from .validation import validate_editorial_question
 
 
@@ -515,6 +517,18 @@ class DesktopStore:
     def identity_events(self, document_id: str) -> list[dict[str, Any]]:
         with closing(self._connect()) as connection:
             return identity_events(connection, document_id)
+
+    def resolve_extracted_document(self, document_id: str) -> IdentityResolution:
+        document = self.document(document_id)
+        normalized = cast(NormalizedDocument | None, document["normalized_document"])
+        if normalized is None:
+            raise ValueError("documento não possui contrato normalizado")
+        pages = [(int(page["page_number"]), str(page["text"])) for page in self.pages(document_id)]
+        profile = extract_semantic_profile(normalized, pages)
+        with closing(self._connect()) as connection:
+            result = resolve_document_version(connection, document_id, profile, _now())
+            connection.commit()
+        return result
 
     def reprocessing_contract(self, document_id: str) -> NormalizedDocument:
         """Return a local contract copy without changing historical document evidence."""
