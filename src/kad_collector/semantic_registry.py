@@ -7,7 +7,15 @@ from dataclasses import dataclass
 from typing import Any, cast
 
 from .document_contract import NormalizedDocument
-from .semantic_identity import IDENTITY_ALGORITHM_VERSION, canonical_json, stable_sha256
+from .semantic_identity import (
+    IDENTITY_ALGORITHM_VERSION,
+    SEMANTIC_SCHEMA_VERSION,
+    DocumentSemanticProfile,
+    ExamSemanticIdentity,
+    IdentityResolution,
+    canonical_json,
+    stable_sha256,
+)
 
 SEMANTIC_TABLES = frozenset(
     {
@@ -30,6 +38,191 @@ class ObservationClaim:
     document_id: str | None
     document_version_id: str | None
     resolution_status: str
+
+
+def persist_identity_correction(
+    connection: sqlite3.Connection,
+    *,
+    document_id: str,
+    profile: DocumentSemanticProfile,
+    actor: str,
+    corrected_at: str,
+) -> tuple[IdentityResolution, bool]:
+    """Move one operational version to a human-corrected canonical identity."""
+    row = connection.execute(
+        "SELECT d.document_version_id, d.semantic_resolution, v.identity_key, "
+        "v.document_role, v.profile_json, v.content_sha256, v.version_number, "
+        "v.predecessor_version_id FROM documents d "
+        "JOIN document_versions v ON v.id = d.document_version_id WHERE d.id = ?",
+        (document_id,),
+    ).fetchone()
+    if row is None:
+        raise ValueError("documento resolvido não encontrado")
+    if profile.identity_key is None:
+        raise ValueError("identidade semântica insuficiente")
+    if profile.has_conflict:
+        raise ValueError("perfil semântico conflitante")
+
+    version_id = cast(str, row["document_version_id"])
+    collision = connection.execute(
+        "SELECT id FROM document_versions WHERE identity_key = ? AND document_role = ? "
+        "AND content_sha256 = ? AND id != ?",
+        (
+            profile.identity_key,
+            profile.document_role,
+            profile.content_fingerprint.sha256,
+            version_id,
+        ),
+    ).fetchone()
+    if collision is not None:
+        raise ValueError("correção colide com versão existente")
+
+    identity_json = canonical_json(profile.identity.model_dump(mode="json"))
+    evidence = {
+        name: getattr(profile.identity, name).model_dump(mode="json")
+        for name in ExamSemanticIdentity.model_fields
+    }
+    profile_json = canonical_json(profile.model_dump(mode="json"))
+    coverage_json = canonical_json(profile.coverage.model_dump(mode="json"))
+    changed = (
+        row["identity_key"] != profile.identity_key
+        or row["document_role"] != profile.document_role
+        or row["profile_json"] != profile_json
+    )
+    version_number = int(row["version_number"])
+    predecessor_version_id = cast(str | None, row["predecessor_version_id"])
+    if changed and (
+        row["identity_key"] != profile.identity_key
+        or row["document_role"] != profile.document_role
+    ):
+        predecessor = connection.execute(
+            "SELECT id, version_number FROM document_versions WHERE identity_key = ? "
+            "AND document_role = ? AND id != ? ORDER BY version_number DESC, id DESC LIMIT 1",
+            (profile.identity_key, profile.document_role, version_id),
+        ).fetchone()
+        if predecessor is None:
+            predecessor_version_id = None
+            version_number = 1
+        else:
+            predecessor_version_id = cast(str, predecessor["id"])
+            version_number = int(predecessor["version_number"]) + 1
+
+    if changed:
+        old_identity_key = cast(str, row["identity_key"])
+        old_document_role = cast(str, row["document_role"])
+        connection.execute(
+            "INSERT INTO semantic_identities (identity_key, schema_version, algorithm_version, "
+            "identity_json, evidence_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(identity_key) DO UPDATE SET schema_version = excluded.schema_version, "
+            "algorithm_version = excluded.algorithm_version, "
+            "identity_json = excluded.identity_json, "
+            "evidence_json = excluded.evidence_json, updated_at = excluded.updated_at",
+            (
+                profile.identity_key,
+                SEMANTIC_SCHEMA_VERSION,
+                profile.algorithm_version,
+                identity_json,
+                canonical_json(evidence),
+                corrected_at,
+                corrected_at,
+            ),
+        )
+        connection.execute(
+            "UPDATE document_versions SET identity_key = ?, document_role = ?, "
+            "answer_key_state = ?, coverage_json = ?, profile_json = ?, version_number = ?, "
+            "predecessor_version_id = ?, updated_at = ? WHERE id = ?",
+            (
+                profile.identity_key,
+                profile.document_role,
+                profile.answer_key_state,
+                coverage_json,
+                profile_json,
+                version_number,
+                predecessor_version_id,
+                corrected_at,
+                version_id,
+            ),
+        )
+        connection.execute(
+            "UPDATE documents SET document_version_id = ? WHERE document_version_id = ?",
+            (version_id, version_id),
+        )
+        connection.execute(
+            "UPDATE document_observations SET document_version_id = ? "
+            "WHERE document_version_id = ?",
+            (version_id, version_id),
+        )
+        if (
+            old_identity_key != profile.identity_key
+            or old_document_role != profile.document_role
+        ):
+            remaining = connection.execute(
+                "SELECT id FROM document_versions WHERE identity_key = ? "
+                "AND document_role = ? ORDER BY version_number, id",
+                (old_identity_key, old_document_role),
+            ).fetchall()
+            predecessor_id: str | None = None
+            for ordinal, remaining_version in enumerate(remaining, start=1):
+                remaining_id = cast(str, remaining_version["id"])
+                connection.execute(
+                    "UPDATE document_versions SET version_number = ?, "
+                    "predecessor_version_id = ?, updated_at = ? WHERE id = ?",
+                    (ordinal, predecessor_id, corrected_at, remaining_id),
+                )
+                predecessor_id = remaining_id
+
+    payload = {
+        "oldIdentityKey": row["identity_key"],
+        "newIdentityKey": profile.identity_key,
+        "oldValues": json.loads(cast(str, row["profile_json"]))["identity"],
+        "newValues": profile.identity.model_dump(mode="json"),
+        "evidence": {
+            name: [
+                item.model_dump(mode="json")
+                for item in getattr(profile.identity, name).evidence
+            ]
+            for name in ExamSemanticIdentity.model_fields
+        },
+        "algorithmVersion": profile.algorithm_version,
+        "documentRole": profile.document_role,
+    }
+    event_key = stable_sha256(
+        {
+            "action": "identity_corrected",
+            "document_version_id": version_id,
+            "actor": actor,
+            "identity_key": profile.identity_key,
+            "document_role": profile.document_role,
+            "identity": profile.identity.model_dump(mode="json"),
+            "coverage": profile.coverage.model_dump(mode="json"),
+        }
+    )
+    event_created = connection.execute(
+        "INSERT OR IGNORE INTO document_identity_events (event_key, document_id, "
+        "document_version_id, action, actor, algorithm_version, payload_json, created_at) "
+        "VALUES (?, ?, ?, 'identity_corrected', ?, ?, ?, ?)",
+        (
+            event_key,
+            document_id,
+            version_id,
+            actor,
+            profile.algorithm_version,
+            canonical_json(payload),
+            corrected_at,
+        ),
+    ).rowcount == 1
+    outcome = cast(Any, row["semantic_resolution"] or "new_identity")
+    return (
+        IdentityResolution(
+            outcome=outcome,
+            profile=profile,
+            document_version_id=version_id,
+            predecessor_version_id=predecessor_version_id,
+            version_number=version_number,
+            reason="identidade corrigida por revisão humana",
+        ),
+        changed or event_created,
+    )
 
 
 def record_question_lineage(
@@ -536,6 +729,138 @@ def record_document_link(
         if own_transaction:
             connection.rollback()
         raise
+
+
+def record_corrected_document_link(
+    connection: sqlite3.Connection,
+    exam_version_id: str,
+    decision: Any,
+    recorded_at: str,
+) -> str | None:
+    """Reject the stale active link and persist the correction's selected link, if any."""
+    current = connection.execute(
+        "SELECT id, answer_key_version_id, decision_json FROM document_links "
+        "WHERE exam_version_id = ? AND status = 'active'",
+        (exam_version_id,),
+    ).fetchone()
+    selected = cast(str | None, getattr(decision, "selected_version_id", None))
+    decision_json = canonical_json(decision.model_dump(mode="json"))
+    if (
+        current is not None
+        and current["answer_key_version_id"] == selected
+        and current["decision_json"] == decision_json
+    ):
+        return cast(str, current["id"])
+    predecessor = cast(str | None, current["id"] if current is not None else None)
+    if current is not None:
+        connection.execute(
+            "UPDATE document_links SET status = 'rejected', updated_at = ? WHERE id = ?",
+            (recorded_at, current["id"]),
+        )
+        payload = {
+            "linkId": current["id"],
+            "examVersionId": exam_version_id,
+            "answerKeyVersionId": current["answer_key_version_id"],
+            "reason": decision.reason,
+            "decision": decision.model_dump(mode="json"),
+        }
+        connection.execute(
+            "INSERT OR IGNORE INTO document_identity_events (event_key, document_version_id, "
+            "action, actor, algorithm_version, payload_json, created_at) "
+            "VALUES (?, ?, 'association_rejected', 'system', ?, ?, ?)",
+            (
+                stable_sha256(
+                    {"action": "association_rejected", "link_id": current["id"],
+                     "decision": decision.model_dump(mode="json")}
+                ),
+                exam_version_id,
+                decision.algorithm_version,
+                canonical_json(payload),
+                recorded_at,
+            ),
+        )
+    if selected is None or getattr(decision, "outcome", None) != "selected":
+        return None
+    link_id = str(
+        uuid.uuid5(
+            uuid.NAMESPACE_URL,
+            f"kad:document-link:{exam_version_id}:{selected}:{predecessor or 'root'}",
+        )
+    )
+    connection.execute(
+        "INSERT INTO document_links (id, exam_version_id, answer_key_version_id, status, "
+        "decision_json, algorithm_version, predecessor_link_id, created_at, updated_at) "
+        "VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?)",
+        (
+            link_id,
+            exam_version_id,
+            selected,
+            decision_json,
+            decision.algorithm_version,
+            predecessor,
+            recorded_at,
+            recorded_at,
+        ),
+    )
+    payload = {
+        "linkId": link_id,
+        "examVersionId": exam_version_id,
+        "answerKeyVersionId": selected,
+        "decision": decision.model_dump(mode="json"),
+    }
+    connection.execute(
+        "INSERT OR IGNORE INTO document_identity_events (event_key, document_version_id, "
+        "action, actor, algorithm_version, payload_json, created_at) "
+        "VALUES (?, ?, 'association_selected', 'system', ?, ?, ?)",
+        (
+            stable_sha256({"action": "association_selected", "link_id": link_id}),
+            exam_version_id,
+            decision.algorithm_version,
+            canonical_json(payload),
+            recorded_at,
+        ),
+    )
+    return link_id
+
+
+def affected_exam_documents_after_identity_correction(
+    connection: sqlite3.Connection,
+    *,
+    corrected_version_id: str,
+    old_profile: DocumentSemanticProfile,
+    new_profile: DocumentSemanticProfile,
+) -> list[dict[str, Any]]:
+    """Return one operational document for every exam in the old/new correction scope."""
+    key_profiles = [
+        profile.model_dump(mode="json")
+        for profile in (old_profile, new_profile)
+        if profile.document_role == "answer_key"
+    ]
+    rows = connection.execute(
+        "SELECT v.id AS exam_version_id, v.profile_json, "
+        "(SELECT d.id FROM documents d WHERE d.document_version_id = v.id "
+        "ORDER BY (SELECT COUNT(*) FROM questions q WHERE q.document_id = d.id) DESC, "
+        "d.created_at, d.id LIMIT 1) AS document_id, "
+        "EXISTS(SELECT 1 FROM document_links l WHERE l.exam_version_id = v.id "
+        "AND l.answer_key_version_id = ? AND l.status = 'active') AS linked_to_corrected "
+        "FROM document_versions v WHERE v.document_role = 'exam' ORDER BY v.id",
+        (corrected_version_id,),
+    ).fetchall()
+    affected: list[dict[str, Any]] = []
+    for row in rows:
+        exam_profile = json.loads(cast(str, row["profile_json"]))
+        is_corrected_exam = (
+            row["exam_version_id"] == corrected_version_id
+            and new_profile.document_role == "exam"
+        )
+        matches_key_scope = any(
+            _profiles_share_core(exam_profile, key_profile)
+            and _profiles_match_scope(exam_profile, key_profile)
+            for key_profile in key_profiles
+        )
+        if is_corrected_exam or bool(row["linked_to_corrected"]) or matches_key_scope:
+            affected.append(dict(row))
+    return affected
 
 
 def exam_documents_affected_by_answer_key(

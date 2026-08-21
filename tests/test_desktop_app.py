@@ -992,6 +992,102 @@ class DesktopSmokeTests(unittest.TestCase):
                 server.server_close()
                 thread.join(timeout=3)
 
+    def test_document_identity_correction_endpoint_validates_actor_schema_and_returns_result(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "prova-correcao.pdf"
+            write_text_pdf(
+                pdf_path,
+                [["Banca: Banca Oficial", "Concurso: Concurso Nacional 2026", "Ano: 2026"]],
+            )
+            application = DesktopApplication(root / "data")
+            original_metadata = metadata(document_type="exam", role=None, variant=None)
+            job_id = application.store.create_job([pdf_path], original_metadata, "local")
+            document = application.store.documents_for_job(job_id)[0]
+            application.store.save_page(
+                document["id"],
+                1,
+                "Banca: Banca Oficial\nConcurso: Concurso Nacional 2026\nAno: 2026",
+                status="text",
+            )
+            original = application.store.resolve_extracted_document(document["id"])
+            server, thread, url = start_desktop_server(application)
+            try:
+                origin = url.rstrip("/")
+
+                def put(
+                    payload: dict[str, object], *, token: bool = True
+                ) -> tuple[int, dict[str, object]]:
+                    headers = {"Content-Type": "application/json", "Origin": origin}
+                    if token:
+                        headers["X-KAD-Desktop-Token"] = application.token
+                    request = Request(
+                        f"{url}api/documents/{document['id']}",
+                        data=json.dumps(payload).encode("utf-8"),
+                        method="PUT",
+                        headers=headers,
+                    )
+                    try:
+                        with urlopen(request, timeout=3) as response:
+                            return response.status, json.loads(response.read())
+                    except HTTPError as exc:
+                        return exc.code, json.loads(exc.read())
+
+                correction = metadata(
+                    document_type="exam",
+                    role="Auditor",
+                    stage="Segunda fase",
+                    turn="Manhã",
+                    variant="Tipo 2",
+                ).model_dump(mode="json")
+                status, body = put({"metadata": correction, "actor": "coordenador"}, token=False)
+                self.assertEqual(status, HTTPStatus.FORBIDDEN)
+                self.assertEqual(set(body), {"error"})
+
+                status, body = put({"metadata": correction, "actor": "   "})
+                self.assertEqual(status, HTTPStatus.BAD_REQUEST)
+                self.assertEqual(body, {"error": "campo actor é obrigatório"})
+
+                status, body = put(
+                    {"metadata": correction, "actor": "coordenador", "unexpected": "secret"}
+                )
+                self.assertEqual(status, HTTPStatus.BAD_REQUEST)
+                self.assertEqual(set(body), {"error"})
+                self.assertNotIn("Traceback", str(body))
+                self.assertNotIn(application.token, str(body))
+
+                status, body = put(
+                    {
+                        "metadata": {**correction, "unexpected": "secret"},
+                        "actor": "coordenador",
+                    }
+                )
+                self.assertEqual(status, HTTPStatus.BAD_REQUEST)
+                self.assertEqual(body, {"error": "metadados do documento inválidos"})
+                self.assertNotIn("secret", str(body))
+                self.assertNotIn("pydantic.dev", str(body))
+
+                status, body = put({"metadata": correction, "actor": "coordenador"})
+                self.assertEqual(status, HTTPStatus.OK)
+                self.assertEqual(set(body), {"ok", "identityResolution"})
+                self.assertTrue(body["ok"])
+                resolution = body["identityResolution"]
+                self.assertEqual(resolution["document_version_id"], original.document_version_id)
+                self.assertEqual(
+                    resolution["profile"]["identity"]["roles"]["normalized_values"],
+                    ["auditor"],
+                )
+                self.assertEqual(
+                    resolution["profile"]["identity"]["turns"]["normalized_values"],
+                    ["manhã"],
+                )
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
     def test_import_api_reports_exact_duplicate_without_creating_an_empty_job(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)

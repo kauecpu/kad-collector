@@ -141,10 +141,17 @@ class DesktopApplication:
             notes=notes,
         )
 
-    def update_document(self, document_id: str, payload: dict[str, Any]) -> None:
-        metadata = DesktopImportMetadata.model_validate(payload.get("metadata"))
+    def update_document(self, document_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        extra = set(payload) - {"metadata", "actor"}
+        if extra:
+            raise ValueError("campos extras não são aceitos na correção do documento")
+        try:
+            metadata = DesktopImportMetadata.model_validate(payload.get("metadata"))
+        except ValidationError:
+            raise ValueError("metadados do documento inválidos") from None
         actor = _required_text(payload, "actor")
-        self.store.update_document_metadata(document_id, metadata, actor=actor)
+        result = self.store.update_document_metadata(document_id, metadata, actor=actor)
+        return result.model_dump(mode="json")
 
     def decide(self, question_id: str, payload: dict[str, Any]) -> None:
         status = payload.get("status")
@@ -345,8 +352,8 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                     return
                 document_match = re.fullmatch(r"/api/documents/([a-f0-9-]+)", path)
                 if document_match is not None:
-                    application.update_document(document_match.group(1), payload)
-                    self._send_json({"ok": True})
+                    result = application.update_document(document_match.group(1), payload)
+                    self._send_json({"ok": True, "identityResolution": result})
                     return
                 self._send_error(HTTPStatus.NOT_FOUND, "rota não encontrada")
             except (OSError, RuntimeError, ValueError, ValidationError) as exc:

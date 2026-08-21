@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, cast
 
+from .answer_key import parse_answer_key
 from .desktop_limits import validate_pdf_batch
 from .desktop_models import (
     ClassifierProviderName,
@@ -32,10 +33,13 @@ from .semantic_identity import (
 from .semantic_registry import (
     ObservationClaim,
     active_answer_key_candidates,
+    affected_exam_documents_after_identity_correction,
     claim_document_observation,
     exam_documents_affected_by_answer_key,
     identity_events,
     initialize_semantic_schema,
+    persist_identity_correction,
+    record_corrected_document_link,
     record_document_link,
     record_question_lineage,
     semantic_document_view,
@@ -1203,13 +1207,160 @@ class DesktopStore:
 
     def update_document_metadata(
         self, document_id: str, metadata: DesktopImportMetadata, *, actor: str
+    ) -> IdentityResolution:
+        return self.correct_document_identity(document_id, metadata, actor=actor)
+
+    def correct_document_identity(
+        self, document_id: str, metadata: DesktopImportMetadata, actor: str
+    ) -> IdentityResolution:
+        reviewer = actor.strip()
+        if not reviewer:
+            raise ValueError("ator da correção é obrigatório")
+        validated = DesktopImportMetadata.model_validate(metadata)
+        corrected_at = _now()
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                document = connection.execute(
+                    "SELECT id, document_version_id, normalized_json, metadata_json "
+                    "FROM documents WHERE id = ?",
+                    (document_id,),
+                ).fetchone()
+                if document is None:
+                    raise ValueError("documento nao encontrado")
+                version_id = cast(str | None, document["document_version_id"])
+                if version_id is None or document["normalized_json"] is None:
+                    self._update_document_metadata_in_connection(
+                        connection,
+                        (document_id,),
+                        validated,
+                        reviewer,
+                        corrected_at,
+                    )
+                    result = IdentityResolution(
+                        outcome="uncertain",
+                        reason="metadados atualizados; identidade legada permanece desconhecida",
+                    )
+                    connection.commit()
+                    return result
+
+                normalized = NormalizedDocument.model_validate_json(
+                    cast(str, document["normalized_json"])
+                )
+                declared_type = (
+                    validated.document_type
+                    if validated.document_type != "auto"
+                    else normalized.declared_type
+                )
+                inspection_document = normalized.model_copy(
+                    update={
+                        "declared_type": declared_type,
+                        "title": validated.document_title or normalized.title,
+                    }
+                )
+                pages = [
+                    (int(row["page_number"]), cast(str, row["text"]))
+                    for row in connection.execute(
+                        "SELECT page_number, text FROM pages WHERE document_id = ? "
+                        "ORDER BY page_number",
+                        (document_id,),
+                    ).fetchall()
+                ]
+                overrides: dict[str, str | int] = {
+                    target: value
+                    for target, value in (
+                        ("board", validated.board),
+                        ("concurso", validated.concurso),
+                        ("organization", validated.organization),
+                        ("year", validated.year),
+                        ("roles", validated.role),
+                        ("stage", validated.stage),
+                        ("turns", validated.turn),
+                        ("variants", validated.variant),
+                    )
+                    if value is not None
+                }
+                profile = extract_semantic_profile(
+                    inspection_document,
+                    pages,
+                    human_overrides=overrides,
+                )
+                if profile.has_conflict:
+                    raise ValueError("perfil semântico conflitante")
+                if profile.identity_key is None:
+                    raise ValueError("identidade semântica insuficiente")
+
+                previous_version = connection.execute(
+                    "SELECT profile_json FROM document_versions WHERE id = ?",
+                    (version_id,),
+                ).fetchone()
+                if previous_version is None:
+                    raise RuntimeError("versão operacional ausente")
+                old_profile = DocumentSemanticProfile.model_validate_json(
+                    cast(str, previous_version["profile_json"])
+                )
+
+                result, _ = persist_identity_correction(
+                    connection,
+                    document_id=document_id,
+                    profile=profile,
+                    actor=reviewer,
+                    corrected_at=corrected_at,
+                )
+                linked_documents = tuple(
+                    cast(str, row["id"])
+                    for row in connection.execute(
+                        "SELECT id FROM documents WHERE document_version_id = ? ORDER BY id",
+                        (version_id,),
+                    ).fetchall()
+                )
+                self._update_document_metadata_in_connection(
+                    connection,
+                    linked_documents,
+                    validated,
+                    reviewer,
+                    corrected_at,
+                    metadata_document_id=document_id,
+                )
+                self._reevaluate_corrected_links(
+                    connection,
+                    corrected_version_id=version_id,
+                    old_profile=old_profile,
+                    new_profile=profile,
+                    corrected_at=corrected_at,
+                )
+                connection.commit()
+                return result
+            except Exception:
+                connection.rollback()
+                raise
+
+    def _update_document_metadata_in_connection(
+        self,
+        connection: sqlite3.Connection,
+        document_ids: tuple[str, ...],
+        metadata: DesktopImportMetadata,
+        actor: str,
+        updated_at: str,
+        *,
+        metadata_document_id: str | None = None,
     ) -> None:
-        self.document(document_id)
-        self.update_document(
-            document_id,
-            metadata_json=_json(metadata.model_dump(mode="json")),
+        target_document = metadata_document_id or document_ids[0]
+        metadata_json = _json(metadata.model_dump(mode="json"))
+        connection.execute(
+            "UPDATE documents SET metadata_json = ?, updated_at = ? "
+            "WHERE id = ? AND metadata_json != ?",
+            (metadata_json, updated_at, target_document, metadata_json),
         )
-        for row in self._question_rows_for_document(document_id):
+        if not document_ids:
+            return
+        placeholders = ",".join("?" for _ in document_ids)
+        rows = connection.execute(
+            f"SELECT * FROM questions WHERE document_id IN ({placeholders}) "  # noqa: S608
+            "ORDER BY document_id, question_number",
+            document_ids,
+        ).fetchall()
+        for row in rows:
             question = QuestionRecord.model_validate(json.loads(cast(str, row["payload_json"])))
             updated = question.model_copy(
                 update={
@@ -1228,7 +1379,250 @@ class DesktopStore:
             classification = QuestionClassification.model_validate(
                 json.loads(cast(str, row["classification_json"]))
             )
-            self.update_question(cast(str, row["id"]), updated, classification, actor=actor)
+            payload_json = _json(updated.model_dump(mode="json"))
+            flags = question_quality_flags(updated, classification)
+            duplicate = connection.execute(
+                "SELECT 1 FROM questions WHERE fingerprint = ? AND id != ? LIMIT 1",
+                (question_fingerprint(updated), row["id"]),
+            ).fetchone()
+            if duplicate is not None:
+                flags.append("duplicate")
+            flags_json = _json(list(dict.fromkeys(flags)))
+            if payload_json == row["payload_json"] and flags_json == row["flags_json"]:
+                continue
+            connection.execute(
+                "UPDATE questions SET payload_json = ?, flags_json = ?, updated_at = ? "
+                "WHERE id = ?",
+                (payload_json, flags_json, updated_at, row["id"]),
+            )
+            self._audit(
+                connection,
+                cast(str, row["id"]),
+                "updated",
+                actor,
+                question.model_dump(mode="json"),
+                updated.model_dump(mode="json"),
+                "Metadados do documento corrigidos por revisão humana.",
+            )
+
+    def _reevaluate_corrected_links(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        corrected_version_id: str,
+        old_profile: DocumentSemanticProfile,
+        new_profile: DocumentSemanticProfile,
+        corrected_at: str,
+    ) -> None:
+        affected = affected_exam_documents_after_identity_correction(
+            connection,
+            corrected_version_id=corrected_version_id,
+            old_profile=old_profile,
+            new_profile=new_profile,
+        )
+        if old_profile.document_role == "exam" and new_profile.document_role != "exam":
+            record_corrected_document_link(
+                connection,
+                corrected_version_id,
+                select_answer_key(old_profile, []),
+                corrected_at,
+            )
+        for exam in affected:
+            exam_version_id = cast(str, exam["exam_version_id"])
+            document_id = cast(str | None, exam["document_id"])
+            if document_id is None:
+                continue
+            exam_profile = DocumentSemanticProfile.model_validate_json(
+                cast(str, exam["profile_json"])
+            )
+            candidates = active_answer_key_candidates(connection, exam_version_id)
+            decision = select_answer_key(
+                exam_profile,
+                [
+                    AssociationCandidate(
+                        version_id=cast(str, candidate["answer_key_version_id"]),
+                        profile=DocumentSemanticProfile.model_validate_json(
+                            _json(candidate["profile"])
+                        ),
+                        predecessor_version_id=cast(
+                            str | None, candidate["predecessor_version_id"]
+                        ),
+                    )
+                    for candidate in candidates
+                ],
+            )
+            if decision.selected_version_id is None:
+                record_corrected_document_link(
+                    connection, exam_version_id, decision, corrected_at
+                )
+                continue
+            key_document = connection.execute(
+                "SELECT d.id FROM documents d WHERE d.document_version_id = ? "
+                "ORDER BY (SELECT COALESCE(SUM(p.character_count), 0) FROM pages p "
+                "WHERE p.document_id = d.id) DESC, d.created_at, d.id LIMIT 1",
+                (decision.selected_version_id,),
+            ).fetchone()
+            if key_document is None:
+                record_corrected_document_link(
+                    connection, exam_version_id, decision, corrected_at
+                )
+                continue
+            answer_text = "\n".join(
+                cast(str, row["text"])
+                for row in connection.execute(
+                    "SELECT text FROM pages WHERE document_id = ? ORDER BY page_number",
+                    (key_document["id"],),
+                ).fetchall()
+            )
+            role = self._single_semantic_value(exam_profile.identity.roles)
+            variant = self._single_semantic_value(exam_profile.identity.variants)
+            turn = self._single_semantic_value(exam_profile.identity.turns)
+            entries = parse_answer_key(
+                answer_text,
+                role=role,
+                variant=variant,
+                turn=turn,
+            )
+            updates = {
+                number: (
+                    "annulled" if entry.annulled else "matched",
+                    None if entry.annulled else entry.answer,
+                )
+                for number, entry in entries.items()
+            }
+            self._apply_corrected_answer_updates(
+                connection,
+                document_id=document_id,
+                exam_version_id=exam_version_id,
+                decision=decision,
+                updates=updates,
+                corrected_at=corrected_at,
+            )
+
+    @staticmethod
+    def _single_semantic_value(field: Any) -> str | None:
+        if field.status != "known" or len(field.normalized_values) != 1:
+            return None
+        return str(field.normalized_values[0])
+
+    def _apply_corrected_answer_updates(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        document_id: str,
+        exam_version_id: str,
+        decision: Any,
+        updates: dict[int, tuple[str, str | None]],
+        corrected_at: str,
+    ) -> None:
+        rows = connection.execute(
+            "SELECT * FROM questions WHERE document_id = ? ORDER BY question_number",
+            (document_id,),
+        ).fetchall()
+        for row in rows:
+            update = updates.get(int(row["question_number"]))
+            if update is None:
+                continue
+            question = QuestionRecord.model_validate(
+                json.loads(cast(str, row["payload_json"]))
+            ).model_copy(update={"answer_status": update[0], "correct_answer": update[1]})
+            classification = QuestionClassification.model_validate(
+                json.loads(cast(str, row["classification_json"]))
+            )
+            fingerprint = question_fingerprint(question)
+            decision_fingerprint = question_decision_fingerprint(question)
+            flags = question_quality_flags(question, classification)
+            duplicate = connection.execute(
+                "SELECT 1 FROM questions WHERE fingerprint = ? AND id != ? LIMIT 1",
+                (fingerprint, row["id"]),
+            ).fetchone()
+            if duplicate is not None:
+                flags.append("duplicate")
+            confidence = min(_classification_confidences(classification), default=0)
+            next_status: DesktopQuestionStatus = (
+                "exception"
+                if any(
+                    flag in flags
+                    for flag in ("annulled", "visual", "without_answer", "incomplete")
+                )
+                else "pending"
+            )
+            decision_unchanged = (
+                row["decision_fingerprint"] is not None
+                and row["decision_fingerprint"] == decision_fingerprint
+            )
+            status = (
+                cast(DesktopQuestionStatus, row["status"])
+                if decision_unchanged
+                and row["status"] in {"approved", "rejected", "exported"}
+                else next_status
+            )
+            reviewer = row["reviewer"] if decision_unchanged else None
+            review_notes = row["review_notes"] if decision_unchanged else None
+            exported_at = row["exported_at"] if decision_unchanged else None
+            payload_json = _json(question.model_dump(mode="json"))
+            flags_json = _json(list(dict.fromkeys(flags)))
+            if (
+                row["payload_json"] == payload_json
+                and row["fingerprint"] == fingerprint
+                and row["decision_fingerprint"] == decision_fingerprint
+                and float(row["confidence"]) == confidence
+                and row["flags_json"] == flags_json
+                and row["status"] == status
+                and row["reviewer"] == reviewer
+                and row["review_notes"] == review_notes
+                and row["exported_at"] == exported_at
+            ):
+                continue
+            connection.execute(
+                "UPDATE questions SET payload_json = ?, fingerprint = ?, "
+                "decision_fingerprint = ?, confidence = ?, flags_json = ?, status = ?, "
+                "reviewer = ?, review_notes = ?, exported_at = ?, updated_at = ? WHERE id = ?",
+                (
+                    payload_json,
+                    fingerprint,
+                    decision_fingerprint,
+                    confidence,
+                    flags_json,
+                    status,
+                    reviewer,
+                    review_notes,
+                    exported_at,
+                    corrected_at,
+                    row["id"],
+                ),
+            )
+            if row["status"] in {"approved", "rejected", "exported"} and not decision_unchanged:
+                invalidate_changed_official_answer(
+                    connection,
+                    question_id=cast(str, row["id"]),
+                    document_id=document_id,
+                    document_version_id=exam_version_id,
+                    before={
+                        "status": row["status"],
+                        "reviewer": row["reviewer"],
+                        "review_notes": row["review_notes"],
+                        "exported_at": row["exported_at"],
+                        "decision_fingerprint": row["decision_fingerprint"],
+                        "question": json.loads(cast(str, row["payload_json"])),
+                    },
+                    after={
+                        "status": status,
+                        "reviewer": None,
+                        "review_notes": None,
+                        "exported_at": None,
+                        "decision_fingerprint": decision_fingerprint,
+                        "question": question.model_dump(mode="json"),
+                    },
+                    reason="Decisão editorial invalidada após mudança da resposta oficial.",
+                    changed_at=corrected_at,
+                )
+        record_corrected_document_link(
+            connection,
+            exam_version_id,
+            decision,
+            corrected_at,
+        )
 
     def page_exists(self, document_id: str, page_number: int) -> bool:
         with closing(self._connect()) as connection:

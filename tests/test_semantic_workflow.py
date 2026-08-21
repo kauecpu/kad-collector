@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sqlite3
 import tempfile
 import threading
 import unittest
@@ -12,7 +13,7 @@ from unittest.mock import patch
 
 from reportlab.pdfgen import canvas
 
-from kad_collector.desktop_models import QuestionClassification
+from kad_collector.desktop_models import DesktopImportMetadata, QuestionClassification
 from kad_collector.desktop_processor import DesktopProcessor, parse_question_pages
 from kad_collector.desktop_store import DesktopStore
 from kad_collector.document_contract import NormalizedDocument
@@ -341,7 +342,14 @@ class SemanticWorkflowIntegrationTests(unittest.TestCase):
         self.directory.cleanup()
 
     def add_document(
-        self, document_id: str, *, binary: bytes, text: str, metadata: dict[str, str | int]
+        self,
+        document_id: str,
+        *,
+        binary: bytes,
+        text: str,
+        metadata: dict[str, str | int],
+        declared_type: str = "exam",
+        title: str = "Prova 2026",
     ) -> None:
         path = Path(self.directory.name) / f"{document_id}.pdf"
         path.write_bytes(binary)
@@ -349,7 +357,8 @@ class SemanticWorkflowIntegrationTests(unittest.TestCase):
             local_path=str(path),
             sha256=hashlib.sha256(binary).hexdigest(),
             size_bytes=len(binary),
-            title="Prova 2026",
+            declared_type=declared_type,
+            title=title,
             entry_method="direct_import",
             metadata=metadata,
         )
@@ -389,6 +398,894 @@ class SemanticWorkflowIntegrationTests(unittest.TestCase):
 
     def resolve(self, document_id: str):
         return self.store.resolve_extracted_document(document_id)
+
+    @staticmethod
+    def corrected_metadata(**changes: object) -> DesktopImportMetadata:
+        values: dict[str, object] = {
+            "document_type": "exam",
+            "board": "Banca",
+            "concurso": "Concurso",
+            "year": 2026,
+        }
+        values.update(changes)
+        return DesktopImportMetadata.model_validate(values)
+
+    def semantic_state(self) -> dict[str, list[dict[str, object]]]:
+        tables = (
+            "documents",
+            "semantic_identities",
+            "document_versions",
+            "document_observations",
+            "document_observation_origins",
+            "document_links",
+            "document_identity_events",
+            "questions",
+            "audit_log",
+        )
+        with closing(self.store._connect()) as connection:
+            return {
+                table: [
+                    dict(row)
+                    for row in connection.execute(
+                        f"SELECT * FROM {table} ORDER BY rowid"  # noqa: S608
+                    ).fetchall()
+                ]
+                for table in tables
+            }
+
+    def test_manual_identity_correction_is_audited_and_preserves_question_decision(self) -> None:
+        self.add_document(
+            "exam",
+            binary=b"manual-correction",
+            text="Banca: Banca\nConcurso: Concurso\nAno: 2026\nQuestão 1",
+            metadata={"board": "Banca", "concurso": "Concurso", "year": 2026},
+        )
+        original = self.resolve("exam")
+        question_id = self.store.save_question(
+            "exam", self.lineage_question(1), QuestionClassification()
+        )
+        self.store.decide_question(
+            question_id, "approved", actor="revisora", notes="Conteúdo conferido."
+        )
+
+        result = self.store.correct_document_identity(
+            "exam",
+            self.corrected_metadata(
+                role="Auditor", stage="Segunda fase", turn="Manhã", variant="Tipo 2"
+            ),
+            actor="coordenador",
+        )
+
+        self.assertEqual(result.document_version_id, original.document_version_id)
+        self.assertEqual(result.version_number, original.version_number)
+        self.assertIsNotNone(result.profile)
+        assert result.profile is not None
+        self.assertEqual(result.profile.identity.roles.normalized_values, ("auditor",))
+        self.assertEqual(result.profile.identity.stage.normalized_values, ("segunda fase",))
+        self.assertEqual(result.profile.identity.turns.normalized_values, ("manhã",))
+        self.assertEqual(result.profile.identity.variants.normalized_values, ("tipo 2",))
+        self.assertEqual(result.profile.content_fingerprint, original.profile.content_fingerprint)
+        question = self.store.question(question_id)
+        self.assertEqual(question["status"], "approved")
+        self.assertEqual(question["reviewer"], "revisora")
+        corrected = [
+            event for event in self.store.identity_events("exam")
+            if event["action"] == "identity_corrected"
+        ]
+        self.assertEqual(len(corrected), 1)
+        self.assertEqual(corrected[0]["actor"], "coordenador")
+        self.assertEqual(corrected[0]["payload"]["oldIdentityKey"], original.profile.identity_key)
+        self.assertEqual(corrected[0]["payload"]["newIdentityKey"], result.profile.identity_key)
+        self.assertEqual(corrected[0]["payload"]["algorithmVersion"], result.algorithm_version)
+        self.assertTrue(corrected[0]["payload"]["evidence"]["roles"])
+
+        before_repeat = self.semantic_state()
+        repeated = self.store.correct_document_identity(
+            "exam",
+            self.corrected_metadata(
+                role="Auditor", stage="Segunda fase", turn="Manhã", variant="Tipo 2"
+            ),
+            actor="coordenador",
+        )
+        self.assertEqual(repeated.profile, result.profile)
+        self.assertEqual(self.semantic_state(), before_repeat)
+
+    def test_conflicting_manual_merge_rolls_back(self) -> None:
+        metadata = {"board": "Banca", "concurso": "Concurso", "year": 2026}
+        text = "Questão 1\nA) Azul\nB) Verde"
+        self.add_document("first", binary=b"first-collision", text=text, metadata=metadata)
+        self.add_document(
+            "second",
+            binary=b"second-collision",
+            text=text,
+            metadata={"board": "Outra", "concurso": "Concurso", "year": 2026},
+        )
+        first = self.resolve("first")
+        second = self.resolve("second")
+        self.assertNotEqual(first.document_version_id, second.document_version_id)
+        before = self.semantic_state()
+
+        with self.assertRaisesRegex(ValueError, "correção colide com versão existente"):
+            self.store.correct_document_identity(
+                "second", self.corrected_metadata(), actor="coordenador"
+            )
+
+        self.assertEqual(self.semantic_state(), before)
+
+    def test_invalid_manual_correction_rolls_back_every_observable_table(self) -> None:
+        self.add_document(
+            "exam",
+            binary=b"invalid-correction",
+            text="Banca: Banca\nConcurso: Concurso\nAno: 2026\nQuestão 1",
+            metadata={"board": "Banca", "concurso": "Concurso", "year": 2026},
+        )
+        self.resolve("exam")
+        self.store.save_question("exam", self.lineage_question(1), QuestionClassification())
+        before = self.semantic_state()
+
+        for actor in ("", "   "):
+            with self.subTest(actor=actor), self.assertRaisesRegex(ValueError, "ator"):
+                self.store.correct_document_identity(
+                    "exam", self.corrected_metadata(role="Auditor"), actor=actor
+                )
+            self.assertEqual(self.semantic_state(), before)
+
+        with closing(self.store._connect()) as connection:
+            normalized = NormalizedDocument.model_validate_json(
+                connection.execute(
+                    "SELECT normalized_json FROM documents WHERE id = 'exam'"
+                ).fetchone()["normalized_json"]
+            ).model_copy(update={"metadata": {}})
+            connection.execute(
+                "UPDATE documents SET normalized_json = ? WHERE id = 'exam'",
+                (normalized.model_dump_json(),),
+            )
+            connection.execute(
+                "UPDATE pages SET text = 'Questão 1' WHERE document_id = 'exam'"
+            )
+            connection.commit()
+        insufficient_before = self.semantic_state()
+        with self.assertRaisesRegex(ValueError, "identidade semântica insuficiente"):
+            self.store.correct_document_identity(
+                "exam",
+                DesktopImportMetadata(document_type="exam", role="Auditor"),
+                actor="coordenador",
+            )
+        self.assertEqual(self.semantic_state(), insufficient_before)
+
+        self.store.save_page(
+            "exam", 1,
+            "Banca: Banca\nConcurso: Concurso\nAno: 2025\nAno: 2026\nQuestão 1",
+            status="text",
+        )
+        with closing(self.store._connect()) as connection:
+            normalized = NormalizedDocument.model_validate_json(
+                connection.execute(
+                    "SELECT normalized_json FROM documents WHERE id = 'exam'"
+                ).fetchone()["normalized_json"]
+            ).model_copy(
+                update={"metadata": {"board": "Banca", "concurso": "Concurso", "year": 2026}}
+            )
+            connection.execute(
+                "UPDATE documents SET normalized_json = ? WHERE id = 'exam'",
+                (normalized.model_dump_json(),),
+            )
+            connection.commit()
+        conflicted_before = self.semantic_state()
+        with self.assertRaisesRegex(ValueError, "perfil semântico conflitante"):
+            self.store.correct_document_identity(
+                "exam",
+                DesktopImportMetadata(document_type="exam", role="Auditor"),
+                actor="coordenador",
+            )
+        self.assertEqual(self.semantic_state(), conflicted_before)
+
+    def test_correction_of_shared_republication_updates_one_operational_version(self) -> None:
+        metadata = {"board": "Banca", "concurso": "Concurso", "year": 2026}
+        text = "Banca: Banca\nConcurso: Concurso\nAno: 2026\nQuestão 1"
+        self.add_document("first", binary=b"shared-one", text=text, metadata=metadata)
+        self.add_document("second", binary=b"shared-two", text=text, metadata=metadata)
+        first, second = self.resolve("first"), self.resolve("second")
+        self.assertEqual(first.document_version_id, second.document_version_id)
+        with closing(self.store._connect()) as connection:
+            origins_before = connection.execute(
+                "SELECT normalized_json FROM document_observation_origins ORDER BY origin_key"
+            ).fetchall()
+
+        corrected = self.store.correct_document_identity(
+            "second", self.corrected_metadata(role="Auditor"), actor="coordenador"
+        )
+
+        self.assertEqual(corrected.document_version_id, first.document_version_id)
+        first_view = self.store.semantic_document_view("first")
+        second_view = self.store.semantic_document_view("second")
+        self.assertEqual(first_view["profile"], second_view["profile"])
+        self.assertEqual(
+            first_view["profile"]["identity"]["roles"]["normalized_values"], ["auditor"]
+        )
+        with closing(self.store._connect()) as connection:
+            observations = connection.execute(
+                "SELECT document_version_id FROM document_observations ORDER BY id"
+            ).fetchall()
+            origins_after = connection.execute(
+                "SELECT normalized_json FROM document_observation_origins ORDER BY origin_key"
+            ).fetchall()
+        self.assertEqual(
+            {row["document_version_id"] for row in observations},
+            {first.document_version_id},
+        )
+        self.assertEqual(
+            [row["normalized_json"] for row in origins_after],
+            [row["normalized_json"] for row in origins_before],
+        )
+
+    def test_correction_repositions_same_operational_version_in_target_identity_lineage(
+        self,
+    ) -> None:
+        original_metadata = {"board": "Banca", "concurso": "Concurso", "year": 2026}
+        self.add_document(
+            "first",
+            binary=b"lineage-first",
+            text="Questão 1\nA) Azul\nB) Verde",
+            metadata=original_metadata,
+        )
+        self.add_document(
+            "second",
+            binary=b"lineage-second",
+            text="Questão 1 alterada\nA) Azul\nB) Verde",
+            metadata=original_metadata,
+        )
+        self.resolve("first")
+        successor = self.resolve("second")
+        self.assertEqual(successor.version_number, 2)
+        self.assertIsNotNone(successor.predecessor_version_id)
+
+        corrected = self.store.correct_document_identity(
+            "second",
+            DesktopImportMetadata(
+                document_type="exam",
+                board="Outra Banca",
+                concurso="Concurso",
+                year=2026,
+            ),
+            actor="coordenador",
+        )
+
+        self.assertEqual(corrected.document_version_id, successor.document_version_id)
+        self.assertEqual(corrected.version_number, 1)
+        self.assertIsNone(corrected.predecessor_version_id)
+
+    def test_moving_non_terminal_version_rebuilds_old_identity_lineage(self) -> None:
+        def add_chain(prefix: str, concurso: str) -> list[object]:
+            metadata = {"board": "Banca", "concurso": concurso, "year": 2026}
+            results = []
+            for number in (1, 2, 3):
+                document_id = f"{prefix}-{number}"
+                self.add_document(
+                    document_id,
+                    binary=f"{prefix}-binary-{number}".encode(),
+                    text=f"Questão {number}\nA) Azul\nB) Verde",
+                    metadata=metadata,
+                )
+                results.append(self.resolve(document_id))
+            return results
+
+        first_chain = add_chain("first-chain", "Concurso Primeira")
+        self.store.correct_document_identity(
+            "first-chain-1",
+            DesktopImportMetadata(
+                document_type="exam",
+                board="Outra Banca",
+                concurso="Concurso Primeira",
+                year=2026,
+            ),
+            actor="coordenador",
+        )
+        with closing(self.store._connect()) as connection:
+            remaining = connection.execute(
+                "SELECT id, version_number, predecessor_version_id FROM document_versions "
+                "WHERE id IN (?, ?) ORDER BY version_number",
+                (
+                    first_chain[1].document_version_id,
+                    first_chain[2].document_version_id,
+                ),
+            ).fetchall()
+        self.assertEqual(
+            [
+                (row["id"], row["version_number"], row["predecessor_version_id"])
+                for row in remaining
+            ],
+            [
+                (first_chain[1].document_version_id, 1, None),
+                (
+                    first_chain[2].document_version_id,
+                    2,
+                    first_chain[1].document_version_id,
+                ),
+            ],
+        )
+
+        middle_chain = add_chain("middle-chain", "Concurso Intermediária")
+        self.store.correct_document_identity(
+            "middle-chain-2",
+            DesktopImportMetadata(
+                document_type="exam",
+                board="Terceira Banca",
+                concurso="Concurso Intermediária",
+                year=2026,
+            ),
+            actor="coordenador",
+        )
+        with closing(self.store._connect()) as connection:
+            remaining = connection.execute(
+                "SELECT id, version_number, predecessor_version_id FROM document_versions "
+                "WHERE id IN (?, ?) ORDER BY version_number",
+                (
+                    middle_chain[0].document_version_id,
+                    middle_chain[2].document_version_id,
+                ),
+            ).fetchall()
+        self.assertEqual(
+            [
+                (row["id"], row["version_number"], row["predecessor_version_id"])
+                for row in remaining
+            ],
+            [
+                (middle_chain[0].document_version_id, 1, None),
+                (
+                    middle_chain[2].document_version_id,
+                    2,
+                    middle_chain[0].document_version_id,
+                ),
+            ],
+        )
+
+    def test_exam_correction_switches_key_and_invalidates_only_changed_official_answers(
+        self,
+    ) -> None:
+        core = {"board": "Banca", "concurso": "Concurso", "year": 2026}
+        self.add_document(
+            "exam",
+            binary=b"exam-switch",
+            text="Banca: Banca\nConcurso: Concurso\nAno: 2026\nCargo: Analista",
+            metadata={**core, "role": "Analista"},
+            declared_type="exam",
+        )
+        self.add_document(
+            "analyst-key",
+            binary=b"analyst-key",
+            text="Banca: Banca\nConcurso: Concurso\nAno: 2026\nCargo: Analista\n1 - B\n2 - B",
+            metadata={**core, "role": "Analista"},
+            declared_type="answer_key",
+            title="Gabarito Analista",
+        )
+        self.add_document(
+            "auditor-key",
+            binary=b"auditor-key",
+            text="Banca: Banca\nConcurso: Concurso\nAno: 2026\nCargo: Auditor\n1 - C\n2 - B",
+            metadata={**core, "role": "Auditor"},
+            declared_type="answer_key",
+            title="Gabarito Auditor",
+        )
+        exam = self.resolve("exam")
+        analyst_key = self.resolve("analyst-key")
+        auditor_key = self.resolve("auditor-key")
+        question_ids = {
+            number: self.store.save_question(
+                "exam", self.lineage_question(number), QuestionClassification()
+            )
+            for number in (1, 2)
+        }
+        processor = DesktopProcessor(self.store)
+        try:
+            self.assertEqual(processor._reconcile_answer_key(analyst_key.document_version_id), 1)
+        finally:
+            processor._executor.shutdown(wait=True)
+        for question_id in question_ids.values():
+            self.store.decide_question(
+                question_id, "approved", actor="revisora", notes="Resposta conferida."
+            )
+
+        self.store.correct_document_identity(
+            "exam", self.corrected_metadata(role="Auditor"), actor="coordenador"
+        )
+
+        first = self.store.question(question_ids[1])
+        second = self.store.question(question_ids[2])
+        self.assertEqual((first["question"]["correct_answer"], first["status"]), ("C", "pending"))
+        self.assertIsNone(first["reviewer"])
+        self.assertEqual(
+            (second["question"]["correct_answer"], second["status"]),
+            ("B", "approved"),
+        )
+        self.assertEqual(second["reviewer"], "revisora")
+        with closing(self.store._connect()) as connection:
+            links = connection.execute(
+                "SELECT answer_key_version_id, status FROM document_links "
+                "WHERE exam_version_id = ? ORDER BY created_at, id",
+                (exam.document_version_id,),
+            ).fetchall()
+        self.assertEqual(
+            [(row["answer_key_version_id"], row["status"]) for row in links],
+            [
+                (analyst_key.document_version_id, "rejected"),
+                (auditor_key.document_version_id, "active"),
+            ],
+        )
+        self.assertEqual(
+            [entry["action"] for entry in self.store.audit_log(question_ids[1])].count(
+                "decision_invalidated"
+            ),
+            1,
+        )
+        self.assertNotIn(
+            "decision_invalidated",
+            [entry["action"] for entry in self.store.audit_log(question_ids[2])],
+        )
+
+    def test_scope_correction_reapplies_a_different_grid_from_the_same_answer_key(self) -> None:
+        core = {"board": "Banca", "concurso": "Concurso", "year": 2026}
+        self.add_document(
+            "exam-grid",
+            binary=b"exam-grid",
+            text=(
+                "Banca: Banca\nConcurso: Concurso\nAno: 2026\n"
+                "Cargo: Analista\nTipo: 1"
+            ),
+            metadata={**core, "role": "Analista", "variant": "Tipo 1"},
+        )
+        self.add_document(
+            "shared-grid-key",
+            binary=b"shared-grid-key",
+            text=(
+                "Banca: Banca\nConcurso: Concurso\nAno: 2026\n"
+                "Cargos: Analista, Auditor\nTipos: 1\n"
+                "Analista - Tipo 1\n1\nA\n"
+                "Auditor - Tipo 1\n1\nC"
+            ),
+            metadata=core,
+            declared_type="answer_key",
+            title="Gabarito multicargo",
+        )
+        self.resolve("exam-grid")
+        key = self.resolve("shared-grid-key")
+        question_id = self.store.save_question(
+            "exam-grid",
+            self.lineage_question(1, correct_answer="A"),
+            QuestionClassification(),
+        )
+        processor = DesktopProcessor(self.store)
+        try:
+            self.assertEqual(processor._reconcile_answer_key(key.document_version_id), 1)
+        finally:
+            processor._executor.shutdown(wait=True)
+        self.store.decide_question(
+            question_id, "approved", actor="revisora", notes="Grade Analista conferida."
+        )
+
+        self.store.correct_document_identity(
+            "exam-grid",
+            self.corrected_metadata(role="Auditor", variant="Tipo 1"),
+            actor="coordenador",
+        )
+
+        corrected = self.store.question(question_id)
+        self.assertEqual(corrected["question"]["correct_answer"], "C")
+        self.assertEqual(corrected["status"], "pending")
+        self.assertIsNone(corrected["reviewer"])
+        with closing(self.store._connect()) as connection:
+            links = connection.execute(
+                "SELECT COUNT(*) FROM document_links WHERE status = 'active' "
+                "AND answer_key_version_id = ?",
+                (key.document_version_id,),
+            ).fetchone()[0]
+        self.assertEqual(links, 1)
+        before_repeat = self.semantic_state()
+        self.store.correct_document_identity(
+            "exam-grid",
+            self.corrected_metadata(role="Auditor", variant="Tipo 1"),
+            actor="coordenador",
+        )
+        self.assertEqual(self.semantic_state(), before_repeat)
+
+    def test_same_key_with_recalculated_evidence_persists_auditable_successor_link(self) -> None:
+        core = {"board": "Banca", "concurso": "Concurso", "year": 2026, "role": "Analista"}
+        self.add_document(
+            "exam-score",
+            binary=b"exam-score",
+            text="Banca: Banca\nConcurso: Concurso\nAno: 2026\nCargo: Analista",
+            metadata=core,
+        )
+        self.add_document(
+            "key-score",
+            binary=b"key-score",
+            text=(
+                "Banca: Banca\nConcurso: Concurso\nAno: 2026\n"
+                "Cargo: Analista\nÓrgão: Secretaria\n1 - B"
+            ),
+            metadata={**core, "organization": "Secretaria"},
+            declared_type="answer_key",
+            title="Gabarito",
+        )
+        exam = self.resolve("exam-score")
+        key = self.resolve("key-score")
+        self.store.save_question(
+            "exam-score", self.lineage_question(1), QuestionClassification()
+        )
+        processor = DesktopProcessor(self.store)
+        try:
+            self.assertEqual(processor._reconcile_answer_key(key.document_version_id), 1)
+        finally:
+            processor._executor.shutdown(wait=True)
+
+        with closing(self.store._connect()) as connection:
+            before_link = connection.execute(
+                "SELECT id, decision_json FROM document_links WHERE exam_version_id = ? "
+                "AND status = 'active'",
+                (exam.document_version_id,),
+            ).fetchone()
+        before_decision = json.loads(before_link["decision_json"])
+        before_score = before_decision["assessments"][0]["score"]
+
+        self.store.correct_document_identity(
+            "exam-score",
+            self.corrected_metadata(role="Analista", organization="Secretaria"),
+            actor="coordenador",
+        )
+
+        with closing(self.store._connect()) as connection:
+            links = connection.execute(
+                "SELECT id, status, predecessor_link_id, decision_json FROM document_links "
+                "WHERE exam_version_id = ? ORDER BY created_at, id",
+                (exam.document_version_id,),
+            ).fetchall()
+        self.assertEqual([row["status"] for row in links], ["rejected", "active"])
+        active = links[1]
+        self.assertEqual(active["predecessor_link_id"], before_link["id"])
+        after_score = json.loads(active["decision_json"])["assessments"][0]["score"]
+        self.assertGreater(after_score, before_score)
+
+        before_repeat = self.semantic_state()
+        self.store.correct_document_identity(
+            "exam-score",
+            self.corrected_metadata(role="Analista", organization="Secretaria"),
+            actor="coordenador",
+        )
+        self.assertEqual(self.semantic_state(), before_repeat)
+
+    def test_changing_exam_to_answer_key_rejects_its_outgoing_active_link(self) -> None:
+        core = {"board": "Banca", "concurso": "Concurso", "year": 2026, "role": "Analista"}
+        self.add_document(
+            "exam-role-change",
+            binary=b"exam-role-change",
+            text="Banca: Banca\nConcurso: Concurso\nAno: 2026\nCargo: Analista",
+            metadata=core,
+        )
+        self.add_document(
+            "key-role-change",
+            binary=b"key-role-change",
+            text="Banca: Banca\nConcurso: Concurso\nAno: 2026\nCargo: Analista\n1 - B",
+            metadata=core,
+            declared_type="answer_key",
+            title="Gabarito",
+        )
+        exam = self.resolve("exam-role-change")
+        key = self.resolve("key-role-change")
+        self.store.save_question(
+            "exam-role-change", self.lineage_question(1), QuestionClassification()
+        )
+        processor = DesktopProcessor(self.store)
+        try:
+            self.assertEqual(processor._reconcile_answer_key(key.document_version_id), 1)
+        finally:
+            processor._executor.shutdown(wait=True)
+
+        self.store.correct_document_identity(
+            "exam-role-change",
+            DesktopImportMetadata(
+                document_type="answer_key",
+                board="Banca",
+                concurso="Concurso",
+                year=2026,
+                role="Analista",
+            ),
+            actor="coordenador",
+        )
+
+        with closing(self.store._connect()) as connection:
+            outgoing = connection.execute(
+                "SELECT status FROM document_links WHERE exam_version_id = ?",
+                (exam.document_version_id,),
+            ).fetchall()
+        self.assertEqual([row["status"] for row in outgoing], ["rejected"])
+
+    def test_correction_without_sufficient_association_rejects_old_link_without_inventing_answers(
+        self,
+    ) -> None:
+        core = {"board": "Banca", "concurso": "Concurso", "year": 2026}
+        self.add_document(
+            "exam",
+            binary=b"exam-no-candidate",
+            text="Banca: Banca\nConcurso: Concurso\nAno: 2026\nCargo: Analista",
+            metadata={**core, "role": "Analista"},
+        )
+        self.add_document(
+            "key",
+            binary=b"key-no-candidate",
+            text="Banca: Banca\nConcurso: Concurso\nAno: 2026\nCargo: Analista\n1 - B",
+            metadata={**core, "role": "Analista"},
+            declared_type="answer_key",
+            title="Gabarito Analista",
+        )
+        exam, key = self.resolve("exam"), self.resolve("key")
+        first_id = self.store.save_question(
+            "exam", self.lineage_question(1), QuestionClassification()
+        )
+        missing_id = self.store.save_question(
+            "exam",
+            self.lineage_question(2, answer_status="missing", correct_answer=None),
+            QuestionClassification(),
+        )
+        processor = DesktopProcessor(self.store)
+        try:
+            self.assertEqual(processor._reconcile_answer_key(key.document_version_id), 1)
+        finally:
+            processor._executor.shutdown(wait=True)
+
+        self.store.correct_document_identity(
+            "exam", self.corrected_metadata(role="Revisor"), actor="coordenador"
+        )
+
+        with closing(self.store._connect()) as connection:
+            active = connection.execute(
+                "SELECT COUNT(*) FROM document_links WHERE exam_version_id = ? "
+                "AND status = 'active'",
+                (exam.document_version_id,),
+            ).fetchone()[0]
+            rejected = connection.execute(
+                "SELECT COUNT(*) FROM document_links WHERE exam_version_id = ? "
+                "AND status = 'rejected'",
+                (exam.document_version_id,),
+            ).fetchone()[0]
+        self.assertEqual((active, rejected), (0, 1))
+        self.assertEqual(self.store.question(first_id)["question"]["correct_answer"], "B")
+        missing = self.store.question(missing_id)["question"]
+        self.assertEqual((missing["answer_status"], missing["correct_answer"]), ("missing", None))
+
+    def test_concurrent_corrections_leave_one_coherent_version_and_auditable_history(self) -> None:
+        self.add_document(
+            "exam",
+            binary=b"concurrent-correction",
+            text="Banca: Banca\nConcurso: Concurso\nAno: 2026\nQuestão 1",
+            metadata={"board": "Banca", "concurso": "Concurso", "year": 2026},
+        )
+        original = self.resolve("exam")
+        errors: list[Exception] = []
+
+        def correct(role: str, actor: str) -> None:
+            try:
+                self.store.correct_document_identity(
+                    "exam", self.corrected_metadata(role=role), actor=actor
+                )
+            except Exception as exc:  # pragma: no cover
+                errors.append(exc)
+
+        threads = [
+            threading.Thread(target=correct, args=("Auditor", "alice")),
+            threading.Thread(target=correct, args=("Analista", "bruno")),
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        self.assertEqual(errors, [])
+        view = self.store.semantic_document_view("exam")
+        self.assertEqual(view["documentVersionId"], original.document_version_id)
+        self.assertIn(
+            view["profile"]["identity"]["roles"]["normalized_values"],
+            (["auditor"], ["analista"]),
+        )
+        corrected = [
+            event for event in self.store.identity_events("exam")
+            if event["action"] == "identity_corrected"
+        ]
+        self.assertEqual({event["actor"] for event in corrected}, {"alice", "bruno"})
+        with closing(self.store._connect()) as connection:
+            self.assertEqual(
+                connection.execute(
+                    "SELECT COUNT(*) FROM document_versions WHERE id = ?",
+                    (original.document_version_id,),
+                ).fetchone()[0],
+                1,
+            )
+            self.assertLessEqual(
+                connection.execute(
+                    "SELECT COUNT(*) FROM document_links WHERE status = 'active'"
+                ).fetchone()[0],
+                1,
+            )
+
+    def test_answer_key_correction_reevaluates_all_and_only_old_and_new_scopes(self) -> None:
+        core = {"board": "Banca", "concurso": "Concurso", "year": 2026}
+        for role in ("Analista", "Auditor", "Técnico"):
+            document_id = role.casefold().replace("é", "e")
+            self.add_document(
+                document_id,
+                binary=f"exam-{document_id}".encode(),
+                text=(
+                    "Banca: Banca\nConcurso: Concurso\nAno: 2026\n"
+                    f"Cargo: {role}"
+                ),
+                metadata={**core, "role": role},
+            )
+            self.resolve(document_id)
+            self.store.save_question(
+                document_id,
+                self.lineage_question(1, answer_status="missing", correct_answer=None),
+                QuestionClassification(),
+            )
+        self.add_document(
+            "key",
+            binary=b"key-scope-change",
+            text="Banca: Banca\nConcurso: Concurso\nAno: 2026\nCargo: Analista\n1 - B",
+            metadata={**core, "role": "Analista"},
+            declared_type="answer_key",
+            title="Gabarito Analista",
+        )
+        key = self.resolve("key")
+        processor = DesktopProcessor(self.store)
+        try:
+            self.assertEqual(processor._reconcile_answer_key(key.document_version_id), 1)
+        finally:
+            processor._executor.shutdown(wait=True)
+        with closing(self.store._connect()) as connection:
+            technician_before = connection.execute(
+                "SELECT COUNT(*) FROM document_identity_events e JOIN documents d "
+                "ON d.document_version_id = e.document_version_id WHERE d.id = 'tecnico'"
+            ).fetchone()[0]
+
+        self.store.correct_document_identity(
+            "key",
+            DesktopImportMetadata(
+                document_type="answer_key",
+                board="Banca",
+                concurso="Concurso",
+                year=2026,
+                role="Auditor",
+            ),
+            actor="coordenador",
+        )
+
+        with closing(self.store._connect()) as connection:
+            analyst_version = connection.execute(
+                "SELECT document_version_id FROM documents WHERE id = 'analista'"
+            ).fetchone()[0]
+            auditor_version = connection.execute(
+                "SELECT document_version_id FROM documents WHERE id = 'auditor'"
+            ).fetchone()[0]
+            links = connection.execute(
+                "SELECT exam_version_id, answer_key_version_id, status FROM document_links "
+                "ORDER BY created_at, id"
+            ).fetchall()
+            technician_after = connection.execute(
+                "SELECT COUNT(*) FROM document_identity_events e JOIN documents d "
+                "ON d.document_version_id = e.document_version_id WHERE d.id = 'tecnico'"
+            ).fetchone()[0]
+        self.assertEqual(
+            [
+                (row["exam_version_id"], row["answer_key_version_id"], row["status"])
+                for row in links
+            ],
+            [
+                (analyst_version, key.document_version_id, "rejected"),
+                (auditor_version, key.document_version_id, "active"),
+            ],
+        )
+        self.assertEqual(
+            self.store.question_records("auditor")[0][0].correct_answer,
+            "B",
+        )
+        self.assertEqual(
+            self.store.question_records("tecnico")[0][0].answer_status,
+            "missing",
+        )
+        self.assertEqual(technician_after, technician_before)
+
+    def test_injected_failure_at_each_correction_phase_rolls_back_the_whole_fact(self) -> None:
+        core = {"board": "Banca", "concurso": "Concurso", "year": 2026}
+        self.add_document(
+            "exam",
+            binary=b"atomic-exam",
+            text="Banca: Banca\nConcurso: Concurso\nAno: 2026\nCargo: Analista",
+            metadata={**core, "role": "Analista"},
+        )
+        for document_id, role, answer in (
+            ("analyst-key", "Analista", "B"),
+            ("auditor-key", "Auditor", "C"),
+        ):
+            self.add_document(
+                document_id,
+                binary=document_id.encode(),
+                text=(
+                    "Banca: Banca\nConcurso: Concurso\nAno: 2026\n"
+                    f"Cargo: {role}\n1 - {answer}"
+                ),
+                metadata={**core, "role": role},
+                declared_type="answer_key",
+                title=f"Gabarito {role}",
+            )
+        self.resolve("exam")
+        analyst_key = self.resolve("analyst-key")
+        self.resolve("auditor-key")
+        question_id = self.store.save_question(
+            "exam", self.lineage_question(1), QuestionClassification()
+        )
+        processor = DesktopProcessor(self.store)
+        try:
+            self.assertEqual(processor._reconcile_answer_key(analyst_key.document_version_id), 1)
+        finally:
+            processor._executor.shutdown(wait=True)
+        self.store.decide_question(
+            question_id, "approved", actor="revisora", notes="Estado atômico inicial."
+        )
+        before = self.semantic_state()
+        triggers = {
+            "identity": (
+                "BEFORE INSERT ON semantic_identities "
+                "BEGIN SELECT RAISE(ABORT, 'injected identity'); END"
+            ),
+            "version": (
+                "BEFORE UPDATE ON document_versions "
+                "BEGIN SELECT RAISE(ABORT, 'injected version'); END"
+            ),
+            "observation": (
+                "BEFORE UPDATE ON document_observations "
+                "BEGIN SELECT RAISE(ABORT, 'injected observation'); END"
+            ),
+            "identity_event": (
+                "BEFORE INSERT ON document_identity_events WHEN NEW.action = 'identity_corrected' "
+                "BEGIN SELECT RAISE(ABORT, 'injected identity_event'); END"
+            ),
+            "metadata": (
+                "BEFORE UPDATE ON documents WHEN NEW.metadata_json != OLD.metadata_json "
+                "BEGIN SELECT RAISE(ABORT, 'injected metadata'); END"
+            ),
+            "question_metadata": (
+                "BEFORE UPDATE ON questions WHEN "
+                "json_extract(NEW.payload_json, '$.role') != "
+                "json_extract(OLD.payload_json, '$.role') "
+                "BEGIN SELECT RAISE(ABORT, 'injected question metadata'); END"
+            ),
+            "link": (
+                "BEFORE UPDATE ON document_links WHEN NEW.status = 'rejected' "
+                "BEGIN SELECT RAISE(ABORT, 'injected link'); END"
+            ),
+            "answer": (
+                "BEFORE UPDATE ON questions WHEN "
+                "json_extract(NEW.payload_json, '$.correct_answer') != "
+                "json_extract(OLD.payload_json, '$.correct_answer') "
+                "BEGIN SELECT RAISE(ABORT, 'injected answer'); END"
+            ),
+        }
+        for phase, trigger_body in triggers.items():
+            with self.subTest(phase=phase):
+                with closing(self.store._connect()) as connection:
+                    connection.execute(f"CREATE TRIGGER fail_correction {trigger_body}")
+                    connection.commit()
+                try:
+                    expected = f"injected {phase.split('_')[0]}"
+                    with self.assertRaisesRegex(sqlite3.IntegrityError, expected):
+                        self.store.correct_document_identity(
+                            "exam",
+                            self.corrected_metadata(role="Auditor"),
+                            actor="coordenador",
+                        )
+                    self.assertEqual(self.semantic_state(), before)
+                finally:
+                    with closing(self.store._connect()) as connection:
+                        connection.execute("DROP TRIGGER fail_correction")
+                        connection.commit()
 
     def lineage_question(
         self,
