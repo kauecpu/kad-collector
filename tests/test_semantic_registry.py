@@ -170,6 +170,32 @@ def _semantic_store(database_path: Path) -> DesktopStore:
 
 
 class SemanticRegistryMigrationTests(unittest.TestCase):
+    def test_record_document_link_persists_complete_decision_and_is_idempotent(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = _semantic_store(Path(directory) / "collector.sqlite3")
+            from kad_collector.semantic_identity import DocumentAssociationDecision
+            decision = DocumentAssociationDecision(
+                outcome="selected", selected_version_id="answer-version-1",
+                assessments=(), minimum_score=36, minimum_margin=8,
+                achieved_margin=None, reason="test", algorithm_version="semantic-association-v1",
+            )
+            with closing(store._connect()) as connection:
+                first = semantic_registry.record_document_link(
+                    connection, "exam-version", "answer-version-1", decision, TIMESTAMP
+                )
+                second = semantic_registry.record_document_link(
+                    connection, "exam-version", "answer-version-1", decision, TIMESTAMP
+                )
+                connection.commit()
+                links = connection.execute("SELECT status, decision_json FROM document_links").fetchall()
+                events = connection.execute(
+                    "SELECT action FROM document_identity_events WHERE action LIKE 'association_%'"
+                ).fetchall()
+            self.assertEqual(first, second)
+            self.assertEqual(len(links), 1)
+            self.assertEqual(json.loads(links[0][1])["selected_version_id"], "answer-version-1")
+            self.assertEqual([row[0] for row in events], ["association_selected"])
+
     def test_legacy_database_adds_semantic_schema_without_touching_rows(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             database_path = Path(directory) / "collector.sqlite3"

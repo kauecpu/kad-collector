@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import uuid
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -348,6 +349,131 @@ def identity_events(connection: sqlite3.Connection, document_id: str) -> list[di
         }
         for row in rows
     ]
+
+
+def active_answer_key_candidates(
+    connection: sqlite3.Connection, exam_version_id: str | None = None
+) -> list[dict[str, Any]]:
+    """Return active keys in stable order, optionally scoped to one exam version."""
+    clause = "" if exam_version_id is None else " AND l.exam_version_id = ?"
+    parameters: tuple[str, ...] = () if exam_version_id is None else (exam_version_id,)
+    rows = connection.execute(
+        """
+        SELECT l.id AS link_id, l.exam_version_id, l.answer_key_version_id,
+               l.decision_json, l.algorithm_version, l.predecessor_link_id,
+               v.identity_key, v.answer_key_state, v.coverage_json, v.profile_json,
+               v.predecessor_version_id, v.version_number
+        FROM document_links l JOIN document_versions v ON v.id = l.answer_key_version_id
+        WHERE l.status = 'active'""" + clause
+        + " ORDER BY l.exam_version_id, l.answer_key_version_id, l.id",
+        parameters,
+    ).fetchall()
+    return [
+        {
+            "link_id": row["link_id"], "exam_version_id": row["exam_version_id"],
+            "answer_key_version_id": row["answer_key_version_id"],
+            "decision": json.loads(row["decision_json"]),
+            "algorithm_version": row["algorithm_version"],
+            "predecessor_link_id": row["predecessor_link_id"],
+            "identity_key": row["identity_key"], "answer_key_state": row["answer_key_state"],
+            "coverage": json.loads(row["coverage_json"]),
+            "profile": json.loads(row["profile_json"]),
+            "predecessor_version_id": row["predecessor_version_id"],
+            "version_number": row["version_number"],
+        }
+        for row in rows
+    ]
+
+
+def record_document_link(
+    connection: sqlite3.Connection,
+    exam_version_id: str,
+    answer_key_version_id: str,
+    decision: Any,
+    recorded_at: str,
+) -> str | None:
+    """Persist one selected association, atomically replacing a prior active link."""
+    selected = getattr(decision, "selected_version_id", None)
+    if selected != answer_key_version_id or getattr(decision, "outcome", None) != "selected":
+        return None
+    payload = decision.model_dump(mode="json") if hasattr(decision, "model_dump") else decision
+    decision_json = canonical_json(payload)
+    own_transaction = not connection.in_transaction
+    if own_transaction:
+        connection.execute("BEGIN IMMEDIATE")
+    try:
+        current = connection.execute(
+            "SELECT id, answer_key_version_id, decision_json FROM document_links "
+            "WHERE exam_version_id = ? AND status = 'active'",
+            (exam_version_id,),
+        ).fetchone()
+        if current is not None and current["answer_key_version_id"] == answer_key_version_id \
+                and current["decision_json"] == decision_json:
+            if own_transaction:
+                connection.commit()
+            return cast(str, current["id"])
+        predecessor = cast(str | None, current["id"] if current is not None else None)
+        if current is not None:
+            connection.execute(
+                "UPDATE document_links SET status = 'superseded', updated_at = ? WHERE id = ?",
+                (recorded_at, current["id"]),
+            )
+            event = {
+                "linkId": current["id"], "examVersionId": exam_version_id,
+                "answerKeyVersionId": current["answer_key_version_id"],
+            }
+            connection.execute(
+                "INSERT OR IGNORE INTO document_identity_events "
+                "(event_key, document_version_id, action, actor, algorithm_version, "
+                "payload_json, created_at) "
+                "VALUES (?, ?, 'association_superseded', 'system', ?, ?, ?)",
+                (stable_sha256({"action": "association_superseded", "link_id": current["id"]}),
+                 exam_version_id, decision.algorithm_version, canonical_json(event), recorded_at),
+            )
+        link_id = str(uuid.uuid5(
+            uuid.NAMESPACE_URL, f"kad:document-link:{exam_version_id}:{answer_key_version_id}"
+        ))
+        connection.execute(
+            "INSERT INTO document_links (id, exam_version_id, answer_key_version_id, status, "
+            "decision_json, "
+            "algorithm_version, predecessor_link_id, created_at, updated_at) "
+            "VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?)",
+            (link_id, exam_version_id, answer_key_version_id, decision_json,
+             decision.algorithm_version, predecessor, recorded_at, recorded_at),
+        )
+        event = {"linkId": link_id, "examVersionId": exam_version_id,
+                 "answerKeyVersionId": answer_key_version_id, "decision": payload}
+        connection.execute(
+            "INSERT OR IGNORE INTO document_identity_events "
+            "(event_key, document_version_id, action, actor, algorithm_version, "
+            "payload_json, created_at) "
+            "VALUES (?, ?, 'association_selected', 'system', ?, ?, ?)",
+            (stable_sha256({"action": "association_selected", "link_id": link_id}),
+             exam_version_id, decision.algorithm_version, canonical_json(event), recorded_at),
+        )
+        if own_transaction:
+            connection.commit()
+        return link_id
+    except Exception:
+        if own_transaction:
+            connection.rollback()
+        raise
+
+
+def exam_documents_affected_by_answer_key(
+    connection: sqlite3.Connection, answer_key_version_id: str
+) -> list[dict[str, Any]]:
+    rows = connection.execute(
+        """
+        SELECT d.*, v.id AS exam_version_id, v.identity_key, v.profile_json,
+               v.coverage_json, v.answer_key_state
+        FROM document_versions v JOIN documents d ON d.document_version_id = v.id
+        WHERE v.document_role = 'exam' AND v.identity_key = (
+            SELECT identity_key FROM document_versions WHERE id = ?
+        ) ORDER BY v.id, d.id
+        """, (answer_key_version_id,),
+    ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def _decode_json(value: object) -> object | None:
