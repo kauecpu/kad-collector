@@ -25,7 +25,7 @@ from kad_collector.desktop_processor import (
 )
 from kad_collector.desktop_store import DesktopStore
 from kad_collector.document_pipeline import DocumentPipeline
-from kad_collector.models import DocumentRecord, DownloadManifest
+from kad_collector.models import DocumentRecord, DownloadManifest, QuestionRecord
 from kad_collector.semantic_identity import DocumentAssociationDecision
 
 
@@ -79,6 +79,30 @@ class DesktopCollectionTests(unittest.TestCase):
             ).fetchone()
         self.assertIsNotNone(row)
         return json.loads(row["payload_json"])
+
+    def approve_stored_question(self, document_id: str, number: int) -> str:
+        with closing(self.store._connect()) as connection:
+            question_id = connection.execute(
+                "SELECT id FROM questions WHERE document_id = ? AND question_number = ?",
+                (document_id, number),
+            ).fetchone()["id"]
+        reviewed = QuestionRecord.model_validate(self.store.question(question_id)["question"])
+        reviewed = reviewed.model_copy(update={
+            "discipline": "Direito",
+            "matter": "Direito Administrativo",
+            "subject": "Atos administrativos",
+            "organization": "Secretaria Pública",
+            "level": "Superior",
+            "difficulty": "Média",
+            "explanation": "A alternativa indicada corresponde ao gabarito oficial.",
+        })
+        self.store.update_question(
+            question_id, reviewed, actor="revisora", notes="Conteúdo conferido."
+        )
+        self.store.decide_question(
+            question_id, "approved", actor="revisora", notes="Gabarito conferido."
+        )
+        return str(question_id)
 
     @staticmethod
     def semantic_metadata(
@@ -796,6 +820,54 @@ Enunciado completo da segunda questao.
             key["document_version_id"],
         )
 
+    def test_late_answer_key_finalizes_deferred_successor_lineage(self) -> None:
+        exam_text = (
+            "{01}\nEnunciado completo da questão estável.\n"
+            "(A) Alternativa A.\n(B) Alternativa B.\n#####"
+        )
+        first = self.process_text_documents([(
+            "exam-lineage-first.pdf", exam_text,
+            self.semantic_metadata("exam", "Prova de linhagem 2026"),
+        )])[0]
+        key = self.process_text_documents([(
+            "key-lineage-late.pdf", "Gabarito definitivo\n1 - B",
+            self.semantic_metadata("answer_key", "Gabarito de linhagem 2026"),
+        )])[0]
+        first_question_id = self.approve_stored_question(str(first["id"]), 1)
+        self.assertEqual(self.store.question(first_question_id)["status"], "approved")
+
+        with patch.object(self.processor, "_associate_exam", return_value=(False, False)):
+            second = self.process_text_documents([(
+                "exam-lineage-second.pdf", "Publicação retificada\n" + exam_text,
+                self.semantic_metadata("exam", "Prova de linhagem republicada 2026"),
+            )])[0]
+        with closing(self.store._connect()) as connection:
+            before = connection.execute(
+                "SELECT COUNT(*) FROM question_lineage WHERE successor_version_id = ?",
+                (second["document_version_id"],),
+            ).fetchone()[0]
+        self.assertEqual(before, 0)
+        self.assertEqual(self.stored_question(str(second["id"]), 1)["answer_status"], "missing")
+
+        self.assertEqual(
+            self.processor._reconcile_answer_key(str(key["document_version_id"])), 1
+        )
+
+        with closing(self.store._connect()) as connection:
+            successor_id = connection.execute(
+                "SELECT id FROM questions WHERE document_id = ? AND question_number = 1",
+                (second["id"],),
+            ).fetchone()["id"]
+            lineage = connection.execute(
+                "SELECT comparison FROM question_lineage WHERE successor_version_id = ?",
+                (second["document_version_id"],),
+            ).fetchone()
+        successor = self.store.question(successor_id)
+        self.assertEqual(lineage["comparison"], "unchanged")
+        self.assertEqual(successor["question"]["correct_answer"], "B")
+        self.assertEqual(successor["status"], "approved")
+        self.assertEqual(successor["reviewer"], "revisora")
+
     def test_definitive_key_supersedes_preliminary_and_reapplies_answers(self) -> None:
         exam_text = (
             "{01}\nEnunciado completo da primeira questao.\n(A) A.\n(B) B.\n#####\n"
@@ -810,6 +882,7 @@ Enunciado completo da segunda questao.
             self.semantic_metadata("answer_key", "Gabarito preliminar 2026"),
         )])[0]
         self.assertEqual(self.stored_question(str(exam["id"]), 2)["correct_answer"], "B")
+        question_id = self.approve_stored_question(str(exam["id"]), 2)
 
         definitive = self.process_text_documents([(
             "key-definitive.pdf", "Gabarito definitivo\n1 - A\n2 - C",
@@ -821,6 +894,15 @@ Enunciado completo da segunda questao.
                 "SELECT answer_key_version_id, status FROM document_links ORDER BY created_at"
             ).fetchall()
         self.assertEqual(self.stored_question(str(exam["id"]), 2)["correct_answer"], "C")
+        invalidated = self.store.question(question_id)
+        self.assertEqual(invalidated["status"], "pending")
+        self.assertIsNone(invalidated["reviewer"])
+        self.assertIsNone(invalidated["review_notes"])
+        self.assertEqual(self.store.audit_log(question_id)[0]["action"], "decision_invalidated")
+        self.assertIn(
+            "decision_invalidated",
+            [event["action"] for event in self.store.identity_events(str(exam["id"]))],
+        )
         self.assertEqual(
             [(row["answer_key_version_id"], row["status"]) for row in links],
             [
@@ -844,6 +926,7 @@ Enunciado completo da segunda questao.
             "key-before-annulment.pdf", "Gabarito preliminar\n1 - A\n2 - B",
             self.semantic_metadata("answer_key", "Gabarito preliminar com anulacao"),
         )])
+        question_id = self.approve_stored_question(str(exam["id"]), 1)
         definitive = self.process_text_documents([(
             "key-annulment.pdf", "Gabarito definitivo\n1 - ANULADA",
             self.semantic_metadata("answer_key", "Gabarito definitivo com anulacao"),
@@ -854,10 +937,41 @@ Enunciado completo da segunda questao.
         actions = [event["action"] for event in self.store.identity_events(str(exam["id"]))]
         self.assertEqual((first["answer_status"], first["correct_answer"]), ("annulled", None))
         self.assertEqual((second["answer_status"], second["correct_answer"]), ("matched", "B"))
+        invalidated = self.store.question(question_id)
+        self.assertEqual(invalidated["status"], "exception")
+        self.assertIsNone(invalidated["reviewer"])
+        self.assertEqual(self.store.audit_log(question_id)[0]["action"], "decision_invalidated")
+        self.assertIn("decision_invalidated", actions)
         self.assertIn("association_superseded", actions)
         self.assertEqual(
             self.processor._reconcile_answer_key(str(definitive["document_version_id"])),
             0,
+        )
+
+    def test_unchanged_definitive_answer_preserves_human_decision(self) -> None:
+        exam = self.process_text_documents([(
+            "exam-stable-answer.pdf",
+            "{01}\nEnunciado completo e estável.\n(A) A.\n(B) B.\n#####",
+            self.semantic_metadata("exam", "Prova com resposta estável 2026"),
+        )])[0]
+        self.process_text_documents([(
+            "key-stable-preliminary.pdf", "Gabarito preliminar\n1 - A",
+            self.semantic_metadata("answer_key", "Gabarito preliminar estável"),
+        )])
+        question_id = self.approve_stored_question(str(exam["id"]), 1)
+
+        self.process_text_documents([(
+            "key-stable-definitive.pdf", "Gabarito definitivo\n1 - A",
+            self.semantic_metadata("answer_key", "Gabarito definitivo estável"),
+        )])
+
+        preserved = self.store.question(question_id)
+        self.assertEqual(preserved["status"], "approved")
+        self.assertEqual(preserved["reviewer"], "revisora")
+        self.assertEqual(preserved["review_notes"], "Gabarito conferido.")
+        self.assertNotIn(
+            "decision_invalidated",
+            [entry["action"] for entry in self.store.audit_log(question_id)],
         )
 
     def test_equivalent_definitive_keys_leave_exam_unlinked_and_answers_unchanged(self) -> None:

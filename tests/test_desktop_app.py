@@ -4,6 +4,7 @@ import hashlib
 import json
 import threading
 import unittest
+from contextlib import closing
 from datetime import UTC, datetime
 from http import HTTPStatus
 from importlib import resources
@@ -805,6 +806,52 @@ class DesktopReviewAndFilterTests(unittest.TestCase):
         self.assertIsNone(invalidated["reviewer"])
         self.assertIsNone(invalidated["review_notes"])
         self.assertIsNone(invalidated["exported_at"])
+        self.assertEqual(self.store.audit_log(question_id)[0]["action"], "decision_invalidated")
+
+    def test_question_content_and_decision_fingerprints_are_persisted_separately(self) -> None:
+        original = valid_question(1)
+        question_id = self.store.save_question(
+            self.document["id"], original, full_classification()
+        )
+        with closing(self.store._connect()) as connection:
+            before = connection.execute(
+                "SELECT fingerprint, decision_fingerprint FROM questions WHERE id = ?",
+                (question_id,),
+            ).fetchone()
+
+        changed_answer = original.model_copy(update={"correct_answer": "C"})
+        self.store.save_question(
+            self.document["id"], changed_answer, full_classification()
+        )
+        with closing(self.store._connect()) as connection:
+            after = connection.execute(
+                "SELECT fingerprint, decision_fingerprint FROM questions WHERE id = ?",
+                (question_id,),
+            ).fetchone()
+
+        self.assertIsNotNone(before["decision_fingerprint"])
+        self.assertEqual(after["fingerprint"], before["fingerprint"])
+        self.assertNotEqual(after["decision_fingerprint"], before["decision_fingerprint"])
+
+    def test_changed_official_answer_invalidates_decision(self) -> None:
+        original = valid_question(1)
+        question_id = self.store.save_question(
+            self.document["id"], original, full_classification()
+        )
+        self.store.decide_question(
+            question_id, "approved", actor="revisora", notes="Conferida no PDF."
+        )
+
+        self.store.save_question(
+            self.document["id"],
+            original.model_copy(update={"correct_answer": "C"}),
+            full_classification(),
+        )
+
+        invalidated = self.store.question(question_id)
+        self.assertEqual(invalidated["status"], "pending")
+        self.assertIsNone(invalidated["reviewer"])
+        self.assertIsNone(invalidated["review_notes"])
         self.assertEqual(self.store.audit_log(question_id)[0]["action"], "decision_invalidated")
 
     def test_missing_https_origin_is_sent_to_exceptions(self) -> None:

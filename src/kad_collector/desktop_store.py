@@ -23,6 +23,7 @@ from .desktop_models import (
 from .document_contract import NormalizedDocument, normalize_local_document
 from .models import QuestionRecord
 from .semantic_identity import (
+    IDENTITY_ALGORITHM_VERSION,
     AssociationCandidate,
     DocumentSemanticProfile,
     IdentityResolution,
@@ -36,6 +37,7 @@ from .semantic_registry import (
     identity_events,
     initialize_semantic_schema,
     record_document_link,
+    record_question_lineage,
     semantic_document_view,
     semantic_summary,
 )
@@ -101,6 +103,155 @@ def question_fingerprint(question: QuestionRecord) -> str:
         ],
     }
     return hashlib.sha256(_json(payload).encode("utf-8")).hexdigest()
+
+
+def question_decision_fingerprint(question: QuestionRecord) -> str:
+    payload = {
+        "content": question_fingerprint(question),
+        "answer_status": question.answer_status,
+        "correct_answer": question.correct_answer,
+    }
+    return hashlib.sha256(_json(payload).encode("utf-8")).hexdigest()
+
+
+def invalidate_changed_official_answer(
+    connection: sqlite3.Connection,
+    *,
+    question_id: str,
+    document_id: str,
+    document_version_id: str | None,
+    before: dict[str, Any],
+    after: dict[str, Any],
+    reason: str,
+    changed_at: str,
+) -> None:
+    """Audit one invalidated human decision inside the caller's transaction."""
+    connection.execute(
+        "INSERT INTO audit_log (question_id, action, actor, created_at, before_json, "
+        "after_json, notes) VALUES (?, 'decision_invalidated', NULL, ?, ?, ?, ?)",
+        (question_id, changed_at, _json(before), _json(after), reason),
+    )
+    event_payload = {
+        "questionId": question_id,
+        "reason": reason,
+        "before": before,
+        "after": after,
+    }
+    event_key = hashlib.sha256(
+        _json(
+            {
+                "action": "decision_invalidated",
+                "question_id": question_id,
+                "before_decision_fingerprint": before.get("decision_fingerprint"),
+                "after_decision_fingerprint": after.get("decision_fingerprint"),
+            }
+        ).encode("utf-8")
+    ).hexdigest()
+    connection.execute(
+        "INSERT OR IGNORE INTO document_identity_events ("
+        "event_key, document_id, document_version_id, action, actor, algorithm_version, "
+        "payload_json, created_at) VALUES (?, ?, ?, 'decision_invalidated', 'system', ?, ?, ?)",
+        (
+            event_key,
+            document_id,
+            document_version_id,
+            IDENTITY_ALGORITHM_VERSION,
+            _json(event_payload),
+            changed_at,
+        ),
+    )
+
+
+def carry_forward_question_decision(
+    connection: sqlite3.Connection,
+    *,
+    predecessor: dict[str, Any],
+    successor: dict[str, Any],
+    lineage_id: str,
+    document_id: str,
+    document_version_id: str,
+    recorded_at: str,
+) -> bool:
+    """Copy only a verified human decision into an identical successor."""
+    predecessor_status = predecessor["status"]
+    predecessor_decision = predecessor["decision_fingerprint"]
+    if predecessor_status not in {"approved", "rejected", "exported"}:
+        return False
+    if successor["status"] in {"approved", "rejected", "exported"}:
+        return False
+    if (
+        predecessor_decision is None
+        or successor["decision_fingerprint"] is None
+        or predecessor_decision != successor["decision_fingerprint"]
+    ):
+        return False
+    next_status = "approved" if predecessor_status == "exported" else predecessor_status
+    before = {
+        "status": successor["status"],
+        "reviewer": successor["reviewer"],
+        "review_notes": successor["review_notes"],
+        "exported_at": successor["exported_at"],
+        "decision_fingerprint": successor["decision_fingerprint"],
+    }
+    after = {
+        "status": next_status,
+        "reviewer": predecessor["reviewer"],
+        "review_notes": predecessor["review_notes"],
+        "exported_at": None,
+        "decision_fingerprint": successor["decision_fingerprint"],
+        "predecessor_question_id": predecessor["id"],
+    }
+    if all(before.get(key) == after.get(key) for key in ("status", "reviewer", "review_notes")):
+        return False
+    updated = connection.execute(
+        "UPDATE questions SET status = ?, reviewer = ?, review_notes = ?, exported_at = NULL, "
+        "updated_at = ? WHERE id = ? AND decision_fingerprint = ? "
+        "AND status NOT IN ('approved', 'rejected', 'exported')",
+        (
+            next_status,
+            predecessor["reviewer"],
+            predecessor["review_notes"],
+            recorded_at,
+            successor["id"],
+            predecessor_decision,
+        ),
+    )
+    if updated.rowcount != 1:
+        return False
+    connection.execute(
+        "INSERT INTO audit_log (question_id, action, actor, created_at, before_json, "
+        "after_json, notes) VALUES (?, 'decision_carried_forward', 'system', ?, ?, ?, ?)",
+        (
+            successor["id"],
+            recorded_at,
+            _json(before),
+            _json(after),
+            "Decisão editorial transportada de questão idêntica na versão predecessora.",
+        ),
+    )
+    event_payload = {
+        "lineageId": lineage_id,
+        "predecessorQuestionId": predecessor["id"],
+        "successorQuestionId": successor["id"],
+        "status": next_status,
+    }
+    event_key = hashlib.sha256(
+        _json({"action": "decision_carried_forward", "lineage_id": lineage_id}).encode("utf-8")
+    ).hexdigest()
+    connection.execute(
+        "INSERT OR IGNORE INTO document_identity_events ("
+        "event_key, document_id, document_version_id, action, actor, algorithm_version, "
+        "payload_json, created_at) VALUES (?, ?, ?, 'decision_carried_forward', 'system', ?, ?, ?)",
+        (
+            event_key,
+            document_id,
+            document_version_id,
+            IDENTITY_ALGORITHM_VERSION,
+            _json(event_payload),
+            recorded_at,
+        ),
+    )
+    return True
 
 
 def _classification_confidences(
@@ -668,6 +819,7 @@ class DesktopStore:
                         json.loads(cast(str, row["classification_json"]))
                     )
                     fingerprint = question_fingerprint(question)
+                    decision_fingerprint = question_decision_fingerprint(question)
                     flags = question_quality_flags(question, classification)
                     duplicate = connection.execute(
                         "SELECT 1 FROM questions WHERE fingerprint = ? AND id != ? LIMIT 1",
@@ -684,20 +836,66 @@ class DesktopStore:
                         )
                         else "pending"
                     )
+                    decision_unchanged = (
+                        row["decision_fingerprint"] is not None
+                        and row["decision_fingerprint"] == decision_fingerprint
+                    )
                     status = (
                         cast(DesktopQuestionStatus, row["status"])
-                        if row["fingerprint"] == fingerprint
+                        if decision_unchanged
                         and row["status"] in {"approved", "rejected", "exported"}
                         else next_status
                     )
+                    reviewer = row["reviewer"] if decision_unchanged else None
+                    review_notes = row["review_notes"] if decision_unchanged else None
+                    exported_at = row["exported_at"] if decision_unchanged else None
                     connection.execute(
-                        "UPDATE questions SET payload_json = ?, fingerprint = ?, confidence = ?, "
-                        "flags_json = ?, status = ?, updated_at = ? WHERE id = ?",
+                        "UPDATE questions SET payload_json = ?, fingerprint = ?, "
+                        "decision_fingerprint = ?, confidence = ?, flags_json = ?, status = ?, "
+                        "reviewer = ?, review_notes = ?, exported_at = ?, updated_at = ? "
+                        "WHERE id = ?",
                         (
-                            _json(question.model_dump(mode="json")), fingerprint, confidence,
-                            _json(list(dict.fromkeys(flags))), status, now, row["id"],
+                            _json(question.model_dump(mode="json")),
+                            fingerprint,
+                            decision_fingerprint,
+                            confidence,
+                            _json(list(dict.fromkeys(flags))),
+                            status,
+                            reviewer,
+                            review_notes,
+                            exported_at,
+                            now,
+                            row["id"],
                         ),
                     )
+                    if (
+                        row["status"] in {"approved", "rejected", "exported"}
+                        and not decision_unchanged
+                    ):
+                        invalidate_changed_official_answer(
+                            connection,
+                            question_id=cast(str, row["id"]),
+                            document_id=document_id,
+                            document_version_id=exam_version_id,
+                            before={
+                                "status": row["status"],
+                                "reviewer": row["reviewer"],
+                                "review_notes": row["review_notes"],
+                                "exported_at": row["exported_at"],
+                                "decision_fingerprint": row["decision_fingerprint"],
+                                "question": json.loads(cast(str, row["payload_json"])),
+                            },
+                            after={
+                                "status": status,
+                                "reviewer": None,
+                                "review_notes": None,
+                                "exported_at": None,
+                                "decision_fingerprint": decision_fingerprint,
+                                "question": question.model_dump(mode="json"),
+                            },
+                            reason="Decisão editorial invalidada após mudança da resposta oficial.",
+                            changed_at=now,
+                        )
                     applied += 1
                 if not applied:
                     connection.rollback()
@@ -714,6 +912,178 @@ class DesktopStore:
                     return False
                 connection.commit()
                 return True
+            except Exception:
+                connection.rollback()
+                raise
+
+    def reconcile_question_lineage(self, document_id: str) -> int:
+        """Compare one successor exam with its operational predecessor atomically."""
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                successor_document = connection.execute(
+                    "SELECT document_version_id FROM documents WHERE id = ?",
+                    (document_id,),
+                ).fetchone()
+                if successor_document is None or successor_document["document_version_id"] is None:
+                    connection.commit()
+                    return 0
+                successor_version_id = cast(str, successor_document["document_version_id"])
+                version = connection.execute(
+                    "SELECT predecessor_version_id FROM document_versions "
+                    "WHERE id = ? AND document_role = 'exam'",
+                    (successor_version_id,),
+                ).fetchone()
+                if version is None or version["predecessor_version_id"] is None:
+                    connection.commit()
+                    return 0
+                predecessor_version_id = cast(str, version["predecessor_version_id"])
+                predecessor_document = connection.execute(
+                    "SELECT d.id FROM documents d JOIN questions q ON q.document_id = d.id "
+                    "WHERE d.document_version_id = ? GROUP BY d.id "
+                    "ORDER BY COUNT(q.id) DESC, d.created_at, d.id LIMIT 1",
+                    (predecessor_version_id,),
+                ).fetchone()
+                if predecessor_document is None:
+                    connection.commit()
+                    return 0
+                predecessor_rows = {
+                    int(row["question_number"]): dict(row)
+                    for row in connection.execute(
+                        "SELECT * FROM questions WHERE document_id = ? ORDER BY question_number",
+                        (predecessor_document["id"],),
+                    ).fetchall()
+                }
+                successor_rows = {
+                    int(row["question_number"]): dict(row)
+                    for row in connection.execute(
+                        "SELECT * FROM questions WHERE document_id = ? ORDER BY question_number",
+                        (document_id,),
+                    ).fetchall()
+                }
+                recorded_at = _now()
+                recorded = 0
+                for number in sorted(predecessor_rows.keys() | successor_rows.keys()):
+                    predecessor = predecessor_rows.get(number)
+                    successor = successor_rows.get(number)
+                    content_equal = False
+                    answer_equal = False
+                    if predecessor is None:
+                        comparison = "added"
+                        reason = "Questão adicionada na versão sucessora."
+                    elif successor is None:
+                        comparison = "removed"
+                        reason = "Questão ausente na versão sucessora."
+                    else:
+                        content_equal = predecessor["fingerprint"] == successor["fingerprint"]
+                        predecessor_decision = predecessor["decision_fingerprint"]
+                        successor_decision = successor["decision_fingerprint"]
+                        predecessor_question = json.loads(
+                            cast(str, predecessor["payload_json"])
+                        )
+                        successor_question = json.loads(cast(str, successor["payload_json"]))
+                        if (
+                            content_equal
+                            and predecessor_question.get("answer_status") != "missing"
+                            and successor_question.get("answer_status") == "missing"
+                        ):
+                            continue
+                        if predecessor_decision is None or successor_decision is None:
+                            comparison = "changed"
+                            reason = (
+                                "Impressão de decisão legada ausente; decisão não transportada."
+                            )
+                        else:
+                            answer_equal = (
+                                predecessor_question.get("answer_status")
+                                == successor_question.get("answer_status")
+                                and predecessor_question.get("correct_answer")
+                                == successor_question.get("correct_answer")
+                            )
+                            comparison = (
+                                "unchanged" if content_equal and answer_equal else "changed"
+                            )
+                            if not content_equal:
+                                reason = "Enunciado ou alternativas alterados na versão sucessora."
+                            elif not answer_equal:
+                                reason = "Resposta oficial alterada na versão sucessora."
+                            else:
+                                reason = "Conteúdo e resposta oficial permanecem idênticos."
+                    lineage, created = record_question_lineage(
+                        connection,
+                        predecessor_version_id=predecessor_version_id,
+                        successor_version_id=successor_version_id,
+                        question_number=number,
+                        predecessor_question_id=(
+                            cast(str, predecessor["id"]) if predecessor is not None else None
+                        ),
+                        successor_question_id=(
+                            cast(str, successor["id"]) if successor is not None else None
+                        ),
+                        comparison=comparison,
+                        content_equal=content_equal,
+                        answer_equal=answer_equal,
+                        reason=reason,
+                        recorded_at=recorded_at,
+                    )
+                    if not created:
+                        continue
+                    recorded += 1
+                    if predecessor is None or successor is None:
+                        continue
+                    if comparison == "unchanged":
+                        carry_forward_question_decision(
+                            connection,
+                            predecessor=predecessor,
+                            successor=successor,
+                            lineage_id=cast(str, lineage["id"]),
+                            document_id=document_id,
+                            document_version_id=successor_version_id,
+                            recorded_at=recorded_at,
+                        )
+                    elif (
+                        predecessor["status"] in {"approved", "rejected", "exported"}
+                        and successor["status"]
+                        not in {"approved", "rejected", "exported"}
+                    ):
+                        flags = set(json.loads(cast(str, successor["flags_json"])))
+                        next_status: DesktopQuestionStatus = (
+                            "exception"
+                            if flags.intersection(
+                                {"annulled", "visual", "without_answer", "incomplete"}
+                            )
+                            else "pending"
+                        )
+                        connection.execute(
+                            "UPDATE questions SET status = ?, reviewer = NULL, "
+                            "review_notes = NULL, exported_at = NULL, updated_at = ? WHERE id = ?",
+                            (next_status, recorded_at, successor["id"]),
+                        )
+                        invalidate_changed_official_answer(
+                            connection,
+                            question_id=cast(str, successor["id"]),
+                            document_id=document_id,
+                            document_version_id=successor_version_id,
+                            before={
+                                "source_question_id": predecessor["id"],
+                                "status": predecessor["status"],
+                                "reviewer": predecessor["reviewer"],
+                                "review_notes": predecessor["review_notes"],
+                                "exported_at": predecessor["exported_at"],
+                                "decision_fingerprint": predecessor["decision_fingerprint"],
+                            },
+                            after={
+                                "status": next_status,
+                                "reviewer": None,
+                                "review_notes": None,
+                                "exported_at": None,
+                                "decision_fingerprint": successor["decision_fingerprint"],
+                            },
+                            reason=reason,
+                            changed_at=recorded_at,
+                        )
+                connection.commit()
+                return recorded
             except Exception:
                 connection.rollback()
                 raise
@@ -909,6 +1279,7 @@ class DesktopStore:
     ) -> str:
         question_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{document_id}:{question.number}"))
         fingerprint = question_fingerprint(question)
+        decision_fingerprint = question_decision_fingerprint(question)
         flags = question_quality_flags(question, classification)
         confidence_values = _classification_confidences(classification)
         confidence = min(confidence_values, default=0)
@@ -929,37 +1300,47 @@ class DesktopStore:
         with closing(self._connect()) as connection:
             existing = connection.execute(
                 """
-                SELECT fingerprint, payload_json, status, reviewer, review_notes, exported_at
+                SELECT fingerprint, decision_fingerprint, payload_json, status, reviewer,
+                       review_notes, exported_at
                 FROM questions WHERE id = ?
                 """,
                 (question_id,),
             ).fetchone()
             decision_invalidated = (
                 existing is not None
-                and cast(str, existing["fingerprint"]) != fingerprint
+                and (
+                    existing["decision_fingerprint"] is None
+                    or existing["decision_fingerprint"] != decision_fingerprint
+                )
                 and existing["status"] in {"approved", "rejected", "exported"}
             )
             connection.execute(
                 """
                 INSERT INTO questions (
-                    id, document_id, question_number, fingerprint, payload_json,
+                    id, document_id, question_number, fingerprint, decision_fingerprint,
+                    payload_json,
                     classification_json, confidence, flags_json, status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(document_id, question_number) DO UPDATE SET
                     fingerprint = excluded.fingerprint,
+                    decision_fingerprint = excluded.decision_fingerprint,
                     payload_json = excluded.payload_json,
                     classification_json = excluded.classification_json,
                     confidence = excluded.confidence,
                     flags_json = excluded.flags_json,
                     status = CASE
-                        WHEN questions.fingerprint = excluded.fingerprint
+                        WHEN questions.decision_fingerprint IS NOT NULL
+                            AND questions.decision_fingerprint = excluded.decision_fingerprint
                             AND questions.status IN ('approved', 'rejected', 'exported')
                         THEN questions.status ELSE excluded.status END,
-                    reviewer = CASE WHEN questions.fingerprint = excluded.fingerprint
+                    reviewer = CASE WHEN questions.decision_fingerprint IS NOT NULL
+                            AND questions.decision_fingerprint = excluded.decision_fingerprint
                         THEN questions.reviewer ELSE NULL END,
-                    review_notes = CASE WHEN questions.fingerprint = excluded.fingerprint
+                    review_notes = CASE WHEN questions.decision_fingerprint IS NOT NULL
+                            AND questions.decision_fingerprint = excluded.decision_fingerprint
                         THEN questions.review_notes ELSE NULL END,
-                    exported_at = CASE WHEN questions.fingerprint = excluded.fingerprint
+                    exported_at = CASE WHEN questions.decision_fingerprint IS NOT NULL
+                            AND questions.decision_fingerprint = excluded.decision_fingerprint
                         THEN questions.exported_at ELSE NULL END,
                     updated_at = excluded.updated_at
                 """,
@@ -968,6 +1349,7 @@ class DesktopStore:
                     document_id,
                     question.number,
                     fingerprint,
+                    decision_fingerprint,
                     _json(question.model_dump(mode="json")),
                     _json(classification.model_dump(mode="json")),
                     confidence,
@@ -978,22 +1360,30 @@ class DesktopStore:
                 ),
             )
             if decision_invalidated and existing is not None:
-                self._audit(
+                document = connection.execute(
+                    "SELECT document_version_id FROM documents WHERE id = ?", (document_id,)
+                ).fetchone()
+                invalidate_changed_official_answer(
                     connection,
-                    question_id,
-                    "decision_invalidated",
-                    None,
-                    {
+                    question_id=question_id,
+                    document_id=document_id,
+                    document_version_id=cast(
+                        str | None, document["document_version_id"] if document else None
+                    ),
+                    before={
                         "status": existing["status"],
                         "fingerprint": existing["fingerprint"],
+                        "decision_fingerprint": existing["decision_fingerprint"],
                         "question": json.loads(cast(str, existing["payload_json"])),
                     },
-                    {
+                    after={
                         "status": status,
                         "fingerprint": fingerprint,
+                        "decision_fingerprint": decision_fingerprint,
                         "question": question.model_dump(mode="json"),
                     },
-                    "Decisão editorial invalidada após reprocessamento com conteúdo alterado.",
+                    reason="Decisão editorial invalidada após reprocessamento alterado.",
+                    changed_at=created_at,
                 )
             connection.commit()
         return question_id
@@ -1063,6 +1453,7 @@ class DesktopStore:
         )
         flags = question_quality_flags(question, active_classification)
         fingerprint = question_fingerprint(question)
+        decision_fingerprint = question_decision_fingerprint(question)
         duplicate = self._duplicate_question_id(fingerprint, exclude_id=question_id)
         if duplicate is not None:
             flags.append("duplicate")
@@ -1077,14 +1468,15 @@ class DesktopStore:
             connection.execute(
                 """
                 UPDATE questions SET payload_json = ?, classification_json = ?, fingerprint = ?,
-                    confidence = ?, flags_json = ?, status = ?, reviewer = ?, review_notes = ?,
-                    updated_at = ?, exported_at = NULL
+                    decision_fingerprint = ?, confidence = ?, flags_json = ?, status = ?,
+                    reviewer = ?, review_notes = ?, updated_at = ?, exported_at = NULL
                 WHERE id = ?
                 """,
                 (
                     _json(question.model_dump(mode="json")),
                     _json(active_classification.model_dump(mode="json")),
                     fingerprint,
+                    decision_fingerprint,
                     confidence,
                     _json(list(dict.fromkeys(flags))),
                     next_status,

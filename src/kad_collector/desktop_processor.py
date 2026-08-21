@@ -582,6 +582,7 @@ class DesktopProcessor:
             document_id = cast(str, document["id"])
             if self.store.question_records(document_id):
                 self._associate_exam(document)
+                self.store.reconcile_question_lineage(document_id)
                 continue
             pages = self.store.pages(document_id)
             questions, warnings = parse_question_pages(pages)
@@ -623,6 +624,7 @@ class DesktopProcessor:
                 self.store.save_question(document_id, updated, classification)
                 structured_questions.append(updated)
             applied, located = self._associate_exam(document)
+            self.store.reconcile_question_lineage(document_id)
             if not applied:
                 existing_warnings.append(
                     "gabarito localizado, mas sem respostas reconhecidas para a prova"
@@ -725,6 +727,7 @@ class DesktopProcessor:
                 str(page["text"]) for page in self.store.pages(document_id)
             )
             changed, _ = self._associate_exam(exam)
+            self.store.reconcile_question_lineage(document_id)
             if changed:
                 applied += 1
         return applied

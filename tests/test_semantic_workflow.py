@@ -12,9 +12,11 @@ from unittest.mock import patch
 
 from reportlab.pdfgen import canvas
 
+from kad_collector.desktop_models import QuestionClassification
 from kad_collector.desktop_processor import DesktopProcessor, parse_question_pages
 from kad_collector.desktop_store import DesktopStore
 from kad_collector.document_contract import NormalizedDocument
+from kad_collector.models import Alternative, QuestionRecord
 from kad_collector.semantic_identity import (
     AnswerKeyCoverage,
     AssociationCandidate,
@@ -387,6 +389,359 @@ class SemanticWorkflowIntegrationTests(unittest.TestCase):
 
     def resolve(self, document_id: str):
         return self.store.resolve_extracted_document(document_id)
+
+    def lineage_question(
+        self,
+        number: int,
+        *,
+        statement: str | None = None,
+        answer_status: str = "matched",
+        correct_answer: str | None = "B",
+    ) -> QuestionRecord:
+        return QuestionRecord.model_validate(
+            {
+                "number": number,
+                "statement": statement or f"Enunciado completo e estável da questão {number}.",
+                "alternatives": [
+                    Alternative(letter="A", text="Primeira alternativa."),
+                    Alternative(letter="B", text="Segunda alternativa."),
+                    Alternative(letter="C", text="Terceira alternativa."),
+                ],
+                "discipline": "Direito",
+                "matter": "Direito Administrativo",
+                "subject": "Atos administrativos",
+                "board": "Banca",
+                "organization": "Secretaria Pública",
+                "concurso": "Concurso",
+                "role": "Analista",
+                "year": 2026,
+                "level": "Superior",
+                "difficulty": "Média",
+                "source_pages": [1],
+                "explanation": "A alternativa indicada corresponde ao gabarito oficial.",
+                "answer_status": answer_status,
+                "correct_answer": correct_answer,
+            }
+        )
+
+    def add_successive_exams(self) -> None:
+        metadata = {"board": "Banca", "concurso": "Concurso", "year": 2026}
+        self.add_document(
+            "first",
+            binary=b"pdf-lineage-one",
+            text="Prova 2026\nQuestão 1\nA) Azul B) Verde",
+            metadata=metadata,
+        )
+        self.add_document(
+            "second",
+            binary=b"pdf-lineage-two",
+            text="Prova 2026 republicada\nQuestão 1\nA) Azul B) Verde",
+            metadata=metadata,
+        )
+        self.resolve("first")
+        self.resolve("second")
+
+    def reconcile_saved_successor(self) -> None:
+        processor = DesktopProcessor(self.store)
+        try:
+            processor._structure_job("job-second", threading.Event())
+        finally:
+            processor._executor.shutdown(wait=True)
+
+    def lineage_rows(self) -> list[dict[str, object]]:
+        with closing(self.store._connect()) as connection:
+            return [
+                dict(row)
+                for row in connection.execute(
+                    "SELECT * FROM question_lineage ORDER BY question_number"
+                ).fetchall()
+            ]
+
+    def test_human_decision_is_carried_to_identical_successor_question(self) -> None:
+        self.add_successive_exams()
+        first_id = self.store.save_question(
+            "first", self.lineage_question(1), QuestionClassification()
+        )
+        self.store.decide_question(
+            first_id, "approved", actor="revisora", notes="Decisão humana preservável."
+        )
+        second_id = self.store.save_question(
+            "second", self.lineage_question(1), QuestionClassification()
+        )
+
+        self.reconcile_saved_successor()
+
+        successor = self.store.question(second_id)
+        self.assertEqual(successor["status"], "approved")
+        self.assertEqual(successor["reviewer"], "revisora")
+        self.assertEqual(successor["review_notes"], "Decisão humana preservável.")
+        self.assertIsNone(successor["exported_at"])
+        self.assertEqual(self.lineage_rows()[0]["comparison"], "unchanged")
+        self.assertEqual(self.store.audit_log(second_id)[0]["action"], "decision_carried_forward")
+
+    def test_changed_statement_does_not_carry_decision(self) -> None:
+        self.add_successive_exams()
+        first_id = self.store.save_question(
+            "first", self.lineage_question(1), QuestionClassification()
+        )
+        self.store.decide_question(
+            first_id, "approved", actor="revisora", notes="Decisão da versão anterior."
+        )
+        second_id = self.store.save_question(
+            "second",
+            self.lineage_question(1, statement="Enunciado oficialmente alterado na sucessora."),
+            QuestionClassification(),
+        )
+
+        self.reconcile_saved_successor()
+
+        successor = self.store.question(second_id)
+        self.assertEqual(successor["status"], "pending")
+        self.assertIsNone(successor["reviewer"])
+        rows = self.lineage_rows()
+        self.assertEqual(len(rows), 1)
+        lineage = rows[0]
+        self.assertEqual(lineage["comparison"], "changed")
+        self.assertEqual(lineage["content_equal"], 0)
+        self.assertEqual(self.store.audit_log(second_id)[0]["action"], "decision_invalidated")
+
+    def test_changed_answer_does_not_carry_decision(self) -> None:
+        self.add_successive_exams()
+        first_id = self.store.save_question(
+            "first", self.lineage_question(1), QuestionClassification()
+        )
+        self.store.decide_question(
+            first_id, "approved", actor="revisora", notes="Resposta B conferida."
+        )
+        second_id = self.store.save_question(
+            "second",
+            self.lineage_question(1, correct_answer="C"),
+            QuestionClassification(),
+        )
+
+        self.reconcile_saved_successor()
+
+        successor = self.store.question(second_id)
+        self.assertEqual(successor["status"], "pending")
+        self.assertIsNone(successor["review_notes"])
+        rows = self.lineage_rows()
+        self.assertEqual(len(rows), 1)
+        lineage = rows[0]
+        self.assertEqual(lineage["comparison"], "changed")
+        self.assertEqual((lineage["content_equal"], lineage["answer_equal"]), (1, 0))
+        self.assertEqual(self.store.audit_log(second_id)[0]["action"], "decision_invalidated")
+        self.assertIn(
+            "decision_invalidated",
+            [event["action"] for event in self.store.identity_events("second")],
+        )
+
+    def test_added_and_removed_questions_have_lineage(self) -> None:
+        self.add_successive_exams()
+        first_ids = [
+            self.store.save_question(
+                "first", self.lineage_question(number), QuestionClassification()
+            )
+            for number in (1, 2)
+        ]
+        second_ids = [
+            self.store.save_question(
+                "second", self.lineage_question(number), QuestionClassification()
+            )
+            for number in (2, 3)
+        ]
+
+        self.reconcile_saved_successor()
+
+        rows = {int(row["question_number"]): row for row in self.lineage_rows()}
+        self.assertEqual(set(rows), {1, 2, 3})
+        self.assertEqual(rows[1]["comparison"], "removed")
+        self.assertEqual(rows[1]["predecessor_question_id"], first_ids[0])
+        self.assertIsNone(rows[1]["successor_question_id"])
+        self.assertEqual(rows[2]["comparison"], "unchanged")
+        self.assertEqual(rows[3]["comparison"], "added")
+        self.assertIsNone(rows[3]["predecessor_question_id"])
+        self.assertEqual(rows[3]["successor_question_id"], second_ids[1])
+        self.assertEqual(len(self.store.question_records("first")), 2)
+
+    def test_only_human_decisions_are_carried_and_exported_becomes_approved(self) -> None:
+        self.add_successive_exams()
+        first_ids = {
+            number: self.store.save_question(
+                "first", self.lineage_question(number), QuestionClassification()
+            )
+            for number in (1, 2, 3, 4)
+        }
+        self.store.decide_question(
+            first_ids[1], "rejected", actor="revisora", notes="Rejeição fundamentada."
+        )
+        self.store.decide_question(
+            first_ids[2], "approved", actor="revisora", notes="Aprovação exportada."
+        )
+        self.store.mark_exported([first_ids[2]])
+        self.store.decide_question(
+            first_ids[4], "exception", actor="revisora", notes="Exceção não transportável."
+        )
+        second_ids = {
+            number: self.store.save_question(
+                "second", self.lineage_question(number), QuestionClassification()
+            )
+            for number in (1, 2, 3, 4)
+        }
+
+        self.reconcile_saved_successor()
+
+        successors = {number: self.store.question(value) for number, value in second_ids.items()}
+        self.assertEqual(successors[1]["status"], "rejected")
+        self.assertEqual(successors[2]["status"], "approved")
+        self.assertIsNone(successors[2]["exported_at"])
+        self.assertEqual(successors[3]["status"], "pending")
+        self.assertIsNone(successors[3]["reviewer"])
+        self.assertEqual(successors[4]["status"], "pending")
+        self.assertIsNone(successors[4]["review_notes"])
+
+    def test_legacy_null_decision_fingerprint_does_not_invent_a_decision(self) -> None:
+        self.add_successive_exams()
+        first_id = self.store.save_question(
+            "first", self.lineage_question(1), QuestionClassification()
+        )
+        self.store.decide_question(
+            first_id, "approved", actor="revisora", notes="Registro legado."
+        )
+        with closing(self.store._connect()) as connection:
+            connection.execute(
+                "UPDATE questions SET decision_fingerprint = NULL WHERE id = ?", (first_id,)
+            )
+            connection.commit()
+        second_id = self.store.save_question(
+            "second", self.lineage_question(1), QuestionClassification()
+        )
+
+        self.reconcile_saved_successor()
+
+        successor = self.store.question(second_id)
+        self.assertEqual(successor["status"], "pending")
+        self.assertIsNone(successor["reviewer"])
+        rows = self.lineage_rows()
+        self.assertEqual(len(rows), 1)
+        lineage = rows[0]
+        self.assertEqual(lineage["comparison"], "changed")
+        self.assertIn("legad", str(lineage["reason"]).casefold())
+
+    def test_repeated_lineage_reconciliation_is_idempotent(self) -> None:
+        self.add_successive_exams()
+        first_id = self.store.save_question(
+            "first", self.lineage_question(1), QuestionClassification()
+        )
+        self.store.decide_question(
+            first_id, "approved", actor="revisora", notes="Decisão idempotente."
+        )
+        second_id = self.store.save_question(
+            "second", self.lineage_question(1), QuestionClassification()
+        )
+
+        self.reconcile_saved_successor()
+        self.reconcile_saved_successor()
+
+        with closing(self.store._connect()) as connection:
+            lineage_count = connection.execute(
+                "SELECT COUNT(*) FROM question_lineage"
+            ).fetchone()[0]
+            event_count = connection.execute(
+                "SELECT COUNT(*) FROM document_identity_events "
+                "WHERE action = 'decision_carried_forward'"
+            ).fetchone()[0]
+            audit_count = connection.execute(
+                "SELECT COUNT(*) FROM audit_log "
+                "WHERE question_id = ? AND action = 'decision_carried_forward'",
+                (second_id,),
+            ).fetchone()[0]
+        self.assertEqual((lineage_count, event_count, audit_count), (1, 1, 1))
+
+    def test_concurrent_changed_lineage_is_unique_and_does_not_copy_decision(self) -> None:
+        self.add_successive_exams()
+        first_id = self.store.save_question(
+            "first", self.lineage_question(1), QuestionClassification()
+        )
+        self.store.decide_question(
+            first_id, "approved", actor="revisora", notes="Resposta B."
+        )
+        second_id = self.store.save_question(
+            "second", self.lineage_question(1, correct_answer="C"), QuestionClassification()
+        )
+        errors: list[Exception] = []
+
+        def reconcile() -> None:
+            try:
+                self.reconcile_saved_successor()
+            except Exception as exc:  # pragma: no cover
+                errors.append(exc)
+
+        threads = [threading.Thread(target=reconcile) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        self.assertEqual(errors, [])
+        self.assertEqual(len(self.lineage_rows()), 1)
+        successor = self.store.question(second_id)
+        self.assertEqual(successor["status"], "pending")
+        self.assertIsNone(successor["reviewer"])
+
+    def test_changed_lineage_preserves_successor_human_decision(self) -> None:
+        self.add_successive_exams()
+        first_id = self.store.save_question(
+            "first", self.lineage_question(1), QuestionClassification()
+        )
+        self.store.decide_question(
+            first_id, "approved", actor="predecessora", notes="Decisão da predecessora."
+        )
+        second_id = self.store.save_question(
+            "second",
+            self.lineage_question(1, statement="Enunciado revisado na versão sucessora."),
+            QuestionClassification(),
+        )
+        self.store.decide_question(
+            second_id, "approved", actor="sucessora", notes="Decisão própria da sucessora."
+        )
+
+        self.reconcile_saved_successor()
+
+        successor = self.store.question(second_id)
+        self.assertEqual(successor["status"], "approved")
+        self.assertEqual(successor["reviewer"], "sucessora")
+        self.assertEqual(successor["review_notes"], "Decisão própria da sucessora.")
+        self.assertEqual(self.lineage_rows()[0]["comparison"], "changed")
+        self.assertNotIn(
+            "decision_invalidated",
+            [entry["action"] for entry in self.store.audit_log(second_id)],
+        )
+
+    def test_identical_lineage_does_not_overwrite_successor_human_decision(self) -> None:
+        self.add_successive_exams()
+        first_id = self.store.save_question(
+            "first", self.lineage_question(1), QuestionClassification()
+        )
+        self.store.decide_question(
+            first_id, "approved", actor="predecessora", notes="Aprovação da predecessora."
+        )
+        second_id = self.store.save_question(
+            "second", self.lineage_question(1), QuestionClassification()
+        )
+        self.store.decide_question(
+            second_id, "rejected", actor="sucessora", notes="Rejeição própria da sucessora."
+        )
+
+        self.reconcile_saved_successor()
+
+        successor = self.store.question(second_id)
+        self.assertEqual(successor["status"], "rejected")
+        self.assertEqual(successor["reviewer"], "sucessora")
+        self.assertEqual(successor["review_notes"], "Rejeição própria da sucessora.")
+        self.assertNotIn(
+            "decision_carried_forward",
+            [entry["action"] for entry in self.store.audit_log(second_id)],
+        )
 
     def test_equivalent_text_with_different_bytes_is_republication(self) -> None:
         metadata = {"board": "Banca", "concurso": "Concurso", "year": 2026}

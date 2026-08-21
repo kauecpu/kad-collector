@@ -32,6 +32,62 @@ class ObservationClaim:
     resolution_status: str
 
 
+def record_question_lineage(
+    connection: sqlite3.Connection,
+    *,
+    predecessor_version_id: str,
+    successor_version_id: str,
+    question_number: int,
+    predecessor_question_id: str | None,
+    successor_question_id: str | None,
+    comparison: str,
+    content_equal: bool,
+    answer_equal: bool,
+    reason: str,
+    recorded_at: str,
+) -> tuple[dict[str, Any], bool]:
+    """Record one canonical lineage fact and return the winning row."""
+    lineage_id = stable_sha256(
+        {
+            "predecessor_version_id": predecessor_version_id,
+            "successor_version_id": successor_version_id,
+            "question_number": question_number,
+        }
+    )
+    created = False
+    try:
+        connection.execute(
+            "INSERT INTO question_lineage ("
+            "id, predecessor_version_id, successor_version_id, question_number, "
+            "predecessor_question_id, successor_question_id, comparison, content_equal, "
+            "answer_equal, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                lineage_id,
+                predecessor_version_id,
+                successor_version_id,
+                question_number,
+                predecessor_question_id,
+                successor_question_id,
+                comparison,
+                int(content_equal),
+                int(answer_equal),
+                reason,
+                recorded_at,
+            ),
+        )
+        created = True
+    except sqlite3.IntegrityError:
+        pass
+    row = connection.execute(
+        "SELECT * FROM question_lineage WHERE predecessor_version_id = ? "
+        "AND successor_version_id = ? AND question_number = ?",
+        (predecessor_version_id, successor_version_id, question_number),
+    ).fetchone()
+    if row is None:
+        raise RuntimeError("linhagem concorrente não pôde ser recarregada")
+    return dict(row), created
+
+
 def _observation_origin(document: NormalizedDocument) -> dict[str, object]:
     return {
         "entry_method": document.entry_method,
