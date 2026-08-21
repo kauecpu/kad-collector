@@ -144,6 +144,15 @@ def resolve_document_version(
         existing_outcome = existing["semantic_resolution"]
         if existing_outcome in {"uncertain", "new_identity", "new_version", "republication"}:
             existing_version = existing["document_version_id"]
+            final_event = connection.execute(
+                "SELECT 1 FROM document_identity_events "
+                "WHERE document_id = ? AND action = ? "
+                "AND ((document_version_id = ?) OR (document_version_id IS NULL AND ? IS NULL))",
+                (document_id, existing_outcome, existing_version, existing_version),
+            ).fetchone()
+            if final_event is None:
+                existing_outcome = None
+        if existing_outcome in {"uncertain", "new_identity", "new_version", "republication"}:
             if existing_outcome == "uncertain":
                 result = IdentityResolution(
                     outcome="uncertain",

@@ -9,7 +9,7 @@ from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 
-from kad_collector.desktop_processor import DesktopProcessor
+from kad_collector.desktop_processor import DesktopProcessor, parse_question_pages
 from kad_collector.desktop_store import DesktopStore
 from kad_collector.document_contract import NormalizedDocument
 from kad_collector.semantic_identity import (
@@ -205,6 +205,85 @@ class SemanticWorkflowIntegrationTests(unittest.TestCase):
         self.assertEqual(second.document_version_id, first.document_version_id)
         self.assertEqual(second.version_number, first.version_number)
         self.assertEqual(self.store.semantic_summary()["events"], event_count)
+
+    def test_reprocessed_operational_document_without_final_event_is_republication(self) -> None:
+        metadata = {"board": "Banca", "concurso": "Concurso", "year": 2026}
+        self.add_document(
+            "first", binary=b"pdf-one", text="Prova 2026\nQuestão 1\nA) Azul", metadata=metadata
+        )
+        first = self.resolve("first")
+        self.add_document(
+            "second", binary=b"pdf-two", text="Prova 2026\nQuestão 1\nA) Azul", metadata=metadata
+        )
+        with closing(self.store._connect()) as connection:
+            connection.execute(
+                "UPDATE documents SET document_version_id = ?, "
+                "semantic_resolution = 'new_identity' "
+                "WHERE id = 'second'",
+                (first.document_version_id,),
+            )
+            connection.execute(
+                "UPDATE document_observations SET document_version_id = ?, "
+                "resolution_status = 'new_identity' "
+                "WHERE document_id = 'second'",
+                (first.document_version_id,),
+            )
+            connection.commit()
+        second = self.resolve("second")
+        self.assertEqual(second.outcome, "republication")
+        self.assertEqual(second.document_version_id, first.document_version_id)
+
+    def test_structure_calls_parser_for_new_identity_and_skips_republication(self) -> None:
+        metadata = {"board": "Banca", "concurso": "Concurso", "year": 2026}
+        text = "Prova 2026\nQuestão 1. Qual é a cor principal?\nA) Azul\nB) Verde"
+        self.add_document("first", binary=b"pdf-one", text=text, metadata=metadata)
+        self.add_document("second", binary=b"pdf-two", text=text, metadata=metadata)
+        self.resolve("first")
+        first_processor = DesktopProcessor(self.store)
+        try:
+            with patch(
+                "kad_collector.desktop_processor.parse_question_pages",
+                wraps=parse_question_pages,
+            ) as parser:
+                first_processor._structure_job("job-first", threading.Event())
+                self.assertEqual(parser.call_count, 1)
+        finally:
+            first_processor._executor.shutdown(wait=True)
+        self.assertEqual(self.store.semantic_summary()["documents"], 2)
+        with closing(self.store._connect()) as connection:
+            question_count = connection.execute("SELECT COUNT(*) FROM questions").fetchone()[0]
+        self.assertEqual(question_count, 1)
+        self.resolve("second")
+        second_processor = DesktopProcessor(self.store)
+        try:
+            with patch(
+                "kad_collector.desktop_processor.parse_question_pages",
+                side_effect=AssertionError("republicação não deve estruturar"),
+            ):
+                second_processor._structure_job("job-second", threading.Event())
+        finally:
+            second_processor._executor.shutdown(wait=True)
+        with closing(self.store._connect()) as connection:
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM questions").fetchone()[0], 1)
+        self.add_document(
+            "third",
+            binary=b"pdf-three",
+            text="Prova 2026\nQuestão 1. Qual é a cor principal?\nA) Azul\nB) Vermelho",
+            metadata=metadata,
+        )
+        self.assertEqual(self.resolve("third").outcome, "new_version")
+        third_processor = DesktopProcessor(self.store)
+        try:
+            with patch(
+                "kad_collector.desktop_processor.parse_question_pages",
+                wraps=parse_question_pages,
+            ) as parser:
+                third_processor._structure_job("job-third", threading.Event())
+                self.assertEqual(parser.call_count, 1)
+        finally:
+            third_processor._executor.shutdown(wait=True)
+        with closing(self.store._connect()) as connection:
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM questions").fetchone()[0], 2)
 
     def test_changed_content_with_question_added_creates_successor(self) -> None:
         metadata = {"board": "Banca", "concurso": "Concurso", "year": 2026}
