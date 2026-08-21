@@ -87,7 +87,12 @@ def _assess(exam: DocumentSemanticProfile, item: AssociationCandidate) -> Candid
             conflicts.append(f"{name}: valores incompatíveis")
             continue
         matched.append(name)
-        score += weight
+        exam_strong = any(evidence.strength == "strong" for evidence in exam_field.evidence)
+        candidate_strong = any(
+            evidence.strength == "strong" for evidence in candidate_field.evidence
+        )
+        if exam_strong and candidate_strong:
+            score += weight
     score += _title_bonus(exam, candidate)
     strong = {"board", "concurso", "year"}
     def has_strong_evidence(field: Any) -> bool:

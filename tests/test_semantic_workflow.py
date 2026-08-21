@@ -17,17 +17,16 @@ from kad_collector.desktop_store import DesktopStore
 from kad_collector.document_contract import NormalizedDocument
 from kad_collector.semantic_identity import (
     AnswerKeyCoverage,
+    AssociationCandidate,
     ContentFingerprint,
     DocumentSemanticProfile,
     ExamSemanticIdentity,
     KnownDocumentVersion,
-    SemanticField,
     SemanticEvidence,
+    SemanticField,
 )
 from kad_collector.semantic_registry import claim_document_observation
-from kad_collector.semantic_resolution import decide_document_version
-from kad_collector.semantic_resolution import select_answer_key
-from kad_collector.semantic_identity import AssociationCandidate
+from kad_collector.semantic_resolution import decide_document_version, select_answer_key
 
 
 def profile(
@@ -126,14 +125,32 @@ class SemanticResolutionDecisionTests(unittest.TestCase):
         self.assertEqual(decision.selected_version_id, "key-1")
 
     def test_types_one_to_four_do_not_mix_answers(self) -> None:
+        candidates = []
         for number in range(1, 5):
             variant = SemanticField.from_evidence(
                 "variants", (SemanticEvidence.metadata("variant", f"Tipo {number}"),)
             )
-            decision = select_answer_key(
-                self._exam(variants=variant), [self._key(version_id=f"key-{number}", variants=variant)]
+            candidates.append(self._key(version_id=f"key-{number}", variants=variant))
+        for number in range(1, 5):
+            variant = SemanticField.from_evidence(
+                "variants", (SemanticEvidence.metadata("variant", f"Tipo {number}"),)
             )
+            decision = select_answer_key(self._exam(variants=variant), candidates)
             self.assertEqual(decision.selected_version_id, f"key-{number}")
+
+    def test_title_evidence_adds_at_most_two_points(self) -> None:
+        weak = SemanticField(
+            status="known", normalized_values=("tipo 1",), raw_values=("Tipo 1",),
+            evidence=(SemanticEvidence.title("title", "Tipo 1"),),
+            method="title", reason="title", confidence=1.0,
+        )
+        baseline = select_answer_key(self._exam(), [self._key()])
+        decision = select_answer_key(
+            self._exam(variants=weak), [self._key(variants=weak)]
+        )
+        self.assertLessEqual(
+            decision.assessments[0].score - baseline.assessments[0].score, 2
+        )
 
     def test_missing_without_candidates(self) -> None:
         self.assertEqual(select_answer_key(self._exam(), []).outcome, "missing")
@@ -163,7 +180,9 @@ class SemanticResolutionDecisionTests(unittest.TestCase):
         self.assertEqual(decision.outcome, "ambiguous")
 
     def test_definitive_without_predecessor_does_not_break_tie(self) -> None:
-        preliminary = self._key("pre").profile.model_copy(update={"answer_key_state": "preliminary"})
+        preliminary = self._key("pre").profile.model_copy(
+            update={"answer_key_state": "preliminary"}
+        )
         definitive = self._key("def").profile.model_copy(update={"answer_key_state": "definitive"})
         decision = select_answer_key(self._exam(), [
             AssociationCandidate(version_id="pre", profile=preliminary),
