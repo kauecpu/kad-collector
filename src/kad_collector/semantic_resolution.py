@@ -150,7 +150,17 @@ def select_answer_key(
         )
     top = compatible[0]
     second = compatible[1] if len(compatible) > 1 else None
-    tied = [item for item in compatible if item.score == top.score]
+    def semantic_score(assessment: CandidateAssessment) -> int:
+        candidate = next(item for item in candidates if item.version_id == assessment.version_id)
+        return assessment.score - _title_bonus(exam_profile, candidate.profile)
+
+    top = max(
+        compatible,
+        key=lambda item: (semantic_score(item), item.score, item.version_id),
+    )
+    second = next((item for item in compatible if item.version_id != top.version_id), None)
+    best_semantic = semantic_score(top)
+    tied = [item for item in compatible if semantic_score(item) == best_semantic]
     if len(tied) > 1:
         tied_candidates = [
             next(item for item in candidates if item.version_id == assessment.version_id)

@@ -135,6 +135,42 @@ class SemanticResolutionDecisionTests(unittest.TestCase):
             )
             self.assertEqual(decision.selected_version_id, f"key-{number}")
 
+    def test_missing_without_candidates(self) -> None:
+        self.assertEqual(select_answer_key(self._exam(), []).outcome, "missing")
+
+    def test_known_scope_conflicts_cover_organization_role_stage_turn_and_variant(self) -> None:
+        fields = ("organization", "roles", "stage", "turns", "variants")
+        for name in fields:
+            with self.subTest(name=name):
+                exam_value = SemanticField.from_evidence(
+                    name, (SemanticEvidence.metadata(name, "expected"),)
+                )
+                wrong = SemanticField.from_evidence(
+                    name, (SemanticEvidence.metadata(name, "different"),)
+                )
+                decision = select_answer_key(self._exam(**{name: exam_value}), [
+                    self._key(**{name: wrong})
+                ])
+                self.assertEqual(decision.outcome, "conflict")
+
+    def test_two_definitives_equivalent_remain_ambiguous(self) -> None:
+        first = self._key("a").profile.model_copy(update={"answer_key_state": "definitive"})
+        second = self._key("b").profile.model_copy(update={"answer_key_state": "definitive"})
+        decision = select_answer_key(self._exam(), [
+            AssociationCandidate(version_id="a", profile=first),
+            AssociationCandidate(version_id="b", profile=second),
+        ])
+        self.assertEqual(decision.outcome, "ambiguous")
+
+    def test_definitive_without_predecessor_does_not_break_tie(self) -> None:
+        preliminary = self._key("pre").profile.model_copy(update={"answer_key_state": "preliminary"})
+        definitive = self._key("def").profile.model_copy(update={"answer_key_state": "definitive"})
+        decision = select_answer_key(self._exam(), [
+            AssociationCandidate(version_id="pre", profile=preliminary),
+            AssociationCandidate(version_id="def", profile=definitive),
+        ])
+        self.assertEqual(decision.outcome, "ambiguous")
+
     def test_equal_candidates_are_ambiguous(self) -> None:
         decision = select_answer_key(self._exam(), [self._key("a"), self._key("b")])
         self.assertIsNone(decision.selected_version_id)

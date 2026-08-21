@@ -182,13 +182,22 @@ def _select_answer_key(
                 declared_type="answer_key",
             ), [(1, cast(str, item.get("answer_key_text", "")))],
         )
-        candidates.append(AssociationCandidate(version_id=item_sha, profile=item_profile))
+        candidates.append(AssociationCandidate(
+            version_id=cast(str, item.get("version_id") or item.get("id") or item_sha),
+            profile=item_profile,
+            predecessor_version_id=cast(
+                str | None,
+                item.get("predecessor_version_id") or item.get("predecessorVersionId"),
+            ),
+        ))
     decision = select_answer_key(exam_profile, candidates)
     if decision.selected_version_id is None:
         return None
     return next(
         item for item in answer_keys
         if item.get("sha256") == decision.selected_version_id
+        or item.get("version_id") == decision.selected_version_id
+        or item.get("id") == decision.selected_version_id
         or hashlib.sha256(cast(str, item.get("answer_key_text", "")).encode("utf-8")).hexdigest()
         == decision.selected_version_id
     )
