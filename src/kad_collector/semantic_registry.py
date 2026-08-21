@@ -363,16 +363,17 @@ def active_answer_key_candidates(
                l.decision_json, l.algorithm_version, l.predecessor_link_id,
                v.identity_key, v.answer_key_state, v.coverage_json, v.profile_json,
                v.predecessor_version_id, v.version_number
-        FROM document_links l JOIN document_versions v ON v.id = l.answer_key_version_id
-        WHERE l.status = 'active'""" + clause
-        + " ORDER BY l.exam_version_id, l.answer_key_version_id, l.id",
+        FROM document_versions v
+        LEFT JOIN document_links l ON l.answer_key_version_id = v.id AND l.status = 'active'
+        WHERE v.document_role = 'answer_key'""" + clause
+        + " ORDER BY v.identity_key, v.version_number, v.id",
         parameters,
     ).fetchall()
     return [
         {
             "link_id": row["link_id"], "exam_version_id": row["exam_version_id"],
             "answer_key_version_id": row["answer_key_version_id"],
-            "decision": json.loads(row["decision_json"]),
+            "decision": json.loads(row["decision_json"]) if row["decision_json"] else None,
             "algorithm_version": row["algorithm_version"],
             "predecessor_link_id": row["predecessor_link_id"],
             "identity_key": row["identity_key"], "answer_key_state": row["answer_key_state"],
@@ -407,8 +408,7 @@ def record_document_link(
             "WHERE exam_version_id = ? AND status = 'active'",
             (exam_version_id,),
         ).fetchone()
-        if current is not None and current["answer_key_version_id"] == answer_key_version_id \
-                and current["decision_json"] == decision_json:
+        if current is not None and current["answer_key_version_id"] == answer_key_version_id:
             if own_transaction:
                 connection.commit()
             return cast(str, current["id"])
@@ -463,17 +463,37 @@ def record_document_link(
 def exam_documents_affected_by_answer_key(
     connection: sqlite3.Connection, answer_key_version_id: str
 ) -> list[dict[str, Any]]:
+    key_row = connection.execute(
+        "SELECT profile_json FROM document_versions WHERE id = ? AND document_role = 'answer_key'",
+        (answer_key_version_id,),
+    ).fetchone()
+    if key_row is None:
+        return []
+    key_profile = json.loads(cast(str, key_row["profile_json"]))
+    key_identity = key_profile.get("identity", {})
+
     rows = connection.execute(
         """
         SELECT d.*, v.id AS exam_version_id, v.identity_key, v.profile_json,
                v.coverage_json, v.answer_key_state
         FROM document_versions v JOIN documents d ON d.document_version_id = v.id
-        WHERE v.document_role = 'exam' AND v.identity_key = (
-            SELECT identity_key FROM document_versions WHERE id = ?
-        ) ORDER BY v.id, d.id
-        """, (answer_key_version_id,),
+        WHERE v.document_role = 'exam' ORDER BY v.id, d.id
+        """,
     ).fetchall()
-    return [dict(row) for row in rows]
+    affected: list[dict[str, Any]] = []
+    for row in rows:
+        profile = json.loads(cast(str, row["profile_json"]))
+        identity = profile.get("identity", {})
+        core_match = all(
+            key_identity.get(name, {}).get("status") != "known"
+            or identity.get(name, {}).get("status") == "known"
+            and set(key_identity[name].get("normalized_values", ()))
+            & set(identity[name].get("normalized_values", ()))
+            for name in ("board", "concurso", "year")
+        )
+        if core_match:
+            affected.append(dict(row))
+    return affected
 
 
 def _decode_json(value: object) -> object | None:

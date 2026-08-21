@@ -186,12 +186,17 @@ class SemanticRegistryMigrationTests(unittest.TestCase):
                 second = semantic_registry.record_document_link(
                     connection, "exam-version", "answer-version-1", decision, TIMESTAMP
                 )
+                changed_reason = decision.model_copy(update={"reason": "different explanation"})
+                third = semantic_registry.record_document_link(
+                    connection, "exam-version", "answer-version-1", changed_reason, TIMESTAMP
+                )
                 connection.commit()
                 links = connection.execute("SELECT status, decision_json FROM document_links").fetchall()
                 events = connection.execute(
                     "SELECT action FROM document_identity_events WHERE action LIKE 'association_%'"
                 ).fetchall()
             self.assertEqual(first, second)
+            self.assertEqual(second, third)
             self.assertEqual(len(links), 1)
             self.assertEqual(json.loads(links[0][1])["selected_version_id"], "answer-version-1")
             self.assertEqual([row[0] for row in events], ["association_selected"])
