@@ -2,9 +2,10 @@ function semanticIdentityBadge(view) {
   return {
     exact_duplicate: 'Duplicata exata',
     republication: 'Republicação',
+    new_identity: 'Nova versão',
     new_version: 'Nova versão',
     uncertain: 'Exceção',
-  }[view?.resolution] || 'Nova versão';
+  }[view?.resolution] || null;
 }
 
 function semanticIdentityPresentation(view) {
@@ -1041,7 +1042,8 @@ function renderDocumentIdentity(root, view) {
   const badge = document.createElement('span');
   badge.className = `document-identity-badge semantic-${view?.resolution || 'unknown'}`;
   badge.textContent = presentation.badge;
-  header.append(title, badge);
+  header.append(title);
+  if (presentation.badge) header.append(badge);
   root.append(header);
 
   if (presentation.fields.length) {

@@ -406,7 +406,14 @@ def resolve_document_version(
                 document_id=document_id,
                 version_id=None,
                 action="uncertain",
-                payload={"reason": decision.reason},
+                payload={
+                    "reason": decision.reason,
+                    "identity": profile.identity.model_dump(mode="json"),
+                    "evidence": {
+                        name: getattr(profile.identity, name).model_dump(mode="json")
+                        for name in ExamSemanticIdentity.model_fields
+                    },
+                },
                 resolved_at=resolved_at,
             )
             if owns_transaction:

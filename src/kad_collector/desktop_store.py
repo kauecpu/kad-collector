@@ -716,6 +716,19 @@ class DesktopStore:
         view = self.semantic_document_view(document_id)
         profile = cast(dict[str, Any] | None, view["profile"])
         events = self.identity_events(document_id)
+        uncertain_event = next(
+            (
+                event
+                for event in events
+                if event["action"] == "uncertain" and isinstance(event["payload"], dict)
+            ),
+            None,
+        )
+        uncertain_payload = (
+            cast(dict[str, Any], uncertain_event["payload"])
+            if uncertain_event is not None
+            else {}
+        )
         reason = next(
             (
                 cast(str, event["payload"]["reason"])
@@ -754,11 +767,17 @@ class DesktopStore:
             "versionNumber": view["versionNumber"],
             "predecessorVersionId": view["predecessorVersionId"],
             "activeAnswerKeyVersion": active_key,
-            "identity": view["identity"],
-            "evidence": view["evidence"] or {},
+            "identity": view["identity"] or uncertain_payload.get("identity"),
+            "evidence": view["evidence"] or uncertain_payload.get("evidence") or {},
             "reason": reason,
             "algorithmVersion": (
-                profile.get("algorithm_version") if profile is not None else None
+                profile.get("algorithm_version")
+                if profile is not None
+                else (
+                    uncertain_event["algorithmVersion"]
+                    if uncertain_event is not None
+                    else (events[0]["algorithmVersion"] if events else None)
+                )
             ),
             "events": safe_events,
         }

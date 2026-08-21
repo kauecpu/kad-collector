@@ -961,6 +961,51 @@ class DesktopSmokeTests(unittest.TestCase):
         self.assertNotIn(page_text, json.dumps(payload, ensure_ascii=False))
         self.assertNotIn("origin", json.dumps(payload, ensure_ascii=False))
 
+    def test_identity_endpoint_preserves_evidence_for_an_uncertain_document(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "prova-incerta.pdf"
+            write_text_pdf(pdf_path, [["Questão 1", "A) Azul", "B) Verde"]])
+            application = DesktopApplication(root / "data")
+            job_id = application.store.create_job(
+                [pdf_path],
+                metadata(
+                    document_type="exam",
+                    board=None,
+                    concurso=None,
+                    year=None,
+                    role=None,
+                    organization=None,
+                ),
+                "local",
+            )
+            document = application.store.documents_for_job(job_id)[0]
+            application.store.save_page(
+                document["id"], 1, "Questão 1\nA) Azul\nB) Verde", status="text"
+            )
+            self.assertEqual(
+                application.store.resolve_extracted_document(document["id"]).outcome,
+                "uncertain",
+            )
+            server, thread, url = start_desktop_server(application)
+            try:
+                request = Request(
+                    f"{url}api/documents/{document['id']}/identity",
+                    headers={"X-KAD-Desktop-Token": application.token},
+                )
+                with urlopen(request, timeout=3) as response:
+                    payload = json.loads(response.read())
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
+        self.assertEqual(payload["identityStatus"], "unknown")
+        self.assertEqual(payload["resolution"], "uncertain")
+        self.assertIsInstance(payload["evidence"], dict)
+        self.assertIn("board", payload["evidence"])
+        self.assertIsNotNone(payload["algorithmVersion"])
+
     def test_packaged_ui_renders_semantic_identity_through_exported_helpers(self) -> None:
         with TemporaryDirectory() as directory:
             application = DesktopApplication(Path(directory))
@@ -990,6 +1035,9 @@ class DesktopSmokeTests(unittest.TestCase):
                     "const view = JSON.parse(process.argv[2]);"
                     "console.log(JSON.stringify({"
                     "badge: helpers.semanticIdentityBadge(view),"
+                    "fallbackBadges: [null, 'observed', 'unexpected',"
+                    " 'new_identity', 'new_version']"
+                    ".map((resolution) => helpers.semanticIdentityBadge({resolution})),"
                     "presentation: helpers.semanticIdentityPresentation(view)"
                     "}));"
                 )
@@ -1008,6 +1056,10 @@ class DesktopSmokeTests(unittest.TestCase):
 
         contract = json.loads(completed.stdout)
         self.assertEqual(contract["badge"], "Exceção")
+        self.assertEqual(
+            contract["fallbackBadges"],
+            [None, None, None, "Nova versão", "Nova versão"],
+        )
         self.assertEqual(contract["presentation"]["identityLabel"], "Identidade desconhecida")
         self.assertFalse(contract["presentation"]["showIdentityConfidence"])
         self.assertEqual(
