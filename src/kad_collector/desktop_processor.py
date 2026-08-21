@@ -26,12 +26,12 @@ from .desktop_store import DesktopStore
 from .document_contract import NormalizedDocument
 from .document_matching import (
     DocumentEvidence,
-    has_known_conflict,
     normalize_text,
-    select_evidence_match,
     structural_v_number,
 )
 from .models import QuestionRecord
+from .semantic_identity import AssociationCandidate, extract_semantic_profile
+from .semantic_resolution import select_answer_key
 
 
 def _document_type(filename: str, metadata: DesktopImportMetadata) -> str:
@@ -154,21 +154,44 @@ def _matching_evidence(document: dict[str, Any], text_field: str) -> DocumentEvi
 def _select_answer_key(
     exam: dict[str, Any], answer_keys: list[dict[str, Any]]
 ) -> dict[str, Any] | None:
-    in_batch = [
-        item
-        for item in answer_keys
-        if item.get("job_id") is not None and item.get("job_id") == exam.get("job_id")
-    ]
-    exam_evidence = _matching_evidence(exam, "exam_text")
-    if len(in_batch) == 1 and not has_known_conflict(
-        exam_evidence, _matching_evidence(in_batch[0], "answer_key_text")
-    ):
-        return in_batch[0]
-    index, _reason = select_evidence_match(
-        exam_evidence,
-        [_matching_evidence(item, "answer_key_text") for item in answer_keys],
+    exam_sha = cast(str, exam.get("sha256") or hashlib.sha256(
+        cast(str, exam.get("exam_text", "")).encode("utf-8")
+    ).hexdigest())
+    metadata = DesktopImportMetadata.model_validate(exam["metadata"])
+    exam_profile = extract_semantic_profile(
+        NormalizedDocument(
+            local_path=cast(str, exam["filename"]), sha256=exam_sha,
+            size_bytes=int(exam.get("size_bytes", 1)),
+            title=metadata.document_title or cast(str, exam["filename"]),
+            entry_method="direct_import", metadata=metadata.model_dump(exclude_none=True),
+            declared_type="exam",
+        ), [(1, cast(str, exam.get("exam_text", "")))],
     )
-    return answer_keys[index] if index is not None else None
+    candidates: list[AssociationCandidate] = []
+    for item in answer_keys:
+        item_metadata = DesktopImportMetadata.model_validate(item["metadata"])
+        item_sha = cast(str, item.get("sha256") or hashlib.sha256(
+            cast(str, item.get("answer_key_text", "")).encode("utf-8")
+        ).hexdigest())
+        item_profile = extract_semantic_profile(
+            NormalizedDocument(
+                local_path=cast(str, item["filename"]), sha256=item_sha,
+                size_bytes=int(item.get("size_bytes", 1)),
+                title=item_metadata.document_title or cast(str, item["filename"]),
+                entry_method="direct_import", metadata=item_metadata.model_dump(exclude_none=True),
+                declared_type="answer_key",
+            ), [(1, cast(str, item.get("answer_key_text", "")))],
+        )
+        candidates.append(AssociationCandidate(version_id=item_sha, profile=item_profile))
+    decision = select_answer_key(exam_profile, candidates)
+    if decision.selected_version_id is None:
+        return None
+    return next(
+        item for item in answer_keys
+        if item.get("sha256") == decision.selected_version_id
+        or hashlib.sha256(cast(str, item.get("answer_key_text", "")).encode("utf-8")).hexdigest()
+        == decision.selected_version_id
+    )
 
 
 def _apply_classification(

@@ -25,6 +25,8 @@ from kad_collector.semantic_identity import (
 )
 from kad_collector.semantic_registry import claim_document_observation
 from kad_collector.semantic_resolution import decide_document_version
+from kad_collector.semantic_resolution import select_answer_key
+from kad_collector.semantic_identity import AssociationCandidate
 
 
 def profile(
@@ -61,6 +63,47 @@ def profile(
 
 
 class SemanticResolutionDecisionTests(unittest.TestCase):
+    def _exam(self, **updates: object) -> DocumentSemanticProfile:
+        base = profile()
+        identity = base.identity.model_copy(update=updates)
+        coverage = base.coverage.model_copy(update={
+            "roles": identity.roles, "stage": identity.stage,
+            "turns": identity.turns, "variants": identity.variants,
+        })
+        return base.model_copy(update={"identity": identity, "coverage": coverage})
+
+    def _key(self, version_id: str = "key-1", **updates: object) -> AssociationCandidate:
+        key = self._exam(**updates).model_copy(update={"document_role": "answer_key"})
+        key = key.model_copy(update={"coverage": AnswerKeyCoverage(
+            roles=key.identity.roles, stage=key.identity.stage,
+            turns=key.identity.turns, variants=key.identity.variants,
+        )})
+        return AssociationCandidate(version_id=version_id, profile=key)
+
+    def test_known_scope_conflicts_block_candidate(self) -> None:
+        decision = select_answer_key(self._exam(year=SemanticField(
+            status="known", normalized_values=(2026,), method="test", reason="test", confidence=1.0
+        )), [self._key(year=SemanticField(
+            status="known", normalized_values=(2025,), method="test", reason="test", confidence=1.0
+        ))])
+        self.assertIsNone(decision.selected_version_id)
+        self.assertEqual(decision.outcome, "conflict")
+
+    def test_unknown_is_not_positive_evidence(self) -> None:
+        decision = select_answer_key(
+            self._exam(roles=SemanticField(
+                status="known", normalized_values=("auditor",), method="test",
+                reason="test", confidence=1.0,
+            )),
+            [self._key(roles=SemanticField.unknown("x"))],
+        )
+        self.assertIsNone(decision.selected_version_id)
+        self.assertEqual(decision.outcome, "insufficient_evidence")
+
+    def test_equal_candidates_are_ambiguous(self) -> None:
+        decision = select_answer_key(self._exam(), [self._key("a"), self._key("b")])
+        self.assertIsNone(decision.selected_version_id)
+        self.assertEqual(decision.outcome, "ambiguous")
     def test_decision_has_the_five_expected_outcomes(self) -> None:
         current = KnownDocumentVersion(
             version_id="v1",
