@@ -52,14 +52,14 @@ def _select_answer_key(
     if not textual:
         return None, ["nenhum gabarito oficial textual encontrado"]
     exam_profile = profile_from_document_record(exam, [(1, exam_content)])
-    candidates = [
+    association_candidates = [
         AssociationCandidate(
             version_id=item.document.sha256,
             profile=profile_from_document_record(item.document, [(1, item.text)]),
         )
         for item in textual
     ]
-    decision = select_answer_key(exam_profile, candidates)
+    decision = select_answer_key(exam_profile, association_candidates)
     if decision.outcome == "ambiguous":
         titles = ", ".join(item.document.title for item in textual[:3])
         return None, [f"associacao de gabarito ambigua: {titles}"]

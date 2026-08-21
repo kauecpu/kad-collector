@@ -22,6 +22,7 @@ from kad_collector.semantic_identity import (
     ExamSemanticIdentity,
     KnownDocumentVersion,
     SemanticField,
+    SemanticEvidence,
 )
 from kad_collector.semantic_registry import claim_document_observation
 from kad_collector.semantic_resolution import decide_document_version
@@ -32,8 +33,8 @@ from kad_collector.semantic_identity import AssociationCandidate
 def profile(
     *, key: str | None = "identity", sha: str = "sha", conflict: bool = False
 ) -> DocumentSemanticProfile:
-    known = SemanticField(
-        status="known", normalized_values=("x",), method="test", reason="test", confidence=1.0
+    known = SemanticField.from_evidence(
+        "test", (SemanticEvidence.metadata("test", "x"),)
     )
     identity = ExamSemanticIdentity(
         board=known,
@@ -99,6 +100,40 @@ class SemanticResolutionDecisionTests(unittest.TestCase):
         )
         self.assertIsNone(decision.selected_version_id)
         self.assertEqual(decision.outcome, "insufficient_evidence")
+
+    def test_title_only_candidate_is_insufficient(self) -> None:
+        weak = SemanticField(
+            status="known", normalized_values=("x",), method="title",
+            reason="title", confidence=1.0,
+            evidence=(SemanticEvidence.title("title", "x"),),
+        )
+        candidate = self._key(board=weak, concurso=weak, year=weak)
+        decision = select_answer_key(self._exam(), [candidate])
+        self.assertIsNone(decision.selected_version_id)
+        self.assertEqual(decision.outcome, "insufficient_evidence")
+
+    def test_one_key_can_cover_multiple_roles(self) -> None:
+        role = SemanticField(
+            status="known", normalized_values=("analista", "auditor"),
+            raw_values=("Auditor", "Analista"),
+            evidence=(SemanticEvidence.metadata("roles", "Auditor"),
+                      SemanticEvidence.metadata("roles", "Analista")),
+            method="test", reason="coverage", confidence=1.0,
+        )
+        decision = select_answer_key(self._exam(roles=SemanticField.from_evidence(
+            "roles", (SemanticEvidence.metadata("roles", "Analista"),)
+        )), [self._key(roles=role)])
+        self.assertEqual(decision.selected_version_id, "key-1")
+
+    def test_types_one_to_four_do_not_mix_answers(self) -> None:
+        for number in range(1, 5):
+            variant = SemanticField.from_evidence(
+                "variants", (SemanticEvidence.metadata("variant", f"Tipo {number}"),)
+            )
+            decision = select_answer_key(
+                self._exam(variants=variant), [self._key(version_id=f"key-{number}", variants=variant)]
+            )
+            self.assertEqual(decision.selected_version_id, f"key-{number}")
 
     def test_equal_candidates_are_ambiguous(self) -> None:
         decision = select_answer_key(self._exam(), [self._key("a"), self._key("b")])

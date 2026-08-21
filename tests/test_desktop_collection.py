@@ -525,7 +525,7 @@ Enunciado completo da segunda questao.
         self.assertEqual(selected, [tipo_1, tipo_2])
         self.assertEqual(evidence, [])
 
-    def test_only_a_sole_in_batch_answer_key_gets_compatibility_shortcut(self) -> None:
+    def test_sole_weak_answer_key_is_rejected_in_batch_and_cache(self) -> None:
         exam = {
             "job_id": "current-job",
             "filename": "prova-direito.pdf",
@@ -552,7 +552,7 @@ Enunciado completo da segunda questao.
             ).model_dump(mode="json"),
         }
 
-        self.assertIs(_select_answer_key(exam, [in_batch]), in_batch)
+        self.assertIsNone(_select_answer_key(exam, [in_batch]))
         self.assertIsNone(_select_answer_key(exam, [cached]))
 
         morning_exam = {

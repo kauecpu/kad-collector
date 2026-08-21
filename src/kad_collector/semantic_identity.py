@@ -310,7 +310,7 @@ def _values(raw_value: str | int | Sequence[str | int], field: str) -> tuple[Sem
 
 
 def _variant_value(value: str) -> str:
-    match = re.fullmatch(r"\s*(?:tipo|variant|versao|versão)?\s*(\d+)\s*", value, re.I)
+    match = re.fullmatch(r"\s*(?:v|tipo|variant|versao|versão)?\s*(\d+)\s*", value, re.I)
     return f"tipo {match.group(1)}" if match is not None else value.strip()
 
 
@@ -351,6 +351,17 @@ def _field_from_sources(
             strong_groups.append(
                 tuple(SemanticEvidence.pdf_text(locator, value) for value in values)
             )
+    if name == "variants" and not strong_groups:
+        for page_number, text in pages:
+            values = tuple(
+                f"tipo {number}"
+                for number in re.findall(r"(?i)(?:prova|tipo|variant|vers[aã]o)\s*V?\s*(\d+)", text)
+            )
+            if values:
+                strong_groups.append(tuple(
+                    SemanticEvidence.pdf_text(f"page:{page_number}:variant", value)
+                    for value in values
+                ))
     if name == "year":
         years = tuple(
             sorted({int(year) for _, text in pages for year in _YEAR_PATTERN.findall(text)})

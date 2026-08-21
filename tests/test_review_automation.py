@@ -205,13 +205,19 @@ C
             "Prova 2026 V1",
             "https://www.fuvest.br/wp-content/fuvest2026-fase1-prova-V1.pdf",
             "a",
-        )
+        ).model_copy(update={"metadata": {
+            "banca": "FUVEST", "concurso": "Vestibular", "ano": "2026",
+            "cargo": "Vestibular", "orgao": "Universidade de Sao Paulo", "variant": "V1",
+        }})
         answer = document(
             "answer_key",
             "Gabaritos de Provas da 1a fase",
             "https://www.fuvest.br/wp-content/fuvest2026-fase1-gabarito.pdf",
             "b",
-        )
+        ).model_copy(update={"metadata": {
+            "banca": "FUVEST", "concurso": "Vestibular", "ano": "2026",
+            "cargo": "Vestibular", "orgao": "Universidade de Sao Paulo", "variant": "V1",
+        }})
         other_answer = document(
             "answer_key",
             "Gabarito da primeira fase 2025",
@@ -401,13 +407,19 @@ C
             "Concurso Fiscal 2026 Analista V1",
             "https://exam-source.test/prova-v1.pdf",
             "1",
-        ).model_copy(update={"source_id": "exam_source"})
+        ).model_copy(update={"source_id": "exam_source", "metadata": {
+            "banca": "Banca Fiscal", "concurso": "Concurso Fiscal", "ano": "2026",
+            "cargo": "Analista", "variant": "V1",
+        }})
         first = document(
             "answer_key",
             "Gabarito Concurso Fiscal 2026 Analista V1",
             "https://first-source.test/gabarito-v1.pdf",
             "2",
-        ).model_copy(update={"source_id": "first_answers_source"})
+        ).model_copy(update={"source_id": "first_answers_source", "metadata": {
+            "banca": "Banca Fiscal", "concurso": "Concurso Fiscal", "ano": "2026",
+            "cargo": "Analista", "variant": "V1",
+        }})
         second = first.model_copy(
             update={
                 "source_id": "second_answers_source",

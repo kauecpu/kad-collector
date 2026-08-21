@@ -3,17 +3,19 @@ from __future__ import annotations
 import sqlite3
 import uuid
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, cast
 
 from .semantic_identity import (
     IDENTITY_ALGORITHM_VERSION,
     AssociationCandidate,
+    AssociationOutcome,
     CandidateAssessment,
     DocumentAssociationDecision,
     DocumentSemanticProfile,
     ExamSemanticIdentity,
     IdentityResolution,
     KnownDocumentVersion,
+    SemanticField,
     canonical_json,
     stable_sha256,
 )
@@ -27,13 +29,13 @@ MINIMUM_SCORE = 36
 MINIMUM_MARGIN = 8
 
 
-def _field(profile: DocumentSemanticProfile, name: str):
-    return getattr(profile.identity, name)
+def _field(profile: DocumentSemanticProfile, name: str) -> SemanticField:
+    return cast(SemanticField, getattr(profile.identity, name))
 
 
-def _candidate_field(candidate: DocumentSemanticProfile, name: str):
+def _candidate_field(candidate: DocumentSemanticProfile, name: str) -> SemanticField:
     if name in {"role", "stage", "turn", "variant"}:
-        return getattr(candidate.coverage, _field_name(name))
+        return cast(SemanticField, getattr(candidate.coverage, _field_name(name)))
     return _field(candidate, name)
 
 
@@ -88,16 +90,19 @@ def _assess(exam: DocumentSemanticProfile, item: AssociationCandidate) -> Candid
         score += weight
     score += _title_bonus(exam, candidate)
     strong = {"board", "concurso", "year"}
+    def has_strong_evidence(field: Any) -> bool:
+        return bool(field.evidence) and any(
+            evidence.strength == "strong" for evidence in field.evidence
+        )
+
     strong_ok = all(
         _field(exam, name).status == "known"
         and _candidate_field(candidate, name).status == "known"
         and not set(_field(exam, name).normalized_values).isdisjoint(
             _candidate_field(candidate, name).normalized_values
         )
-        and (
-            not _candidate_field(candidate, name).evidence
-            or any(e.strength != "weak" for e in _candidate_field(candidate, name).evidence)
-        )
+        and has_strong_evidence(_field(exam, name))
+        and has_strong_evidence(_candidate_field(candidate, name))
         for name in strong
     )
     if not strong_ok:
@@ -122,9 +127,16 @@ def select_answer_key(
         (_assess(exam_profile, item) for item in candidates),
         key=lambda value: (-value.score, value.version_id),
     ))
+    if not assessments:
+        return DocumentAssociationDecision(
+            outcome="missing", selected_version_id=None, assessments=(),
+            minimum_score=MINIMUM_SCORE, minimum_margin=MINIMUM_MARGIN,
+            achieved_margin=None, reason="nenhum gabarito candidato",
+            algorithm_version=ASSOCIATION_ALGORITHM_VERSION,
+        )
     compatible = [item for item in assessments if item.compatible and item.score >= MINIMUM_SCORE]
     if not compatible:
-        outcome = (
+        outcome: AssociationOutcome = (
             "conflict" if any(item.conflicts for item in assessments)
             else "insufficient_evidence"
         )
@@ -138,17 +150,25 @@ def select_answer_key(
         )
     top = compatible[0]
     second = compatible[1] if len(compatible) > 1 else None
-    if second is not None and top.score == second.score:
-        top_candidate = next(item for item in candidates if item.version_id == top.version_id)
-        second_candidate = next(item for item in candidates if item.version_id == second.version_id)
-        definitive = (
-            top_candidate if top_candidate.profile.answer_key_state == "definitive"
-            else second_candidate
-        )
-        preliminary = second_candidate if definitive is top_candidate else top_candidate
-        if (definitive.profile.answer_key_state == "definitive"
-                and preliminary.profile.answer_key_state == "preliminary"
-                and definitive.predecessor_version_id == preliminary.version_id):
+    tied = [item for item in compatible if item.score == top.score]
+    if len(tied) > 1:
+        tied_candidates = [
+            next(item for item in candidates if item.version_id == assessment.version_id)
+            for assessment in tied
+        ]
+        definitives = [
+            item for item in tied_candidates
+            if item.profile.answer_key_state == "definitive"
+        ]
+        preliminaries = [
+            item for item in tied_candidates
+            if item.profile.answer_key_state == "preliminary"
+        ]
+        successors = [item for item in definitives if any(
+            item.predecessor_version_id == preliminary.version_id for preliminary in preliminaries
+        )]
+        if len(definitives) == 1 and len(preliminaries) == 1 and len(successors) == 1:
+            definitive = successors[0]
             top = next(item for item in compatible if item.version_id == definitive.version_id)
             second = next((item for item in compatible if item.version_id != top.version_id), None)
         else:
@@ -159,9 +179,17 @@ def select_answer_key(
                 algorithm_version=ASSOCIATION_ALGORITHM_VERSION,
             )
     margin = top.score - second.score if second is not None else None
-    predecessor_exception = second is not None and next(
-        item for item in candidates if item.version_id == top.version_id
-    ).predecessor_version_id == second.version_id
+    top_candidate = next(item for item in candidates if item.version_id == top.version_id)
+    second_candidate = (
+        next(item for item in candidates if item.version_id == second.version_id)
+        if second is not None else None
+    )
+    predecessor_exception = (
+        second_candidate is not None
+        and top_candidate.profile.answer_key_state == "definitive"
+        and second_candidate.profile.answer_key_state == "preliminary"
+        and top_candidate.predecessor_version_id == second_candidate.version_id
+    )
     if (
         second is not None and margin is not None and margin < MINIMUM_MARGIN
         and not predecessor_exception
