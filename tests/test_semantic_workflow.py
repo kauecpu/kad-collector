@@ -6,8 +6,11 @@ import tempfile
 import threading
 import unittest
 from contextlib import closing
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
+
+from reportlab.pdfgen import canvas
 
 from kad_collector.desktop_processor import DesktopProcessor, parse_question_pages
 from kad_collector.desktop_store import DesktopStore
@@ -415,6 +418,63 @@ class SemanticWorkflowIntegrationTests(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual(len({result.document_version_id for result in results}), 1)
         self.assertEqual(self.store.semantic_summary()["versions"], 1)
+        winner = results[0].document_version_id
+        with closing(self.store._connect()) as connection:
+            documents = connection.execute(
+                "SELECT id, document_version_id FROM documents ORDER BY id"
+            ).fetchall()
+            self.assertEqual(len(documents), 2)
+            self.assertEqual({row["document_version_id"] for row in documents}, {winner})
+            observations = connection.execute(
+                "SELECT document_id, document_version_id, resolution_status "
+                "FROM document_observations ORDER BY document_id"
+            ).fetchall()
+            self.assertEqual(len(observations), 2)
+            self.assertEqual({row["document_id"] for row in observations}, {"first", "second"})
+            self.assertEqual({row["document_version_id"] for row in observations}, {winner})
+            self.assertEqual(
+                {row["resolution_status"] for row in observations},
+                {"new_identity", "republication"},
+            )
+            events = connection.execute(
+                "SELECT document_id, action FROM document_identity_events "
+                "WHERE document_id IS NOT NULL ORDER BY document_id"
+            ).fetchall()
+            self.assertEqual(len(events), 2)
+            self.assertEqual({row["document_id"] for row in events}, {"first", "second"})
+            self.assertEqual({row["action"] for row in events}, {"new_identity", "republication"})
+
+    def test_processor_resolution_exception_marks_document_and_skips_parser(self) -> None:
+        pdf_buffer = BytesIO()
+        pdf = canvas.Canvas(pdf_buffer)
+        pdf.drawString(54, 800, "Prova 2026")
+        pdf.drawString(54, 778, "Questão 1. Qual é a cor principal?")
+        pdf.drawString(54, 756, "A) Azul")
+        pdf.drawString(54, 734, "B) Verde")
+        pdf.save()
+        metadata = {"board": "Banca", "concurso": "Concurso", "year": 2026}
+        self.add_document("failure", binary=pdf_buffer.getvalue(), text="", metadata=metadata)
+        processor = DesktopProcessor(self.store)
+        try:
+            with (
+                patch.object(
+                    self.store,
+                    "resolve_extracted_document",
+                    side_effect=RuntimeError("injected resolution failure"),
+                ),
+                patch(
+                    "kad_collector.desktop_processor.parse_question_pages",
+                    side_effect=AssertionError("parser não deveria ser chamado"),
+                ),
+            ):
+                processor.run("job-failure", threading.Event())
+        finally:
+            processor._executor.shutdown(wait=True)
+        document = self.store.document("failure")
+        self.assertEqual(document["status"], "exception")
+        self.assertIn("resolução semântica falhou", " ".join(document["warnings"]))
+        with closing(self.store._connect()) as connection:
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM questions").fetchone()[0], 0)
 
     def test_reprocessing_resumes_failed_resolution_without_duplicate_event(self) -> None:
         metadata = {"board": "Banca", "concurso": "Concurso", "year": 2026}
