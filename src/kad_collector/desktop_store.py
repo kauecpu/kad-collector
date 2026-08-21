@@ -729,15 +729,29 @@ class DesktopStore:
             if uncertain_event is not None
             else {}
         )
-        reason = next(
-            (
-                cast(str, event["payload"]["reason"])
-                for event in events
-                if isinstance(event["payload"], dict)
-                and isinstance(event["payload"].get("reason"), str)
-            ),
-            cast(str | None, view["resolution"]),
-        )
+        if view["resolution"] == "uncertain":
+            reason = (
+                cast(str, uncertain_payload["reason"])
+                if isinstance(uncertain_payload.get("reason"), str)
+                else None
+            )
+        else:
+            reason = next(
+                (
+                    cast(str, event["payload"]["reason"])
+                    for event in events
+                    if isinstance(event["payload"], dict)
+                    and isinstance(event["payload"].get("reason"), str)
+                ),
+                cast(str | None, view["resolution"]),
+            )
+        evidence = view["evidence"] or uncertain_payload.get("evidence")
+        if (
+            not evidence
+            and uncertain_event is not None
+            and isinstance(uncertain_payload.get("reason"), str)
+        ):
+            evidence = {"resolution": {"reason": uncertain_payload["reason"]}}
         version_id = cast(str | None, view["documentVersionId"])
         active_key = (
             self.active_answer_key_version(version_id)
@@ -768,7 +782,7 @@ class DesktopStore:
             "predecessorVersionId": view["predecessorVersionId"],
             "activeAnswerKeyVersion": active_key,
             "identity": view["identity"] or uncertain_payload.get("identity"),
-            "evidence": view["evidence"] or uncertain_payload.get("evidence") or {},
+            "evidence": evidence or {},
             "reason": reason,
             "algorithmVersion": (
                 profile.get("algorithm_version")

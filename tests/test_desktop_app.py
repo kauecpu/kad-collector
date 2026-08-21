@@ -1006,6 +1006,92 @@ class DesktopSmokeTests(unittest.TestCase):
         self.assertIn("board", payload["evidence"])
         self.assertIsNotNone(payload["algorithmVersion"])
 
+    def test_identity_endpoint_explains_legacy_uncertain_events_without_inventing_identity(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "prova-incerta-legada.pdf"
+            write_text_pdf(pdf_path, [["Questão 1", "A) Azul", "B) Verde"]])
+            application = DesktopApplication(root / "data")
+            job_id = application.store.create_job(
+                [pdf_path],
+                metadata(
+                    document_type="exam",
+                    board=None,
+                    concurso=None,
+                    year=None,
+                    role=None,
+                    organization=None,
+                ),
+                "local",
+            )
+            document = application.store.documents_for_job(job_id)[0]
+            application.store.save_page(
+                document["id"], 1, "Questão 1\nA) Azul\nB) Verde", status="text"
+            )
+            application.store.resolve_extracted_document(document["id"])
+            legacy_reason = "identidade semântica insuficiente no registro legado"
+            with closing(application.store._connect()) as connection:
+                connection.execute(
+                    "UPDATE document_identity_events SET payload_json = ? "
+                    "WHERE document_id = ? AND action = 'uncertain'",
+                    (json.dumps({"reason": legacy_reason}), document["id"]),
+                )
+                connection.commit()
+            server, thread, url = start_desktop_server(application)
+            try:
+                endpoint = f"{url}api/documents/{document['id']}/identity"
+                request = Request(
+                    endpoint,
+                    headers={"X-KAD-Desktop-Token": application.token},
+                )
+                with urlopen(request, timeout=3) as response:
+                    legacy_payload = json.loads(response.read())
+
+                with closing(application.store._connect()) as connection:
+                    connection.execute(
+                        "UPDATE document_identity_events SET payload_json = ? "
+                        "WHERE document_id = ? AND action = 'uncertain'",
+                        (json.dumps({}), document["id"]),
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO document_identity_events
+                        (event_key, document_id, action, actor, algorithm_version, payload_json,
+                         created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            "legacy-unrelated-reason",
+                            document["id"],
+                            "observed",
+                            "system",
+                            "semantic-identity-v1",
+                            json.dumps({"reason": "motivo de outro evento"}),
+                            "2099-01-01T00:00:00+00:00",
+                        ),
+                    )
+                    connection.commit()
+                with urlopen(request, timeout=3) as response:
+                    missing_reason_payload = json.loads(response.read())
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
+        self.assertEqual(legacy_payload["identityStatus"], "unknown")
+        self.assertIsNone(legacy_payload["identity"])
+        self.assertEqual(
+            legacy_payload["evidence"], {"resolution": {"reason": legacy_reason}}
+        )
+        self.assertEqual(legacy_payload["reason"], legacy_reason)
+        self.assertEqual(legacy_payload["algorithmVersion"], "semantic-identity-v1")
+        self.assertIsNone(missing_reason_payload["identity"])
+        self.assertEqual(missing_reason_payload["evidence"], {})
+        self.assertIsNone(missing_reason_payload["reason"])
+        self.assertEqual(missing_reason_payload["algorithmVersion"], "semantic-identity-v1")
+
     def test_packaged_ui_renders_semantic_identity_through_exported_helpers(self) -> None:
         with TemporaryDirectory() as directory:
             application = DesktopApplication(Path(directory))
