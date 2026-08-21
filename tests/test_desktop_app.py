@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 import threading
 import unittest
 from contextlib import closing
@@ -882,6 +883,138 @@ class DesktopReviewAndFilterTests(unittest.TestCase):
 
 
 class DesktopSmokeTests(unittest.TestCase):
+    def test_bootstrap_exposes_semantic_counts(self) -> None:
+        with TemporaryDirectory() as directory:
+            payload = DesktopApplication(Path(directory)).bootstrap()
+
+        self.assertEqual(
+            set(payload["semanticSummary"]),
+            {
+                "observations",
+                "logicalVersions",
+                "exactDuplicates",
+                "republications",
+                "activeLinks",
+                "uncertain",
+            },
+        )
+
+    def test_identity_endpoint_exposes_evidence_without_pdf_text(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "prova-identidade.pdf"
+            write_text_pdf(
+                pdf_path,
+                [["Banca: Banca Oficial", "Concurso: Concurso Nacional 2026", "Ano: 2026"]],
+            )
+            application = DesktopApplication(root / "data")
+            job_id = application.store.create_job(
+                [pdf_path], metadata(document_type="exam"), "local"
+            )
+            document = application.store.documents_for_job(job_id)[0]
+            page_text = "TEXTO INTEGRAL SIGILOSO DA PÁGINA"
+            application.store.save_page(document["id"], 1, page_text, status="text")
+            application.store.resolve_extracted_document(document["id"])
+            with closing(application.store._connect()) as connection:
+                connection.execute(
+                    """
+                    INSERT INTO document_identity_events
+                    (event_key, document_id, document_version_id, action, actor,
+                     algorithm_version, payload_json, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        "test-raw-origin-event",
+                        document["id"],
+                        application.store.semantic_document_view(document["id"])["documentVersionId"],
+                        "test",
+                        "system",
+                        "semantic-identity-v1",
+                        json.dumps({"origin": "https://private.example/path"}),
+                        "2026-08-21T00:00:00+00:00",
+                    ),
+                )
+                connection.commit()
+            server, thread, url = start_desktop_server(application)
+            try:
+                endpoint = f"{url}api/documents/{document['id']}/identity"
+                with self.assertRaises(HTTPError) as context:
+                    urlopen(endpoint, timeout=3)
+                self.assertEqual(context.exception.code, HTTPStatus.FORBIDDEN)
+
+                request = Request(
+                    endpoint,
+                    headers={"X-KAD-Desktop-Token": application.token},
+                )
+                with urlopen(request, timeout=3) as response:
+                    payload = json.loads(response.read())
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
+        self.assertEqual(payload["resolution"], "new_identity")
+        self.assertIn("algorithmVersion", payload)
+        self.assertIn("evidence", payload)
+        self.assertIn("reason", payload)
+        self.assertNotIn("canonicalText", payload)
+        self.assertNotIn(page_text, json.dumps(payload, ensure_ascii=False))
+        self.assertNotIn("origin", json.dumps(payload, ensure_ascii=False))
+
+    def test_packaged_ui_renders_semantic_identity_through_exported_helpers(self) -> None:
+        with TemporaryDirectory() as directory:
+            application = DesktopApplication(Path(directory))
+            server, thread, url = start_desktop_server(application)
+            try:
+                with urlopen(f"{url}desktop.js", timeout=3) as response:
+                    self.assertEqual(response.status, HTTPStatus.OK)
+                    javascript = response.read()
+                with urlopen(f"{url}desktop.css", timeout=3) as response:
+                    self.assertEqual(response.status, HTTPStatus.OK)
+                    self.assertTrue(response.read())
+                resource_path = Path(directory) / "desktop_app.js"
+                resource_path.write_bytes(javascript)
+                view = {
+                    "identityStatus": "unknown",
+                    "resolution": "uncertain",
+                    "documentRole": "exam",
+                    "answerKeyState": "unknown",
+                    "versionNumber": None,
+                    "identity": None,
+                    "evidence": {"year": {"reason": "sem evidência"}},
+                    "reason": "identidade semântica insuficiente",
+                    "algorithmVersion": "semantic-identity-v1",
+                }
+                runner = (
+                    "const helpers = require(process.argv[1]);"
+                    "const view = JSON.parse(process.argv[2]);"
+                    "console.log(JSON.stringify({"
+                    "badge: helpers.semanticIdentityBadge(view),"
+                    "presentation: helpers.semanticIdentityPresentation(view)"
+                    "}));"
+                )
+                completed = subprocess.run(
+                    ["node", "-e", runner, str(resource_path), json.dumps(view)],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    timeout=10,
+                )
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
+        contract = json.loads(completed.stdout)
+        self.assertEqual(contract["badge"], "Exceção")
+        self.assertEqual(contract["presentation"]["identityLabel"], "Identidade desconhecida")
+        self.assertFalse(contract["presentation"]["showIdentityConfidence"])
+        self.assertEqual(
+            contract["presentation"]["details"]["reason"],
+            "identidade semântica insuficiente",
+        )
+
     def test_packaged_editorial_ui_contains_pending_and_batch_review_controls(self) -> None:
         package = resources.files("kad_collector")
         html = package.joinpath("desktop_ui.html").read_text(encoding="utf-8")

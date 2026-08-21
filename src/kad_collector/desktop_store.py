@@ -679,9 +679,89 @@ class DesktopStore:
         with closing(self._connect()) as connection:
             return semantic_summary(connection)
 
+    def semantic_presentation_summary(self) -> dict[str, int]:
+        """Return the compact, stable semantic read model for the desktop bootstrap."""
+        with closing(self._connect()) as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    (SELECT COUNT(*) FROM document_observations) AS observations,
+                    (SELECT COUNT(*) FROM document_versions) AS logical_versions,
+                    (SELECT COUNT(*) FROM document_identity_events
+                     WHERE action = 'exact_duplicate') AS exact_duplicates,
+                    (SELECT COUNT(*) FROM documents
+                     WHERE semantic_resolution = 'republication') AS republications,
+                    (SELECT COUNT(*) FROM document_links
+                     WHERE status = 'active') AS active_links,
+                    (SELECT COUNT(*) FROM documents
+                     WHERE semantic_resolution = 'uncertain') AS uncertain
+                """
+            ).fetchone()
+        assert row is not None
+        return {
+            "observations": int(row["observations"]),
+            "logicalVersions": int(row["logical_versions"]),
+            "exactDuplicates": int(row["exact_duplicates"]),
+            "republications": int(row["republications"]),
+            "activeLinks": int(row["active_links"]),
+            "uncertain": int(row["uncertain"]),
+        }
+
     def identity_events(self, document_id: str) -> list[dict[str, Any]]:
         with closing(self._connect()) as connection:
             return identity_events(connection, document_id)
+
+    def document_identity(self, document_id: str) -> dict[str, Any]:
+        """Return semantic identity metadata without document page content."""
+        view = self.semantic_document_view(document_id)
+        profile = cast(dict[str, Any] | None, view["profile"])
+        events = self.identity_events(document_id)
+        reason = next(
+            (
+                cast(str, event["payload"]["reason"])
+                for event in events
+                if isinstance(event["payload"], dict)
+                and isinstance(event["payload"].get("reason"), str)
+            ),
+            cast(str | None, view["resolution"]),
+        )
+        version_id = cast(str | None, view["documentVersionId"])
+        active_key = (
+            self.active_answer_key_version(version_id)
+            if version_id is not None and view["documentRole"] == "exam"
+            else None
+        )
+        safe_events = [
+            {
+                "action": event["action"],
+                "algorithmVersion": event["algorithmVersion"],
+                "createdAt": event["createdAt"],
+                "reason": (
+                    event["payload"].get("reason")
+                    if isinstance(event["payload"], dict)
+                    else None
+                ),
+            }
+            for event in events
+        ]
+        return {
+            "documentId": view["documentId"],
+            "resolution": view["resolution"],
+            "identityStatus": view["identityStatus"],
+            "identityKey": view["identityKey"],
+            "documentRole": view["documentRole"],
+            "answerKeyState": view["answerKeyState"],
+            "versionNumber": view["versionNumber"],
+            "predecessorVersionId": view["predecessorVersionId"],
+            "activeAnswerKeyVersion": active_key,
+            "identity": view["identity"],
+            "evidence": view["evidence"] or {},
+            "reason": reason,
+            "algorithmVersion": (
+                profile.get("algorithm_version") if profile is not None else None
+            ),
+            "events": safe_events,
+        }
 
     def answer_key_candidates(self, exam_version_id: str) -> list[dict[str, Any]]:
         with closing(self._connect()) as connection:

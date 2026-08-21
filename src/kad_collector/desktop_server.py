@@ -67,6 +67,7 @@ class DesktopApplication:
             "sources": self.collection_manager.catalog(),
             "collectionEngine": self.collection_manager.engine_summary(),
             "savedFilters": self.store.saved_filters(),
+            "semanticSummary": self.store.semantic_presentation_summary(),
             "config": {
                 "dataDirectory": str(self.data_dir),
                 "openaiConfigured": bool(os.environ.get("OPENAI_API_KEY")),
@@ -246,12 +247,23 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
             if question_match is not None:
                 try:
                     question_id = question_match.group(1)
+                    question = application.store.question(question_id)
+                    question["documentIdentity"] = application.store.document_identity(
+                        cast(str, question["document_id"])
+                    )
                     self._send_json(
                         {
-                            "question": application.store.question(question_id),
+                            "question": question,
                             "audit": application.store.audit_log(question_id),
                         }
                     )
+                except ValueError as exc:
+                    self._send_error(HTTPStatus.NOT_FOUND, str(exc))
+                return
+            identity_match = re.fullmatch(r"/api/documents/([a-f0-9-]+)/identity", path)
+            if identity_match is not None:
+                try:
+                    self._send_json(application.store.document_identity(identity_match.group(1)))
                 except ValueError as exc:
                     self._send_error(HTTPStatus.NOT_FOUND, str(exc))
                 return

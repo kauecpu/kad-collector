@@ -1661,6 +1661,28 @@ class SemanticWorkflowIntegrationTests(unittest.TestCase):
         self.assertEqual(self.store.semantic_summary()["observations"], 2)
         self.assertEqual(self.store.semantic_summary()["events"], 4)
 
+    def test_semantic_presentation_summary_has_stable_read_model_counts(self) -> None:
+        metadata = {"board": "Banca", "concurso": "Concurso", "year": 2026}
+        self.add_document(
+            "exam",
+            binary=b"semantic-summary",
+            text="Prova 2026\nQuestão 1\nA) Azul B) Verde",
+            metadata=metadata,
+        )
+        self.resolve("exam")
+
+        self.assertEqual(
+            self.store.semantic_presentation_summary(),
+            {
+                "observations": 1,
+                "logicalVersions": 1,
+                "exactDuplicates": 0,
+                "republications": 0,
+                "activeLinks": 0,
+                "uncertain": 0,
+            },
+        )
+
     def test_same_identity_with_changed_content_creates_successor(self) -> None:
         metadata = {"board": "Banca", "concurso": "Concurso", "year": 2026}
         self.add_document(

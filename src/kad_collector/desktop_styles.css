@@ -310,6 +310,18 @@ label { display: grid; gap: 6px; color: #5f596b; font-size: 10px; font-weight: 7
 .review-context-item span, .review-context-item strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .review-context-item span { margin-bottom: 4px; color: var(--subtle); font: 700 8px "Consolas", monospace; letter-spacing: .08em; }
 .review-context-item strong { font-size: 10px; }
+.document-identity { display: grid; gap: 8px; margin: 0 0 12px; padding: 12px; background: #f6f1fb; border: 1px solid #ddcfed; border-radius: 12px; }
+.document-identity-header, .document-identity-fields, .document-identity-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.document-identity-header h3 { margin: 0 auto 0 0; font-size: 11px; }
+.document-identity-badge, .document-identity-field, .document-identity-meta span { padding: 5px 7px; border-radius: 999px; font-size: 9px; font-weight: 750; }
+.document-identity-badge { color: var(--purple-dark); background: #e5d8f6; }
+.document-identity-badge.semantic-uncertain { color: var(--warning); background: var(--warning-soft); }
+.document-identity-badge.semantic-exact_duplicate { color: var(--success); background: var(--success-soft); }
+.document-identity-field { color: #4f4160; background: rgba(255,253,249,.85); border: 1px solid #e0d7e9; }
+.document-identity-meta span { color: var(--muted); background: rgba(255,255,255,.58); }
+.document-identity details { color: var(--muted); font-size: 9px; line-height: 1.45; }
+.document-identity summary { width: fit-content; color: var(--purple); cursor: pointer; font-weight: 800; }
+.document-identity-details { display: grid; gap: 4px; margin: 8px 0 0; overflow-wrap: anywhere; }
 .review-layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(340px, .8fr); gap: 14px; }
 .review-main, .review-side { display: grid; align-content: start; gap: 12px; padding: 18px; background: #fffdf9; border: 1px solid var(--line); border-radius: 16px; }
 .review-side { background: #f0ece5; }
