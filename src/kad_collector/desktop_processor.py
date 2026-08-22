@@ -22,7 +22,11 @@ from .desktop_models import (
     DesktopImportMetadata,
     QuestionClassification,
 )
-from .desktop_parser import parse_question_pages
+from .desktop_parser import (
+    map_question_sections,
+    parse_question_pages,
+    question_section_context,
+)
 from .desktop_store import DesktopStore
 from .document_contract import NormalizedDocument
 from .document_matching import (
@@ -299,9 +303,17 @@ class DesktopProcessor:
                 for page in self.store.pages(document_id)
             }
             metadata = cast(DesktopImportMetadata, rows[0]["metadata"])
+            section_contexts = map_question_sections(
+                list(self.store.pages(document_id)),
+                taxonomy,
+                catalog_ids=taxonomy.relevant_catalog_ids(metadata),
+            )
             requests: list[ClassificationRequest] = []
             for row in rows:
                 question = cast(QuestionRecord, row["question"])
+                section_context = question_section_context(
+                    section_contexts, question
+                )
                 context = "\n".join(
                     pages[number]
                     for number in question.source_pages
@@ -312,6 +324,16 @@ class DesktopProcessor:
                         question_number=question.number,
                         statement=question.statement,
                         alternatives=[item.text for item in question.alternatives],
+                        section_title=(
+                            section_context.section_title
+                            if section_context is not None
+                            else None
+                        ),
+                        block_id=(
+                            section_context.block_id
+                            if section_context is not None
+                            else None
+                        ),
                         context=context or None,
                     )
                 )
@@ -714,20 +736,40 @@ class DesktopProcessor:
                 int(page["page_number"]): str(page["text"])
                 for page in pages
             }
-            requests = [
-                ClassificationRequest(
-                    question_number=question.number,
-                    statement=question.statement,
-                    alternatives=[item.text for item in question.alternatives],
-                    context="\n".join(
-                        page_text[number]
-                        for number in question.source_pages
-                        if number in page_text
-                    )
-                    or None,
+            taxonomy = EditorialTaxonomy.load_default()
+            section_contexts = map_question_sections(
+                pages,
+                taxonomy,
+                catalog_ids=taxonomy.relevant_catalog_ids(metadata),
+            )
+            requests: list[ClassificationRequest] = []
+            for question in questions:
+                section_context = question_section_context(
+                    section_contexts, question
                 )
-                for question in questions
-            ]
+                requests.append(
+                    ClassificationRequest(
+                        question_number=question.number,
+                        statement=question.statement,
+                        alternatives=[item.text for item in question.alternatives],
+                        section_title=(
+                            section_context.section_title
+                            if section_context is not None
+                            else None
+                        ),
+                        block_id=(
+                            section_context.block_id
+                            if section_context is not None
+                            else None
+                        ),
+                        context="\n".join(
+                            page_text[number]
+                            for number in question.source_pages
+                            if number in page_text
+                        )
+                        or None,
+                    )
+                )
             provider_name = cast(str, self.store.job(job_id)["classifier_provider"])
             try:
                 provider = build_classifier(provider_name)

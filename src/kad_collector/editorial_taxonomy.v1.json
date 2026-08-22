@@ -1,5 +1,11 @@
 {
+  "id": "fgv-rfb22",
   "version": "1.0.0",
+  "match": {
+    "concurso_contains": ["rfb22"],
+    "organization_contains": ["receita federal"],
+    "source_contains": ["/rfb22", "cns101", "cns102", "cns201", "cns202"]
+  },
   "sources": [
     "https://conhecimento.fgv.br/concursos/rfb22",
     "https://conhecimento.fgv.br/sites/default/files/concursos/minuta_edital_rfb_revisado_1_12_-_final_limpa.pdf"

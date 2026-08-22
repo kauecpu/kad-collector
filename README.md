@@ -124,6 +124,20 @@ suficiente, o campo permanece vazio e a interface apresenta **Nao classificada**
 da taxonomia nao sao criados. O botao **Reclassificar acervo** reaplica essa classificacao ao
 banco local sem baixar os PDFs e sem alterar gabaritos ou decisoes humanas.
 
+A taxonomia editorial e composta pelo manifesto
+`src/kad_collector/editorial_taxonomy.bundle.v2.json` e por catalogos JSON independentes.
+Cada catalogo identifica o concurso ao qual se aplica, registra sua versao, aliases,
+hierarquia de disciplina/materia/assunto e URLs oficiais de proveniencia. O pacote inicial
+cobre RFB22, PCAM21 e STN24. Para incluir outro concurso, adicione um catalogo com fontes
+oficiais e inclua seu caminho no manifesto; o motor nao precisa receber regras exclusivas da
+banca. Cabecalhos reconhecidos no PDF e trechos estruturados do conteudo programatico podem
+ser testados localmente pelas fixtures pequenas em `tests/fixtures/editorial_programs`.
+
+O contexto completo de uma pagina nunca e tratado como titulo apenas por conter o nome de
+uma disciplina. Somente uma linha compativel com cabecalho controlado e o catalogo
+correspondente aos metadados do concurso pode acionar essa etapa da cascata. Essa restricao
+evita que termos comuns de um concurso recebam silenciosamente a classificacao de outro.
+
 Para usar a integracao opcional ja existente com a OpenAI, defina `OPENAI_API_KEY` e,
 se necessario, `OPENAI_MODEL` somente na sessao que inicia o aplicativo, e selecione OpenAI
 ao criar o lote. A chave nunca e salva no SQLite, no executavel ou nos relatorios.

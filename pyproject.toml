@@ -39,6 +39,8 @@ kad_collector = [
   "desktop_app.js",
   "desktop_styles.css",
   "editorial_taxonomy.v1.json",
+  "editorial_taxonomy.bundle.v2.json",
+  "editorial_taxonomies/*.json",
   "sources.official.toml",
 ]
 
