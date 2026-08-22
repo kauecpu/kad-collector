@@ -23,6 +23,8 @@ class DesktopImportMetadata(StrictModel):
     board: str | None = None
     year: int | None = Field(default=None, ge=1900, le=2100)
     role: str | None = None
+    stage: str | None = None
+    turn: str | None = None
     organization: str | None = None
     level: Literal["Fundamental", "Médio", "Superior"] | None = None
     discipline: str | None = None
@@ -40,6 +42,8 @@ class DesktopImportMetadata(StrictModel):
         "concurso",
         "board",
         "role",
+        "stage",
+        "turn",
         "organization",
         "discipline",
         "subject",

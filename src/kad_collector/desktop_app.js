@@ -1,5 +1,79 @@
-const token = document.querySelector('meta[name="kad-desktop-token"]').content;
+function semanticIdentityBadge(view) {
+  return {
+    exact_duplicate: 'Duplicata exata',
+    republication: 'Republicação',
+    new_identity: 'Nova versão',
+    new_version: 'Nova versão',
+    uncertain: 'Exceção',
+  }[view?.resolution] || null;
+}
 
+function semanticIdentityPresentation(view) {
+  const identity = view?.identity || {};
+  const fieldValue = (name) => {
+    const field = identity[name] || {};
+    const values = field.normalized_values || [];
+    return values.join(', ');
+  };
+  const fields = [
+    ['Banca', fieldValue('board')],
+    ['Concurso', fieldValue('concurso')],
+    ['Ano', fieldValue('year')],
+    ['Cargo', fieldValue('roles')],
+    ['Turno', fieldValue('turns')],
+    ['Tipo', fieldValue('variants')],
+  ].filter(([, value]) => value);
+  return {
+    identityLabel: view?.identityStatus === 'known' ? 'Identidade reconhecida' : 'Identidade desconhecida',
+    fields,
+    badge: semanticIdentityBadge(view),
+    documentRole: view?.documentRole || 'desconhecido',
+    answerKeyState: view?.answerKeyState || 'desconhecido',
+    version: view?.versionNumber ? `Versão ${view.versionNumber}` : null,
+    predecessorVersion: view?.predecessorVersionId || null,
+    activeAnswerKeyVersion: view?.activeAnswerKeyVersion || null,
+    showIdentityConfidence: view?.identityStatus === 'known',
+    details: {
+      evidence: view?.evidence || {},
+      reason: view?.reason || view?.resolution || 'sem resolução registrada',
+      algorithmVersion: view?.algorithmVersion || 'não informado',
+    },
+  };
+}
+
+function renderSemanticIdentityHistory(root, events) {
+  const history = document.createElement('div');
+  history.className = 'document-identity-history';
+  const heading = document.createElement('strong');
+  heading.textContent = 'Histórico semântico';
+  history.append(heading);
+  (events || []).forEach((event) => {
+    const item = document.createElement('span');
+    item.textContent = [
+      `Ação: ${event.action || 'não informada'}`,
+      `Ator: ${event.actor || 'não informado'}`,
+      `Data: ${event.createdAt || 'não informada'}`,
+      `Motivo: ${event.reason || 'não informado'}`,
+      `Algoritmo: ${event.algorithmVersion || 'não informado'}`,
+    ].join(' · ');
+    history.append(item);
+  });
+  root.append(history);
+}
+
+if (typeof window !== 'undefined') {
+  window.KADDesktopRenderers = {
+    semanticIdentityBadge, semanticIdentityPresentation, renderSemanticIdentityHistory,
+  };
+}
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    semanticIdentityBadge, semanticIdentityPresentation, renderSemanticIdentityHistory,
+  };
+}
+
+if (typeof document !== 'undefined') {
+const token = document.querySelector('meta[name="kad-desktop-token"]').content;
 const emptyFilters = () => ({
   source_files: [], concursos: [], boards: [], years: [], roles: [], variants: [], levels: [],
   disciplines: [], subjects: [], topics: [], difficulties: [], statuses: [],
@@ -886,7 +960,7 @@ async function submitImport(event) {
   }
   byId('import-submit').disabled = true;
   try {
-    await request('/api/import', {
+    const result = await request('/api/import', {
       method: 'POST',
       body: JSON.stringify({
         paths: state.selectedPaths,
@@ -897,7 +971,9 @@ async function submitImport(event) {
     byId('import-dialog').close();
     state.selectedPaths = [];
     renderSelectedPaths();
-    toast('Lote iniciado. Você pode pausar e retomar sem perder páginas processadas.');
+    toast(result.jobIds.length
+      ? 'Lote iniciado. Você pode pausar e retomar sem perder páginas processadas.'
+      : 'Arquivo já conhecido; nenhuma nova tarefa foi criada.');
     await loadBootstrap({preserveQuery: true});
   } catch (error) { toast(error.message, 'error'); }
   finally { byId('import-submit').disabled = false; }
@@ -908,6 +984,7 @@ async function openQuestion(questionId) {
     const payload = await request(`/api/questions/${questionId}`);
     state.currentQuestion = payload.question;
     state.currentAudit = payload.audit;
+    state.currentIdentity = await request(`/api/documents/${payload.question.document_id}/identity`);
     fillReviewForm();
     byId('review-dialog').showModal();
   } catch (error) { toast(error.message, 'error'); }
@@ -973,6 +1050,70 @@ function renderReviewContext() {
     item.append(caption, content);
     root.append(item);
   });
+  renderDocumentIdentity(
+    byId('document-identity'),
+    state.currentIdentity || view.documentIdentity,
+  );
+}
+
+function renderDocumentIdentity(root, view) {
+  root.replaceChildren();
+  const presentation = semanticIdentityPresentation(view);
+  const header = document.createElement('div');
+  header.className = 'document-identity-header';
+  const title = document.createElement('h3');
+  title.textContent = presentation.identityLabel;
+  const badge = document.createElement('span');
+  badge.className = `document-identity-badge semantic-${view?.resolution || 'unknown'}`;
+  badge.textContent = presentation.badge;
+  header.append(title);
+  if (presentation.badge) header.append(badge);
+  root.append(header);
+
+  if (presentation.fields.length) {
+    const fields = document.createElement('div');
+    fields.className = 'document-identity-fields';
+    presentation.fields.forEach(([label, value]) => {
+      const field = document.createElement('span');
+      field.className = 'document-identity-field';
+      field.textContent = `${label}: ${value}`;
+      fields.append(field);
+    });
+    root.append(fields);
+  }
+
+  const meta = document.createElement('div');
+  meta.className = 'document-identity-meta';
+  [
+    `Papel: ${presentation.documentRole}`,
+    `Gabarito: ${presentation.answerKeyState}`,
+    presentation.version,
+    presentation.predecessorVersion && `Predecessora: ${presentation.predecessorVersion}`,
+    presentation.activeAnswerKeyVersion && `Gabarito ativo: ${presentation.activeAnswerKeyVersion}`,
+  ].filter(Boolean).forEach((value) => {
+    const item = document.createElement('span');
+    item.textContent = value;
+    meta.append(item);
+  });
+  root.append(meta);
+
+  const details = document.createElement('details');
+  const summary = document.createElement('summary');
+  summary.textContent = 'Evidências e resolução';
+  const detailsBody = document.createElement('div');
+  detailsBody.className = 'document-identity-details';
+  [
+    `Motivo: ${presentation.details.reason}`,
+    `Algoritmo: ${presentation.details.algorithmVersion}`,
+    `Evidências: ${JSON.stringify(presentation.details.evidence)}`,
+  ].forEach((value) => {
+    const item = document.createElement('span');
+    item.textContent = value;
+    detailsBody.append(item);
+  });
+  details.append(summary, detailsBody);
+  root.append(details);
+  renderSemanticIdentityHistory(root, view?.events || []);
 }
 
 function renderReviewFlags() {
@@ -1268,3 +1409,4 @@ document.querySelectorAll('.rail-link').forEach((button) => {
 
 applyCapacityProfile();
 loadBootstrap().catch((error) => toast(error.message, 'error'));
+}

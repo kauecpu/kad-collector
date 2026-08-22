@@ -32,6 +32,7 @@ from .desktop_processor import DesktopProcessor
 from .desktop_store import DesktopStore
 from .document_pipeline import DocumentPipeline
 from .models import QuestionRecord
+from .semantic_identity import semantic_public_dto
 
 MAX_REQUEST_BYTES = 5_000_000
 
@@ -67,6 +68,7 @@ class DesktopApplication:
             "sources": self.collection_manager.catalog(),
             "collectionEngine": self.collection_manager.engine_summary(),
             "savedFilters": self.store.saved_filters(),
+            "semanticSummary": self.store.semantic_presentation_summary(),
             "config": {
                 "dataDirectory": str(self.data_dir),
                 "openaiConfigured": bool(os.environ.get("OPENAI_API_KEY")),
@@ -91,7 +93,7 @@ class DesktopApplication:
                         raise ValueError(f"o lote excede o limite de {MAX_BATCH_PDFS} PDFs")
         return selected
 
-    def import_pdfs(self, payload: dict[str, Any]) -> str:
+    def import_pdfs(self, payload: dict[str, Any]) -> list[str]:
         raw_paths = payload.get("paths")
         if not isinstance(raw_paths, list) or not all(isinstance(item, str) for item in raw_paths):
             raise ValueError("paths deve ser uma lista de caminhos locais")
@@ -102,10 +104,7 @@ class DesktopApplication:
             raise ValueError("classificador deve ser local ou openai")
         if classifier_provider == "openai" and not os.environ.get("OPENAI_API_KEY"):
             raise ValueError("OPENAI_API_KEY não está configurada nesta sessão")
-        job_ids = self.pipeline.import_paths(paths, metadata, classifier_provider)
-        if len(job_ids) != 1:
-            raise RuntimeError("a importação direta deve gerar um único lote")
-        return job_ids[0]
+        return self.pipeline.import_paths(paths, metadata, classifier_provider)
 
     def reprocess_documents(
         self,
@@ -144,10 +143,17 @@ class DesktopApplication:
             notes=notes,
         )
 
-    def update_document(self, document_id: str, payload: dict[str, Any]) -> None:
-        metadata = DesktopImportMetadata.model_validate(payload.get("metadata"))
+    def update_document(self, document_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        extra = set(payload) - {"metadata", "actor"}
+        if extra:
+            raise ValueError("campos extras não são aceitos na correção do documento")
+        try:
+            metadata = DesktopImportMetadata.model_validate(payload.get("metadata"))
+        except ValidationError:
+            raise ValueError("metadados do documento inválidos") from None
         actor = _required_text(payload, "actor")
-        self.store.update_document_metadata(document_id, metadata, actor=actor)
+        result = self.store.update_document_metadata(document_id, metadata, actor=actor)
+        return cast(dict[str, Any], semantic_public_dto(result))
 
     def decide(self, question_id: str, payload: dict[str, Any]) -> None:
         status = payload.get("status")
@@ -242,12 +248,23 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
             if question_match is not None:
                 try:
                     question_id = question_match.group(1)
+                    question = application.store.question(question_id)
+                    question["documentIdentity"] = application.store.document_identity(
+                        cast(str, question["document_id"])
+                    )
                     self._send_json(
                         {
-                            "question": application.store.question(question_id),
+                            "question": question,
                             "audit": application.store.audit_log(question_id),
                         }
                     )
+                except ValueError as exc:
+                    self._send_error(HTTPStatus.NOT_FOUND, str(exc))
+                return
+            identity_match = re.fullmatch(r"/api/documents/([a-f0-9-]+)/identity", path)
+            if identity_match is not None:
+                try:
+                    self._send_json(application.store.document_identity(identity_match.group(1)))
                 except ValueError as exc:
                     self._send_error(HTTPStatus.NOT_FOUND, str(exc))
                 return
@@ -275,8 +292,15 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                     self._send_json(application.store.query(filters))
                     return
                 if path == "/api/import":
-                    job_id = application.import_pdfs(payload)
-                    self._send_json({"jobId": job_id}, HTTPStatus.CREATED)
+                    job_ids = application.import_pdfs(payload)
+                    self._send_json(
+                        {
+                            "jobId": job_ids[0] if len(job_ids) == 1 else None,
+                            "jobIds": job_ids,
+                            "exactDuplicate": not job_ids,
+                        },
+                        HTTPStatus.CREATED,
+                    )
                     return
                 if path == "/api/collections":
                     collection_id = application.collect_from_link(payload)
@@ -345,8 +369,8 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                     return
                 document_match = re.fullmatch(r"/api/documents/([a-f0-9-]+)", path)
                 if document_match is not None:
-                    application.update_document(document_match.group(1), payload)
-                    self._send_json({"ok": True})
+                    result = application.update_document(document_match.group(1), payload)
+                    self._send_json({"ok": True, "identityResolution": result})
                     return
                 self._send_error(HTTPStatus.NOT_FOUND, "rota não encontrada")
             except (OSError, RuntimeError, ValueError, ValidationError) as exc:

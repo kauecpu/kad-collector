@@ -61,8 +61,8 @@ id = "synthetic-definitive-selection"
 kind = "synthetic"
 path = "synthetic/definitive-selection.json"
 format = "json"
-size_bytes = 532
-sha256 = "52d4e501a85cb6ec7f75a21a0f44babddf60501a0ef768b313af7b22aabcda18"
+size_bytes = 815
+sha256 = "9bd59bb921a90d775c5acd033ca6fe8e745126b6295ea1f5e044a0e6aeeb87d6"
 description = "Metadados fictícios para seleção entre gabarito preliminar e definitivo."
 
 [[fixtures]]

@@ -147,6 +147,51 @@ consultar o PDF na pagina de origem, enviar para excecoes com justificativa, adi
 aprovar individualmente ou em lote. Somente uma aprovacao humana move a questao para
 **Exportaveis**.
 
+### Identidade semântica e histórico do documento
+
+O Collector mantém quatro conceitos separados para não confundir uma cópia do arquivo com uma
+mudança editorial:
+
+- **Arquivo:** os bytes locais do PDF, identificados pelo SHA-256.
+- **Observação:** o registro de que aqueles bytes foram vistos, inclusive origem e datas. Uma
+  nova origem do mesmo arquivo não cria outra versão.
+- **Versão lógica:** o conteúdo normalizado de uma prova ou gabarito dentro de uma identidade
+  semântica. Conteúdo equivalente em bytes diferentes é uma republicação; conteúdo alterado é
+  uma nova versão com predecessora quando aplicável.
+- **Vínculo ativo:** a associação selecionada entre uma versão de prova e uma versão de gabarito.
+  Um vínculo é ativado somente com evidência suficiente; ele não transforma ausência de evidência
+  em confirmação.
+
+Na revisão de uma questão, o bloco **Identidade semântica do documento** mostra os campos
+conhecidos (banca, concurso, ano, cargo, turno e tipo), papel, situação do gabarito e versão.
+Os detalhes recolhíveis trazem a evidência, o motivo e a versão do algoritmo, mas não mostram
+texto integral de páginas. Os selos têm este significado: **Duplicata exata** indica os mesmos
+bytes já observados; **Republicação**, conteúdo equivalente de outra observação; **Nova versão**,
+conteúdo alterado dentro da mesma identidade; e **Exceção**, identidade insuficiente ou
+conflitante. Identidades desconhecidas ou conflitantes não recebem percentual de confiança.
+
+Estados de exceção incluem documento sem identidade mínima, campos com evidência conflitante,
+gabarito sem candidato, empate e conflito de escopo. Eles ficam visíveis para revisão e não
+recebem respostas oficiais por inferência. O reprocessamento cria uma observação operacional
+nova a partir do contrato local preservado, retoma resolução interrompida sem duplicar eventos e
+nunca substitui histórico, decisões editoriais ou auditoria.
+
+Uma correção manual exige ator e metadados comprovados no endpoint local autenticado
+`PUT /api/documents/{id}`. A operação é auditada, rejeita colisões de versões e reavalia apenas
+os vínculos afetados; decisões de questões só são invalidadas quando a mudança relevante exigir.
+Para diagnóstico local do banco, estas consultas devem retornar zero linhas em estado coerente:
+
+```sql
+SELECT binary_sha256, COUNT(*) FROM document_observations GROUP BY binary_sha256 HAVING COUNT(*) > 1;
+SELECT identity_key, document_role, content_sha256, COUNT(*) FROM document_versions GROUP BY 1, 2, 3 HAVING COUNT(*) > 1;
+SELECT exam_version_id, COUNT(*) FROM document_links WHERE status = 'active' GROUP BY exam_version_id HAVING COUNT(*) > 1;
+SELECT event_key, COUNT(*) FROM document_identity_events GROUP BY event_key HAVING COUNT(*) > 1;
+```
+
+Para consulta pela interface local, `GET /api/bootstrap` inclui `semanticSummary` e
+`GET /api/documents/{id}/identity` devolve o read model de identidade. Ambos usam o token
+efêmero da sessão; o segundo endpoint não devolve `canonicalText` nem texto integral do PDF.
+
 ## Documento normalizado: aquisicao e interpretacao
 
 O Collector separa a **aquisicao** da **interpretacao**. Aquisicao e a etapa que conhece a

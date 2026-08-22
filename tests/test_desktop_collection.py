@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
@@ -21,7 +25,8 @@ from kad_collector.desktop_processor import (
 )
 from kad_collector.desktop_store import DesktopStore
 from kad_collector.document_pipeline import DocumentPipeline
-from kad_collector.models import DocumentRecord, DownloadManifest
+from kad_collector.models import DocumentRecord, DownloadManifest, QuestionRecord
+from kad_collector.semantic_identity import DocumentAssociationDecision
 
 
 class DesktopCollectionTests(unittest.TestCase):
@@ -34,6 +39,88 @@ class DesktopCollectionTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.directory.cleanup()
+
+    def resolve_job_documents(self, job_id: str) -> None:
+        for document in self.store.documents_for_job(job_id):
+            if self.store.pages(document["id"]):
+                self.store.resolve_extracted_document(document["id"])
+
+    def process_text_documents(
+        self,
+        specifications: list[tuple[str, str, DesktopImportMetadata]],
+    ) -> list[dict[str, object]]:
+        paths: list[Path] = []
+        metadata_by_path: dict[str, DesktopImportMetadata] = {}
+        text_by_name: dict[str, str] = {}
+        for filename, text, metadata in specifications:
+            path = self.root / filename
+            path.write_bytes(f"%PDF-1.4\n{filename}\n{text}\n%%EOF".encode())
+            paths.append(path)
+            metadata_by_path[str(path.resolve()).casefold()] = metadata
+            text_by_name[filename] = text
+        job_id = self.store.create_job(
+            paths, DesktopImportMetadata(), "local", metadata_by_path=metadata_by_path
+        )
+        for document in self.store.documents_for_job(job_id):
+            self.store.save_page(
+                document["id"], 1, text_by_name[document["filename"]], status="text"
+            )
+            self.store.update_document(document["id"], status="extracted", page_count=1)
+        self.resolve_job_documents(job_id)
+        self.processor._structure_job(job_id, threading.Event())
+        return self.store.documents_for_job(job_id)
+
+    def stored_question(self, document_id: str, number: int) -> dict[str, object]:
+        with closing(self.store._connect()) as connection:
+            row = connection.execute(
+                "SELECT payload_json FROM questions "
+                "WHERE document_id = ? AND question_number = ?",
+                (document_id, number),
+            ).fetchone()
+        self.assertIsNotNone(row)
+        return json.loads(row["payload_json"])
+
+    def approve_stored_question(self, document_id: str, number: int) -> str:
+        with closing(self.store._connect()) as connection:
+            question_id = connection.execute(
+                "SELECT id FROM questions WHERE document_id = ? AND question_number = ?",
+                (document_id, number),
+            ).fetchone()["id"]
+        reviewed = QuestionRecord.model_validate(self.store.question(question_id)["question"])
+        reviewed = reviewed.model_copy(update={
+            "discipline": "Direito",
+            "matter": "Direito Administrativo",
+            "subject": "Atos administrativos",
+            "organization": "Secretaria Pública",
+            "level": "Superior",
+            "difficulty": "Média",
+            "explanation": "A alternativa indicada corresponde ao gabarito oficial.",
+        })
+        self.store.update_question(
+            question_id, reviewed, actor="revisora", notes="Conteúdo conferido."
+        )
+        self.store.decide_question(
+            question_id, "approved", actor="revisora", notes="Gabarito conferido."
+        )
+        return str(question_id)
+
+    @staticmethod
+    def semantic_metadata(
+        document_type: str,
+        title: str,
+        *,
+        role: str = "Analista",
+        variant: str | None = None,
+    ) -> DesktopImportMetadata:
+        return DesktopImportMetadata(
+            document_type=document_type,
+            document_title=title,
+            board="Banca Semantica",
+            concurso="Concurso Semantico",
+            year=2026,
+            role=role,
+            variant=variant,
+        )
 
     def test_catalog_exposes_collectable_sources_and_reference_only_obmep(self) -> None:
         catalog = {source["id"]: source for source in self.manager.catalog()}
@@ -192,6 +279,75 @@ class DesktopCollectionTests(unittest.TestCase):
         self.assertEqual(runner.started_ids, [])
         self.assertEqual(self.store.list_jobs(), [])
 
+    def test_repeated_collection_uses_transactional_duplicate_barrier(self) -> None:
+        pdf_path = self.root / "repeated-collection.pdf"
+        payload = b"%PDF-1.7\nrepeated collection fixture\n"
+        pdf_path.write_bytes(payload)
+        document = DocumentRecord(
+            source_id="fgv_conhecimento",
+            source_name="FGV Conhecimento - Concursos",
+            document_type="exam",
+            title="Prova oficial repetida",
+            original_url="https://conhecimento.fgv.br/prova.pdf",
+            resolved_url="https://conhecimento.fgv.br/prova.pdf",
+            local_path=str(pdf_path.resolve()),
+            sha256=hashlib.sha256(payload).hexdigest(),
+            content_type="application/pdf",
+            size_bytes=len(payload),
+            downloaded_at=datetime(2026, 8, 20, tzinfo=UTC),
+            authorization_basis="Fonte oficial.",
+            metadata={"ano": "2026"},
+        )
+        manifest = DownloadManifest(
+            created_at=datetime(2026, 8, 20, tzinfo=UTC),
+            documents=[document],
+        )
+        manifest_path = self.root / "manifest.json"
+        manifest_path.write_text("{}", encoding="utf-8")
+
+        class CompletingRunner:
+            def __init__(self, store: DesktopStore) -> None:
+                self.store = store
+                self.started_ids: list[str] = []
+
+            def start(self, job_id: str) -> None:
+                self.started_ids.append(job_id)
+                self.store.update_job(job_id, status="completed")
+
+        runner = CompletingRunner(self.store)
+        manager = DesktopCollectionManager(
+            self.root,
+            self.store,
+            self.processor,
+            DocumentPipeline(self.store, runner),
+        )
+
+        def wait_until_done(collection_id: str) -> dict[str, object]:
+            for _ in range(200):
+                current = next(item for item in manager.list_jobs() if item["id"] == collection_id)
+                if current["status"] not in {"queued", "running", "processing"}:
+                    return current
+                threading.Event().wait(0.01)
+            self.fail("a coleta não terminou")
+
+        request = {
+            "sourceId": "fgv_conhecimento",
+            "url": "https://conhecimento.fgv.br/concursos/mprj2025",
+        }
+        with patch(
+            "kad_collector.desktop_collection.collect_documents",
+            return_value=(manifest, manifest_path),
+        ):
+            first = wait_until_done(manager.start(request))
+            second = wait_until_done(manager.start(request))
+
+        self.assertIn(first["status"], {"completed", "needs_attention"})
+        self.assertEqual(len(first["importJobIds"]), 1)
+        self.assertIn(second["status"], {"completed", "needs_attention"})
+        self.assertEqual(second["importJobIds"], [])
+        self.assertEqual(len(runner.started_ids), 1)
+        self.assertEqual(len(self.store.list_jobs()), 1)
+
     def test_second_collection_skips_processed_sha_without_creating_another_job(self) -> None:
         pdf_path = self.root / "fgv_conhecimento-exam-repeat.pdf"
         pdf_path.write_bytes(b"%PDF-1.4\nfixture\n%%EOF")
@@ -274,8 +430,8 @@ class DesktopCollectionTests(unittest.TestCase):
 
     def test_fuvest_uses_v1_as_canonical_and_matches_versioned_answer_key(self) -> None:
         paths = [self.root / f"arquivo-{index}.pdf" for index in range(1, 6)]
-        for path in paths:
-            path.write_bytes(b"%PDF-1.4\nfixture\n%%EOF")
+        for index, path in enumerate(paths, start=1):
+            path.write_bytes(f"%PDF-1.4\nfixture {index}\n%%EOF".encode())
 
         base = DesktopImportMetadata(
             provider="fuvest_vestibular",
@@ -333,6 +489,7 @@ Enunciado completo da segunda questao.
             self.store.save_page(document["id"], 1, text, status="text")
             self.store.update_document(document["id"], status="extracted", page_count=1)
 
+        self.resolve_job_documents(job_id)
         self.processor._structure_job(job_id, threading.Event())
 
         result = self.store.query(DesktopFilterSet())
@@ -360,7 +517,9 @@ Enunciado completo da segunda questao.
         answer_path = self.root / "gabarito.pdf"
         exam_path.write_bytes(b"%PDF-1.4\nexam\n%%EOF")
         answer_path.write_bytes(b"%PDF-1.4\nanswer\n%%EOF")
-        base = DesktopImportMetadata(provider="banca", year=2026)
+        base = DesktopImportMetadata(
+            provider="banca", board="Banca", concurso="Concurso", year=2026
+        )
         job_id = self.store.create_job(
             [exam_path, answer_path],
             base,
@@ -385,6 +544,7 @@ Enunciado completo da segunda questao.
             self.store.save_page(document["id"], 1, text, status="text")
             self.store.update_document(document["id"], status="extracted", page_count=1)
 
+        self.resolve_job_documents(job_id)
         self.processor._structure_job(job_id, threading.Event())
 
         questions = self.store.query(DesktopFilterSet())["questions"]
@@ -446,7 +606,7 @@ Enunciado completo da segunda questao.
         self.assertEqual(selected, [tipo_1, tipo_2])
         self.assertEqual(evidence, [])
 
-    def test_only_a_sole_in_batch_answer_key_gets_compatibility_shortcut(self) -> None:
+    def test_sole_weak_answer_key_is_rejected_in_batch_and_cache(self) -> None:
         exam = {
             "job_id": "current-job",
             "filename": "prova-direito.pdf",
@@ -473,7 +633,7 @@ Enunciado completo da segunda questao.
             ).model_dump(mode="json"),
         }
 
-        self.assertIs(_select_answer_key(exam, [in_batch]), in_batch)
+        self.assertIsNone(_select_answer_key(exam, [in_batch]))
         self.assertIsNone(_select_answer_key(exam, [cached]))
 
         morning_exam = {
@@ -511,6 +671,7 @@ Enunciado completo da segunda questao.
                 answer_path.write_bytes(b"%PDF-1.4\nanswer\n%%EOF")
                 common = DesktopImportMetadata(
                     concurso="Concurso Fiscal",
+                    board="Banca Fiscal",
                     year=2026,
                     role="Analista",
                     organization="Secretaria da Fazenda",
@@ -544,6 +705,8 @@ Enunciado completo da segunda questao.
                     store.save_page(stored["id"], 1, text, status="text")
                     store.update_document(stored["id"], status="extracted", page_count=1)
 
+                for stored in store.documents_for_job(job_id):
+                    store.resolve_extracted_document(stored["id"])
                 processor._structure_job(job_id, threading.Event())
 
                 result = store.query(
@@ -561,6 +724,7 @@ Enunciado completo da segunda questao.
         exam_path.write_bytes(b"%PDF-1.4\nexam\n%%EOF")
         base = DesktopImportMetadata(
             provider="banca",
+            board="Banca Oficial",
             concurso="Concurso 2026",
             year=2026,
             role="Analista",
@@ -572,9 +736,12 @@ Enunciado completo da segunda questao.
                 "external_id": "d" * 64,
             }
         )
-        key_job = self.store.create_job([key_path], base, "local", metadata_by_path={
-            str(key_path.resolve()).casefold(): key_metadata
-        })
+        key_job = self.store.create_job(
+            [key_path],
+            base,
+            "local",
+            metadata_by_path={str(key_path.resolve()).casefold(): key_metadata},
+        )
         key_document = self.store.documents_for_job(key_job)[0]
         self.store.save_page(key_document["id"], 1, "1 - C", status="text")
         self.store.update_document(key_document["id"], status="extracted", page_count=1)
@@ -586,9 +753,12 @@ Enunciado completo da segunda questao.
                 "external_id": "e" * 64,
             }
         )
-        exam_job = self.store.create_job([exam_path], base, "local", metadata_by_path={
-            str(exam_path.resolve()).casefold(): exam_metadata
-        })
+        exam_job = self.store.create_job(
+            [exam_path],
+            base,
+            "local",
+            metadata_by_path={str(exam_path.resolve()).casefold(): exam_metadata},
+        )
         exam_document = self.store.documents_for_job(exam_job)[0]
         self.store.save_page(
             exam_document["id"],
@@ -598,12 +768,407 @@ Enunciado completo da segunda questao.
         )
         self.store.update_document(exam_document["id"], status="extracted", page_count=1)
 
+        self.store.resolve_extracted_document(key_document["id"])
+        self.store.resolve_extracted_document(exam_document["id"])
         self.processor._structure_job(exam_job, threading.Event())
 
         question = self.store.query(DesktopFilterSet())["questions"][0]
         self.assertEqual(question["question"]["correct_answer"], "C")
         self.assertEqual(question["status"], "pending")
         self.assertEqual(len(self.store.documents_for_job(exam_job)), 1)
+        with closing(self.store._connect()) as connection:
+            link = connection.execute(
+                "SELECT exam_version_id, answer_key_version_id FROM document_links "
+                "WHERE status = 'active'"
+            ).fetchone()
+        self.assertEqual(
+            link["exam_version_id"],
+            self.store.document(str(exam_document["id"]))["document_version_id"],
+        )
+        self.assertEqual(
+            link["answer_key_version_id"],
+            self.store.document(str(key_document["id"]))["document_version_id"],
+        )
+
+    def test_key_imported_after_exam_reconciles_and_records_complete_decision(self) -> None:
+        exam_text = (
+            "{01}\nEnunciado completo da primeira questao.\n"
+            "(A) Alternativa A.\n(B) Alternativa B.\n#####"
+        )
+        exam = self.process_text_documents([(
+            "exam-before-key.pdf", exam_text,
+            self.semantic_metadata("exam", "Prova Analista 2026"),
+        )])[0]
+        self.assertEqual(self.stored_question(str(exam["id"]), 1)["answer_status"], "missing")
+
+        key = self.process_text_documents([(
+            "gabarito-after.pdf", "Gabarito preliminar\n1 - B",
+            self.semantic_metadata("answer_key", "Gabarito preliminar Analista 2026"),
+        )])[0]
+
+        question = self.stored_question(str(exam["id"]), 1)
+        with closing(self.store._connect()) as connection:
+            link = connection.execute(
+                "SELECT * FROM document_links WHERE status = 'active'"
+            ).fetchone()
+        self.assertEqual(question["answer_status"], "matched")
+        self.assertEqual(question["correct_answer"], "B")
+        self.assertEqual(link["exam_version_id"], exam["document_version_id"])
+        self.assertEqual(link["answer_key_version_id"], key["document_version_id"])
+        self.assertEqual(
+            json.loads(link["decision_json"])["selected_version_id"],
+            key["document_version_id"],
+        )
+
+    def test_late_answer_key_finalizes_deferred_successor_lineage(self) -> None:
+        exam_text = (
+            "{01}\nEnunciado completo da questão estável.\n"
+            "(A) Alternativa A.\n(B) Alternativa B.\n#####"
+        )
+        first = self.process_text_documents([(
+            "exam-lineage-first.pdf", exam_text,
+            self.semantic_metadata("exam", "Prova de linhagem 2026"),
+        )])[0]
+        key = self.process_text_documents([(
+            "key-lineage-late.pdf", "Gabarito definitivo\n1 - B",
+            self.semantic_metadata("answer_key", "Gabarito de linhagem 2026"),
+        )])[0]
+        first_question_id = self.approve_stored_question(str(first["id"]), 1)
+        self.assertEqual(self.store.question(first_question_id)["status"], "approved")
+
+        with patch.object(self.processor, "_associate_exam", return_value=(False, False)):
+            second = self.process_text_documents([(
+                "exam-lineage-second.pdf", "Publicação retificada\n" + exam_text,
+                self.semantic_metadata("exam", "Prova de linhagem republicada 2026"),
+            )])[0]
+        with closing(self.store._connect()) as connection:
+            before = connection.execute(
+                "SELECT COUNT(*) FROM question_lineage WHERE successor_version_id = ?",
+                (second["document_version_id"],),
+            ).fetchone()[0]
+        self.assertEqual(before, 0)
+        self.assertEqual(self.stored_question(str(second["id"]), 1)["answer_status"], "missing")
+
+        self.assertEqual(
+            self.processor._reconcile_answer_key(str(key["document_version_id"])), 1
+        )
+
+        with closing(self.store._connect()) as connection:
+            successor_id = connection.execute(
+                "SELECT id FROM questions WHERE document_id = ? AND question_number = 1",
+                (second["id"],),
+            ).fetchone()["id"]
+            lineage = connection.execute(
+                "SELECT comparison FROM question_lineage WHERE successor_version_id = ?",
+                (second["document_version_id"],),
+            ).fetchone()
+        successor = self.store.question(successor_id)
+        self.assertEqual(lineage["comparison"], "unchanged")
+        self.assertEqual(successor["question"]["correct_answer"], "B")
+        self.assertEqual(successor["status"], "approved")
+        self.assertEqual(successor["reviewer"], "revisora")
+
+    def test_definitive_key_supersedes_preliminary_and_reapplies_answers(self) -> None:
+        exam_text = (
+            "{01}\nEnunciado completo da primeira questao.\n(A) A.\n(B) B.\n#####\n"
+            "{02}\nEnunciado completo da segunda questao.\n(A) A.\n(B) B.\n(C) C.\n#####"
+        )
+        exam = self.process_text_documents([(
+            "exam-succession.pdf", exam_text,
+            self.semantic_metadata("exam", "Prova de sucessao 2026"),
+        )])[0]
+        preliminary = self.process_text_documents([(
+            "key-preliminary.pdf", "Gabarito preliminar\n1 - A\n2 - B",
+            self.semantic_metadata("answer_key", "Gabarito preliminar 2026"),
+        )])[0]
+        self.assertEqual(self.stored_question(str(exam["id"]), 2)["correct_answer"], "B")
+        question_id = self.approve_stored_question(str(exam["id"]), 2)
+
+        definitive = self.process_text_documents([(
+            "key-definitive.pdf", "Gabarito definitivo\n1 - A\n2 - C",
+            self.semantic_metadata("answer_key", "Gabarito definitivo 2026"),
+        )])[0]
+
+        with closing(self.store._connect()) as connection:
+            links = connection.execute(
+                "SELECT answer_key_version_id, status FROM document_links ORDER BY created_at"
+            ).fetchall()
+        self.assertEqual(self.stored_question(str(exam["id"]), 2)["correct_answer"], "C")
+        invalidated = self.store.question(question_id)
+        self.assertEqual(invalidated["status"], "pending")
+        self.assertIsNone(invalidated["reviewer"])
+        self.assertIsNone(invalidated["review_notes"])
+        self.assertEqual(self.store.audit_log(question_id)[0]["action"], "decision_invalidated")
+        self.assertIn(
+            "decision_invalidated",
+            [event["action"] for event in self.store.identity_events(str(exam["id"]))],
+        )
+        self.assertEqual(
+            [(row["answer_key_version_id"], row["status"]) for row in links],
+            [
+                (preliminary["document_version_id"], "superseded"),
+                (definitive["document_version_id"], "active"),
+            ],
+        )
+
+    def test_definitive_annulment_is_applied_and_audited_without_erasing_absent_answers(
+        self,
+    ) -> None:
+        exam_text = (
+            "{01}\nEnunciado completo da primeira questao.\n(A) A.\n(B) B.\n#####\n"
+            "{02}\nEnunciado completo da segunda questao.\n(A) A.\n(B) B.\n#####"
+        )
+        exam = self.process_text_documents([(
+            "exam-annulment.pdf", exam_text,
+            self.semantic_metadata("exam", "Prova com anulacao 2026"),
+        )])[0]
+        self.process_text_documents([(
+            "key-before-annulment.pdf", "Gabarito preliminar\n1 - A\n2 - B",
+            self.semantic_metadata("answer_key", "Gabarito preliminar com anulacao"),
+        )])
+        question_id = self.approve_stored_question(str(exam["id"]), 1)
+        definitive = self.process_text_documents([(
+            "key-annulment.pdf", "Gabarito definitivo\n1 - ANULADA",
+            self.semantic_metadata("answer_key", "Gabarito definitivo com anulacao"),
+        )])[0]
+
+        first = self.stored_question(str(exam["id"]), 1)
+        second = self.stored_question(str(exam["id"]), 2)
+        actions = [event["action"] for event in self.store.identity_events(str(exam["id"]))]
+        self.assertEqual((first["answer_status"], first["correct_answer"]), ("annulled", None))
+        self.assertEqual((second["answer_status"], second["correct_answer"]), ("matched", "B"))
+        invalidated = self.store.question(question_id)
+        self.assertEqual(invalidated["status"], "exception")
+        self.assertIsNone(invalidated["reviewer"])
+        self.assertEqual(self.store.audit_log(question_id)[0]["action"], "decision_invalidated")
+        self.assertIn("decision_invalidated", actions)
+        self.assertIn("association_superseded", actions)
+        self.assertEqual(
+            self.processor._reconcile_answer_key(str(definitive["document_version_id"])),
+            0,
+        )
+
+    def test_unchanged_definitive_answer_preserves_human_decision(self) -> None:
+        exam = self.process_text_documents([(
+            "exam-stable-answer.pdf",
+            "{01}\nEnunciado completo e estável.\n(A) A.\n(B) B.\n#####",
+            self.semantic_metadata("exam", "Prova com resposta estável 2026"),
+        )])[0]
+        self.process_text_documents([(
+            "key-stable-preliminary.pdf", "Gabarito preliminar\n1 - A",
+            self.semantic_metadata("answer_key", "Gabarito preliminar estável"),
+        )])
+        question_id = self.approve_stored_question(str(exam["id"]), 1)
+
+        self.process_text_documents([(
+            "key-stable-definitive.pdf", "Gabarito definitivo\n1 - A",
+            self.semantic_metadata("answer_key", "Gabarito definitivo estável"),
+        )])
+
+        preserved = self.store.question(question_id)
+        self.assertEqual(preserved["status"], "approved")
+        self.assertEqual(preserved["reviewer"], "revisora")
+        self.assertEqual(preserved["review_notes"], "Gabarito conferido.")
+        self.assertNotIn(
+            "decision_invalidated",
+            [entry["action"] for entry in self.store.audit_log(question_id)],
+        )
+
+    def test_equivalent_definitive_keys_leave_exam_unlinked_and_answers_unchanged(self) -> None:
+        exam = self.process_text_documents([(
+            "exam-ambiguous.pdf",
+            "{01}\nEnunciado completo ambiguo.\n(A) A.\n(B) B.\n#####",
+            self.semantic_metadata("exam", "Prova ambigua 2026"),
+        )])[0]
+        self.process_text_documents([
+            (
+                "gabarito-a.pdf", "Gabarito definitivo\n1 - A",
+                self.semantic_metadata("answer_key", "Gabarito definitivo A"),
+            ),
+            (
+                "gabarito-b.pdf", "Gabarito definitivo\n1 - B",
+                self.semantic_metadata("answer_key", "Gabarito definitivo B"),
+            ),
+        ])
+
+        with closing(self.store._connect()) as connection:
+            link_count = connection.execute(
+                "SELECT COUNT(*) FROM document_links WHERE status = 'active'"
+            ).fetchone()[0]
+        self.assertEqual(link_count, 0)
+        self.assertEqual(self.stored_question(str(exam["id"]), 1)["answer_status"], "missing")
+
+    def test_repeated_definitive_key_does_not_reapply_or_duplicate_events(self) -> None:
+        exam = self.process_text_documents([(
+            "exam-idempotent.pdf",
+            "{01}\nEnunciado completo idempotente.\n(A) A.\n(B) B.\n#####",
+            self.semantic_metadata("exam", "Prova idempotente 2026"),
+        )])[0]
+        definitive = self.process_text_documents([(
+            "gabarito-idempotent.pdf", "Gabarito definitivo\n1 - B",
+            self.semantic_metadata("answer_key", "Gabarito definitivo idempotente"),
+        )])[0]
+        with closing(self.store._connect()) as connection:
+            before = connection.execute(
+                "SELECT COUNT(*) FROM document_identity_events "
+                "WHERE action LIKE 'association_%'"
+            ).fetchone()[0]
+            links_before = connection.execute("SELECT COUNT(*) FROM document_links").fetchone()[0]
+
+        first_repeat = self.processor._reconcile_answer_key(
+            str(definitive["document_version_id"])
+        )
+        second_repeat = self.processor._reconcile_answer_key(
+            str(definitive["document_version_id"])
+        )
+        republication = self.process_text_documents([(
+            "gabarito-idempotent-republished.pdf", "Gabarito definitivo\n1 - B",
+            self.semantic_metadata("answer_key", "Gabarito definitivo idempotente"),
+        )])[0]
+
+        with closing(self.store._connect()) as connection:
+            after = connection.execute(
+                "SELECT COUNT(*) FROM document_identity_events "
+                "WHERE action LIKE 'association_%'"
+            ).fetchone()[0]
+            links_after = connection.execute("SELECT COUNT(*) FROM document_links").fetchone()[0]
+        self.assertEqual((first_repeat, second_repeat), (0, 0))
+        self.assertEqual(republication["semantic_resolution"], "republication")
+        self.assertEqual((links_after, after), (links_before, before))
+        self.assertEqual(self.stored_question(str(exam["id"]), 1)["correct_answer"], "B")
+
+    def test_concurrent_answer_key_applications_keep_link_and_payload_consistent(self) -> None:
+        exam = self.process_text_documents([(
+            "exam-concurrent-keys.pdf",
+            "{01}\nEnunciado completo concorrente.\n(A) A.\n(B) B.\n#####",
+            self.semantic_metadata("exam", "Prova concorrente 2026"),
+        )])[0]
+        keys = self.process_text_documents([
+            (
+                "gabarito-concurrent-a.pdf", "Gabarito preliminar\n1 - A",
+                self.semantic_metadata("answer_key", "Gabarito preliminar concorrente A"),
+            ),
+            (
+                "gabarito-concurrent-b.pdf", "Gabarito definitivo\n1 - B",
+                self.semantic_metadata("answer_key", "Gabarito concorrente B"),
+            ),
+        ])
+        versions = {
+            str(key["document_version_id"]): answer
+            for key, answer in zip(keys, ("A", "B"), strict=True)
+        }
+        with closing(self.store._connect()) as connection:
+            connection.execute("DELETE FROM document_links")
+            connection.commit()
+
+        def apply(version_id: str, answer: str) -> bool:
+            decision = DocumentAssociationDecision(
+                outcome="selected", selected_version_id=version_id,
+                assessments=(), minimum_score=36, minimum_margin=8,
+                achieved_margin=None, reason="concurrent test",
+                algorithm_version="semantic-association-v1",
+            )
+            return self.store.apply_answer_key_updates(
+                str(exam["id"]), str(exam["document_version_id"]), version_id,
+                decision, {1: ("matched", answer)},
+            )
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(lambda item: apply(*item), versions.items()))
+
+        with closing(self.store._connect()) as connection:
+            active = connection.execute(
+                "SELECT answer_key_version_id FROM document_links WHERE status = 'active'"
+            ).fetchone()[0]
+        self.assertEqual(results, [False, True])
+        self.assertEqual(
+            self.stored_question(str(exam["id"]), 1)["correct_answer"], versions[active]
+        )
+
+    def test_multirole_multitype_key_updates_only_covered_exam_grid(self) -> None:
+        def exam_text(label: str) -> str:
+            return (
+                "Turno: Manha\n"
+                f"{{01}}\nEnunciado completo {label} um.\n(A) A.\n(B) B.\n(C) C.\n(D) D.\n#####\n"
+                f"{{02}}\nEnunciado completo {label} dois.\n(A) A.\n(B) B.\n(C) C.\n(D) D.\n#####"
+            )
+
+        exams = self.process_text_documents([
+            (
+                "tecnico-tipo-1.pdf", exam_text("tecnico"),
+                self.semantic_metadata(
+                    "exam", "Prova Tecnico Tipo 1", role="Tecnico", variant="Tipo 1"
+                ),
+            ),
+            (
+                "analista-tipo-2.pdf", exam_text("analista"),
+                self.semantic_metadata(
+                    "exam", "Prova Analista Tipo 2", role="Analista", variant="Tipo 2"
+                ),
+            ),
+            (
+                "auditor-tipo-1.pdf", exam_text("auditor"),
+                self.semantic_metadata(
+                    "exam", "Prova Auditor Tipo 1", role="Auditor", variant="Tipo 1"
+                ),
+            ),
+        ])
+        key_metadata = self.semantic_metadata(
+            "answer_key", "Gabarito definitivo multicargo"
+        ).model_copy(update={"role": None, "variant": None})
+        key = self.process_text_documents([(
+            "gabarito-multicargo.pdf",
+            """Gabarito definitivo
+Cargos: Tecnico, Analista
+Turnos: Manha
+Tipos: 1 a 2
+Tecnico - Tipo 1 (Manha)
+1 2
+A B
+Analista - Tipo 2 (Manha)
+1 2
+C D""",
+            key_metadata,
+        )])[0]
+        by_name = {str(document["filename"]): document for document in exams}
+        affected_ids = {
+            row["id"]
+            for row in self.store.exams_affected_by_answer_key(
+                str(key["document_version_id"])
+            )
+        }
+
+        self.assertEqual(
+            affected_ids,
+            {
+                by_name["tecnico-tipo-1.pdf"]["id"],
+                by_name["analista-tipo-2.pdf"]["id"],
+            },
+        )
+        self.assertEqual(
+            [
+                self.stored_question(str(by_name["tecnico-tipo-1.pdf"]["id"]), number)[
+                    "correct_answer"
+                ]
+                for number in (1, 2)
+            ],
+            ["A", "B"],
+        )
+        self.assertEqual(
+            [
+                self.stored_question(str(by_name["analista-tipo-2.pdf"]["id"]), number)[
+                    "correct_answer"
+                ]
+                for number in (1, 2)
+            ],
+            ["C", "D"],
+        )
+        self.assertEqual(
+            self.stored_question(str(by_name["auditor-tipo-1.pdf"]["id"]), 1)[
+                "answer_status"
+            ],
+            "missing",
+        )
 
     def test_collection_rejects_host_outside_selected_source(self) -> None:
         with self.assertRaisesRegex(ValueError, "host nao permitido"):
@@ -641,9 +1206,7 @@ Enunciado completo da segunda questao.
                 }
             )
             for _ in range(100):
-                job = next(
-                    item for item in self.manager.list_jobs() if item["id"] == collection_id
-                )
+                job = next(item for item in self.manager.list_jobs() if item["id"] == collection_id)
                 if job["status"] not in {"queued", "running", "processing"}:
                     break
                 threading.Event().wait(0.01)

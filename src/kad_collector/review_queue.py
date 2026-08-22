@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Literal
 
 from .answer_key import apply_answer_entries, parse_answer_key
-from .document_matching import DocumentEvidence, select_evidence_match
 from .json_utils import read_json, write_json
 from .local_review import load_or_create_review_session
 from .models import (
@@ -17,6 +16,8 @@ from .models import (
     ReviewQueue,
     ReviewQueueItem,
 )
+from .semantic_identity import AssociationCandidate, profile_from_document_record
+from .semantic_resolution import select_answer_key
 from .validation import batch_content_sha256, validate_questions
 
 _VARIANT_PATTERN = re.compile(r"\b(?:V[1-9]\d*|TIPO\s*[1-9]\d*)\b", re.IGNORECASE)
@@ -28,21 +29,6 @@ def _metadata_value(document: DocumentRecord, *names: str) -> str | None:
         if value is not None and str(value).strip():
             return str(value)
     return None
-
-
-def _evidence(document: DocumentRecord, content: str = "") -> DocumentEvidence:
-    raw_year = _metadata_value(document, "year", "ano")
-    year = int(raw_year) if raw_year and raw_year.isdigit() else None
-    return DocumentEvidence(
-        title=document.title,
-        content=content,
-        concurso=_metadata_value(document, "concurso"),
-        year=year,
-        role=_metadata_value(document, "role", "cargo"),
-        organization=_metadata_value(document, "organization", "orgao"),
-        variant=_metadata_value(document, "variant", "tipo"),
-        turn=_metadata_value(document, "turn", "turno"),
-    )
 
 
 def _variant(document: DocumentRecord) -> str | None:
@@ -63,16 +49,28 @@ def _select_answer_key(
         and not candidate.needs_ocr
         and candidate.text.strip()
     ]
-    index, reason = select_evidence_match(
-        _evidence(exam, exam_content),
-        [_evidence(candidate.document, candidate.text) for candidate in textual],
-    )
-    if index is not None:
-        return textual[index], []
-    if reason == "missing":
+    if not textual:
         return None, ["nenhum gabarito oficial textual encontrado"]
-    if reason == "no_evidence":
+    exam_profile = profile_from_document_record(exam, [(1, exam_content)])
+    association_candidates = [
+        AssociationCandidate(
+            version_id=item.document.sha256,
+            profile=profile_from_document_record(item.document, [(1, item.text)]),
+        )
+        for item in textual
+    ]
+    decision = select_answer_key(exam_profile, association_candidates)
+    if decision.outcome == "ambiguous":
+        titles = ", ".join(item.document.title for item in textual[:3])
+        return None, [f"associacao de gabarito ambigua: {titles}"]
+    if decision.selected_version_id is None and decision.outcome == "insufficient_evidence":
         return None, ["gabaritos encontrados, mas nenhum corresponde claramente a prova"]
+    if decision.selected_version_id is None and decision.outcome == "conflict":
+        return None, ["gabaritos encontrados, mas nenhum corresponde claramente a prova"]
+    if decision.selected_version_id is not None:
+        return next(
+            item for item in textual if item.document.sha256 == decision.selected_version_id
+        ), []
     titles = ", ".join(item.document.title for item in textual[:3])
     return None, [f"associacao de gabarito ambigua: {titles}"]
 

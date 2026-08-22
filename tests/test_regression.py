@@ -438,17 +438,27 @@ A A C
         definitive.write_text(
             json.dumps(
                 {
-                    "exam": {"filename": "prova.pdf", "metadata": {"year": 2026}},
+                    "exam": {"filename": "prova.pdf", "metadata": {
+                        "board": "Instituto Exemplo", "concurso": "Concurso Exemplo",
+                        "year": 2026,
+                    }},
                     "answer_keys": [
                         {
                             "id": "preliminary",
                             "filename": "preliminar.pdf",
-                            "metadata": {"document_title": "Gabarito preliminar", "year": 2026},
+                            "metadata": {"document_title": "Gabarito preliminar",
+                                         "board": "Instituto Exemplo",
+                                         "concurso": "Concurso Exemplo",
+                                         "year": 2026},
                         },
                         {
                             "id": "definitive",
                             "filename": "definitivo.pdf",
-                            "metadata": {"document_title": "Gabarito definitivo", "year": 2026},
+                            "metadata": {"document_title": "Gabarito definitivo",
+                                         "board": "Instituto Exemplo",
+                                         "concurso": "Concurso Exemplo",
+                                         "year": 2026},
+                            "predecessor_version_id": "preliminary",
                         },
                     ],
                 },

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 import threading
 import unittest
+from contextlib import closing
 from datetime import UTC, datetime
 from http import HTTPStatus
 from importlib import resources
@@ -246,7 +248,9 @@ Informações editoriais da banca.
                 blocked_writer.write(stream)
 
             store = DesktopStore(root / "collector.sqlite3")
-            job_id = store.create_job([readable, blocked], metadata(), "local")
+            job_id = store.create_job(
+                [readable, blocked], metadata(document_type="exam"), "local"
+            )
             DesktopProcessor(store).run(job_id)
 
             self.assertEqual(store.job(job_id)["status"], "completed")
@@ -264,6 +268,7 @@ Informações editoriais da banca.
             second = root / "segundo.pdf"
             write_blank_pdf(first)
             write_blank_pdf(second)
+            second.write_bytes(second.read_bytes() + b"\n% distinct second fixture")
             store = DesktopStore(root / "collector.sqlite3")
 
             with (
@@ -305,6 +310,7 @@ Informações editoriais da banca.
             second = root / "b-segundo.pdf"
             write_blank_pdf(first)
             write_blank_pdf(second)
+            second.write_bytes(second.read_bytes() + b"\n% distinct batch fixture")
             store = DesktopStore(root / "collector.sqlite3")
             job_id = store.create_job([first, second], metadata(), "local")
 
@@ -805,6 +811,52 @@ class DesktopReviewAndFilterTests(unittest.TestCase):
         self.assertIsNone(invalidated["exported_at"])
         self.assertEqual(self.store.audit_log(question_id)[0]["action"], "decision_invalidated")
 
+    def test_question_content_and_decision_fingerprints_are_persisted_separately(self) -> None:
+        original = valid_question(1)
+        question_id = self.store.save_question(
+            self.document["id"], original, full_classification()
+        )
+        with closing(self.store._connect()) as connection:
+            before = connection.execute(
+                "SELECT fingerprint, decision_fingerprint FROM questions WHERE id = ?",
+                (question_id,),
+            ).fetchone()
+
+        changed_answer = original.model_copy(update={"correct_answer": "C"})
+        self.store.save_question(
+            self.document["id"], changed_answer, full_classification()
+        )
+        with closing(self.store._connect()) as connection:
+            after = connection.execute(
+                "SELECT fingerprint, decision_fingerprint FROM questions WHERE id = ?",
+                (question_id,),
+            ).fetchone()
+
+        self.assertIsNotNone(before["decision_fingerprint"])
+        self.assertEqual(after["fingerprint"], before["fingerprint"])
+        self.assertNotEqual(after["decision_fingerprint"], before["decision_fingerprint"])
+
+    def test_changed_official_answer_invalidates_decision(self) -> None:
+        original = valid_question(1)
+        question_id = self.store.save_question(
+            self.document["id"], original, full_classification()
+        )
+        self.store.decide_question(
+            question_id, "approved", actor="revisora", notes="Conferida no PDF."
+        )
+
+        self.store.save_question(
+            self.document["id"],
+            original.model_copy(update={"correct_answer": "C"}),
+            full_classification(),
+        )
+
+        invalidated = self.store.question(question_id)
+        self.assertEqual(invalidated["status"], "pending")
+        self.assertIsNone(invalidated["reviewer"])
+        self.assertIsNone(invalidated["review_notes"])
+        self.assertEqual(self.store.audit_log(question_id)[0]["action"], "decision_invalidated")
+
     def test_missing_https_origin_is_sent_to_exceptions(self) -> None:
         missing_origin = metadata(provider=None, source_url=None)
         self.store.update_document_metadata(self.document["id"], missing_origin, actor="revisora")
@@ -833,6 +885,385 @@ class DesktopReviewAndFilterTests(unittest.TestCase):
 
 
 class DesktopSmokeTests(unittest.TestCase):
+    def test_bootstrap_exposes_semantic_counts(self) -> None:
+        with TemporaryDirectory() as directory:
+            payload = DesktopApplication(Path(directory)).bootstrap()
+
+        self.assertEqual(
+            set(payload["semanticSummary"]),
+            {
+                "observations",
+                "logicalVersions",
+                "exactDuplicates",
+                "republications",
+                "activeLinks",
+                "uncertain",
+            },
+        )
+
+    def test_identity_endpoint_exposes_evidence_without_pdf_text(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "prova-identidade.pdf"
+            write_text_pdf(
+                pdf_path,
+                [["Banca: Banca Oficial", "Concurso: Concurso Nacional 2026", "Ano: 2026"]],
+            )
+            application = DesktopApplication(root / "data")
+            job_id = application.store.create_job(
+                [pdf_path], metadata(document_type="exam"), "local"
+            )
+            document = application.store.documents_for_job(job_id)[0]
+            page_text = "TEXTO INTEGRAL SIGILOSO DA PÁGINA"
+            application.store.save_page(document["id"], 1, page_text, status="text")
+            application.store.resolve_extracted_document(document["id"])
+            with closing(application.store._connect()) as connection:
+                connection.execute(
+                    """
+                    INSERT INTO document_identity_events
+                    (event_key, document_id, document_version_id, action, actor,
+                     algorithm_version, payload_json, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        "test-raw-origin-event",
+                        document["id"],
+                        application.store.semantic_document_view(document["id"])["documentVersionId"],
+                        "test",
+                        "system",
+                        "semantic-identity-v1",
+                        json.dumps({"origin": "https://private.example/path"}),
+                        "2026-08-21T00:00:00+00:00",
+                    ),
+                )
+                connection.commit()
+            server, thread, url = start_desktop_server(application)
+            try:
+                endpoint = f"{url}api/documents/{document['id']}/identity"
+                with self.assertRaises(HTTPError) as context:
+                    urlopen(endpoint, timeout=3)
+                self.assertEqual(context.exception.code, HTTPStatus.FORBIDDEN)
+
+                request = Request(
+                    endpoint,
+                    headers={"X-KAD-Desktop-Token": application.token},
+                )
+                with urlopen(request, timeout=3) as response:
+                    payload = json.loads(response.read())
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
+        self.assertEqual(payload["resolution"], "new_identity")
+        self.assertIn("algorithmVersion", payload)
+        self.assertIn("evidence", payload)
+        self.assertIn("reason", payload)
+        self.assertNotIn("canonicalText", payload)
+        self.assertNotIn(page_text, json.dumps(payload, ensure_ascii=False))
+        self.assertNotIn("origin", json.dumps(payload, ensure_ascii=False))
+        self.assertTrue(payload["events"])
+        self.assertTrue(all("actor" in event for event in payload["events"]))
+
+    def test_identity_get_and_correction_put_return_bounded_sanitized_dtos(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "prova-dto.pdf"
+            write_blank_pdf(pdf_path)
+            secret = "DO-NOT-RETURN-SEMANTIC-SECRET"
+            long_board = ("B" * 220) + secret
+            application = DesktopApplication(root / "data")
+            job_id = application.store.create_job(
+                [pdf_path],
+                metadata(
+                    document_type="exam", board=None, concurso=None, year=None,
+                    role=None, organization=None,
+                ),
+                "local",
+            )
+            document = application.store.documents_for_job(job_id)[0]
+            application.store.save_page(
+                document["id"], 1,
+                f"Banca: {long_board}\nConcurso: Concurso DTO\nAno: 2026",
+                status="text",
+            )
+            self.assertEqual(
+                application.store.resolve_extracted_document(document["id"]).outcome,
+                "new_identity",
+            )
+            server, thread, url = start_desktop_server(application)
+            try:
+                origin = url.rstrip("/")
+                get_request = Request(
+                    f"{url}api/documents/{document['id']}/identity",
+                    headers={"X-KAD-Desktop-Token": application.token},
+                )
+                with urlopen(get_request, timeout=3) as response:
+                    get_payload = json.loads(response.read())
+
+                correction = metadata(
+                    document_type="exam", board="Banca corrigida", concurso="Concurso DTO",
+                    year=2026, role=None, organization=None,
+                ).model_dump(mode="json")
+                put_request = Request(
+                    f"{url}api/documents/{document['id']}",
+                    data=json.dumps({"metadata": correction, "actor": "coordenador"}).encode(),
+                    method="PUT",
+                    headers={
+                        "Content-Type": "application/json",
+                        "Origin": origin,
+                        "X-KAD-Desktop-Token": application.token,
+                    },
+                )
+                with urlopen(put_request, timeout=3) as response:
+                    put_payload = json.loads(response.read())
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
+        for payload in (get_payload, put_payload):
+            encoded = json.dumps(payload, ensure_ascii=False)
+            self.assertNotIn(secret, encoded)
+            self.assertNotIn('"raw_values"', encoded)
+            self.assertNotIn('"raw_value"', encoded)
+            self.assertLess(len(encoded), 20_000)
+
+    def test_identity_endpoint_preserves_evidence_for_an_uncertain_document(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "prova-incerta.pdf"
+            write_text_pdf(pdf_path, [["Questão 1", "A) Azul", "B) Verde"]])
+            application = DesktopApplication(root / "data")
+            job_id = application.store.create_job(
+                [pdf_path],
+                metadata(
+                    document_type="exam",
+                    board=None,
+                    concurso=None,
+                    year=None,
+                    role=None,
+                    organization=None,
+                ),
+                "local",
+            )
+            document = application.store.documents_for_job(job_id)[0]
+            application.store.save_page(
+                document["id"], 1, "Questão 1\nA) Azul\nB) Verde", status="text"
+            )
+            self.assertEqual(
+                application.store.resolve_extracted_document(document["id"]).outcome,
+                "uncertain",
+            )
+            server, thread, url = start_desktop_server(application)
+            try:
+                request = Request(
+                    f"{url}api/documents/{document['id']}/identity",
+                    headers={"X-KAD-Desktop-Token": application.token},
+                )
+                with urlopen(request, timeout=3) as response:
+                    payload = json.loads(response.read())
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
+        self.assertEqual(payload["identityStatus"], "unknown")
+        self.assertEqual(payload["resolution"], "uncertain")
+        self.assertIsInstance(payload["evidence"], dict)
+        self.assertIn("board", payload["evidence"])
+        self.assertIsNotNone(payload["algorithmVersion"])
+
+    def test_identity_endpoint_explains_legacy_uncertain_events_without_inventing_identity(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "prova-incerta-legada.pdf"
+            write_text_pdf(pdf_path, [["Questão 1", "A) Azul", "B) Verde"]])
+            application = DesktopApplication(root / "data")
+            job_id = application.store.create_job(
+                [pdf_path],
+                metadata(
+                    document_type="exam",
+                    board=None,
+                    concurso=None,
+                    year=None,
+                    role=None,
+                    organization=None,
+                ),
+                "local",
+            )
+            document = application.store.documents_for_job(job_id)[0]
+            application.store.save_page(
+                document["id"], 1, "Questão 1\nA) Azul\nB) Verde", status="text"
+            )
+            application.store.resolve_extracted_document(document["id"])
+            legacy_reason = "identidade semântica insuficiente no registro legado"
+            with closing(application.store._connect()) as connection:
+                connection.execute(
+                    "UPDATE document_identity_events SET payload_json = ? "
+                    "WHERE document_id = ? AND action = 'uncertain'",
+                    (json.dumps({"reason": legacy_reason}), document["id"]),
+                )
+                connection.commit()
+            server, thread, url = start_desktop_server(application)
+            try:
+                endpoint = f"{url}api/documents/{document['id']}/identity"
+                request = Request(
+                    endpoint,
+                    headers={"X-KAD-Desktop-Token": application.token},
+                )
+                with urlopen(request, timeout=3) as response:
+                    legacy_payload = json.loads(response.read())
+
+                with closing(application.store._connect()) as connection:
+                    connection.execute(
+                        "UPDATE document_identity_events SET payload_json = ? "
+                        "WHERE document_id = ? AND action = 'uncertain'",
+                        (json.dumps({}), document["id"]),
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO document_identity_events
+                        (event_key, document_id, action, actor, algorithm_version, payload_json,
+                         created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            "legacy-unrelated-reason",
+                            document["id"],
+                            "observed",
+                            "system",
+                            "semantic-identity-v1",
+                            json.dumps({"reason": "motivo de outro evento"}),
+                            "2099-01-01T00:00:00+00:00",
+                        ),
+                    )
+                    connection.commit()
+                with urlopen(request, timeout=3) as response:
+                    missing_reason_payload = json.loads(response.read())
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
+        self.assertEqual(legacy_payload["identityStatus"], "unknown")
+        self.assertIsNone(legacy_payload["identity"])
+        self.assertEqual(
+            legacy_payload["evidence"], {"resolution": {"reason": legacy_reason}}
+        )
+        self.assertEqual(legacy_payload["reason"], legacy_reason)
+        self.assertEqual(legacy_payload["algorithmVersion"], "semantic-identity-v1")
+        self.assertIsNone(missing_reason_payload["identity"])
+        self.assertEqual(missing_reason_payload["evidence"], {})
+        self.assertIsNone(missing_reason_payload["reason"])
+        self.assertEqual(missing_reason_payload["algorithmVersion"], "semantic-identity-v1")
+
+    def test_packaged_ui_renders_semantic_identity_through_exported_helpers(self) -> None:
+        with TemporaryDirectory() as directory:
+            application = DesktopApplication(Path(directory))
+            server, thread, url = start_desktop_server(application)
+            try:
+                with urlopen(f"{url}desktop.js", timeout=3) as response:
+                    self.assertEqual(response.status, HTTPStatus.OK)
+                    javascript = response.read()
+                with urlopen(f"{url}desktop.css", timeout=3) as response:
+                    self.assertEqual(response.status, HTTPStatus.OK)
+                    self.assertTrue(response.read())
+                resource_path = Path(directory) / "desktop_app.js"
+                resource_path.write_bytes(javascript)
+                view = {
+                    "identityStatus": "unknown",
+                    "resolution": "uncertain",
+                    "documentRole": "exam",
+                    "answerKeyState": "unknown",
+                    "versionNumber": None,
+                    "identity": None,
+                    "evidence": {"year": {"reason": "sem evidência"}},
+                    "reason": "identidade semântica insuficiente",
+                    "algorithmVersion": "semantic-identity-v1",
+                }
+                runner = (
+                    "const helpers = require(process.argv[1]);"
+                    "const view = JSON.parse(process.argv[2]);"
+                    "console.log(JSON.stringify({"
+                    "badge: helpers.semanticIdentityBadge(view),"
+                    "fallbackBadges: [null, 'observed', 'unexpected',"
+                    " 'new_identity', 'new_version']"
+                    ".map((resolution) => helpers.semanticIdentityBadge({resolution})),"
+                    "presentation: helpers.semanticIdentityPresentation(view)"
+                    "}));"
+                )
+                completed = subprocess.run(
+                    ["node", "-e", runner, str(resource_path), json.dumps(view)],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    timeout=10,
+                )
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
+        contract = json.loads(completed.stdout)
+        self.assertEqual(contract["badge"], "Exceção")
+        self.assertEqual(
+            contract["fallbackBadges"],
+            [None, None, None, "Nova versão", "Nova versão"],
+        )
+        self.assertEqual(contract["presentation"]["identityLabel"], "Identidade desconhecida")
+        self.assertFalse(contract["presentation"]["showIdentityConfidence"])
+        self.assertEqual(
+            contract["presentation"]["details"]["reason"],
+            "identidade semântica insuficiente",
+        )
+
+    def test_packaged_ui_renders_safe_semantic_event_history_with_text_content(self) -> None:
+        package = resources.files("kad_collector")
+        javascript = package.joinpath("desktop_app.js").read_text(encoding="utf-8")
+        with TemporaryDirectory() as directory:
+            resource_path = Path(directory) / "desktop_app.js"
+            resource_path.write_text(javascript, encoding="utf-8")
+            runner = r"""
+const helpers = require(process.argv[1]);
+const nodes = [];
+global.document = {createElement(tag) {
+  const node = {
+    tag, children: [], value: '',
+    append(...children) {this.children.push(...children);}
+  };
+  Object.defineProperty(node, 'textContent', {
+    set(value) {this.value = String(value);}, get() {return this.value;}
+  });
+  Object.defineProperty(node, 'innerHTML', {set() {throw new Error('innerHTML is forbidden');}});
+  nodes.push(node);
+  return node;
+}};
+const root = {children: [], append(...children) {this.children.push(...children);}};
+helpers.renderSemanticIdentityHistory(root, [{
+  action: '<img src=x onerror=alert(1)>', actor: 'coordenador',
+  createdAt: '2026-08-21T00:00:00+00:00', reason: 'correção humana',
+  algorithmVersion: 'semantic-identity-v1'
+}]);
+function text(node) {return [node.value || '', ...(node.children || []).flatMap(text)];}
+console.log(JSON.stringify(text(root).filter(Boolean)));
+"""
+            completed = subprocess.run(
+                ["node", "-e", runner, str(resource_path)],
+                check=False, capture_output=True, text=True, encoding="utf-8", timeout=10,
+            )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        rendered = " ".join(json.loads(completed.stdout))
+        for value in (
+            "<img src=x onerror=alert(1)>", "coordenador",
+            "2026-08-21T00:00:00+00:00", "correção humana", "semantic-identity-v1",
+        ):
+            self.assertIn(value, rendered)
+
     def test_packaged_editorial_ui_contains_pending_and_batch_review_controls(self) -> None:
         package = resources.files("kad_collector")
         html = package.joinpath("desktop_ui.html").read_text(encoding="utf-8")
@@ -852,6 +1283,7 @@ class DesktopSmokeTests(unittest.TestCase):
         self.assertIn("activateEditorialQueue('pending')", javascript)
         self.assertIn("vinculadas ao gabarito", html)
         self.assertIn("Resposta oficial (gabarito)", html)
+        self.assertIn("Arquivo já conhecido; nenhuma nova tarefa foi criada.", javascript)
 
     def test_packaged_resources_and_database_bootstrap(self) -> None:
         with TemporaryDirectory() as directory:
@@ -937,6 +1369,200 @@ class DesktopSmokeTests(unittest.TestCase):
                 )
                 with urlopen(authorized, timeout=3) as response:
                     self.assertEqual(response.status, HTTPStatus.OK)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
+    def test_document_identity_correction_endpoint_validates_actor_schema_and_returns_result(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "prova-correcao.pdf"
+            write_text_pdf(
+                pdf_path,
+                [["Banca: Banca Oficial", "Concurso: Concurso Nacional 2026", "Ano: 2026"]],
+            )
+            application = DesktopApplication(root / "data")
+            original_metadata = metadata(document_type="exam", role=None, variant=None)
+            job_id = application.store.create_job([pdf_path], original_metadata, "local")
+            document = application.store.documents_for_job(job_id)[0]
+            application.store.save_page(
+                document["id"],
+                1,
+                "Banca: Banca Oficial\nConcurso: Concurso Nacional 2026\nAno: 2026",
+                status="text",
+            )
+            original = application.store.resolve_extracted_document(document["id"])
+            server, thread, url = start_desktop_server(application)
+            try:
+                origin = url.rstrip("/")
+
+                def put(
+                    payload: dict[str, object], *, token: bool = True
+                ) -> tuple[int, dict[str, object]]:
+                    headers = {"Content-Type": "application/json", "Origin": origin}
+                    if token:
+                        headers["X-KAD-Desktop-Token"] = application.token
+                    request = Request(
+                        f"{url}api/documents/{document['id']}",
+                        data=json.dumps(payload).encode("utf-8"),
+                        method="PUT",
+                        headers=headers,
+                    )
+                    try:
+                        with urlopen(request, timeout=3) as response:
+                            return response.status, json.loads(response.read())
+                    except HTTPError as exc:
+                        return exc.code, json.loads(exc.read())
+
+                correction = metadata(
+                    document_type="exam",
+                    role="Auditor",
+                    stage="Segunda fase",
+                    turn="Manhã",
+                    variant="Tipo 2",
+                ).model_dump(mode="json")
+                status, body = put({"metadata": correction, "actor": "coordenador"}, token=False)
+                self.assertEqual(status, HTTPStatus.FORBIDDEN)
+                self.assertEqual(set(body), {"error"})
+
+                status, body = put({"metadata": correction, "actor": "   "})
+                self.assertEqual(status, HTTPStatus.BAD_REQUEST)
+                self.assertEqual(body, {"error": "campo actor é obrigatório"})
+
+                status, body = put(
+                    {"metadata": correction, "actor": "coordenador", "unexpected": "secret"}
+                )
+                self.assertEqual(status, HTTPStatus.BAD_REQUEST)
+                self.assertEqual(set(body), {"error"})
+                self.assertNotIn("Traceback", str(body))
+                self.assertNotIn(application.token, str(body))
+
+                status, body = put(
+                    {
+                        "metadata": {**correction, "unexpected": "secret"},
+                        "actor": "coordenador",
+                    }
+                )
+                self.assertEqual(status, HTTPStatus.BAD_REQUEST)
+                self.assertEqual(body, {"error": "metadados do documento inválidos"})
+                self.assertNotIn("secret", str(body))
+                self.assertNotIn("pydantic.dev", str(body))
+
+                status, body = put({"metadata": correction, "actor": "coordenador"})
+                self.assertEqual(status, HTTPStatus.OK)
+                self.assertEqual(set(body), {"ok", "identityResolution"})
+                self.assertTrue(body["ok"])
+                resolution = body["identityResolution"]
+                self.assertEqual(resolution["document_version_id"], original.document_version_id)
+                self.assertEqual(
+                    resolution["profile"]["identity"]["roles"]["normalized_values"],
+                    ["auditor"],
+                )
+                self.assertEqual(
+                    resolution["profile"]["identity"]["turns"]["normalized_values"],
+                    ["manhã"],
+                )
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
+    def test_import_api_reports_exact_duplicate_without_creating_an_empty_job(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "prova-repetida.pdf"
+            write_blank_pdf(pdf_path)
+            application = DesktopApplication(root / "data")
+            server, thread, url = start_desktop_server(application)
+            try:
+                origin = url.rstrip("/")
+                body = json.dumps(
+                    {
+                        "paths": [str(pdf_path)],
+                        "metadata": {"document_type": "exam", "year": 2026},
+                        "classifierProvider": "local",
+                    }
+                ).encode("utf-8")
+
+                def import_once() -> tuple[int, dict[str, object]]:
+                    request = Request(
+                        f"{url}api/import",
+                        data=body,
+                        method="POST",
+                        headers={
+                            "Content-Type": "application/json",
+                            "Origin": origin,
+                            "X-KAD-Desktop-Token": application.token,
+                        },
+                    )
+                    with urlopen(request, timeout=3) as response:
+                        return response.status, json.loads(response.read())
+
+                with patch.object(application.processor, "start") as start:
+                    first_status, first = import_once()
+                    second_status, second = import_once()
+
+                with patch.object(
+                    application, "import_pdfs", return_value=["batch-one", "batch-two"]
+                ):
+                    batch_status, batch = import_once()
+
+                self.assertEqual(first_status, HTTPStatus.CREATED)
+                self.assertEqual(set(first), {"jobId", "jobIds", "exactDuplicate"})
+                self.assertEqual(len(first["jobIds"]), 1)
+                self.assertEqual(first["jobId"], first["jobIds"][0])
+                self.assertFalse(first["exactDuplicate"])
+                self.assertEqual(second_status, HTTPStatus.CREATED)
+                self.assertEqual(
+                    second, {"jobId": None, "jobIds": [], "exactDuplicate": True}
+                )
+                self.assertEqual(batch_status, HTTPStatus.CREATED)
+                self.assertEqual(
+                    batch,
+                    {
+                        "jobId": None,
+                        "jobIds": ["batch-one", "batch-two"],
+                        "exactDuplicate": False,
+                    },
+                )
+                start.assert_called_once_with(first["jobIds"][0])
+                self.assertEqual(len(application.store.list_jobs()), 1)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
+    def test_import_api_rejects_empty_selection_and_directory_without_pdfs(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            empty_directory = root / "empty"
+            empty_directory.mkdir()
+            application = DesktopApplication(root / "data")
+            server, thread, url = start_desktop_server(application)
+            try:
+                origin = url.rstrip("/")
+                for paths in ([], [str(empty_directory)]):
+                    with self.subTest(paths=paths):
+                        request = Request(
+                            f"{url}api/import",
+                            data=json.dumps({"paths": paths, "metadata": {}}).encode(),
+                            method="POST",
+                            headers={
+                                "Content-Type": "application/json",
+                                "Origin": origin,
+                                "X-KAD-Desktop-Token": application.token,
+                            },
+                        )
+                        with self.assertRaises(HTTPError) as context:
+                            urlopen(request, timeout=3)
+                        self.assertEqual(context.exception.code, HTTPStatus.BAD_REQUEST)
+                        self.assertEqual(
+                            json.loads(context.exception.read()),
+                            {"error": "selecione ao menos um PDF"},
+                        )
             finally:
                 server.shutdown()
                 server.server_close()
