@@ -83,6 +83,7 @@ def _editorial_metadata(document: NormalizedDocument) -> DesktopImportMetadata:
     aliases = {
         "banca": "board",
         "ano": "year",
+        "ano_publicacao": "year",
         "cargo": "role",
         "orgao": "organization",
     }
@@ -803,6 +804,14 @@ class DesktopStore:
         with closing(self._connect()) as connection:
             return active_answer_key_candidates(connection, exam_version_id)
 
+    def answer_key_version_ids(self) -> list[str]:
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                "SELECT id FROM document_versions WHERE document_role = 'answer_key' "
+                "ORDER BY identity_key, version_number, id"
+            ).fetchall()
+        return [cast(str, row["id"]) for row in rows]
+
     def exams_affected_by_answer_key(
         self, answer_key_version_id: str
     ) -> list[dict[str, Any]]:
@@ -1217,6 +1226,17 @@ class DesktopStore:
         profile = extract_semantic_profile(normalized, pages)
         with closing(self._connect()) as connection:
             result = resolve_document_version(connection, document_id, profile, _now())
+            effective_years = profile.identity.year.normalized_values
+            if result.outcome != "uncertain" and len(effective_years) == 1:
+                effective_year = effective_years[0]
+                if isinstance(effective_year, int):
+                    metadata = DesktopImportMetadata.model_validate(document["metadata"])
+                    if metadata.year != effective_year:
+                        metadata = metadata.model_copy(update={"year": effective_year})
+                        connection.execute(
+                            "UPDATE documents SET metadata_json = ?, updated_at = ? WHERE id = ?",
+                            (_json(metadata.model_dump(mode="json")), _now(), document_id),
+                        )
             connection.commit()
         return result
 

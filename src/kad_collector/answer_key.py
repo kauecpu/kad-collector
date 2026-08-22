@@ -43,7 +43,7 @@ _GRID_ANSWER = re.compile(r"[A-HX*]", re.IGNORECASE)
 @dataclass
 class _AnswerGrid:
     label: str
-    variant: int
+    variant: int | None
     section: str | None
     entries: dict[int, AnswerEntry]
 
@@ -70,8 +70,8 @@ def _parse_answer_grids(text: str) -> list[_AnswerGrid]:
     active: _AnswerGrid | None = None
     pending_numbers: list[int] = []
     pending_single_number: int | None = None
-    for raw_line in text.splitlines():
-        line = " ".join(raw_line.split())
+    lines = [" ".join(raw_line.split()) for raw_line in text.splitlines()]
+    for index, line in enumerate(lines):
         heading = _GRID_HEADING.match(line)
         if heading is not None:
             if active is not None and active.entries:
@@ -82,6 +82,24 @@ def _parse_answer_grids(text: str) -> list[_AnswerGrid]:
                 section=heading.group("section") or heading.group("turn"),
                 entries={},
             )
+            pending_numbers = []
+            pending_single_number = None
+            continue
+        next_line = next((item for item in lines[index + 1 :] if item), "")
+        next_numbers = _GRID_NUMBER.findall(next_line)
+        untyped_heading = (
+            bool(re.search(r"[A-Za-zÀ-ÿ]", line))
+            and re.fullmatch(r"(?:[A-HX*][.\s]*)+", line, re.IGNORECASE) is None
+            and len(next_numbers) >= 2
+            and re.fullmatch(
+                r"(?:\d{1,3}(?:ING|ESP)?\s*)+", next_line, re.IGNORECASE
+            )
+            is not None
+        )
+        if untyped_heading:
+            if active is not None and active.entries:
+                grids.append(active)
+            active = _AnswerGrid(label=line, variant=None, section=None, entries={})
             pending_numbers = []
             pending_single_number = None
             continue
@@ -107,7 +125,7 @@ def _parse_answer_grids(text: str) -> list[_AnswerGrid]:
             continue
         answer_tokens = _GRID_ANSWER.findall(line)
         if pending_numbers and len(answer_tokens) == len(pending_numbers) and re.fullmatch(
-            r"(?:[A-HX*]\s*)+", line, re.IGNORECASE
+            r"(?:[A-HX*][.\s]*)+", line, re.IGNORECASE
         ):
             for number, raw_answer in zip(pending_numbers, answer_tokens, strict=True):
                 answer = raw_answer.upper()
@@ -133,7 +151,11 @@ def _select_answer_grid(
     if not grids:
         return None
     variant_number = _variant_number(variant)
-    candidates = [grid for grid in grids if variant_number in {None, grid.variant}]
+    candidates = [
+        grid
+        for grid in grids
+        if variant_number is None or grid.variant in {None, variant_number}
+    ]
     if not candidates:
         return None
     turn_words = _normalized_words(turn or "")

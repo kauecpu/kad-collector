@@ -17,6 +17,7 @@ from .semantic_identity import (
     KnownDocumentVersion,
     SemanticField,
     canonical_json,
+    semantic_role_values_compatible,
     stable_sha256,
 )
 
@@ -63,6 +64,12 @@ def _weak_only(field: SemanticField) -> bool:
     return bool(field.evidence) and all(item.strength == "weak" for item in field.evidence)
 
 
+def _role_fields_compatible(exam: SemanticField, candidate: SemanticField) -> bool:
+    return semantic_role_values_compatible(
+        exam.normalized_values, candidate.normalized_values
+    )
+
+
 def _assess(exam: DocumentSemanticProfile, item: AssociationCandidate) -> CandidateAssessment:
     candidate = item.profile
     conflicts: list[str] = []
@@ -95,7 +102,14 @@ def _assess(exam: DocumentSemanticProfile, item: AssociationCandidate) -> Candid
             if name in {"role", "stage", "turn", "variant"}:
                 incomplete_scope = True
             continue
-        if set(exam_field.normalized_values).isdisjoint(candidate_field.normalized_values):
+        values_compatible = (
+            _role_fields_compatible(exam_field, candidate_field)
+            if name == "role"
+            else not set(exam_field.normalized_values).isdisjoint(
+                candidate_field.normalized_values
+            )
+        )
+        if not values_compatible:
             conflicts.append(f"{name}: valores incompatíveis")
             continue
         matched.append(name)
@@ -178,6 +192,7 @@ def select_answer_key(
     second = next((item for item in compatible if item.version_id != top.version_id), None)
     best_semantic = semantic_score(top)
     tied = [item for item in compatible if semantic_score(item) == best_semantic]
+    definitive_tiebreak = False
     if len(tied) > 1:
         tied_candidates = [
             next(item for item in candidates if item.version_id == assessment.version_id)
@@ -191,18 +206,17 @@ def select_answer_key(
             item for item in tied_candidates
             if item.profile.answer_key_state == "preliminary"
         ]
-        successors = [item for item in definitives if any(
-            item.predecessor_version_id == preliminary.version_id for preliminary in preliminaries
-        )]
-        if (
-            len(tied_candidates) == 2
-            and len(definitives) == 1
-            and len(preliminaries) == 1
-            and len(successors) == 1
-        ):
-            definitive = successors[0]
+        unique_definitive = (
+            definitives[0]
+            if len(definitives) == 1
+            and len(preliminaries) == len(tied_candidates) - 1
+            else None
+        )
+        if unique_definitive is not None:
+            definitive = unique_definitive
             top = next(item for item in compatible if item.version_id == definitive.version_id)
             second = next((item for item in compatible if item.version_id != top.version_id), None)
+            definitive_tiebreak = True
         else:
             return DocumentAssociationDecision(
                 outcome="ambiguous", selected_version_id=None, assessments=assessments,
@@ -224,7 +238,7 @@ def select_answer_key(
     )
     if (
         second is not None and margin is not None and margin < MINIMUM_MARGIN
-        and not predecessor_exception
+        and not predecessor_exception and not definitive_tiebreak
     ):
         return DocumentAssociationDecision(
             outcome="ambiguous", selected_version_id=None, assessments=assessments,

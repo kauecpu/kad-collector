@@ -127,6 +127,53 @@ class SemanticResolutionDecisionTests(unittest.TestCase):
         )), [self._key(roles=role)])
         self.assertEqual(decision.selected_version_id, "key-1")
 
+    def test_role_codes_and_pdf_punctuation_do_not_block_same_role(self) -> None:
+        exam_role = SemanticField.from_evidence(
+            "roles",
+            (
+                SemanticEvidence.metadata(
+                    "role", "Cns201 Auditor Fiscal Da Receita Federal Do Brasil Afrfb"
+                ),
+            ),
+        )
+        key_role = SemanticField.from_evidence(
+            "roles",
+            (
+                SemanticEvidence.pdf_text(
+                    "page:1:answer-grid-role",
+                    "Auditor-Fiscal da Receita Federal do Brasil",
+                ),
+            ),
+        )
+
+        decision = select_answer_key(
+            self._exam(roles=exam_role),
+            [self._key(roles=key_role)],
+        )
+
+        self.assertEqual(decision.selected_version_id, "key-1")
+
+    def test_short_role_name_matches_same_role_with_organization_suffix(self) -> None:
+        exam_role = SemanticField.from_evidence(
+            "roles",
+            (
+                SemanticEvidence.metadata(
+                    "role", "Auditor-Fiscal da Receita Federal do Brasil"
+                ),
+            ),
+        )
+        key_role = SemanticField.from_evidence(
+            "roles",
+            (SemanticEvidence.pdf_text("page:1:answer-grid-role", "Auditor Fiscal"),),
+        )
+
+        decision = select_answer_key(
+            self._exam(roles=exam_role),
+            [self._key(roles=key_role)],
+        )
+
+        self.assertEqual(decision.selected_version_id, "key-1")
+
     def test_types_one_to_four_do_not_mix_answers(self) -> None:
         candidates = []
         for number in range(1, 5):
@@ -140,6 +187,26 @@ class SemanticResolutionDecisionTests(unittest.TestCase):
             )
             decision = select_answer_key(self._exam(variants=variant), candidates)
             self.assertEqual(decision.selected_version_id, f"key-{number}")
+
+    def test_unique_definitive_breaks_tie_with_preliminary_same_scope(self) -> None:
+        preliminary = self._key("preliminary").model_copy(
+            update={
+                "profile": self._key("preliminary").profile.model_copy(
+                    update={"answer_key_state": "preliminary"}
+                )
+            }
+        )
+        definitive = self._key("definitive").model_copy(
+            update={
+                "profile": self._key("definitive").profile.model_copy(
+                    update={"answer_key_state": "definitive"}
+                )
+            }
+        )
+
+        decision = select_answer_key(self._exam(), [preliminary, definitive])
+
+        self.assertEqual(decision.selected_version_id, "definitive")
 
     def test_title_evidence_adds_at_most_two_points(self) -> None:
         weak = SemanticField(
@@ -247,13 +314,13 @@ class SemanticResolutionDecisionTests(unittest.TestCase):
         ])
         self.assertEqual(decision.outcome, "ambiguous")
 
-    def test_definitive_without_predecessor_does_not_break_tie(self) -> None:
-        preliminary = self._key("pre").profile.model_copy(
-            update={"answer_key_state": "preliminary"}
+    def test_definitive_does_not_break_tie_with_unknown_candidate_state(self) -> None:
+        unknown = self._key("unknown").profile.model_copy(
+            update={"answer_key_state": None}
         )
         definitive = self._key("def").profile.model_copy(update={"answer_key_state": "definitive"})
         decision = select_answer_key(self._exam(), [
-            AssociationCandidate(version_id="pre", profile=preliminary),
+            AssociationCandidate(version_id="unknown", profile=unknown),
             AssociationCandidate(version_id="def", profile=definitive),
         ])
         self.assertEqual(decision.outcome, "ambiguous")

@@ -3,8 +3,10 @@ from __future__ import annotations
 import hashlib
 import re
 import threading
+import unicodedata
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from html.parser import HTMLParser
 from pathlib import Path
@@ -154,10 +156,252 @@ class _LinkParser(HTMLParser):
             self._text = []
 
 
+class _DatedLinkParser(HTMLParser):
+    """Associates links with a unique year from their smallest dated HTML block."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._containers: list[dict[str, set[str]]] = []
+        self._href: str | None = None
+        self.link_years: dict[str, set[str]] = {}
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        normalized_tag = tag.casefold()
+        attributes = {name.casefold(): value for name, value in attrs}
+        if normalized_tag == "div":
+            self._containers.append({"years": set(), "links": set()})
+            return
+        if normalized_tag == "time":
+            value = attributes.get("datetime") or ""
+            match = re.match(r"((?:19|20)\d{2})-\d{2}-\d{2}(?:T|$)", value)
+            if match is not None:
+                for container in self._containers:
+                    container["years"].add(match.group(1))
+            return
+        if normalized_tag == "a" and self._href is None:
+            self._href = attributes.get("href")
+
+    def handle_endtag(self, tag: str) -> None:
+        normalized_tag = tag.casefold()
+        if normalized_tag == "a" and self._href is not None:
+            for container in self._containers:
+                container["links"].add(self._href)
+            self._href = None
+            return
+        if normalized_tag != "div" or not self._containers:
+            return
+        container = self._containers.pop()
+        if len(container["years"]) != 1:
+            return
+        year = next(iter(container["years"]))
+        for href in container["links"]:
+            self.link_years.setdefault(href, set()).add(year)
+
+
+@dataclass
+class _DatedStageContainer:
+    years: set[str] = field(default_factory=set)
+    links: set[str] = field(default_factory=set)
+    text: list[str] = field(default_factory=list)
+
+
+def _stage_from_context(value: str) -> str | None:
+    decomposed = unicodedata.normalize("NFKD", value)
+    normalized = "".join(
+        character for character in decomposed if not unicodedata.combining(character)
+    ).casefold()
+    if "curso de formacao" in normalized:
+        stage = "curso de formação"
+    elif "prova objetiva" in normalized:
+        stage = "prova objetiva"
+    else:
+        return None
+    if "sub judice" in normalized:
+        stage += " sub judice"
+    return stage
+
+
+class _DatedStageParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._containers: list[_DatedStageContainer] = []
+        self._href: str | None = None
+        self._candidates: dict[str, tuple[tuple[int, int], str | None]] = {}
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        normalized_tag = tag.casefold()
+        attributes = {name.casefold(): value for name, value in attrs}
+        if normalized_tag == "div":
+            self._containers.append(_DatedStageContainer())
+            return
+        if normalized_tag == "time":
+            value = attributes.get("datetime") or ""
+            match = re.match(r"((?:19|20)\d{2})-\d{2}-\d{2}(?:T|$)", value)
+            if match is not None:
+                for container in self._containers:
+                    container.years.add(match.group(1))
+            return
+        if normalized_tag == "a" and self._href is None:
+            self._href = attributes.get("href")
+
+    def handle_data(self, data: str) -> None:
+        for container in self._containers:
+            container.text.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        normalized_tag = tag.casefold()
+        if normalized_tag == "a" and self._href is not None:
+            for container in self._containers:
+                container.links.add(self._href)
+            self._href = None
+            return
+        if normalized_tag != "div" or not self._containers:
+            return
+        container = self._containers.pop()
+        if len(container.years) != 1 or not container.links:
+            return
+        text = " ".join(" ".join(container.text).split())
+        stage = _stage_from_context(text)
+        if stage is None:
+            return
+        score = (len(container.links), len(text))
+        for href in container.links:
+            previous = self._candidates.get(href)
+            if previous is None or score < previous[0]:
+                self._candidates[href] = (score, stage)
+            elif score == previous[0] and previous[1] != stage:
+                self._candidates[href] = (score, None)
+
+    def stages(self) -> dict[str, str]:
+        return {
+            href: stage
+            for href, (_score, stage) in self._candidates.items()
+            if stage is not None
+        }
+
+
+@dataclass
+class _DatedVariantContainer:
+    dates: set[str] = field(default_factory=set)
+    links: list[tuple[str, str]] = field(default_factory=list)
+    text: list[str] = field(default_factory=list)
+
+
+class _DatedAnswerKeyVariantParser(HTMLParser):
+    """Infers coverage across official blocks sharing one date and stage."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._containers: list[_DatedVariantContainer] = []
+        self._href: str | None = None
+        self._anchor_text: list[str] = []
+        self._groups: dict[tuple[str, str | None], set[tuple[str, str]]] = {}
+
+    @staticmethod
+    def _is_answer_key(href: str, title: str) -> bool:
+        value = f"{href} {title}".casefold()
+        return "gabarito" in value or "answer-key" in value or "answer_key" in value
+
+    @staticmethod
+    def _variant(href: str, title: str) -> str | None:
+        matches = {
+            int(number)
+            for number in re.findall(
+                r"(?i)(?:tipo|prova)[-_ ]*([1-9]\d*)(?!\d)", f"{href} {title}"
+            )
+        }
+        return f"Tipo {next(iter(matches))}" if len(matches) == 1 else None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        normalized_tag = tag.casefold()
+        attributes = {name.casefold(): value for name, value in attrs}
+        if normalized_tag == "div":
+            self._containers.append(_DatedVariantContainer())
+            return
+        if normalized_tag == "time":
+            value = attributes.get("datetime") or ""
+            match = re.match(r"((?:19|20)\d{2}-\d{2}-\d{2})(?:T|$)", value)
+            if match is not None:
+                for container in self._containers:
+                    container.dates.add(match.group(1))
+            return
+        if normalized_tag == "a" and self._href is None:
+            self._href = attributes.get("href")
+            self._anchor_text = []
+
+    def handle_data(self, data: str) -> None:
+        for container in self._containers:
+            container.text.append(data)
+        if self._href is not None:
+            self._anchor_text.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        normalized_tag = tag.casefold()
+        if normalized_tag == "a" and self._href is not None:
+            title = " ".join("".join(self._anchor_text).split())
+            for container in self._containers:
+                container.links.append((self._href, title))
+            self._href = None
+            self._anchor_text = []
+            return
+        if normalized_tag != "div" or not self._containers:
+            return
+        container = self._containers.pop()
+        if len(container.dates) != 1 or not container.links:
+            return
+        date = next(iter(container.dates))
+        stage = _stage_from_context(" ".join(container.text))
+        self._groups.setdefault((date, stage), set()).update(container.links)
+
+    def variants(self) -> dict[str, str]:
+        candidates: dict[str, set[str]] = {}
+        for links in self._groups.values():
+            exam_variants = {
+                variant
+                for href, title in links
+                if not self._is_answer_key(href, title)
+                for variant in (self._variant(href, title),)
+                if variant is not None
+            }
+            if len(exam_variants) != 1:
+                continue
+            variant = next(iter(exam_variants))
+            for href, title in links:
+                if self._is_answer_key(href, title):
+                    candidates.setdefault(href, set()).add(variant)
+        return {
+            href: next(iter(variants))
+            for href, variants in candidates.items()
+            if len(variants) == 1
+        }
+
+
 def extract_links(html: str, page_url: str) -> list[tuple[str, str]]:
     parser = _LinkParser()
     parser.feed(html)
     return [(urljoin(page_url, href), title) for href, title in parser.links]
+
+
+def extract_dated_link_years(html: str, page_url: str) -> dict[str, str]:
+    parser = _DatedLinkParser()
+    parser.feed(html)
+    return {
+        urljoin(page_url, href): next(iter(years))
+        for href, years in parser.link_years.items()
+        if len(years) == 1
+    }
+
+
+def extract_dated_link_stages(html: str, page_url: str) -> dict[str, str]:
+    parser = _DatedStageParser()
+    parser.feed(html)
+    return {urljoin(page_url, href): stage for href, stage in parser.stages().items()}
+
+
+def extract_dated_link_variants(html: str, page_url: str) -> dict[str, str]:
+    parser = _DatedAnswerKeyVariantParser()
+    parser.feed(html)
+    return {urljoin(page_url, href): variant for href, variant in parser.variants().items()}
 
 
 def _is_html_page(result: HttpResult | EngineHttpResult) -> bool:
@@ -591,6 +835,9 @@ def collect_documents(
             crawl_delay_policy=source.crawl_delay_policy,
         )
         source_links: list[tuple[str, str, DocumentType]] = []
+        link_years: dict[str, str | None] = {}
+        link_stages: dict[str, str | None] = {}
+        link_variants: dict[str, str | None] = {}
         seen_links: set[str] = set()
         source_items = 0
         pagination_truncated = False
@@ -603,6 +850,9 @@ def collect_documents(
             _checkpoint_key: str = checkpoint_key,
             _source: SourceDefinition = source,
             _source_links: list[tuple[str, str, DocumentType]] = source_links,
+            _link_years: dict[str, str | None] = link_years,
+            _link_stages: dict[str, str | None] = link_stages,
+            _link_variants: dict[str, str | None] = link_variants,
         ) -> None:
             if stop_event is None or not stop_event.is_set():
                 return
@@ -614,6 +864,9 @@ def collect_documents(
                     "pending_pages": pending_pages,
                     "seen_pages": sorted(seen_pages),
                     "source_links": _source_links,
+                    "link_years": _link_years,
+                    "link_stages": _link_stages,
+                    "link_variants": _link_variants,
                 },
             )
             raise CollectionPaused(f"coleta de {_source.name} pausada com checkpoint preservado")
@@ -648,6 +901,26 @@ def collect_documents(
                     if value[2] in {"exam", "answer_key", "other"}:
                         source_links.append(value)  # type: ignore[arg-type]
                         seen_links.add(value[0])
+            restored_link_years = checkpoint_payload.get("link_years", {})
+            if isinstance(restored_link_years, dict):
+                for item_url, item_year in restored_link_years.items():
+                    if item_year is None or (
+                        isinstance(item_year, str) and re.fullmatch(r"(?:19|20)\d{2}", item_year)
+                    ):
+                        link_years[str(item_url)] = item_year
+            restored_link_stages = checkpoint_payload.get("link_stages", {})
+            if isinstance(restored_link_stages, dict):
+                for item_url, item_stage in restored_link_stages.items():
+                    if item_stage is None or isinstance(item_stage, str):
+                        link_stages[str(item_url)] = item_stage
+            restored_link_variants = checkpoint_payload.get("link_variants", {})
+            if isinstance(restored_link_variants, dict):
+                for item_url, item_variant in restored_link_variants.items():
+                    if item_variant is None or (
+                        isinstance(item_variant, str)
+                        and re.fullmatch(r"Tipo [1-9]\d*", item_variant)
+                    ):
+                        link_variants[str(item_url)] = item_variant
 
             if "html" in source.discovery_strategies:
                 restored_pending = checkpoint_payload.get("pending_pages", [])
@@ -778,6 +1051,30 @@ def collect_documents(
                             )
                         charset = page.headers.get_content_charset() or "utf-8"
                         html = page.body.decode(charset, errors="replace")
+                        for document_url, year in extract_dated_link_years(
+                            html, page.url
+                        ).items():
+                            previous = link_years.get(document_url)
+                            if document_url not in link_years:
+                                link_years[document_url] = year
+                            elif previous != year:
+                                link_years[document_url] = None
+                        for document_url, stage in extract_dated_link_stages(
+                            html, page.url
+                        ).items():
+                            previous = link_stages.get(document_url)
+                            if document_url not in link_stages:
+                                link_stages[document_url] = stage
+                            elif previous != stage:
+                                link_stages[document_url] = None
+                        for document_url, variant in extract_dated_link_variants(
+                            html, page.url
+                        ).items():
+                            previous = link_variants.get(document_url)
+                            if document_url not in link_variants:
+                                link_variants[document_url] = variant
+                            elif previous != variant:
+                                link_variants[document_url] = None
                         add_candidates(
                             [
                                 DiscoveredLink(url=url, title=title, declared_type=kind)
@@ -812,6 +1109,9 @@ def collect_documents(
                             "pending_pages": pending_pages,
                             "seen_pages": sorted(seen_pages),
                             "source_links": source_links,
+                            "link_years": link_years,
+                            "link_stages": link_stages,
+                            "link_variants": link_variants,
                         },
                     )
 
@@ -979,9 +1279,12 @@ def collect_documents(
                 _robots: RobotsPolicy = robots,
                 _client: CollectionHttpClient | _LegacyClientAdapter = client,
                 _source: SourceDefinition = source,
+                _link_years: dict[str, str | None] = link_years,
+                _link_stages: dict[str, str | None] = link_stages,
+                _link_variants: dict[str, str | None] = link_variants,
             ) -> DocumentRecord:
                 url, title, document_type = item
-                return _download_pdf_candidate(
+                document = _download_pdf_candidate(
                     source=_source,
                     url=url,
                     title=title,
@@ -991,6 +1294,21 @@ def collect_documents(
                     settings=settings,
                     raw_dir=raw_dir,
                     interval_seconds=_interval,
+                )
+                year = _link_years.get(url)
+                stage = _link_stages.get(url)
+                variant = _link_variants.get(url)
+                if year is None and stage is None and variant is None:
+                    return document
+                metadata = dict(document.metadata)
+                if year is not None:
+                    metadata["ano_publicacao"] = year
+                if stage is not None:
+                    metadata["etapa"] = stage
+                if variant is not None:
+                    metadata["variant"] = variant
+                return document.model_copy(
+                    update={"metadata": metadata}
                 )
 
             with ThreadPoolExecutor(max_workers=concurrency) as pool:

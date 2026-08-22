@@ -536,7 +536,7 @@ class DesktopProcessor:
         self.store.update_document(
             document_id,
             status="exception" if mostly_ocr else "extracted",
-            needs_ocr=1 if ocr_pages else 0,
+            needs_ocr=1 if mostly_ocr else 0,
             warnings_json=json.dumps(list(dict.fromkeys(warnings)), ensure_ascii=False),
         )
 
@@ -734,3 +734,10 @@ class DesktopProcessor:
             if changed:
                 applied += 1
         return applied
+
+    def reconcile_all_answer_keys(self) -> int:
+        """Close cross-job races after every document in a collection is available."""
+        return sum(
+            self._reconcile_answer_key(answer_key_version_id)
+            for answer_key_version_id in self.store.answer_key_version_ids()
+        )

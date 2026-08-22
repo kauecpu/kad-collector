@@ -820,6 +820,34 @@ Enunciado completo da segunda questao.
             key["document_version_id"],
         )
 
+    def test_final_reconciliation_closes_concurrent_exam_and_key_race(self) -> None:
+        exam_text = (
+            "{01}\nEnunciado completo da primeira questao.\n"
+            "(A) Alternativa A.\n(B) Alternativa B.\n#####"
+        )
+        with patch.object(self.processor, "_associate_exam", return_value=(False, False)):
+            exam = self.process_text_documents([(
+                "exam-concurrent.pdf",
+                exam_text,
+                self.semantic_metadata("exam", "Prova Analista 2026"),
+            )])[0]
+        with patch.object(self.processor, "_reconcile_answer_key", return_value=0):
+            self.process_text_documents([(
+                "key-concurrent.pdf",
+                "Gabarito definitivo\n1 - B",
+                self.semantic_metadata("answer_key", "Gabarito definitivo Analista 2026"),
+            )])
+        self.assertEqual(
+            self.stored_question(str(exam["id"]), 1)["answer_status"], "missing"
+        )
+
+        reconciled = self.processor.reconcile_all_answer_keys()
+
+        self.assertEqual(reconciled, 1)
+        self.assertEqual(
+            self.stored_question(str(exam["id"]), 1)["answer_status"], "matched"
+        )
+
     def test_late_answer_key_finalizes_deferred_successor_lineage(self) -> None:
         exam_text = (
             "{01}\nEnunciado completo da questão estável.\n"
@@ -1239,7 +1267,7 @@ C D""",
             size_bytes=pdf_path.stat().st_size,
             downloaded_at=datetime.now(UTC),
             authorization_basis="Fonte oficial.",
-            metadata={"banca": "FGV"},
+            metadata={"banca": "FGV", "ano_publicacao": "2023"},
         )
 
         metadata = _import_metadata(
@@ -1247,8 +1275,89 @@ C D""",
         )
 
         self.assertEqual(metadata.concurso, "SEADAP2022")
+        self.assertEqual(metadata.year, 2023)
         self.assertEqual(metadata.role, "Cuidador")
         self.assertEqual(metadata.variant, "Tipo 2")
+
+    def test_fgv_filename_codes_are_removed_from_editorial_role(self) -> None:
+        source = self.manager._source("fgv_conhecimento")
+        pdf_path = self.root / "auditor.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4\nfixture\n%%EOF")
+        url = (
+            "https://conhecimento.fgv.br/sites/default/files/concursos/"
+            "cns201-auditor-fiscal-da-receita-federal-do-brasil-afrfbcns201-tipo-1.pdf"
+        )
+        document = DocumentRecord(
+            source_id=source.id,
+            source_name=source.name,
+            document_type="exam",
+            title="Tipo 1",
+            original_url=url,
+            resolved_url=url,
+            local_path=str(pdf_path),
+            sha256="c" * 64,
+            content_type="application/pdf",
+            size_bytes=pdf_path.stat().st_size,
+            downloaded_at=datetime.now(UTC),
+            authorization_basis="Fonte oficial.",
+            metadata={"banca": "FGV", "ano_publicacao": "2023"},
+        )
+
+        imported = _import_metadata(
+            source, "https://conhecimento.fgv.br/concursos/rfb22", document
+        )
+
+        self.assertEqual(imported.role, "Auditor Fiscal Da Receita Federal Do Brasil")
+
+    def test_answer_key_uses_variant_inherited_from_official_source_block(self) -> None:
+        source = self.manager._source("fgv_conhecimento")
+        pdf_path = self.root / "gabarito.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4\nfixture\n%%EOF")
+        document = DocumentRecord(
+            source_id=source.id,
+            source_name=source.name,
+            document_type="answer_key",
+            title="Gabarito Oficial",
+            original_url="https://conhecimento.fgv.br/gabarito.pdf",
+            resolved_url="https://conhecimento.fgv.br/gabarito.pdf",
+            local_path=str(pdf_path),
+            sha256="d" * 64,
+            content_type="application/pdf",
+            size_bytes=pdf_path.stat().st_size,
+            downloaded_at=datetime.now(UTC),
+            authorization_basis="Fonte oficial.",
+            metadata={"banca": "FGV", "variant": "Tipo 1"},
+        )
+
+        imported = _import_metadata(
+            source, "https://conhecimento.fgv.br/concursos/rfb22", document
+        )
+
+        self.assertEqual(imported.variant, "Tipo 1")
+
+    def test_inherited_single_variant_allows_plain_answer_grid(self) -> None:
+        documents = self.process_text_documents([
+            (
+                "exam-inherited-tipo-1.pdf",
+                "{01}\nEnunciado completo.\n(A) Alternativa A.\n(B) Alternativa B.\n#####",
+                self.semantic_metadata(
+                    "exam", "Prova Analista Tipo 1", variant="Tipo 1"
+                ),
+            ),
+            (
+                "key-inherited-tipo-1.pdf",
+                "Gabarito preliminar\nAnalista\n1 2\nB. A\n3 4\nA B",
+                self.semantic_metadata(
+                    "answer_key", "Gabarito preliminar", variant="Tipo 1"
+                ),
+            ),
+        ])
+        exam = next(item for item in documents if item["filename"].startswith("exam-"))
+
+        question = self.stored_question(str(exam["id"]), 1)
+
+        self.assertEqual(question["answer_status"], "matched")
+        self.assertEqual(question["correct_answer"], "B")
 
     def test_large_contest_batches_keep_the_answer_key_with_every_exam_group(self) -> None:
         source = self.manager._source("fgv_conhecimento")
