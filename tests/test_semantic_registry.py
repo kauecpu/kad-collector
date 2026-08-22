@@ -241,6 +241,54 @@ class SemanticRegistryMigrationTests(unittest.TestCase):
                 {item["answer_key_version_id"] for item in candidates},
             )
 
+    def test_registry_prefilter_accepts_equivalent_role_spelling_and_suffix(self) -> None:
+        def known(*values: str | int) -> dict[str, object]:
+            return {"status": "known", "normalized_values": list(values)}
+
+        core = {"board": known("fgv"), "concurso": known("rfb22"), "year": known(2025)}
+        exam_profile = {
+            "identity": {
+                **core,
+                "roles": known("auditor-fiscal da receita federal do brasil"),
+                "stage": known("curso de formação"),
+                "turns": {"status": "unknown", "normalized_values": []},
+                "variants": known("tipo 1"),
+            }
+        }
+        coverage = {
+            "roles": known("auditor fiscal"),
+            "stage": known("curso de formação"),
+            "turns": {"status": "unknown", "normalized_values": []},
+            "variants": known("tipo 1"),
+        }
+        key_profile = {"identity": core, "coverage": coverage}
+
+        with tempfile.TemporaryDirectory() as directory:
+            store = _semantic_store(Path(directory) / "collector.sqlite3")
+            with closing(store._connect()) as connection:
+                connection.execute(
+                    "UPDATE document_versions SET profile_json = ? WHERE id = 'exam-version'",
+                    (json.dumps(exam_profile),),
+                )
+                connection.execute(
+                    "UPDATE document_versions SET profile_json = ?, coverage_json = ? "
+                    "WHERE id = 'answer-version-1'",
+                    (json.dumps(key_profile), json.dumps(coverage)),
+                )
+
+                affected = semantic_registry.exam_documents_affected_by_answer_key(
+                    connection, "answer-version-1"
+                )
+                candidates = semantic_registry.active_answer_key_candidates(
+                    connection, "exam-version"
+                )
+
+            self.assertEqual([row["id"] for row in affected], ["exam-document"])
+            self.assertIn(
+                "answer-version-1",
+                {item["answer_key_version_id"] for item in candidates},
+            )
+
     def test_active_candidates_include_new_key_not_yet_linked_to_exam(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             store = _semantic_store(Path(directory) / "collector.sqlite3")

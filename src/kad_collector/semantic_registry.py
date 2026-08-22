@@ -14,6 +14,7 @@ from .semantic_identity import (
     ExamSemanticIdentity,
     IdentityResolution,
     canonical_json,
+    semantic_role_values_compatible,
     stable_sha256,
 )
 
@@ -1100,15 +1101,23 @@ def _profiles_share_core(exam_profile: dict[str, Any], key_profile: dict[str, An
 def _profiles_match_scope(exam_profile: dict[str, Any], key_profile: dict[str, Any]) -> bool:
     exam_identity = exam_profile.get("identity", {})
     key_coverage = key_profile.get("coverage", {})
-    return all(
-        key_coverage.get(name, {}).get("status") != "known"
-        or exam_identity.get(name, {}).get("status") == "known"
-        and bool(
-            set(key_coverage[name].get("normalized_values", ()))
-            & set(exam_identity[name].get("normalized_values", ()))
+    for name in ("roles", "stage", "turns", "variants"):
+        key_field = key_coverage.get(name, {})
+        if key_field.get("status") != "known":
+            continue
+        exam_field = exam_identity.get(name, {})
+        if exam_field.get("status") != "known":
+            return False
+        exam_values = exam_field.get("normalized_values", ())
+        key_values = key_field.get("normalized_values", ())
+        compatible = (
+            semantic_role_values_compatible(exam_values, key_values)
+            if name == "roles"
+            else bool(set(key_values) & set(exam_values))
         )
-        for name in ("roles", "stage", "turns", "variants")
-    )
+        if not compatible:
+            return False
+    return True
 
 
 def _decode_json(value: object) -> object | None:

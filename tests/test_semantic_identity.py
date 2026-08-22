@@ -153,6 +153,123 @@ class SemanticContractTests(unittest.TestCase):
         )
         self.assertEqual(profile.identity.year.normalized_values, (2026,))
 
+    def test_course_application_year_beats_unrelated_years_in_pdf_text(self) -> None:
+        profile = extract_semantic_profile(
+            normalized_document(
+                Path("prova.pdf"),
+                metadata={
+                    "board": "FGV",
+                    "concurso": "RFB",
+                },
+            ),
+            [
+                (1, "RECEITA FEDERAL DO BRASIL\nCURSO DE FORMAÇÃO 2025/1\nPROVA OBJETIVA"),
+                (2, "Considere a legislação publicada em 2023 e assinale a alternativa."),
+            ],
+        )
+
+        self.assertEqual(profile.identity.year.status, "known")
+        self.assertEqual(profile.identity.year.normalized_values, (2025,))
+        self.assertIsNotNone(profile.identity_key)
+
+    def test_source_publication_year_is_a_safe_fallback_when_application_is_absent(self) -> None:
+        profile = extract_semantic_profile(
+            normalized_document(
+                Path("prova.pdf"),
+                metadata={
+                    "board": "FGV",
+                    "concurso": "RFB",
+                    "ano_publicacao": 2024,
+                },
+            ),
+            [(1, "PROVA OBJETIVA\nAssinale a alternativa correta.")],
+        )
+
+        self.assertEqual(profile.identity.year.status, "known")
+        self.assertEqual(profile.identity.year.normalized_values, (2024,))
+        self.assertIsNotNone(profile.identity_key)
+
+    def test_source_publication_year_beats_unrelated_unique_year_in_pdf(self) -> None:
+        profile = extract_semantic_profile(
+            normalized_document(
+                Path("gabarito.pdf"),
+                declared_type="answer_key",
+                metadata={
+                    "board": "FGV",
+                    "concurso": "RFB",
+                    "ano_publicacao": 2023,
+                },
+            ),
+            [(1, "CONCURSO PÚBLICO - EDITAL Nº 01/2022\nGABARITO DEFINITIVO")],
+        )
+
+        self.assertEqual(profile.identity.year.normalized_values, (2023,))
+
+    def test_explicit_applied_date_beats_later_publication_year(self) -> None:
+        profile = extract_semantic_profile(
+            normalized_document(
+                Path("gabarito.pdf"),
+                declared_type="answer_key",
+                metadata={
+                    "board": "FGV",
+                    "concurso": "RFB",
+                    "ano_publicacao": 2026,
+                },
+            ),
+            [(1, "GABARITO DEFINITIVO DA PROVA APLICADA EM 21/12/2025")],
+        )
+
+        self.assertEqual(profile.identity.year.normalized_values, (2025,))
+
+    def test_answer_key_grid_headings_define_multi_role_coverage(self) -> None:
+        profile = extract_semantic_profile(
+            normalized_document(
+                Path("gabarito.pdf"),
+                declared_type="answer_key",
+                metadata={"board": "FGV", "concurso": "RFB", "year": 2023},
+            ),
+            [
+                (
+                    1,
+                    "Auditor-Fiscal da Receita Federal do Brasil - TIPO 1 (Manhã)\n"
+                    "1 2 3 4\nA B C D\n"
+                    "Analista-Tributário da Receita Federal do Brasil - TIPO 1 (Manhã)\n"
+                    "1 2 3 4\nB C D A",
+                )
+            ],
+        )
+
+        self.assertEqual(profile.coverage.roles.status, "known")
+        self.assertEqual(
+            set(profile.coverage.roles.normalized_values),
+            {
+                "auditor-fiscal da receita federal do brasil",
+                "analista-tributário da receita federal do brasil",
+            },
+        )
+
+    def test_answer_key_numbered_headings_define_roles_and_variant(self) -> None:
+        profile = extract_semantic_profile(
+            normalized_document(
+                Path("gabarito.pdf"),
+                declared_type="answer_key",
+                metadata={"board": "FGV", "concurso": "RFB", "year": 2025},
+            ),
+            [
+                (
+                    1,
+                    "Auditor Fiscal - 1 - Turno Manhã\n1\nC\n"
+                    "Analista Tributário - 1 - Turno Manhã\n1\nA",
+                )
+            ],
+        )
+
+        self.assertEqual(
+            set(profile.coverage.roles.normalized_values),
+            {"auditor fiscal", "analista tributário"},
+        )
+        self.assertEqual(profile.coverage.variants.normalized_values, ("tipo 1",))
+
     def test_role_and_state_markers_require_word_boundaries(self) -> None:
         false_positive = extract_semantic_profile(
             normalized_document(
@@ -196,6 +313,23 @@ class SemanticContractTests(unittest.TestCase):
             [(1, "Banca: X\nConcurso: Y\nAno: 2026\nGabarito preliminar e definitivo")],
         )
         self.assertEqual(profile.answer_key_state, "unknown")
+
+    def test_explicit_definitive_title_beats_historical_preliminary_reference(self) -> None:
+        profile = extract_semantic_profile(
+            normalized_document(
+                Path("key.pdf"),
+                title="Gabarito Oficial Definitivo da Prova Objetiva",
+                declared_type="answer_key",
+            ),
+            [
+                (
+                    1,
+                    "GABARITO OFICIAL\nResultado após recursos contra o gabarito preliminar",
+                )
+            ],
+        )
+
+        self.assertEqual(profile.answer_key_state, "definitive")
 
     def test_document_record_adapter_uses_only_declared_record_fields(self) -> None:
         record = DocumentRecord(

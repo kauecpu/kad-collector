@@ -11,6 +11,8 @@ from kad_collector.collector import (
     RobotsPolicy,
     classify_document,
     collect_documents,
+    extract_dated_link_stages,
+    extract_dated_link_variants,
     extract_links,
     select_document_links,
     select_pagination_links,
@@ -242,6 +244,130 @@ class LinkParsingTests(unittest.TestCase):
                 manifest, _ = collect_documents(config)
 
         self.assertEqual([item.original_url for item in manifest.documents], [pdf_url])
+
+    def test_document_inherits_year_from_its_dated_source_page_block(self) -> None:
+        page_url = "https://provas.example.gov.br/concurso"
+        pdf_url = "https://provas.example.gov.br/prova-tipo-1.pdf"
+
+        class FixtureClient:
+            def __init__(self, user_agent: str, timeout: float, interval_seconds: float) -> None:
+                pass
+
+            def get(self, url: str, allowed_hosts: list[str], max_bytes: int) -> HttpResult:
+                headers = Message()
+                if url.endswith("/robots.txt"):
+                    headers["Content-Type"] = "text/plain; charset=utf-8"
+                    body = b"User-agent: *\nAllow: /\n"
+                elif url == page_url:
+                    headers["Content-Type"] = "text/html; charset=utf-8"
+                    body = b"""
+                    <!doctype html><html><body>
+                      <div class="field__item">
+                        <div class="paragraph paragraph--type--texto-data">
+                          <div><time datetime="2023-03-21T12:00:00Z">21/03/2023</time></div>
+                          <div><p>Prova Objetiva <a href="/prova-tipo-1.pdf">Tipo 1</a></p></div>
+                        </div>
+                      </div>
+                    </body></html>
+                    """
+                elif url == pdf_url:
+                    headers["Content-Type"] = "application/pdf"
+                    body = b"%PDF-1.4\nfixture\n%%EOF"
+                else:
+                    raise AssertionError(f"URL inesperada: {url}")
+                return HttpResult(url=url, status_code=200, headers=headers, body=body)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            config = AppConfig(
+                collector=CollectorSettings(data_dir=temporary),
+                sources=[source_definition(start_urls=[page_url])],
+            )
+            with patch("kad_collector.collector.SafeHttpClient", FixtureClient):
+                manifest, _ = collect_documents(config)
+
+        self.assertEqual(len(manifest.documents), 1)
+        self.assertEqual(manifest.documents[0].metadata["ano_publicacao"], "2023")
+        self.assertEqual(manifest.documents[0].metadata["etapa"], "prova objetiva")
+
+    def test_dated_source_block_preserves_course_and_sub_judice_stage(self) -> None:
+        html = """
+        <div class="paragraph paragraph--type--texto-data">
+          <time datetime="2025-12-22T12:00:00Z">22/12/2025</time>
+          <p>Prova Objetiva - Curso de Formação Profissional (Sub Judice)
+             <a href="/auditor.pdf">Auditor-Fiscal</a>
+          </p>
+        </div>
+        """
+
+        stages = extract_dated_link_stages(
+            html, "https://provas.example.gov.br/concurso"
+        )
+
+        self.assertEqual(
+            stages["https://provas.example.gov.br/auditor.pdf"],
+            "curso de formação sub judice",
+        )
+
+    def test_single_exam_variant_in_dated_block_is_inherited_by_answer_key(self) -> None:
+        html = """
+        <div class="paragraph paragraph--type--texto-data">
+          <time datetime="2024-07-29T12:00:00Z">29/07/2024</time>
+          <p>Prova Objetiva - Curso de Formação Profissional (Sub Judice)
+             <a href="/auditor-tipo-1.pdf">Auditor-Fiscal</a>
+             <a href="/gabarito.pdf">Gabarito Oficial Preliminar</a>
+          </p>
+        </div>
+        """
+
+        variants = extract_dated_link_variants(
+            html, "https://provas.example.gov.br/concurso"
+        )
+
+        self.assertEqual(
+            variants["https://provas.example.gov.br/gabarito.pdf"],
+            "Tipo 1",
+        )
+
+    def test_multiple_exam_variants_do_not_invent_answer_key_coverage(self) -> None:
+        html = """
+        <div>
+          <time datetime="2023-03-20T12:00:00Z">20/03/2023</time>
+          <a href="/auditor-tipo-1.pdf">Tipo 1</a>
+          <a href="/auditor-tipo-2.pdf">Tipo 2</a>
+          <a href="/gabarito.pdf">Gabarito Oficial</a>
+        </div>
+        """
+
+        variants = extract_dated_link_variants(
+            html, "https://provas.example.gov.br/concurso"
+        )
+
+        self.assertNotIn("https://provas.example.gov.br/gabarito.pdf", variants)
+
+    def test_same_date_and_stage_connect_sibling_exam_and_answer_key_blocks(self) -> None:
+        html = """
+        <div>
+          <time datetime="2024-07-30T12:00:00Z">30/07/2024</time>
+          <p>Gabarito Oficial - Curso de Formação (Aplicação Sub Judice)
+             <a href="/gabarito.pdf">Gabarito Oficial</a>
+          </p>
+        </div>
+        <div>
+          <time datetime="2024-07-30T12:00:00Z">30/07/2024</time>
+          <p>Prova Objetiva - Curso de Formação (Aplicação Sub Judice)
+             <a href="/auditor-tipo-1.pdf">Auditor-Fiscal</a>
+          </p>
+        </div>
+        """
+
+        variants = extract_dated_link_variants(
+            html, "https://provas.example.gov.br/concurso"
+        )
+
+        self.assertEqual(
+            variants["https://provas.example.gov.br/gabarito.pdf"],
+            "Tipo 1",
+        )
 
     def test_static_pagination_follows_allowed_links_and_stops_at_limit(self) -> None:
         first_page = "https://provas.example.gov.br/lista?page=1"

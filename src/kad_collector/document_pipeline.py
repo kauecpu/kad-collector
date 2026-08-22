@@ -22,6 +22,8 @@ def _editorial_metadata(document: NormalizedDocument) -> dict[str, str | int]:
         values["board"] = values["banca"]
     if "year" not in values and "ano" in values:
         values["year"] = values["ano"]
+    if "year" not in values and "ano_publicacao" in values:
+        values["year"] = values["ano_publicacao"]
     if "role" not in values and "cargo" in values:
         values["role"] = values["cargo"]
     if "organization" not in values and "orgao" in values:

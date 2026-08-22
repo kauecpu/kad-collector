@@ -488,6 +488,83 @@ Informações editoriais da banca.
                 any("OCR" in issue or "texto" in issue for issue in exceptions[0]["issues"])
             )
 
+    def test_text_pdf_with_blank_trailing_page_does_not_require_document_ocr(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "prova-com-verso-em-branco.pdf"
+            write_text_pdf(
+                pdf_path,
+                [
+                    [
+                        "QUESTAO 1",
+                        "Assinale a alternativa correta sobre a escala cartografica.",
+                        "A) Primeira alternativa.",
+                        "B) Segunda alternativa.",
+                        "C) Terceira alternativa.",
+                    ],
+                    [],
+                ],
+            )
+            store = DesktopStore(root / "collector.sqlite3")
+            job_id = store.create_job(
+                [pdf_path], metadata(document_type="exam"), "local"
+            )
+            DesktopProcessor(store).run(job_id)
+
+            document = store.documents_for_job(job_id)[0]
+            self.assertFalse(document["needs_ocr"])
+            self.assertEqual(document["status"], "processed")
+            self.assertEqual(len(store.question_records(document["id"])), 1)
+
+    def test_explicit_application_year_replaces_source_publication_year(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "curso-formacao.pdf"
+            write_text_pdf(
+                pdf_path,
+                [
+                    [
+                        "PROVA APLICADA EM 21/07/2023",
+                        "QUESTAO 1",
+                        "Assinale a alternativa correta sobre a escala cartografica.",
+                        "A) Primeira alternativa.",
+                        "B) Segunda alternativa.",
+                        "C) Terceira alternativa.",
+                    ]
+                ],
+            )
+            normalized = normalize_collected_document(
+                DocumentRecord(
+                    source_id="fgv_conhecimento",
+                    source_name="FGV Conhecimento",
+                    document_type="exam",
+                    title="Curso de Formação",
+                    original_url="https://example.gov.br/curso-formacao.pdf",
+                    resolved_url="https://example.gov.br/curso-formacao.pdf",
+                    local_path=str(pdf_path),
+                    sha256=hashlib.sha256(pdf_path.read_bytes()).hexdigest(),
+                    content_type="application/pdf",
+                    size_bytes=pdf_path.stat().st_size,
+                    downloaded_at=datetime.now(UTC),
+                    authorization_basis="Fonte oficial.",
+                    metadata={
+                        "banca": "FGV",
+                        "concurso": "RFB",
+                        "ano_publicacao": "2024",
+                    },
+                )
+            )
+            store = DesktopStore(root / "collector.sqlite3")
+            job_id = store.create_interpretation_job([normalized], "local")
+            self.assertIsNotNone(job_id)
+            DesktopProcessor(store).run(job_id or "")
+
+            document = store.documents_for_job(job_id or "")[0]
+            self.assertEqual(document["metadata"]["year"], 2023)
+            questions = store.question_records(document["id"])
+            self.assertEqual(len(questions), 1)
+            self.assertEqual(questions[0][0].year, 2023)
+
     def test_processing_can_pause_and_resume_from_page_checkpoints(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)

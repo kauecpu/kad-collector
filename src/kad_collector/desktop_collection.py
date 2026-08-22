@@ -94,6 +94,11 @@ def _canonical_url(url: str) -> str:
 
 
 def _document_variant(document: DocumentRecord) -> str | None:
+    inherited = document.metadata.get("variant")
+    if inherited is not None:
+        match = re.fullmatch(r"(?i)tipo\s*([1-9]\d*)", inherited.strip())
+        if match is not None:
+            return f"Tipo {int(match.group(1))}"
     candidate = f"{document.title} {document.original_url} {document.resolved_url}"
     match = re.search(
         r"(?<![A-Z0-9])(?P<label>V|TIPO|PROVA)[-_ ]*(?P<number>[1-9]\d*)(?!\d)",
@@ -126,7 +131,9 @@ def _document_role(document: DocumentRecord | None) -> str | None:
         return title
     stem = unquote(Path(urlsplit(document.original_url).path).stem)
     stem = re.sub(r"(?i)[-_ ]+(?:tipo|prova)[-_ ]*\d+.*$", "", stem)
+    stem = re.sub(r"(?i)^(?:cn[sm]|nm|ns)\d+[-_ ]+", "", stem)
     stem = re.sub(r"(?i)(?:cn[sm]|nm|ns)\d{3,}$", "", stem)
+    stem = re.sub(r"(?i)[-_ ]+(?:afrfb|atrfb)$", "", stem)
     role = " ".join(part for part in re.split(r"[-_]+", stem) if part)
     return role.title() if role else None
 
@@ -137,7 +144,7 @@ def _import_metadata(
     document: DocumentRecord | None = None,
 ) -> DesktopImportMetadata:
     metadata = {**source.metadata, **(document.metadata if document else {})}
-    raw_year = metadata.get("ano")
+    raw_year = metadata.get("ano") or metadata.get("ano_publicacao")
     year_candidate = (
         f"{document.title} {document.original_url} {document.resolved_url} {url}"
         if document is not None
@@ -167,6 +174,8 @@ def _import_metadata(
         board=metadata.get("banca"),
         year=year,
         role=metadata.get("cargo") or _document_role(document),
+        stage=metadata.get("etapa") or metadata.get("fase"),
+        turn=metadata.get("turno"),
         organization=metadata.get("orgao"),
         level=level,
     )
@@ -428,6 +437,7 @@ class DesktopCollectionManager:
                 )
                 return
             if all(job["status"] == "completed" for job in jobs):
+                self.processor.reconcile_all_answer_keys()
                 summary = self.store.job_question_summary(import_job_ids)
                 processed_paths: set[str] = set()
                 failed_paths: set[str] = set()
@@ -549,6 +559,12 @@ class DesktopCollectionManager:
                         "document_type",
                     },
                 )
+                if (
+                    "ano_publicacao" in document.metadata
+                    and "ano" not in document.metadata
+                    and "year" not in document.metadata
+                ):
+                    editorial_metadata.pop("year", None)
                 contract_metadata = {**document.metadata, **editorial_metadata}
                 contract_metadata.pop("external_id", None)
                 normalized_documents.append(

@@ -23,6 +23,9 @@ MAX_SEMANTIC_NUMERIC_VALUE = 10_000
 MAX_SEMANTIC_VALUE_CHARS = 512
 MAX_PUBLIC_SEMANTIC_ITEMS = 32
 MAX_PUBLIC_SEMANTIC_CHARS = 160
+_ROLE_NOISE_WORDS = frozenset(
+    {"brasil", "cns", "cnm", "das", "dos", "federal", "para", "receita"}
+)
 _OMITTED_PUBLIC_KEYS = frozenset(
     {
         "raw_value",
@@ -76,6 +79,54 @@ _PDF_LABELS = {
     "variants": ("tipo", "variant", "versao"),
 }
 _YEAR_PATTERN = re.compile(r"(?<!\d)((?:19|20)\d{2})(?!\d)")
+_COURSE_APPLICATION_YEAR_PATTERN = re.compile(
+    r"(?i)curso\s+de\s+forma(?:ç|c)[aã]o\s*[-–—:]?\s*((?:19|20)\d{2})(?:\s*/\s*\d+)?"
+)
+
+
+def semantic_role_values_compatible(
+    exam_values: Sequence[str | int], candidate_values: Sequence[str | int]
+) -> bool:
+    if not set(exam_values).isdisjoint(candidate_values):
+        return True
+
+    def words(value: str | int) -> set[str]:
+        text = unicodedata.normalize("NFKD", str(value))
+        text = "".join(
+            character for character in text if not unicodedata.combining(character)
+        ).casefold()
+        return {
+            token
+            for token in re.findall(r"[a-z]+", text)
+            if len(token) > 2
+            and token not in _ROLE_NOISE_WORDS
+            and token not in {"afrfb", "atrfb"}
+        }
+
+    for exam_value in exam_values:
+        exam_words = words(exam_value)
+        for candidate_value in candidate_values:
+            candidate_words = words(candidate_value)
+            union = exam_words | candidate_words
+            intersection = exam_words & candidate_words
+            if union and len(intersection) >= 2 and len(intersection) / len(union) >= 0.55:
+                return True
+    return False
+_APPLIED_DATE_YEAR_PATTERN = re.compile(
+    r"(?is)(?:prova\s+)?aplicad[ao]s?.{0,80}?\b\d{1,2}/\d{1,2}/((?:19|20)\d{2})"
+)
+_ANSWER_GRID_TYPED_ROLE_PATTERN = re.compile(
+    r"(?im)^\s*(?P<role>[^\r\n]{3,}?)\s*(?:\([A-Z]{2,10}\))?\s*"
+    r"[-–—]\s*(?:(?:PROVA\s+)?TIPO|PROVA)\s*[1-9]\d*"
+)
+_ANSWER_GRID_NUMBERED_ROLE_PATTERN = re.compile(
+    r"(?im)^\s*(?P<role>[^\r\n]{3,}?)\s*[-–—]\s*(?P<variant>[1-9]\d*)"
+    r"(?:\s*[-–—]\s*Turno\s+[^\r\n]+)?\s*$"
+)
+_ANSWER_GRID_ROLE_PATTERN = re.compile(
+    r"(?im)^\s*(?P<role>[^\r\n]{3,}?)\s*(?:\([A-Z]{2,10}\))?\s*\r?\n"
+    r"\s*1\s+2(?:\s+3)?"
+)
 _ROLE_MARKERS = {"exam": ("prova", "exam"), "answer_key": ("gabarito", "answer key")}
 _PRELIMINARY_MARKERS = ("preliminar", "preliminary")
 _DEFINITIVE_MARKERS = ("definitivo", "definitive", "final")
@@ -397,6 +448,37 @@ def _labeled_values(pages: Sequence[tuple[int, str]], field: str) -> tuple[tuple
     return tuple(result)
 
 
+def _answer_grid_roles(pages: Sequence[tuple[int, str]]) -> tuple[tuple[str, str], ...]:
+    result: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for page_number, text in pages:
+        for pattern in (
+            _ANSWER_GRID_TYPED_ROLE_PATTERN,
+            _ANSWER_GRID_NUMBERED_ROLE_PATTERN,
+            _ANSWER_GRID_ROLE_PATTERN,
+        ):
+            for match in pattern.finditer(text):
+                role = " ".join(match.group("role").split()).strip(" -–—")
+                normalized = role.casefold()
+                if (
+                    not role
+                    or normalized in seen
+                    or re.search(r"(?:tipo|prova)\s*[1-9]\d*", normalized)
+                    or any(
+                        marker in normalized
+                        for marker in ("gabarito", "página", "pagina", "secretaria")
+                    )
+                ):
+                    continue
+                seen.add(normalized)
+                result.append((f"page:{page_number}:answer-grid-role", role))
+                if len(result) > MAX_SEMANTIC_VALUES:
+                    raise SemanticValueLimitError(
+                        "evidências semânticas excedem limite seguro"
+                    )
+    return tuple(result)
+
+
 def _field_from_sources(
     name: str,
     document: NormalizedDocument,
@@ -433,6 +515,18 @@ def _field_from_sources(
                 )
     except SemanticValueLimitError:
         return SemanticField.unknown(f"{name} excede limite semântico seguro")
+    if name == "roles" and document.declared_type == "answer_key" and not strong_groups:
+        try:
+            answer_grid_roles = _answer_grid_roles(pages)
+        except SemanticValueLimitError:
+            return SemanticField.unknown(f"{name} excede limite semântico seguro")
+        if answer_grid_roles:
+            strong_groups.append(
+                tuple(
+                    SemanticEvidence.pdf_text(locator, role)
+                    for locator, role in answer_grid_roles
+                )
+            )
     if name == "variants" and not strong_groups:
         for page_number, text in pages:
             matches = re.findall(
@@ -448,7 +542,67 @@ def _field_from_sources(
                     SemanticEvidence.pdf_text(f"page:{page_number}:variant", value)
                     for value in values
                 ))
+        if document.declared_type == "answer_key" and not strong_groups:
+            numbered_variants = tuple(
+                f"tipo {int(match.group('variant'))}"
+                for _, text in pages
+                for match in _ANSWER_GRID_NUMBERED_ROLE_PATTERN.finditer(text)
+            )
+            if len(numbered_variants) > MAX_SEMANTIC_VALUES:
+                return SemanticField.unknown(f"{name} excede limite semântico seguro")
+            if numbered_variants:
+                strong_groups.append(
+                    tuple(
+                        SemanticEvidence.pdf_text("answer-grid:variant", value)
+                        for value in numbered_variants
+                    )
+                )
     if name == "year":
+        applied_years = tuple(
+            SemanticEvidence.pdf_text(f"page:{page_number}:applied-date", int(year))
+            for page_number, text in pages
+            for year in _APPLIED_DATE_YEAR_PATTERN.findall(text)
+        )
+        if len(applied_years) > MAX_SEMANTIC_VALUES:
+            return SemanticField.unknown(f"{name} excede limite semântico seguro")
+        if applied_years:
+            strong_groups.append(applied_years)
+        course_years = tuple(
+            SemanticEvidence.pdf_text(
+                f"page:{page_number}:course-application-year", int(year)
+            )
+            for page_number, text in pages
+            for year in _COURSE_APPLICATION_YEAR_PATTERN.findall(text)
+        )
+        if len(course_years) > MAX_SEMANTIC_VALUES:
+            return SemanticField.unknown(f"{name} excede limite semântico seguro")
+        if not strong_groups:
+            publication_groups: list[tuple[SemanticEvidence, ...]] = []
+            for alias in ("ano_publicacao", "publication_year"):
+                if alias not in document.metadata:
+                    continue
+                try:
+                    values = _values(document.metadata[alias], name)
+                except SemanticValueLimitError:
+                    return SemanticField.unknown(
+                        f"{name} excede limite semântico seguro"
+                    )
+                if values:
+                    publication_groups.append(
+                        tuple(
+                            SemanticEvidence(
+                                source="declared_metadata",
+                                locator=f"metadata:{alias}",
+                                raw_value=value,
+                                normalized_value=_norm(value),
+                                strength="strong",
+                            )
+                            for value in values
+                        )
+                    )
+            strong_groups.extend(publication_groups)
+        if not strong_groups and course_years:
+            strong_groups.append(course_years)
         years = tuple(
             sorted({int(year) for _, text in pages for year in _YEAR_PATTERN.findall(text)})
         )
@@ -570,8 +724,17 @@ def _detect_role(document: NormalizedDocument, pages: Sequence[tuple[int, str]])
 def _answer_key_state(
     document: NormalizedDocument, pages: Sequence[tuple[int, str]]
 ) -> AnswerKeyState:
+    title = document.title.casefold()
+    title_preliminary = any(
+        _has_marker(title, marker) for marker in _PRELIMINARY_MARKERS
+    )
+    title_definitive = any(
+        _has_marker(title, marker) for marker in _DEFINITIVE_MARKERS
+    )
+    if title_preliminary != title_definitive:
+        return "preliminary" if title_preliminary else "definitive"
     content = "\n".join(value for _, value in pages)
-    text = f"{document.title}\n{content}".casefold()
+    text = content.casefold()
     preliminary = any(_has_marker(text, marker) for marker in _PRELIMINARY_MARKERS)
     definitive = any(_has_marker(text, marker) for marker in _DEFINITIVE_MARKERS)
     if preliminary == definitive:
