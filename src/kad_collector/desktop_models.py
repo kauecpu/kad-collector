@@ -146,3 +146,14 @@ class ClassificationResponseItem(StrictModel):
 
 class ClassificationResponse(StrictModel):
     items: list[ClassificationResponseItem]
+
+
+class TaxonomyChoiceResult(StrictModel):
+    question_number: int = Field(ge=1)
+    option_id: str
+    confidence: float = Field(ge=0, le=1)
+    evidence: str = Field(min_length=1)
+
+
+class TaxonomyChoiceResponse(StrictModel):
+    items: list[TaxonomyChoiceResult]

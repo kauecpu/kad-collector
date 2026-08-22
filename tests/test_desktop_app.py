@@ -774,6 +774,65 @@ class DesktopReviewAndFilterTests(unittest.TestCase):
         self.assertEqual(reopened.question(first_id)["status"], "approved")
         self.assertEqual(reopened.question(second_id)["status"], "approved")
 
+    def test_desktop_mutations_use_internal_actor_without_visible_reviewer(self) -> None:
+        application = DesktopApplication(self.root / "automatic-audit")
+        job_id = application.store.create_job([self.pdf_path], metadata(), "local")
+        document = application.store.documents_for_job(job_id)[0]
+        question_id = application.store.save_question(
+            document["id"], valid_question(1), full_classification()
+        )
+        application.store.decide_question(
+            question_id,
+            "pending",
+            actor="revisora-antiga",
+            notes="Anotação histórica preservada.",
+        )
+        edited = valid_question(
+            1, "Enunciado salvo sem solicitar o nome de uma pessoa revisora."
+        )
+
+        application.update_question(
+            question_id,
+            {
+                "question": edited.model_dump(mode="json"),
+                "classification": full_classification().model_dump(mode="json"),
+            },
+        )
+        after_edit = application.store.question(question_id)
+        self.assertEqual(after_edit["reviewer"], "operador_local")
+        self.assertEqual(after_edit["review_notes"], "Anotação histórica preservada.")
+
+        approved = application.approve_batch({"questionIds": [question_id]})
+
+        self.assertEqual(approved, 1)
+        self.assertEqual(application.store.question(question_id)["reviewer"], "operador_local")
+        self.assertEqual(application.store.audit_log(question_id)[0]["actor"], "operador_local")
+
+    def test_automatic_actor_does_not_remove_exception_justification(self) -> None:
+        application = DesktopApplication(self.root / "automatic-reason")
+        job_id = application.store.create_job([self.pdf_path], metadata(), "local")
+        document = application.store.documents_for_job(job_id)[0]
+        question_id = application.store.save_question(
+            document["id"], valid_question(1), full_classification()
+        )
+
+        with self.assertRaisesRegex(ValueError, "excecao exige justificativa"):
+            application.decide(question_id, {"status": "exception"})
+
+        application.decide(
+            question_id,
+            {
+                "status": "exception",
+                "notes": "A origem visual precisa de conferência manual.",
+            },
+        )
+        stored = application.store.question(question_id)
+        self.assertEqual(stored["reviewer"], "operador_local")
+        self.assertEqual(
+            stored["review_notes"],
+            "A origem visual precisa de conferência manual.",
+        )
+
     def test_batch_approval_changes_nothing_when_one_question_is_invalid(self) -> None:
         valid_id = self.store.save_question(
             self.document["id"], valid_question(1), full_classification()
@@ -1361,6 +1420,15 @@ console.log(JSON.stringify(text(root).filter(Boolean)));
         self.assertIn("vinculadas ao gabarito", html)
         self.assertIn("Resposta oficial (gabarito)", html)
         self.assertIn("Arquivo já conhecido; nenhuma nova tarefa foi criada.", javascript)
+        for removed_control in (
+            "edit-review-notes",
+            "edit-actor",
+            "batch-actor",
+            "batch-notes",
+        ):
+            self.assertNotIn(f'id="{removed_control}"', html)
+        self.assertNotIn("Revisor responsável", html)
+        self.assertNotIn(">Observações<", html)
 
     def test_packaged_resources_and_database_bootstrap(self) -> None:
         with TemporaryDirectory() as directory:
@@ -1451,7 +1519,7 @@ console.log(JSON.stringify(text(root).filter(Boolean)));
                 server.server_close()
                 thread.join(timeout=3)
 
-    def test_document_identity_correction_endpoint_validates_actor_schema_and_returns_result(
+    def test_document_identity_correction_endpoint_uses_internal_actor_and_returns_result(
         self,
     ) -> None:
         with TemporaryDirectory() as directory:
@@ -1505,10 +1573,6 @@ console.log(JSON.stringify(text(root).filter(Boolean)));
                 self.assertEqual(status, HTTPStatus.FORBIDDEN)
                 self.assertEqual(set(body), {"error"})
 
-                status, body = put({"metadata": correction, "actor": "   "})
-                self.assertEqual(status, HTTPStatus.BAD_REQUEST)
-                self.assertEqual(body, {"error": "campo actor é obrigatório"})
-
                 status, body = put(
                     {"metadata": correction, "actor": "coordenador", "unexpected": "secret"}
                 )
@@ -1528,7 +1592,7 @@ console.log(JSON.stringify(text(root).filter(Boolean)));
                 self.assertNotIn("secret", str(body))
                 self.assertNotIn("pydantic.dev", str(body))
 
-                status, body = put({"metadata": correction, "actor": "coordenador"})
+                status, body = put({"metadata": correction})
                 self.assertEqual(status, HTTPStatus.OK)
                 self.assertEqual(set(body), {"ok", "identityResolution"})
                 self.assertTrue(body["ok"])
@@ -1542,6 +1606,12 @@ console.log(JSON.stringify(text(root).filter(Boolean)));
                     resolution["profile"]["identity"]["turns"]["normalized_values"],
                     ["manhã"],
                 )
+                corrected = next(
+                    event
+                    for event in application.store.identity_events(document["id"])
+                    if event["action"] == "identity_corrected"
+                )
+                self.assertEqual(corrected["actor"], "operador_local")
             finally:
                 server.shutdown()
                 server.server_close()
