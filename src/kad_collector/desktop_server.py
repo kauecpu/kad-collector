@@ -119,6 +119,9 @@ class DesktopApplication:
             raise ValueError("OPENAI_API_KEY não está configurada nesta sessão")
         return self.pipeline.reprocess(document_ids, classifier_provider)
 
+    def reclassify_questions(self) -> dict[str, Any]:
+        return self.processor.reclassify_existing_questions()
+
     def collect_from_link(self, payload: dict[str, Any]) -> str:
         return self.collection_manager.start(payload)
 
@@ -332,6 +335,9 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                 if path == "/api/questions/batch-approve":
                     approved = application.approve_batch(payload)
                     self._send_json({"approved": approved})
+                    return
+                if path == "/api/questions/reclassify":
+                    self._send_json(application.reclassify_questions())
                     return
                 if path == "/api/filters":
                     saved = application.store.save_filter(

@@ -5,6 +5,7 @@ import json
 import re
 import threading
 import time
+from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
 from io import BytesIO
 from pathlib import Path
@@ -29,6 +30,7 @@ from .document_matching import (
     normalize_text,
     structural_v_number,
 )
+from .editorial_taxonomy import EditorialTaxonomy
 from .models import QuestionRecord
 from .semantic_identity import (
     AssociationCandidate,
@@ -243,6 +245,7 @@ class DesktopProcessor:
         self._futures: dict[str, Future[None]] = {}
         self._cancel_events: dict[str, threading.Event] = {}
         self._lock = threading.Lock()
+        self._reclassification_lock = threading.Lock()
 
     def start(self, job_id: str) -> None:
         with self._lock:
@@ -258,6 +261,111 @@ class DesktopProcessor:
         if event is not None:
             event.set()
         self.store.update_job(job_id, status="cancelling", message="Pausando com segurança")
+
+    @staticmethod
+    def _is_human_classification(value: Any) -> bool:
+        source = str(getattr(value, "source", "") or "").casefold()
+        evidence = str(getattr(value, "evidence", "") or "").casefold()
+        return source == "human_review" or "revisão humana" in evidence
+
+    def reclassify_existing_questions(self) -> dict[str, Any]:
+        """Reclassify stored questions without reading or downloading any PDF again."""
+
+        if not self._reclassification_lock.acquire(blocking=False):
+            raise RuntimeError("uma reclassificação do acervo já está em andamento")
+        try:
+            return self._reclassify_existing_questions()
+        finally:
+            self._reclassification_lock.release()
+
+    def _reclassify_existing_questions(self) -> dict[str, Any]:
+        with self._lock:
+            if any(not future.done() for future in self._futures.values()):
+                raise RuntimeError(
+                    "aguarde os lotes em processamento antes de reclassificar o acervo"
+                )
+
+        taxonomy = EditorialTaxonomy.load_default()
+        classifier = LocalRuleClassifier(taxonomy)
+        grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for row in self.store.classification_question_rows():
+            grouped[cast(str, row["document_id"])].append(row)
+
+        updates: list[tuple[str, QuestionRecord, QuestionClassification, str]] = []
+        field_counts = {"discipline": 0, "matter": 0, "subject": 0}
+        for document_id, rows in grouped.items():
+            pages = {
+                int(page["page_number"]): str(page["text"])
+                for page in self.store.pages(document_id)
+            }
+            metadata = cast(DesktopImportMetadata, rows[0]["metadata"])
+            requests: list[ClassificationRequest] = []
+            for row in rows:
+                question = cast(QuestionRecord, row["question"])
+                context = "\n".join(
+                    pages[number]
+                    for number in question.source_pages
+                    if number in pages
+                )
+                requests.append(
+                    ClassificationRequest(
+                        question_number=question.number,
+                        statement=question.statement,
+                        alternatives=[item.text for item in question.alternatives],
+                        context=context or None,
+                    )
+                )
+            classified = classifier.classify_many(requests, metadata)
+            by_number = {item.question_number: item.classification for item in classified}
+            for row in rows:
+                question_id = cast(str, row["id"])
+                question = cast(QuestionRecord, row["question"])
+                existing = cast(QuestionClassification, row["classification"])
+                automatic = by_number[question.number]
+                merged = existing.model_copy(deep=True)
+                for field in ("discipline", "subject", "topic"):
+                    existing_value = getattr(existing, field)
+                    if not self._is_human_classification(existing_value):
+                        setattr(merged, field, getattr(automatic, field))
+                if not self._is_human_classification(existing.level):
+                    merged.level = automatic.level
+                values = {
+                    "discipline": merged.discipline.value,
+                    "matter": merged.subject.value,
+                    "subject": merged.topic.value,
+                    "level": merged.level.value,
+                }
+                question_payload = question.model_dump(mode="json")
+                question_payload.update(
+                    {
+                        key: str(value) if value is not None else None
+                        for key, value in values.items()
+                    }
+                )
+                updated = QuestionRecord.model_validate(question_payload)
+                for key, value in values.items():
+                    if key == "level":
+                        continue
+                    if value is not None:
+                        field_counts[key] += 1
+                updates.append(
+                    (question_id, updated, merged, cast(str, row["updated_at"]))
+                )
+
+        changed = self.store.save_reclassifications(
+            updates, taxonomy_version=taxonomy.version
+        )
+        total = len(updates)
+        return {
+            "taxonomyVersion": taxonomy.version,
+            "total": total,
+            "changed": changed,
+            "classified": field_counts,
+            "unclassified": {
+                key: total - count for key, count in field_counts.items()
+            },
+            "unclassifiedReason": "evidência insuficiente na taxonomia controlada",
+        }
 
     def _read_validated_snapshot(
         self, document: dict[str, Any], warnings: list[str]
@@ -602,11 +710,21 @@ class DesktopProcessor:
                 )
                 continue
             metadata = DesktopImportMetadata.model_validate(document["metadata"])
+            page_text = {
+                int(page["page_number"]): str(page["text"])
+                for page in pages
+            }
             requests = [
                 ClassificationRequest(
                     question_number=question.number,
                     statement=question.statement,
                     alternatives=[item.text for item in question.alternatives],
+                    context="\n".join(
+                        page_text[number]
+                        for number in question.source_pages
+                        if number in page_text
+                    )
+                    or None,
                 )
                 for question in questions
             ]

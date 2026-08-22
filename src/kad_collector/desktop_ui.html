@@ -41,6 +41,7 @@
             <p class="header-copy">Extração, relação com o gabarito oficial, classificação e auditoria em um fluxo seguro.</p>
           </div>
           <div class="header-actions">
+            <button id="reclassify-open" class="button ghost" type="button">Reclassificar acervo</button>
             <button id="export-open" class="button ghost" type="button">Exportar filtro</button>
             <button id="import-open" class="button primary" type="button"><span>＋</span>Novo lote</button>
           </div>
@@ -64,11 +65,11 @@
             <small id="metric-missing-answers">0 sem resposta oficial</small>
             <span class="metric-cue">Ver motivos →</span>
           </button>
-          <button id="metric-card-exportable" class="metric-card metric-action ready" type="button" aria-label="Abrir questões exportáveis">
-            <span class="metric-label">EXPORTÁVEIS</span>
-            <strong id="metric-exportable">0</strong>
-            <small>prontas para o painel</small>
-            <span class="metric-cue">Ver aprovadas →</span>
+          <button id="metric-card-importable" class="metric-card metric-action ready" type="button" aria-label="Abrir questões importáveis">
+            <span class="metric-label">IMPORTÁVEIS</span>
+            <strong id="metric-importable">0</strong>
+            <small>aptas para entrar no app</small>
+            <span class="metric-cue">Ver importáveis →</span>
           </button>
         </section>
 
@@ -268,8 +269,8 @@
         <div class="form-section-title"><span>02</span><div><strong>Conteúdo conhecido</strong><small>Deixe vazio quando não houver evidência</small></div></div>
         <div class="form-grid three">
           <label>Disciplina<input id="import-discipline"></label>
-          <label>Assunto<input id="import-subject"></label>
-          <label>Tópico<input id="import-topic"></label>
+          <label>Matéria<input id="import-subject"></label>
+          <label>Assunto<input id="import-topic"></label>
           <label>Dificuldade
             <select id="import-difficulty"><option value="">Não informada</option><option>Fácil</option><option>Média</option><option>Difícil</option></select>
           </label>
@@ -311,14 +312,14 @@
               <label>Resposta oficial (gabarito)<select id="edit-correct-answer"></select></label>
               <label>Páginas<input id="edit-source-pages" placeholder="1, 2"></label>
             </div>
-            <label>Explicação editorial<textarea id="edit-explanation" rows="5" placeholder="Não define a resposta; é obrigatória apenas para exportar"></textarea></label>
+            <label>Explicação editorial<textarea id="edit-explanation" rows="5" placeholder="Opcional para importar no app; necessária para publicação editorial"></textarea></label>
           </section>
           <aside class="review-side">
             <h3>Classificação</h3>
             <div class="form-grid two compact-grid">
               <label>Disciplina<input id="edit-discipline"></label>
-              <label>Assunto<input id="edit-matter"></label>
-              <label>Tópico<input id="edit-subject"></label>
+              <label>Matéria<input id="edit-matter"></label>
+              <label>Assunto<input id="edit-subject"></label>
               <label>Banca<input id="edit-board"></label>
               <label>Concurso<input id="edit-concurso"></label>
               <label>Ano<input id="edit-year" type="number" min="1900" max="2100"></label>

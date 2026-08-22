@@ -153,12 +153,14 @@ function statusLabel(status) {
   return {
     pending: 'Pendente', approved: 'Aprovada', rejected: 'Rejeitada',
     exception: 'Exceção', exported: 'Exportada', exportable: 'Exportável',
+    importable: 'Importável', publication_ready: 'Pronta para publicação',
   }[status] || status;
 }
 
 function flagLabel(flag) {
   return {
-    incomplete: 'Incompleta', without_explanation: 'Sem explicação', annulled: 'Anulada',
+    incomplete: 'Incompleta', without_explanation: 'Sem explicação',
+    without_difficulty: 'Sem dificuldade', annulled: 'Anulada',
     without_answer: 'Sem gabarito', visual: 'Visual', missing_fields: 'Campos ausentes',
     low_confidence: 'Baixa confiança', duplicate: 'Duplicata',
   }[flag] || flag;
@@ -170,7 +172,7 @@ const facetDefinitions = [
     ['years', 'Ano'], ['roles', 'Cargo'], ['variants', 'Variante'], ['levels', 'Nível'],
   ]],
   ['Conteúdo', [
-    ['disciplines', 'Disciplina'], ['subjects', 'Assunto'], ['topics', 'Tópico'],
+    ['disciplines', 'Disciplina'], ['subjects', 'Matéria'], ['topics', 'Assunto'],
     ['difficulties', 'Dificuldade'],
   ]],
   ['Qualidade', [['quality_flags', 'Sinais de qualidade']]],
@@ -489,11 +491,11 @@ function renderMetrics() {
   byId('metric-pending').textContent = summary.pending || 0;
   byId('metric-exceptions').textContent = summary.exception || 0;
   byId('metric-missing-answers').textContent = `${summary.answer_missing || 0} sem resposta oficial`;
-  byId('metric-exportable').textContent = summary.exportable || 0;
+  byId('metric-importable').textContent = summary.importable || 0;
   const activeStatus = state.filters.statuses.length === 1 ? state.filters.statuses[0] : null;
   byId('metric-card-pending').classList.toggle('active', activeStatus === 'pending');
   byId('metric-card-exceptions').classList.toggle('active', activeStatus === 'exception');
-  byId('metric-card-exportable').classList.toggle('active', activeStatus === 'exportable');
+  byId('metric-card-importable').classList.toggle('active', activeStatus === 'importable');
 }
 
 function renderJobs() {
@@ -641,7 +643,7 @@ function renderQuery() {
   const activeStatus = state.filters.statuses.length === 1 ? state.filters.statuses[0] : null;
   byId('records-kicker').textContent = activeStatus === 'pending' ? 'FILA DE REVISÃO'
     : activeStatus === 'exception' ? 'QUESTÕES EM EXCEÇÃO'
-      : activeStatus === 'exportable' ? 'QUESTÕES APROVADAS' : 'QUESTÕES ENCONTRADAS';
+      : activeStatus === 'importable' ? 'IMPORTÁVEIS PARA O APP' : 'QUESTÕES ENCONTRADAS';
   renderFacets();
   renderActiveFilters();
   renderQuestions();
@@ -806,25 +808,26 @@ function renderQuestions() {
     const classification = document.createElement('span');
     classification.className = 'classification-copy';
     const discipline = document.createElement('strong');
-    discipline.textContent = question.discipline || 'Sem disciplina';
+    discipline.textContent = question.discipline || 'Não classificada';
     const topic = document.createElement('small');
     topic.textContent = [question.matter, question.subject].filter(Boolean).join(' · ') || 'Classificação pendente';
     classification.append(discipline, topic);
 
     const confidence = document.createElement('span');
     confidence.className = 'confidence';
+    const hasClassification = Boolean(question.discipline || question.matter || question.subject);
     const percentage = Math.round((view.confidence || 0) * 100);
-    confidence.append(document.createTextNode(`${percentage}%`));
+    confidence.append(document.createTextNode(hasClassification ? `${percentage}%` : 'Não classificada'));
     const bar = document.createElement('span');
     bar.className = 'confidence-bar';
     const fill = document.createElement('span');
-    fill.style.width = `${percentage}%`;
+    fill.style.width = `${hasClassification ? percentage : 0}%`;
     bar.append(fill);
     confidence.append(bar);
 
     const status = document.createElement('span');
     status.className = `status-pill ${view.status}`;
-    status.textContent = view.exportable ? 'Exportável' : statusLabel(view.status);
+    status.textContent = view.importable ? 'Importável' : statusLabel(view.status);
     open.append(main, classification, confidence, status);
     row.append(open);
     root.append(row);
@@ -1212,6 +1215,8 @@ function humanClassification(question) {
     classification[key] = {
       value, confidence: value === null ? 0 : 1,
       evidence: value === null ? null : 'Confirmado na revisão humana',
+      source: value === null ? 'unresolved' : 'human_review',
+      reason: value === null ? 'Campo removido na revisão humana' : 'Valor confirmado pelo revisor',
     };
   });
   return classification;
@@ -1326,6 +1331,19 @@ async function exportCurrentFilter() {
   } catch (error) { toast(error.message, 'error'); }
 }
 
+async function reclassifyCollection() {
+  const button = byId('reclassify-open');
+  button.disabled = true;
+  try {
+    const result = await request('/api/questions/reclassify', {
+      method: 'POST', body: '{}',
+    });
+    toast(`Reclassificação concluída: ${result.changed} alterada(s) de ${result.total}. Taxonomia ${result.taxonomyVersion}.`);
+    await loadBootstrap({preserveQuery: false});
+  } catch (error) { toast(error.message, 'error'); }
+  finally { button.disabled = false; }
+}
+
 function debounce(callback, delay = 260) {
   let timer;
   return (...args) => {
@@ -1338,10 +1356,11 @@ document.querySelectorAll('.modal-close').forEach((button) => {
   button.addEventListener('click', () => button.closest('dialog').close());
 });
 byId('import-open').addEventListener('click', () => byId('import-dialog').showModal());
+byId('reclassify-open').addEventListener('click', reclassifyCollection);
 byId('export-open').addEventListener('click', exportCurrentFilter);
 byId('metric-card-pending').addEventListener('click', () => activateEditorialQueue('pending'));
 byId('metric-card-exceptions').addEventListener('click', () => activateEditorialQueue('exception'));
-byId('metric-card-exportable').addEventListener('click', () => activateEditorialQueue('exportable'));
+byId('metric-card-importable').addEventListener('click', () => activateEditorialQueue('importable'));
 byId('review-pdf').addEventListener('click', openAuthenticatedPdf);
 byId('choose-files').addEventListener('click', () => choosePaths('files'));
 byId('choose-folder').addEventListener('click', () => choosePaths('folder'));
@@ -1402,7 +1421,7 @@ document.querySelectorAll('.rail-link').forEach((button) => {
     if (section === 'sources') return;
     state.filters.statuses = section === 'reviews'
       ? ['pending', 'exception']
-      : section === 'exports' ? ['exportable', 'exported'] : [];
+      : section === 'exports' ? ['importable', 'exported'] : [];
     await runQuery();
   });
 });
