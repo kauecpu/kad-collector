@@ -77,7 +77,7 @@ const token = document.querySelector('meta[name="kad-desktop-token"]').content;
 const emptyFilters = () => ({
   source_files: [], concursos: [], boards: [], years: [], roles: [], variants: [], levels: [],
   disciplines: [], subjects: [], topics: [], difficulties: [], statuses: [],
-  quality_flags: [], search: '', min_confidence: null,
+  readiness_states: [], block_reasons: [], quality_flags: [], search: '', min_confidence: null,
 });
 
 const state = {
@@ -88,6 +88,7 @@ const state = {
   selectedQuestionIds: new Set(),
   currentQuestion: null,
   currentAudit: [],
+  batchClassificationPreview: null,
   polling: null,
   activeSection: 'workspace',
   selectedSourceId: null,
@@ -154,6 +155,7 @@ function statusLabel(status) {
     pending: 'Pendente', approved: 'Aprovada', rejected: 'Rejeitada',
     exception: 'Exceção', exported: 'Exportada', exportable: 'Exportável',
     importable: 'Importável', publication_ready: 'Pronta para publicação',
+    unclassified: 'Não classificada', blocked: 'Bloqueada',
   }[status] || status;
 }
 
@@ -175,7 +177,10 @@ const facetDefinitions = [
     ['disciplines', 'Disciplina'], ['subjects', 'Matéria'], ['topics', 'Assunto'],
     ['difficulties', 'Dificuldade'],
   ]],
-  ['Qualidade', [['quality_flags', 'Sinais de qualidade']]],
+  ['Qualidade', [
+    ['readiness_states', 'Importação no app'], ['block_reasons', 'Motivo do bloqueio'],
+    ['quality_flags', 'Sinais de qualidade'],
+  ]],
   ['Situação', [['statuses', 'Fluxo editorial']]],
 ];
 
@@ -687,7 +692,9 @@ function renderFacets() {
         checkbox.addEventListener('change', () => toggleFilter(key, option.value));
         const copy = document.createElement('strong');
         copy.textContent = key === 'quality_flags' ? flagLabel(option.value)
-          : key === 'statuses' ? statusLabel(option.value) : String(option.value);
+          : key === 'block_reasons' ? blockReasonLabel(option.value)
+            : ['statuses', 'readiness_states'].includes(key)
+              ? statusLabel(option.value) : String(option.value);
         const count = document.createElement('span');
         count.textContent = option.count;
         optionLabel.append(checkbox, copy, count);
@@ -733,7 +740,10 @@ function filterChip(key, value) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'filter-chip';
-  button.textContent = `${key === 'quality_flags' ? flagLabel(value) : key === 'statuses' ? statusLabel(value) : value} ×`;
+  const label = key === 'quality_flags' ? flagLabel(value)
+    : key === 'block_reasons' ? blockReasonLabel(value)
+      : ['statuses', 'readiness_states'].includes(key) ? statusLabel(value) : value;
+  button.textContent = `${label} ×`;
   button.addEventListener('click', async () => {
     if (Array.isArray(state.filters[key])) {
       state.filters[key] = state.filters[key].filter((item) => String(item) !== String(value));
@@ -852,6 +862,7 @@ function renderBatchToolbar() {
   const selected = state.selectedQuestionIds.size;
   byId('selection-summary').textContent = `${selected} selecionada${selected === 1 ? '' : 's'}`;
   byId('batch-approve-open').disabled = selected === 0;
+  byId('batch-classification-open').disabled = selected === 0;
   const selectAll = byId('select-all-pending');
   selectAll.checked = pending.length > 0 && selected === pending.length;
   selectAll.indeterminate = selected > 0 && selected < pending.length;
@@ -1023,6 +1034,8 @@ function fillReviewForm() {
   renderCorrectAnswers(question.correct_answer);
   byId('edit-correct-answer').disabled = question.answer_status !== 'matched';
   renderReviewFlags();
+  renderImportDiagnosis();
+  renderBatchCorrection();
   renderReviewContext();
   byId('review-status-copy').textContent = `Situação atual: ${statusLabel(view.status)} · ${state.currentAudit.length} evento(s) de auditoria`;
 }
@@ -1306,18 +1319,151 @@ async function submitBatchApproval(event) {
   }
 }
 
-async function exportCurrentFilter() {
+async function openBatchClassification() {
+  try {
+    const preview = await request('/api/questions/classification-batch/preview', {
+      method: 'POST',
+      body: JSON.stringify({questionIds: [...state.selectedQuestionIds]}),
+    });
+    state.batchClassificationPreview = preview;
+    byId('batch-classification-copy').textContent =
+      `${preview.count} questão(ões) têm exatamente a mesma sugestão e evidência.`;
+    const suggestion = preview.suggestion;
+    byId('batch-classification-suggestion').textContent =
+      `${suggestion.discipline} › ${suggestion.matter} › ${suggestion.subject}`;
+    byId('batch-classification-dialog').showModal();
+  } catch (error) { toast(error.message, 'error'); }
+}
+
+async function submitBatchClassification(event) {
+  event.preventDefault();
+  const preview = state.batchClassificationPreview;
+  if (!preview) return;
+  const button = byId('batch-classification-submit');
+  button.disabled = true;
+  try {
+    const result = await request('/api/questions/classification-batch/confirm', {
+      method: 'POST',
+      body: JSON.stringify({
+        questionIds: preview.questionIds,
+        confirmationToken: preview.confirmationToken,
+      }),
+    });
+    byId('batch-classification-dialog').close();
+    state.batchClassificationPreview = null;
+    state.selectedQuestionIds.clear();
+    toast(`${result.updated} classificação(ões) confirmada(s) e auditada(s).`);
+    await loadBootstrap({preserveQuery: true});
+  } catch (error) { toast(error.message, 'error'); }
+  finally { button.disabled = false; }
+}
+
+async function revertCurrentClassificationBatch() {
+  const batchId = byId('revert-classification-batch').dataset.batchId;
+  if (!batchId || !window.confirm('Corrigir esta decisão para todas as questões do lote?')) return;
+  try {
+    const result = await request(`/api/classification-batches/${batchId}/revert`, {
+      method: 'POST', body: '{}',
+    });
+    toast(`${result.reverted} classificação(ões) restaurada(s), com auditoria.`);
+    byId('review-dialog').close();
+    await loadBootstrap({preserveQuery: true});
+  } catch (error) { toast(error.message, 'error'); }
+}
+
+async function openExportPreview() {
+  try {
+    const preview = await request('/api/export/preview', {
+      method: 'POST', body: JSON.stringify({filters: state.filters}),
+    });
+    byId('export-preview-summary').textContent =
+      `${preview.included} de ${preview.selected} selecionada(s) entrarão no arquivo; ${preview.exceptions} ficarão no relatório de exceções.`;
+    const root = byId('export-preview-list');
+    root.replaceChildren();
+    preview.questions.slice(0, 100).forEach((question) => {
+      const item = document.createElement('span');
+      item.textContent = `Questão ${question.number} · ${question.discipline} · ${question.sourceDocument}`;
+      root.append(item);
+    });
+    if (!preview.questions.length) {
+      const item = document.createElement('span');
+      item.textContent = 'Nenhuma questão atende hoje a todos os requisitos da exportação.';
+      root.append(item);
+    }
+    byId('export-preview-submit').disabled = preview.included === 0;
+    byId('export-preview-dialog').showModal();
+  } catch (error) { toast(error.message, 'error'); }
+}
+
+async function exportCurrentFilter(event) {
+  if (event) event.preventDefault();
   let outputPath = null;
   try {
     if (window.pywebview?.api) outputPath = await window.pywebview.api.choose_export_folder();
     else outputPath = window.prompt('Pasta de destino (deixe vazio para usar a pasta padrão):') || null;
     if (window.pywebview?.api && !outputPath) return;
+    byId('export-preview-dialog').close();
     const result = await request('/api/export', {
       method: 'POST', body: JSON.stringify({filters: state.filters, outputPath}),
     });
     toast(`Exportação concluída: ${result.exported} válida(s), ${result.exceptions} exceção(ões). Pasta: ${result.directory}`);
     await loadBootstrap({preserveQuery: false});
   } catch (error) { toast(error.message, 'error'); }
+}
+
+function renderImportDiagnosis() {
+  const root = byId('import-diagnosis');
+  root.replaceChildren();
+  const diagnosis = state.currentQuestion.import_diagnosis || {importable: false, issues: []};
+  const heading = document.createElement('strong');
+  heading.textContent = diagnosis.importable
+    ? 'Importável para o app' : 'O que impede a importação';
+  root.append(heading);
+  if (diagnosis.importable) {
+    const copy = document.createElement('span');
+    copy.textContent = 'Resposta, alternativas, classificação e origem atendem ao contrato.';
+    root.append(copy);
+    return;
+  }
+  diagnosis.issues.forEach((issue) => {
+    const card = document.createElement('article');
+    const title = document.createElement('strong');
+    title.textContent = issue.what;
+    const why = document.createElement('span');
+    why.textContent = `Por quê: ${issue.why}`;
+    const how = document.createElement('span');
+    how.textContent = `Como resolver: ${issue.how_to_resolve}`;
+    const source = document.createElement('small');
+    source.textContent = `Origem: ${issue.source_document}`;
+    card.append(title, why, how, source);
+    root.append(card);
+  });
+}
+
+function renderBatchCorrection() {
+  const button = byId('revert-classification-batch');
+  button.hidden = true;
+  delete button.dataset.batchId;
+  const event = state.currentAudit[0];
+  if (event?.action !== 'classification_batch_confirmed') return;
+  try {
+    const payload = JSON.parse(event.after_json || '{}');
+    if (!payload.batchId) return;
+    button.dataset.batchId = payload.batchId;
+    button.hidden = false;
+  } catch (_) { /* evento legado sem JSON estruturado */ }
+}
+
+function blockReasonLabel(reason) {
+  return {
+    missing_classification: 'Classificação ausente', missing_metadata: 'Metadados ausentes',
+    missing_year: 'Ano ausente', missing_source_page: 'Página de origem ausente',
+    invalid_statement: 'Enunciado inválido', missing_official_answer: 'Resposta oficial ausente',
+    annulled_answer: 'Questão anulada', invalid_alternatives: 'Alternativas inválidas',
+    visual_content: 'Conteúdo visual', unproved_origin: 'Origem não comprovada',
+    unresolved_duplicate: 'Duplicata não resolvida', ambiguous_association: 'Associação ambígua',
+    version_conflict: 'Conflito de versão',
+  }[reason] || reason;
 }
 
 async function reclassifyCollection() {
@@ -1346,7 +1492,7 @@ document.querySelectorAll('.modal-close').forEach((button) => {
 });
 byId('import-open').addEventListener('click', () => byId('import-dialog').showModal());
 byId('reclassify-open').addEventListener('click', reclassifyCollection);
-byId('export-open').addEventListener('click', exportCurrentFilter);
+byId('export-open').addEventListener('click', openExportPreview);
 byId('metric-card-pending').addEventListener('click', () => activateEditorialQueue('pending'));
 byId('metric-card-exceptions').addEventListener('click', () => activateEditorialQueue('exception'));
 byId('metric-card-importable').addEventListener('click', () => activateEditorialQueue('importable'));
@@ -1382,6 +1528,7 @@ byId('edit-answer-status').addEventListener('change', (event) => {
   if (event.target.value !== 'matched') byId('edit-correct-answer').value = '';
 });
 byId('save-question').addEventListener('click', () => saveCurrentQuestion().catch((error) => toast(error.message, 'error')));
+byId('revert-classification-batch').addEventListener('click', revertCurrentClassificationBatch);
 byId('approve-question').addEventListener('click', () => decideCurrent('approved'));
 byId('reject-question').addEventListener('click', () => decideCurrent('rejected'));
 byId('mark-exception').addEventListener('click', () => decideCurrent('exception'));
@@ -1399,6 +1546,9 @@ byId('clear-selection').addEventListener('click', () => {
 });
 byId('batch-approve-open').addEventListener('click', openBatchApproval);
 byId('batch-approve-form').addEventListener('submit', submitBatchApproval);
+byId('batch-classification-open').addEventListener('click', openBatchClassification);
+byId('batch-classification-form').addEventListener('submit', submitBatchClassification);
+byId('export-preview-form').addEventListener('submit', exportCurrentFilter);
 document.querySelectorAll('.rail-link').forEach((button) => {
   button.addEventListener('click', async () => {
     document.querySelectorAll('.rail-link').forEach((item) => item.classList.remove('active'));

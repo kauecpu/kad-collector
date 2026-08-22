@@ -16,7 +16,12 @@ from urllib.parse import urlparse
 from pydantic import ValidationError
 
 from .desktop_collection import DesktopCollectionManager
-from .desktop_export import DesktopExportResult, export_filtered_questions
+from .desktop_export import (
+    DesktopExportPreview,
+    DesktopExportResult,
+    export_filtered_questions,
+    preview_filtered_questions,
+)
 from .desktop_limits import (
     MAX_BATCH_PDFS,
     MAX_PDF_BYTES,
@@ -179,6 +184,37 @@ class DesktopApplication:
             notes=_optional_text(payload, "notes"),
         )
 
+    @staticmethod
+    def _batch_question_ids(payload: dict[str, Any]) -> list[str]:
+        question_ids = payload.get("questionIds")
+        if not isinstance(question_ids, list) or not all(
+            isinstance(question_id, str) for question_id in question_ids
+        ):
+            raise ValueError("questionIds deve ser uma lista de identificadores")
+        return question_ids
+
+    def preview_classification_batch(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.store.preview_classification_batch(self._batch_question_ids(payload))
+
+    def confirm_classification_batch(self, payload: dict[str, Any]) -> dict[str, Any]:
+        token = payload.get("confirmationToken")
+        if not isinstance(token, str):
+            raise ValueError("confirmationToken deve ser informado")
+        return self.store.confirm_classification_batch(
+            self._batch_question_ids(payload),
+            confirmation_token=token,
+            actor=LOCAL_DESKTOP_ACTOR,
+        )
+
+    def revert_classification_batch(self, batch_id: str) -> dict[str, Any]:
+        return self.store.revert_classification_batch(
+            batch_id, actor=LOCAL_DESKTOP_ACTOR
+        )
+
+    def preview_export(self, payload: dict[str, Any]) -> DesktopExportPreview:
+        filters = DesktopFilterSet.model_validate(payload.get("filters", {}))
+        return preview_filtered_questions(self.store, filters)
+
     def export(self, payload: dict[str, Any]) -> DesktopExportResult:
         filters = DesktopFilterSet.model_validate(payload.get("filters", {}))
         output_path = payload.get("outputPath")
@@ -334,6 +370,20 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                     approved = application.approve_batch(payload)
                     self._send_json({"approved": approved})
                     return
+                if path == "/api/questions/classification-batch/preview":
+                    self._send_json(application.preview_classification_batch(payload))
+                    return
+                if path == "/api/questions/classification-batch/confirm":
+                    self._send_json(application.confirm_classification_batch(payload))
+                    return
+                batch_revert = re.fullmatch(
+                    r"/api/classification-batches/([a-f0-9-]+)/revert", path
+                )
+                if batch_revert is not None:
+                    self._send_json(
+                        application.revert_classification_batch(batch_revert.group(1))
+                    )
+                    return
                 if path == "/api/questions/reclassify":
                     self._send_json(application.reclassify_questions())
                     return
@@ -353,6 +403,18 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                             "exceptionsPath": str(result.exceptions_path),
                             "exported": result.exported_count,
                             "exceptions": result.exception_count,
+                        }
+                    )
+                    return
+                if path == "/api/export/preview":
+                    preview = application.preview_export(payload)
+                    self._send_json(
+                        {
+                            "selected": preview.selected,
+                            "included": preview.included_count,
+                            "exceptions": preview.exception_count,
+                            "questions": preview.questions,
+                            "exclusionReasons": preview.exclusion_reasons,
                         }
                     )
                     return

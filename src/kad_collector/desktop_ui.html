@@ -114,6 +114,7 @@
               <span id="selection-summary" aria-live="polite">0 selecionadas</span>
               <div>
                 <button id="clear-selection" class="text-button" type="button">Limpar seleção</button>
+                <button id="batch-classification-open" class="button ghost" type="button" disabled>Confirmar classificação</button>
                 <button id="batch-approve-open" class="button success" type="button" disabled>Aprovar selecionadas</button>
               </div>
             </div>
@@ -298,6 +299,7 @@
           </div>
         </header>
         <div id="review-flags" class="review-flags"></div>
+        <section id="import-diagnosis" class="import-diagnosis" aria-label="Diagnóstico de importação"></section>
         <div id="review-context" class="review-context" aria-label="Contexto da questão"></div>
         <section id="document-identity" class="document-identity" aria-label="Identidade semântica do documento"></section>
         <div class="review-layout">
@@ -342,6 +344,7 @@
             <button id="mark-exception" class="button ghost warning" type="button">Enviar para Exceções</button>
             <button id="reject-question" class="button danger" type="button">Rejeitar</button>
             <button id="save-question" class="button ghost" type="button">Salvar</button>
+            <button id="revert-classification-batch" class="button ghost warning" type="button" hidden>Corrigir decisão em lote</button>
             <button id="approve-question" class="button success" type="button">Aprovar</button>
           </div>
         </footer>
@@ -359,6 +362,37 @@
         <footer class="modal-footer">
           <button class="button ghost modal-close" type="button">Cancelar</button>
           <button id="batch-approve-submit" class="button success" type="submit">Confirmar aprovação</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <dialog id="batch-classification-dialog" class="modal compact-modal">
+      <form id="batch-classification-form">
+        <header class="modal-header">
+          <div><p class="eyebrow">REVISÃO ASSISTIDA</p><h2>Confirmar classificação</h2></div>
+          <button class="icon-button modal-close" type="button" aria-label="Fechar">×</button>
+        </header>
+        <p id="batch-classification-copy" class="modal-copy"></p>
+        <div id="batch-classification-suggestion" class="preview-summary"></div>
+        <p class="batch-warning">A confirmação vale somente para questões com a mesma sugestão e as mesmas evidências. Respostas, gabaritos e decisões editoriais não serão alterados.</p>
+        <footer class="modal-footer">
+          <button class="button ghost modal-close" type="button">Cancelar</button>
+          <button id="batch-classification-submit" class="button success" type="submit">Confirmar alterações</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <dialog id="export-preview-dialog" class="modal compact-modal">
+      <form id="export-preview-form">
+        <header class="modal-header">
+          <div><p class="eyebrow">PRÉVIA</p><h2>Questões que entrarão na exportação</h2></div>
+          <button class="icon-button modal-close" type="button" aria-label="Fechar">×</button>
+        </header>
+        <div id="export-preview-summary" class="preview-summary"></div>
+        <div id="export-preview-list" class="preview-list"></div>
+        <footer class="modal-footer">
+          <button class="button ghost modal-close" type="button">Cancelar</button>
+          <button id="export-preview-submit" class="button success" type="submit">Exportar estas questões</button>
         </footer>
       </form>
     </dialog>

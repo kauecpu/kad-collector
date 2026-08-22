@@ -4,6 +4,7 @@ import hashlib
 import json
 import unicodedata
 
+from .import_readiness import question_import_issues
 from .models import QuestionBatch, QuestionRecord, ValidationState
 
 _EDITORIAL_TEXT_FIELDS = (
@@ -18,13 +19,6 @@ _EDITORIAL_TEXT_FIELDS = (
     ("dificuldade", "difficulty"),
     ("explicacao", "explanation"),
 )
-
-_APP_IMPORT_TEXT_FIELDS = tuple(
-    item
-    for item in _EDITORIAL_TEXT_FIELDS
-    if item[1] not in {"difficulty", "explanation"}
-)
-
 
 def _normalized(value: str) -> str:
     decomposed = unicodedata.normalize("NFKD", value)
@@ -91,11 +85,11 @@ def validate_app_import_question(question: QuestionRecord) -> list[str]:
     alternatives remain mandatory.
     """
 
-    return _validate_question_for_transfer(
-        question,
-        required_text_fields=_APP_IMPORT_TEXT_FIELDS,
-        purpose="importacao no app",
-    )
+    return [
+        message
+        for issue in question_import_issues(question)
+        for message in issue.validation_messages
+    ]
 
 
 def validate_editorial_question(question: QuestionRecord) -> list[str]:

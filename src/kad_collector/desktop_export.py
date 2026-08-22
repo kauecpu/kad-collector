@@ -26,6 +26,26 @@ class DesktopExportResult:
     exception_count: int
 
 
+@dataclass(frozen=True)
+class DesktopExportPreview:
+    selected: int
+    included_count: int
+    exception_count: int
+    questions: list[dict[str, Any]]
+    exclusion_reasons: dict[str, int]
+
+
+@dataclass(frozen=True)
+class _DesktopExportEvaluation:
+    selected: int
+    records: list[dict[str, Any]]
+    included_views: list[dict[str, Any]]
+    exceptions: list[dict[str, Any]]
+    exported_ids: list[str]
+    evidence: dict[str, Path]
+    reason_counts: Counter[str]
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -90,20 +110,12 @@ def _question_exception(view: dict[str, Any], issues: list[str]) -> dict[str, An
     }
 
 
-def export_filtered_questions(
-    store: DesktopStore,
-    filters: DesktopFilterSet,
-    *,
-    output_root: Path,
-    now: datetime | None = None,
-) -> DesktopExportResult:
-    created_at = now or datetime.now(UTC)
-    directory = output_root / f"KAD-export-{created_at.strftime('%Y%m%d-%H%M%S')}"
-    questions_path = directory / "questoes.jsonl"
-    exceptions_path = directory / "excecoes.jsonl"
-    report_path = directory / "relatorio.json"
+def _evaluate_filtered_questions(
+    store: DesktopStore, filters: DesktopFilterSet
+) -> _DesktopExportEvaluation:
     candidates = store.export_candidates(filters)
     records: list[dict[str, Any]] = []
+    included_views: list[dict[str, Any]] = []
     selected_document_ids = {cast(str, item["document_id"]) for item in candidates}
     exceptions: list[dict[str, Any]] = store.document_exceptions(selected_document_ids)
     exported_ids: list[str] = []
@@ -155,13 +167,65 @@ def export_filtered_questions(
         seen_ids.add(record.data.id)
         seen_fingerprints.add(record.source.fingerprint)
         records.append(record.model_dump(mode="json", by_alias=True))
+        included_views.append(view)
         exported_ids.append(cast(str, view["id"]))
         evidence[expected_sha] = source_path
 
-    write_json_lines(questions_path, records)
-    write_json_lines(exceptions_path, exceptions)
+    return _DesktopExportEvaluation(
+        selected=len(candidates),
+        records=records,
+        included_views=included_views,
+        exceptions=exceptions,
+        exported_ids=exported_ids,
+        evidence=evidence,
+        reason_counts=reason_counts,
+    )
+
+
+def preview_filtered_questions(
+    store: DesktopStore, filters: DesktopFilterSet
+) -> DesktopExportPreview:
+    """Evaluate the real export gates without files or database mutations."""
+
+    evaluation = _evaluate_filtered_questions(store, filters)
+    return DesktopExportPreview(
+        selected=evaluation.selected,
+        included_count=len(evaluation.records),
+        exception_count=len(evaluation.exceptions),
+        questions=[
+            {
+                "questionId": view["id"],
+                "number": view["question"]["number"],
+                "statement": view["question"]["statement"],
+                "discipline": view["question"].get("discipline"),
+                "matter": view["question"].get("matter"),
+                "subject": view["question"].get("subject"),
+                "sourceDocument": view["filename"],
+            }
+            for view in evaluation.included_views
+        ],
+        exclusion_reasons=dict(evaluation.reason_counts.most_common()),
+    )
+
+
+def export_filtered_questions(
+    store: DesktopStore,
+    filters: DesktopFilterSet,
+    *,
+    output_root: Path,
+    now: datetime | None = None,
+) -> DesktopExportResult:
+    created_at = now or datetime.now(UTC)
+    directory = output_root / f"KAD-export-{created_at.strftime('%Y%m%d-%H%M%S')}"
+    questions_path = directory / "questoes.jsonl"
+    exceptions_path = directory / "excecoes.jsonl"
+    report_path = directory / "relatorio.json"
+    evaluation = _evaluate_filtered_questions(store, filters)
+
+    write_json_lines(questions_path, evaluation.records)
+    write_json_lines(exceptions_path, evaluation.exceptions)
     evidence_paths: list[Path] = []
-    for digest, source in evidence.items():
+    for digest, source in evaluation.evidence.items():
         destination = directory / "fontes" / f"prova-{digest[:16]}.pdf"
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)
@@ -172,10 +236,10 @@ def export_filtered_questions(
             "schemaVersion": 1,
             "createdAt": created_at.isoformat(),
             "filters": filters.model_dump(mode="json"),
-            "selected": len(candidates),
-            "exported": len(records),
-            "exceptions": len(exceptions),
-            "exclusionReasons": dict(reason_counts.most_common()),
+            "selected": evaluation.selected,
+            "exported": len(evaluation.records),
+            "exceptions": len(evaluation.exceptions),
+            "exclusionReasons": dict(evaluation.reason_counts.most_common()),
             "notes": [
                 "Somente questões aprovadas, válidas e com origem HTTPS foram exportadas.",
                 "PDFs são evidência; questoes.jsonl é o arquivo aceito pelo painel KAD.",
@@ -199,12 +263,12 @@ def export_filtered_questions(
             ],
         },
     )
-    store.mark_exported(exported_ids)
+    store.mark_exported(evaluation.exported_ids)
     return DesktopExportResult(
         directory=directory,
         questions_path=questions_path,
         exceptions_path=exceptions_path,
         report_path=report_path,
-        exported_count=len(records),
-        exception_count=len(exceptions),
+        exported_count=len(evaluation.records),
+        exception_count=len(evaluation.exceptions),
     )

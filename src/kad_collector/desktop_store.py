@@ -22,6 +22,8 @@ from .desktop_models import (
     QuestionClassification,
 )
 from .document_contract import NormalizedDocument, normalize_local_document
+from .editorial_taxonomy import EditorialTaxonomy
+from .import_readiness import diagnose_import_readiness
 from .models import QuestionRecord
 from .semantic_identity import (
     IDENTITY_ALGORITHM_VERSION,
@@ -48,7 +50,7 @@ from .semantic_registry import (
     semantic_summary,
 )
 from .semantic_resolution import resolve_document_version, select_answer_key
-from .validation import validate_app_import_question, validate_editorial_question
+from .validation import validate_editorial_question
 
 
 def _now() -> str:
@@ -421,6 +423,23 @@ class DesktopStore:
                     filters_json TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS classification_review_batches (
+                    id TEXT PRIMARY KEY,
+                    confirmation_token TEXT NOT NULL,
+                    suggestion_json TEXT NOT NULL,
+                    evidence_json TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    actor TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    reverted_at TEXT
+                );
+                CREATE TABLE IF NOT EXISTS classification_review_batch_items (
+                    batch_id TEXT NOT NULL REFERENCES classification_review_batches(id),
+                    question_id TEXT NOT NULL REFERENCES questions(id),
+                    before_classification_json TEXT NOT NULL,
+                    after_classification_json TEXT NOT NULL,
+                    PRIMARY KEY(batch_id, question_id)
                 );
                 """
             )
@@ -2302,6 +2321,281 @@ class DesktopStore:
         return len(before_views)
 
     @staticmethod
+    def _classification_review_signature(
+        classification: QuestionClassification,
+    ) -> tuple[dict[str, str], dict[str, Any]]:
+        fields = {
+            "discipline": classification.discipline,
+            "matter": classification.subject,
+            "subject": classification.topic,
+        }
+        suggestion = {
+            name: str(value.value or "").strip() for name, value in fields.items()
+        }
+        if any(not value for value in suggestion.values()):
+            raise ValueError("a revisão em lote exige sugestão completa de classificação")
+        taxonomy = EditorialTaxonomy.load_default()
+        taxonomy.ensure_known("discipline", suggestion["discipline"])
+        taxonomy.ensure_known("matter", suggestion["matter"])
+        taxonomy.ensure_known("subject", suggestion["subject"])
+        valid_path = any(
+            path.matter == suggestion["matter"] and path.subject == suggestion["subject"]
+            for path in taxonomy.candidate_paths(discipline=suggestion["discipline"])
+        )
+        if not valid_path:
+            raise ValueError("a sugestão não forma um caminho válido na taxonomia")
+        evidence = {
+            name: {
+                "evidence": value.evidence,
+                "source": value.source,
+                "reason": value.reason,
+                "provenance": value.provenance,
+            }
+            for name, value in fields.items()
+        }
+        if any(value.source == "human_review" for value in fields.values()):
+            raise ValueError("uma decisão humana existente não pode ser sobrescrita em lote")
+        return suggestion, evidence
+
+    def preview_classification_batch(self, question_ids: list[str]) -> dict[str, Any]:
+        normalized_ids = sorted(set(question_ids))
+        if not normalized_ids:
+            raise ValueError("selecione ao menos uma questão")
+        if len(normalized_ids) > 1_000:
+            raise ValueError("a revisão em lote aceita no máximo 1000 questões")
+        views = [self.question(question_id) for question_id in normalized_ids]
+        signatures: list[tuple[dict[str, str], dict[str, Any]]] = []
+        snapshots: list[dict[str, Any]] = []
+        for view in views:
+            classification = QuestionClassification.model_validate(view["classification"])
+            signatures.append(self._classification_review_signature(classification))
+            snapshots.append(
+                {
+                    "questionId": view["id"],
+                    "classification": classification.model_dump(mode="json"),
+                }
+            )
+        first_suggestion, first_evidence = signatures[0]
+        if any(
+            suggestion != first_suggestion or evidence != first_evidence
+            for suggestion, evidence in signatures[1:]
+        ):
+            raise ValueError(
+                "selecione somente questões com a mesma sugestão e evidência"
+            )
+        token = hashlib.sha256(
+            _json(
+                {
+                    "questions": snapshots,
+                    "suggestion": first_suggestion,
+                    "evidence": first_evidence,
+                }
+            ).encode("utf-8")
+        ).hexdigest()
+        return {
+            "count": len(views),
+            "questionIds": normalized_ids,
+            "suggestion": first_suggestion,
+            "evidence": first_evidence,
+            "confirmationToken": token,
+        }
+
+    def confirm_classification_batch(
+        self,
+        question_ids: list[str],
+        *,
+        confirmation_token: str,
+        actor: str,
+    ) -> dict[str, Any]:
+        if not confirmation_token.strip():
+            raise ValueError("a alteração em lote exige confirmação explícita")
+        reviewer = actor.strip()
+        if not reviewer:
+            raise ValueError("informe o responsável pela confirmação")
+        try:
+            preview = self.preview_classification_batch(question_ids)
+        except ValueError as exc:
+            raise ValueError(
+                "a fila mudou depois da prévia; revise e confirme novamente"
+            ) from exc
+        if confirmation_token != preview["confirmationToken"]:
+            raise ValueError("a fila mudou depois da prévia; revise e confirme novamente")
+        batch_id = str(uuid.uuid4())
+        now = _now()
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            rows = {
+                cast(str, row["id"]): row
+                for row in connection.execute(
+                    "SELECT * FROM questions WHERE id IN ("
+                    + ",".join("?" for _ in preview["questionIds"])
+                    + ")",
+                    tuple(preview["questionIds"]),
+                ).fetchall()
+            }
+            if len(rows) != len(preview["questionIds"]):
+                raise RuntimeError("a fila mudou durante a confirmação")
+            current_snapshots = [
+                {
+                    "questionId": question_id,
+                    "classification": json.loads(
+                        cast(str, rows[question_id]["classification_json"])
+                    ),
+                }
+                for question_id in preview["questionIds"]
+            ]
+            current_token = hashlib.sha256(
+                _json(
+                    {
+                        "questions": current_snapshots,
+                        "suggestion": preview["suggestion"],
+                        "evidence": preview["evidence"],
+                    }
+                ).encode("utf-8")
+            ).hexdigest()
+            if current_token != confirmation_token:
+                raise RuntimeError("a fila mudou durante a confirmação")
+            connection.execute(
+                "INSERT INTO classification_review_batches ("
+                "id, confirmation_token, suggestion_json, evidence_json, status, actor, "
+                "created_at) VALUES (?, ?, ?, ?, 'active', ?, ?)",
+                (
+                    batch_id,
+                    confirmation_token,
+                    _json(preview["suggestion"]),
+                    _json(preview["evidence"]),
+                    reviewer,
+                    now,
+                ),
+            )
+            for question_id in preview["questionIds"]:
+                row = rows[question_id]
+                before_json = cast(str, row["classification_json"])
+                before = QuestionClassification.model_validate_json(before_json)
+                updates: dict[str, Any] = {}
+                for field_name in ("discipline", "subject", "topic"):
+                    value = getattr(before, field_name)
+                    updates[field_name] = value.model_copy(
+                        update={
+                            "confidence": 1.0,
+                            "source": "human_review",
+                            "reason": "Sugestão e evidências confirmadas em revisão assistida.",
+                        }
+                    )
+                after = before.model_copy(update=updates)
+                after_json = _json(after.model_dump(mode="json"))
+                question = QuestionRecord.model_validate_json(cast(str, row["payload_json"]))
+                flags = question_quality_flags(question, after)
+                if "duplicate" in json.loads(cast(str, row["flags_json"])):
+                    flags.append("duplicate")
+                connection.execute(
+                    "UPDATE questions SET classification_json=?, confidence=?, flags_json=?, "
+                    "updated_at=? WHERE id=? AND classification_json=?",
+                    (
+                        after_json,
+                        min(_classification_confidences(after), default=0),
+                        _json(list(dict.fromkeys(flags))),
+                        now,
+                        question_id,
+                        before_json,
+                    ),
+                )
+                connection.execute(
+                    "INSERT INTO classification_review_batch_items ("
+                    "batch_id, question_id, before_classification_json, "
+                    "after_classification_json) VALUES (?, ?, ?, ?)",
+                    (batch_id, question_id, before_json, after_json),
+                )
+                self._audit(
+                    connection,
+                    question_id,
+                    "classification_batch_confirmed",
+                    reviewer,
+                    {"classification": json.loads(before_json)},
+                    {"classification": after.model_dump(mode="json"), "batchId": batch_id},
+                    "Sugestão e evidências confirmadas em lote.",
+                )
+            connection.commit()
+        return {"batchId": batch_id, "updated": len(preview["questionIds"])}
+
+    def revert_classification_batch(self, batch_id: str, *, actor: str) -> dict[str, Any]:
+        reviewer = actor.strip()
+        if not reviewer:
+            raise ValueError("informe o responsável pela correção")
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            batch = connection.execute(
+                "SELECT * FROM classification_review_batches WHERE id=?", (batch_id,)
+            ).fetchone()
+            if batch is None:
+                raise ValueError("lote de revisão não encontrado")
+            if batch["status"] != "active":
+                raise ValueError("este lote já foi corrigido")
+            items = connection.execute(
+                "SELECT * FROM classification_review_batch_items WHERE batch_id=? "
+                "ORDER BY question_id",
+                (batch_id,),
+            ).fetchall()
+            current_rows = {
+                cast(str, row["id"]): row
+                for row in connection.execute(
+                    "SELECT * FROM questions WHERE id IN ("
+                    + ",".join("?" for _ in items)
+                    + ")",
+                    tuple(row["question_id"] for row in items),
+                ).fetchall()
+            }
+            if any(
+                item["question_id"] not in current_rows
+                or current_rows[item["question_id"]]["classification_json"]
+                != item["after_classification_json"]
+                for item in items
+            ):
+                raise ValueError(
+                    "uma classificação mudou após o lote; a correção automática foi bloqueada"
+                )
+            now = _now()
+            for item in items:
+                question_id = cast(str, item["question_id"])
+                current = current_rows[question_id]
+                before_json = cast(str, item["before_classification_json"])
+                restored = QuestionClassification.model_validate_json(before_json)
+                question = QuestionRecord.model_validate_json(
+                    cast(str, current["payload_json"])
+                )
+                flags = question_quality_flags(question, restored)
+                if "duplicate" in json.loads(cast(str, current["flags_json"])):
+                    flags.append("duplicate")
+                connection.execute(
+                    "UPDATE questions SET classification_json=?, confidence=?, flags_json=?, "
+                    "updated_at=? WHERE id=? AND classification_json=?",
+                    (
+                        before_json,
+                        min(_classification_confidences(restored), default=0),
+                        _json(list(dict.fromkeys(flags))),
+                        now,
+                        question_id,
+                        item["after_classification_json"],
+                    ),
+                )
+                self._audit(
+                    connection,
+                    question_id,
+                    "classification_batch_reverted",
+                    reviewer,
+                    {"classification": json.loads(item["after_classification_json"])},
+                    {"classification": restored.model_dump(mode="json"), "batchId": batch_id},
+                    "Confirmação em lote corrigida sem alterar a decisão editorial.",
+                )
+            connection.execute(
+                "UPDATE classification_review_batches SET status='reverted', "
+                "reverted_at=? WHERE id=?",
+                (now, batch_id),
+            )
+            connection.commit()
+        return {"batchId": batch_id, "reverted": len(items)}
+
+    @staticmethod
     def _audit(
         connection: sqlite3.Connection,
         question_id: str,
@@ -2371,7 +2665,8 @@ class DesktopStore:
                     """
                     SELECT q.*, d.filename, d.local_path, d.sha256 AS document_sha256,
                            d.metadata_json, d.warnings_json, d.job_id,
-                           d.size_bytes, d.created_at AS document_created_at
+                           d.size_bytes, d.created_at AS document_created_at,
+                           d.semantic_resolution
                     FROM questions q JOIN documents d ON d.id = q.document_id
                     ORDER BY d.filename, q.question_number
                     """
@@ -2387,28 +2682,37 @@ class DesktopStore:
         metadata = json.loads(cast(str, payload.pop("metadata_json")))
         warnings = json.loads(cast(str, payload.pop("warnings_json")))
         question_record = QuestionRecord.model_validate(question)
-        origin_issues: list[str] = []
-        if not str(metadata.get("provider") or "").strip():
-            origin_issues.append("provider da origem não informado")
-        if not str(metadata.get("source_url") or "").startswith("https://"):
-            origin_issues.append("URL HTTPS da origem não informada")
-        if len(str(payload.get("document_sha256") or "")) != 64:
-            origin_issues.append("hash do documento de origem ausente")
-        duplicate_issues = (
-            ["conteúdo duplicado; resolva antes da importação"]
-            if "duplicate" in flags
-            else []
+        source_document = str(metadata.get("document_title") or payload["filename"])
+        import_diagnosis = diagnose_import_readiness(
+            question_record,
+            source_document=source_document,
+            provider=cast(str | None, metadata.get("provider")),
+            source_url=cast(str | None, metadata.get("source_url")),
+            document_sha256=cast(str | None, payload.get("document_sha256")),
+            flags=flags,
+            document_warnings=warnings,
+            semantic_resolution=cast(str | None, payload.get("semantic_resolution")),
         )
-        import_issues = [
-            *validate_app_import_question(question_record),
-            *origin_issues,
-            *duplicate_issues,
+        import_issues = [item.what for item in import_diagnosis.issues]
+        origin_issues = [
+            item.what for item in import_diagnosis.issues if item.code == "unproved_origin"
+        ]
+        duplicate_issues = [
+            item.what
+            for item in import_diagnosis.issues
+            if item.code == "unresolved_duplicate"
         ]
         publication_issues = [
             *validate_editorial_question(question_record),
             *origin_issues,
             *duplicate_issues,
         ]
+        readiness_states = ["importable" if import_diagnosis.importable else "blocked"]
+        if any(
+            not str(question.get(field_name) or "").strip()
+            for field_name in ("discipline", "matter", "subject")
+        ):
+            readiness_states.append("unclassified")
         payload.update(
             {
                 "question": question,
@@ -2416,8 +2720,11 @@ class DesktopStore:
                 "flags": flags,
                 "metadata": metadata,
                 "document_warnings": warnings,
-                "importable": not import_issues,
+                "importable": import_diagnosis.importable,
                 "import_issues": list(dict.fromkeys(import_issues)),
+                "import_diagnosis": import_diagnosis.model_dump(mode="json"),
+                "block_reasons": [item.code for item in import_diagnosis.issues],
+                "readiness_states": readiness_states,
                 "publication_ready": not publication_issues,
                 "publication_issues": list(dict.fromkeys(publication_issues)),
                 "exportable": payload["status"] == "approved"
@@ -2431,7 +2738,7 @@ class DesktopStore:
         return payload
 
     @staticmethod
-    def _summary(views: list[dict[str, Any]]) -> dict[str, int]:
+    def _summary(views: list[dict[str, Any]]) -> dict[str, Any]:
         counts = Counter(cast(str, view["status"]) for view in views)
         for status in ("pending", "approved", "rejected", "exception", "exported"):
             counts.setdefault(status, 0)
@@ -2449,8 +2756,20 @@ class DesktopStore:
         counts["publication_ready"] = sum(
             bool(view["publication_ready"]) for view in views
         )
+        counts["unclassified"] = sum(
+            "unclassified" in view["readiness_states"] for view in views
+        )
+        counts["blocked"] = sum("blocked" in view["readiness_states"] for view in views)
         counts["total"] = len(views)
-        return dict(counts)
+        summary: dict[str, Any] = dict(counts)
+        summary["import_block_reasons"] = dict(
+            Counter(
+                reason
+                for view in views
+                for reason in cast(list[str], view["block_reasons"])
+            ).most_common()
+        )
+        return summary
 
     def _matches(
         self,
@@ -2500,6 +2819,22 @@ class DesktopStore:
                 actual_statuses.add("publication_ready")
             if not actual_statuses.intersection(filters.statuses):
                 return False
+        if (
+            skip != "readiness_states"
+            and filters.readiness_states
+            and not set(filters.readiness_states).intersection(
+                cast(list[str], view["readiness_states"])
+            )
+        ):
+            return False
+        if (
+            skip != "block_reasons"
+            and filters.block_reasons
+            and not set(filters.block_reasons).intersection(
+                cast(list[str], view["block_reasons"])
+            )
+        ):
+            return False
         if (
             skip != "quality_flags"
             and filters.quality_flags
@@ -2556,6 +2891,8 @@ class DesktopStore:
                     *(["exportable"] if view["exportable"] else []),
                 ]
             ),
+            "readiness_states": lambda view: view["readiness_states"],
+            "block_reasons": lambda view: view["block_reasons"],
             "quality_flags": lambda view: view["flags"],
         }
         selected = filters.model_dump(mode="json")

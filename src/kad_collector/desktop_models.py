@@ -77,6 +77,10 @@ class DesktopFilterSet(StrictModel):
     topics: list[str] = Field(default_factory=list)
     difficulties: list[str] = Field(default_factory=list)
     statuses: list[str] = Field(default_factory=list)
+    readiness_states: list[Literal["importable", "unclassified", "blocked"]] = Field(
+        default_factory=list
+    )
+    block_reasons: list[str] = Field(default_factory=list)
     quality_flags: list[str] = Field(default_factory=list)
     search: str = ""
     min_confidence: float | None = Field(default=None, ge=0, le=1)
@@ -93,6 +97,8 @@ class DesktopFilterSet(StrictModel):
         "topics",
         "difficulties",
         "statuses",
+        "readiness_states",
+        "block_reasons",
         "quality_flags",
     )
     @classmethod
