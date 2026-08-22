@@ -1,6 +1,6 @@
 {
   "id": "fgv-rfb22",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "match": {
     "concurso_contains": ["rfb22"],
     "organization_contains": ["receita federal"],
@@ -46,7 +46,7 @@
       {"matter": "Contabilidade Pública", "subject": "Receita e Despesa Pública", "keywords": ["receita orçamentária", "despesa orçamentária", "restos a pagar"]}
     ]},
     {"name": "Fluência em Dados", "topics": [
-      {"matter": "Banco de Dados", "subject": "Modelagem e Consulta de Dados", "keywords": ["banco de dados", "sql", "data warehouse", "hadoop", "hdfs", "hbase"]},
+      {"matter": "Banco de Dados", "subject": "Modelagem e Consulta de Dados", "keywords": ["banco de dados", "sql", "nosql", "data warehouse", "hadoop", "hdfs", "hbase"]},
       {"matter": "Ciência de Dados", "subject": "Análise de Dados", "keywords": ["mineração de dados", "machine learning", "visualização de dados"]}
     ]},
     {"name": "Direito Administrativo", "topics": [

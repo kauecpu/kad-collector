@@ -124,6 +124,11 @@ suficiente, o campo permanece vazio e a interface apresenta **Nao classificada**
 da taxonomia nao sao criados. O botao **Reclassificar acervo** reaplica essa classificacao ao
 banco local sem baixar os PDFs e sem alterar gabaritos ou decisoes humanas.
 
+O contexto de vizinhanca so e propagado quando as questoes anterior, atual e seguinte possuem
+o mesmo identificador explicito de bloco. Ausencia de bloco nunca significa bloco compartilhado.
+As regras locais pontuam palavras e expressoes completas; uma palavra isolada so especializa
+materia e assunto quando a disciplina ja foi comprovada por uma fonte mais forte.
+
 A taxonomia editorial e composta pelo manifesto
 `src/kad_collector/editorial_taxonomy.bundle.v2.json` e por catalogos JSON independentes.
 Cada catalogo identifica o concurso ao qual se aplica, registra sua versao, aliases,
@@ -138,9 +143,12 @@ uma disciplina. Somente uma linha compativel com cabecalho controlado e o catalo
 correspondente aos metadados do concurso pode acionar essa etapa da cascata. Essa restricao
 evita que termos comuns de um concurso recebam silenciosamente a classificacao de outro.
 
-Para usar a integracao opcional ja existente com a OpenAI, defina `OPENAI_API_KEY` e,
-se necessario, `OPENAI_MODEL` somente na sessao que inicia o aplicativo, e selecione OpenAI
-ao criar o lote. A chave nunca e salva no SQLite, no executavel ou nos relatorios.
+Para usar o ultimo recurso opcional com a OpenAI, defina `OPENAI_API_KEY` e, se necessario,
+`OPENAI_MODEL` somente na sessao que inicia o aplicativo, e selecione OpenAI ao criar o lote.
+O motor local sempre roda primeiro. A IA recebe apenas IDs de opcoes fechadas da taxonomia e
+nao pode criar nomes nem substituir classificacoes locais ou humanas. Sem chave, sem internet
+ou com resposta invalida, o processamento continua com o mesmo resultado local. A chave nunca
+e salva no SQLite, no executavel ou nos relatorios.
 
 Os filtros usam OR dentro da mesma categoria e AND entre categorias. Origem, conteudo,
 qualidade e situacao possuem contagens facetadas, busca, chips ativos e filtros salvos. Uma
@@ -170,7 +178,9 @@ publicacao editorial permanece separada e ainda pode exigir explicacao e dificul
 O card **Pendentes** abre a fila editorial. A revisao permite editar a questao,
 consultar o PDF na pagina de origem, enviar para excecoes com justificativa, adiar a decisao e
 aprovar individualmente ou em lote. Somente uma aprovacao humana move a questao para
-**Exportaveis**.
+**Exportaveis**. A interface nao solicita nome de revisor nem observacao generica; as mutacoes
+locais usam o ator tecnico `operador_local` na auditoria. Excecao e rejeicao continuam exigindo
+uma justificativa visivel e auditavel.
 
 ### Identidade semântica e histórico do documento
 

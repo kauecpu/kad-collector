@@ -54,6 +54,7 @@ def _request(
     statement: str,
     *,
     section_title: str | None = None,
+    block_id: str | None = None,
     context: str | None = None,
 ) -> ClassificationRequest:
     return ClassificationRequest(
@@ -61,6 +62,7 @@ def _request(
         statement=statement,
         alternatives=["Primeira alternativa", "Segunda alternativa", "Terceira alternativa"],
         section_title=section_title,
+        block_id=block_id,
         context=context,
     )
 
@@ -131,9 +133,23 @@ class EditorialTaxonomyTests(unittest.TestCase):
     def test_neighbor_context_fills_only_between_matching_confident_neighbors(self) -> None:
         results = LocalRuleClassifier().classify_many(
             [
-                _request(1, "Primeira questão.", section_title="SIGILO FISCAL"),
-                _request(2, "Enunciado neutro sem evidência temática suficiente."),
-                _request(3, "Terceira questão.", section_title="SIGILO FISCAL"),
+                _request(
+                    1,
+                    "Primeira questão.",
+                    section_title="SIGILO FISCAL",
+                    block_id="bloco-sigilo",
+                ),
+                _request(
+                    2,
+                    "Enunciado neutro sem evidência temática suficiente.",
+                    block_id="bloco-sigilo",
+                ),
+                _request(
+                    3,
+                    "Terceira questão.",
+                    section_title="SIGILO FISCAL",
+                    block_id="bloco-sigilo",
+                ),
             ],
             _fgv_metadata(stage="curso de formação", source_url="https://example.gov.br/cf.pdf"),
         )
@@ -142,6 +158,95 @@ class EditorialTaxonomyTests(unittest.TestCase):
         self.assertEqual(middle.discipline.value, "Direito Tributário")
         self.assertEqual(middle.subject.value, "Sigilo Fiscal")
         self.assertEqual(middle.discipline.source, "neighbor_context")
+
+    def test_neighbor_context_does_not_propagate_without_explicit_block(self) -> None:
+        results = LocalRuleClassifier().classify_many(
+            [
+                _request(1, "Primeira questão.", section_title="SIGILO FISCAL"),
+                _request(2, "Enunciado neutro sem evidência temática suficiente."),
+                _request(3, "Terceira questão.", section_title="SIGILO FISCAL"),
+            ],
+            DesktopImportMetadata(),
+        )
+
+        middle = results[1].classification
+        self.assertIsNone(middle.discipline.value)
+        self.assertEqual(middle.discipline.source, "unresolved")
+
+    def test_neighbor_context_does_not_cross_block_boundary(self) -> None:
+        results = LocalRuleClassifier().classify_many(
+            [
+                _request(
+                    1,
+                    "Primeira questão.",
+                    section_title="SIGILO FISCAL",
+                    block_id="bloco-a",
+                ),
+                _request(
+                    2,
+                    "Enunciado neutro sem evidência temática suficiente.",
+                    block_id="bloco-b",
+                ),
+                _request(
+                    3,
+                    "Terceira questão.",
+                    section_title="SIGILO FISCAL",
+                    block_id="bloco-a",
+                ),
+            ],
+            DesktopImportMetadata(),
+        )
+
+        self.assertIsNone(results[1].classification.discipline.value)
+
+    def test_local_semantics_prefers_customs_evidence_over_math_word(self) -> None:
+        classification = LocalRuleClassifier().classify_many(
+            [
+                _request(
+                    1,
+                    (
+                        "No controle aduaneiro, a administração aduaneira calcula a "
+                        "média aritmética das cargas para fiscalizar a aduana."
+                    ),
+                )
+            ],
+            DesktopImportMetadata(),
+        )[0].classification
+
+        self.assertEqual(classification.discipline.value, "Legislação Aduaneira")
+        self.assertEqual(classification.subject.value, "Administração Aduaneira")
+        self.assertEqual(classification.discipline.source, "local_semantic_rule")
+
+    def test_single_generic_keyword_does_not_fill_topic_at_low_confidence(self) -> None:
+        classification = LocalRuleClassifier().classify_many(
+            [_request(1, "Considere somente a mediana apresentada no quadro.")],
+            DesktopImportMetadata(),
+        )[0].classification
+
+        self.assertIsNone(classification.discipline.value)
+        self.assertIsNone(classification.subject.value)
+        self.assertIsNone(classification.topic.value)
+        self.assertEqual(classification.subject.source, "unresolved")
+
+    def test_exact_keyword_can_specialize_an_already_proven_discipline(self) -> None:
+        classification = LocalRuleClassifier().classify_many(
+            [_request(1, "Calcule a probabilidade do evento apresentado.")],
+            DesktopImportMetadata(discipline="Estatística"),
+        )[0].classification
+
+        self.assertEqual(classification.discipline.value, "Estatística")
+        self.assertEqual(classification.subject.value, "Probabilidade")
+        self.assertEqual(classification.topic.value, "Probabilidade de Eventos")
+        self.assertEqual(classification.subject.source, "local_semantic_rule")
+
+    def test_controlled_compound_keyword_recognizes_nosql_as_database(self) -> None:
+        classification = LocalRuleClassifier().classify_many(
+            [_request(1, "Bancos de dados NoSQL usam estruturas flexíveis.")],
+            DesktopImportMetadata(discipline="Fluência em Dados"),
+        )[0].classification
+
+        self.assertEqual(classification.subject.value, "Banco de Dados")
+        self.assertEqual(classification.topic.value, "Modelagem e Consulta de Dados")
 
     def test_insufficient_evidence_remains_unclassified(self) -> None:
         classification = LocalRuleClassifier().classify_many(

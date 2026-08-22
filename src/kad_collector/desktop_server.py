@@ -35,6 +35,7 @@ from .models import QuestionRecord
 from .semantic_identity import semantic_public_dto
 
 MAX_REQUEST_BYTES = 5_000_000
+LOCAL_DESKTOP_ACTOR = "operador_local"
 
 
 def default_desktop_data_dir() -> Path:
@@ -102,8 +103,6 @@ class DesktopApplication:
         classifier_provider = payload.get("classifierProvider", "local")
         if classifier_provider not in {"local", "openai"}:
             raise ValueError("classificador deve ser local ou openai")
-        if classifier_provider == "openai" and not os.environ.get("OPENAI_API_KEY"):
-            raise ValueError("OPENAI_API_KEY não está configurada nesta sessão")
         return self.pipeline.import_paths(paths, metadata, classifier_provider)
 
     def reprocess_documents(
@@ -115,8 +114,6 @@ class DesktopApplication:
             raise ValueError("documentIds deve conter ao menos um identificador")
         if classifier_provider not in {"local", "openai"}:
             raise ValueError("classificador deve ser local ou openai")
-        if classifier_provider == "openai" and not os.environ.get("OPENAI_API_KEY"):
-            raise ValueError("OPENAI_API_KEY não está configurada nesta sessão")
         return self.pipeline.reprocess(document_ids, classifier_provider)
 
     def reclassify_questions(self) -> dict[str, Any]:
@@ -136,13 +133,13 @@ class DesktopApplication:
             if classification_payload is not None
             else None
         )
-        actor = _required_text(payload, "actor")
-        notes = _optional_text(payload, "notes")
+        previous_notes = cast(str | None, self.store.question(question_id)["review_notes"])
+        notes = _optional_text(payload, "notes") if "notes" in payload else previous_notes
         self.store.update_question(
             question_id,
             question,
             classification,
-            actor=actor,
+            actor=LOCAL_DESKTOP_ACTOR,
             notes=notes,
         )
 
@@ -154,8 +151,9 @@ class DesktopApplication:
             metadata = DesktopImportMetadata.model_validate(payload.get("metadata"))
         except ValidationError:
             raise ValueError("metadados do documento inválidos") from None
-        actor = _required_text(payload, "actor")
-        result = self.store.update_document_metadata(document_id, metadata, actor=actor)
+        result = self.store.update_document_metadata(
+            document_id, metadata, actor=LOCAL_DESKTOP_ACTOR
+        )
         return cast(dict[str, Any], semantic_public_dto(result))
 
     def decide(self, question_id: str, payload: dict[str, Any]) -> None:
@@ -165,7 +163,7 @@ class DesktopApplication:
         self.store.decide_question(
             question_id,
             status,
-            actor=_required_text(payload, "actor"),
+            actor=LOCAL_DESKTOP_ACTOR,
             notes=_optional_text(payload, "notes"),
         )
 
@@ -177,7 +175,7 @@ class DesktopApplication:
             raise ValueError("questionIds deve ser uma lista de identificadores")
         return self.store.approve_questions(
             question_ids,
-            actor=_required_text(payload, "actor"),
+            actor=LOCAL_DESKTOP_ACTOR,
             notes=_optional_text(payload, "notes"),
         )
 

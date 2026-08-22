@@ -1018,8 +1018,6 @@ function fillReviewForm() {
   byId('edit-difficulty').value = question.difficulty || '';
   byId('edit-provider').value = view.metadata.provider || '';
   byId('edit-source-url').value = view.metadata.source_url || '';
-  byId('edit-review-notes').value = (question.review_notes || []).join('\n');
-  byId('edit-actor').value = view.reviewer || '';
   byId('edit-decision-notes').value = view.review_notes || '';
   renderAlternativeEditor(question.alternatives);
   renderCorrectAnswers(question.correct_answer);
@@ -1199,7 +1197,7 @@ function collectQuestion() {
     year: numberOrNull('edit-year'), role: optional('edit-role'),
     organization: optional('edit-organization'), level: optional('edit-level'),
     difficulty: optional('edit-difficulty'),
-    review_notes: byId('edit-review-notes').value.split('\n').map((item) => item.trim()).filter(Boolean),
+    review_notes: [...(original.review_notes || [])],
   };
 }
 
@@ -1235,18 +1233,15 @@ function documentMetadata(question) {
 }
 
 async function saveCurrentQuestion({silent = false} = {}) {
-  const actor = optional('edit-actor');
-  if (!actor) throw new Error('Informe o revisor responsável.');
   const question = collectQuestion();
   await request(`/api/questions/${state.currentQuestion.id}`, {
     method: 'PUT',
     body: JSON.stringify({
-      question, classification: humanClassification(question), actor,
-      notes: optional('edit-decision-notes'),
+      question, classification: humanClassification(question),
     }),
   });
   await request(`/api/documents/${state.currentQuestion.document_id}`, {
-    method: 'PUT', body: JSON.stringify({metadata: documentMetadata(question), actor}),
+    method: 'PUT', body: JSON.stringify({metadata: documentMetadata(question)}),
   });
   if (!silent) toast('Alterações salvas e registradas na auditoria.');
   const refreshed = await request(`/api/questions/${state.currentQuestion.id}`);
@@ -1257,16 +1252,14 @@ async function saveCurrentQuestion({silent = false} = {}) {
 
 async function decideCurrent(status) {
   try {
-    const actor = optional('edit-actor');
     const notes = optional('edit-decision-notes');
-    if (!actor) throw new Error('Informe o revisor responsável.');
     if (['exception', 'rejected'].includes(status) && !notes) {
       throw new Error('Informe a justificativa para esta decisão.');
     }
     if (status !== 'pending') await saveCurrentQuestion({silent: true});
     await request(`/api/questions/${state.currentQuestion.id}/decision`, {
       method: 'POST',
-      body: JSON.stringify({status, actor, notes}),
+      body: JSON.stringify({status, notes}),
     });
     const messages = {
       approved: 'Questão aprovada e movida para Exportáveis.',
@@ -1286,8 +1279,6 @@ function openBatchApproval() {
   if (!count) return;
   const noun = count === 1 ? 'questão' : 'questões';
   byId('batch-confirm-copy').textContent = `Você está prestes a aprovar ${count} ${noun} e movê-la${count === 1 ? '' : 's'} de Pendentes para Exportáveis.`;
-  byId('batch-actor').value = byId('edit-actor').value || '';
-  byId('batch-notes').value = '';
   byId('batch-approve-dialog').showModal();
 }
 
@@ -1301,8 +1292,6 @@ async function submitBatchApproval(event) {
       method: 'POST',
       body: JSON.stringify({
         questionIds,
-        actor: byId('batch-actor').value.trim(),
-        notes: byId('batch-notes').value.trim() || null,
       }),
     });
     byId('batch-approve-dialog').close();

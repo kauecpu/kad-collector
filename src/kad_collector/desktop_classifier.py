@@ -1,16 +1,17 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
-from typing import Protocol
+from typing import Any, Protocol
 
 from .desktop_models import (
     ClassificationRequest,
-    ClassificationResponse,
     ClassificationResponseItem,
     ClassificationValue,
     DesktopImportMetadata,
     QuestionClassification,
+    TaxonomyChoiceResponse,
 )
 from .editorial_taxonomy import EditorialTaxonomy, TaxonomyField, TaxonomyPath
 
@@ -184,6 +185,7 @@ class LocalRuleClassifier:
                 right = getattr(following, field)
                 if (
                     current_value.value is None
+                    and questions[index].block_id is not None
                     and (
                         questions[index - 1].block_id
                         == questions[index].block_id
@@ -312,104 +314,222 @@ class LocalRuleClassifier:
 
 class OpenAIClassificationProvider:
     name = "openai"
+    minimum_confidence = 0.78
 
-    def __init__(self, model: str | None = None) -> None:
+    def __init__(
+        self,
+        model: str | None = None,
+        *,
+        client: Any | None = None,
+        taxonomy: EditorialTaxonomy | None = None,
+    ) -> None:
+        self.taxonomy = taxonomy or EditorialTaxonomy.load_default()
+        self._local = LocalRuleClassifier(self.taxonomy)
+        self.model = model or os.environ.get("OPENAI_MODEL", "gpt-5.6-terra")
+        if client is not None:
+            self._client = client
+            return
         api_key = os.environ.get("OPENAI_API_KEY")
         if not api_key:
-            raise RuntimeError(
-                "OPENAI_API_KEY nao configurada; use classificacao local "
-                "ou defina a chave na sessao"
-            )
+            self._client = None
+            return
         try:
             from openai import OpenAI
-        except ImportError as exc:
-            raise RuntimeError("dependencia openai nao instalada") from exc
-        self.model = model or os.environ.get("OPENAI_MODEL", "gpt-5.6-terra")
+        except ImportError:
+            self._client = None
+            return
         self._client = OpenAI(api_key=api_key, timeout=180.0, max_retries=2)
+
+    def _option_id(self, path: TaxonomyPath) -> str:
+        payload = "\0".join(
+            (
+                self.taxonomy.version,
+                path.discipline,
+                path.matter or "",
+                path.subject or "",
+            )
+        )
+        return f"tax-{hashlib.sha256(payload.encode('utf-8')).hexdigest()[:16]}"
+
+    @staticmethod
+    def _response_schema(option_ids: list[str]) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["items"],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": [
+                            "question_number",
+                            "option_id",
+                            "confidence",
+                            "evidence",
+                        ],
+                        "properties": {
+                            "question_number": {"type": "integer", "minimum": 1},
+                            "option_id": {"type": "string", "enum": option_ids},
+                            "confidence": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1,
+                            },
+                            "evidence": {"type": "string", "minLength": 1},
+                        },
+                    },
+                }
+            },
+        }
 
     def classify_many(
         self,
         questions: list[ClassificationRequest],
         metadata: DesktopImportMetadata,
     ) -> list[ClassificationResponseItem]:
-        response = self._client.responses.create(
-            model=self.model,
-            instructions=(
-                "Classifique questões brasileiras de concurso usando apenas evidências do texto "
-                "e os metadados fornecidos. Não invente banca, concurso, ano, cargo, instituição, "
-                "nível, disciplina, assunto, tópico ou dificuldade. Use null e confiança 0 quando "
-                "não houver evidência suficiente. Confiança deve refletir a certeza real."
-            ),
-            input=json.dumps(
-                {
-                    "metadata": metadata.model_dump(mode="json"),
-                    "questions": [item.model_dump(mode="json") for item in questions],
-                },
-                ensure_ascii=False,
-            ),
-            reasoning={"effort": "low"},
-            text={
-                "format": {
-                    "type": "json_schema",
-                    "name": "question_classification",
-                    "strict": True,
-                    "schema": ClassificationResponse.model_json_schema(),
-                },
-                "verbosity": "low",
-            },
-            max_output_tokens=12_000,
-            store=False,
-        )
-        if not response.output_text:
-            raise RuntimeError("a classificacao por IA nao retornou dados")
-        parsed = ClassificationResponse.model_validate_json(response.output_text)
-        taxonomy = EditorialTaxonomy.load_default()
-        taxonomy_fields: dict[str, TaxonomyField] = {
-            "discipline": "discipline",
-            "subject": "matter",
-            "topic": "subject",
-        }
-        for item in parsed.items:
-            for classification_field, taxonomy_field in taxonomy_fields.items():
-                value = getattr(item.classification, classification_field)
-                if value.value is None:
-                    continue
-                try:
-                    taxonomy.ensure_known(taxonomy_field, str(value.value))
-                except ValueError:
-                    setattr(
-                        item.classification,
-                        classification_field,
-                        ClassificationValue(
-                            value=None,
-                            confidence=0,
-                            evidence=str(value.value),
-                            source="taxonomy_rejected",
-                            reason=(
-                                f"Nome rejeitado por não pertencer à taxonomia "
-                                f"{taxonomy.version}"
-                            ),
-                        ),
-                    )
-        by_number = {item.question_number: item for item in parsed.items}
-        local = LocalRuleClassifier().classify_many(questions, metadata)
-        merged: list[ClassificationResponseItem] = []
-        for fallback in local:
-            candidate = by_number.get(fallback.question_number)
-            if candidate is None:
-                merged.append(fallback)
+        local = self._local.classify_many(questions, metadata)
+        if self._client is None:
+            return local
+
+        catalog_ids = self.taxonomy.relevant_catalog_ids(metadata)
+        requests_by_number = {item.question_number: item for item in questions}
+        allowed_by_number: dict[int, dict[str, TaxonomyPath]] = {}
+        all_options: dict[str, TaxonomyPath] = {}
+        for item in local:
+            classification = item.classification
+            if all(
+                getattr(classification, field).value is not None
+                for field in ("discipline", "subject", "topic")
+            ):
                 continue
-            for field in candidate.classification.model_fields:
-                ai_value = getattr(candidate.classification, field)
-                local_value = getattr(fallback.classification, field)
+            discipline = (
+                str(classification.discipline.value)
+                if classification.discipline.value is not None
+                else None
+            )
+            paths = self.taxonomy.candidate_paths(
+                catalog_ids=catalog_ids,
+                discipline=discipline,
+            )
+            filtered = tuple(
+                path
+                for path in paths
                 if (
-                    local_value.confidence == 1
-                    or ai_value.value is None
-                    and local_value.value is not None
-                ):
-                    setattr(candidate.classification, field, local_value)
-            merged.append(candidate)
-        return merged
+                    classification.subject.value is None
+                    or path.matter == classification.subject.value
+                )
+                and (
+                    classification.topic.value is None
+                    or path.subject == classification.topic.value
+                )
+            )
+            options = {self._option_id(path): path for path in filtered}
+            if options:
+                allowed_by_number[item.question_number] = options
+                all_options.update(options)
+        if not allowed_by_number:
+            return local
+
+        option_ids = sorted(all_options)
+        payload = {
+            "metadata": metadata.model_dump(mode="json"),
+            "taxonomy_version": self.taxonomy.version,
+            "taxonomy_options": [
+                {
+                    "id": option_id,
+                    "discipline": all_options[option_id].discipline,
+                    "matter": all_options[option_id].matter,
+                    "subject": all_options[option_id].subject,
+                }
+                for option_id in option_ids
+            ],
+            "questions": [
+                {
+                    **requests_by_number[number].model_dump(mode="json"),
+                    "allowed_option_ids": sorted(options),
+                }
+                for number, options in allowed_by_number.items()
+            ],
+        }
+        try:
+            response = self._client.responses.create(
+                model=self.model,
+                instructions=(
+                    "Escolha somente um option_id permitido para cada questão. "
+                    "Não crie nomes. Omita questões sem evidência suficiente."
+                ),
+                input=json.dumps(payload, ensure_ascii=False),
+                reasoning={"effort": "low"},
+                text={
+                    "format": {
+                        "type": "json_schema",
+                        "name": "taxonomy_choice",
+                        "strict": True,
+                        "schema": self._response_schema(option_ids),
+                    },
+                    "verbosity": "low",
+                },
+                max_output_tokens=4_000,
+                store=False,
+            )
+            if not response.output_text:
+                return local
+            parsed = TaxonomyChoiceResponse.model_validate_json(response.output_text)
+        except Exception:
+            return local
+
+        seen_numbers: set[int] = set()
+        for choice in parsed.items:
+            if choice.question_number in seen_numbers:
+                continue
+            seen_numbers.add(choice.question_number)
+            allowed = allowed_by_number.get(choice.question_number, {})
+            path = allowed.get(choice.option_id)
+            if (
+                path is None
+                or choice.confidence < self.minimum_confidence
+                or not choice.evidence.strip()
+            ):
+                continue
+            target = next(
+                (
+                    item.classification
+                    for item in local
+                    if item.question_number == choice.question_number
+                ),
+                None,
+            )
+            if target is None:
+                continue
+            audited_path = TaxonomyPath(
+                discipline=path.discipline,
+                matter=path.matter,
+                subject=path.subject,
+                catalog_id=path.catalog_id,
+                provenance=tuple(
+                    dict.fromkeys(
+                        [
+                            *path.provenance,
+                            f"taxonomy:{self.taxonomy.version}",
+                            f"model:{self.model}",
+                        ]
+                    )
+                ),
+            )
+            self._local._apply_path(
+                target,
+                audited_path,
+                confidence=min(0.86, choice.confidence),
+                source="openai_taxonomy_choice",
+                evidence=choice.evidence.strip(),
+                reason=(
+                    f"Último recurso por opção fechada; modelo {self.model}; "
+                    f"taxonomia {self.taxonomy.version}"
+                ),
+            )
+        return local
 
 
 def build_classifier(name: str) -> ClassificationProvider:

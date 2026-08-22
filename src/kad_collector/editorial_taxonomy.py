@@ -314,6 +314,59 @@ class EditorialTaxonomy:
     def ensure_known(self, field: TaxonomyField, value: str) -> None:
         self.canonical_name(field, value)
 
+    def candidate_paths(
+        self,
+        *,
+        catalog_ids: Iterable[str] | None = None,
+        discipline: str | None = None,
+    ) -> tuple[TaxonomyPath, ...]:
+        allowed_catalogs = (
+            frozenset(catalog_ids) if catalog_ids is not None else None
+        )
+        canonical_discipline = (
+            self.canonical_name("discipline", discipline)
+            if discipline is not None
+            else None
+        )
+        grouped: dict[tuple[str, str, str], TaxonomyPath] = {}
+        for discipline_name, topics in self._disciplines.items():
+            if (
+                canonical_discipline is not None
+                and discipline_name != canonical_discipline
+            ):
+                continue
+            for topic in topics:
+                path = TaxonomyPath(
+                    discipline=discipline_name,
+                    matter=str(topic["matter"]),
+                    subject=str(topic["subject"]),
+                    catalog_id=str(topic["_catalog_id"]),
+                    provenance=cast(tuple[str, ...], topic["_provenance"]),
+                )
+                if not self._catalog_allowed(path, allowed_catalogs):
+                    continue
+                key = (path.discipline, str(path.matter), str(path.subject))
+                previous = grouped.get(key)
+                if previous is None:
+                    grouped[key] = path
+                    continue
+                grouped[key] = TaxonomyPath(
+                    discipline=path.discipline,
+                    matter=path.matter,
+                    subject=path.subject,
+                    catalog_id=previous.catalog_id,
+                    provenance=tuple(
+                        dict.fromkeys([*previous.provenance, *path.provenance])
+                    ),
+                )
+        return tuple(
+            grouped[key]
+            for key in sorted(
+                grouped,
+                key=lambda item: tuple(normalize_taxonomy_text(value) for value in item),
+            )
+        )
+
     @staticmethod
     def _path_specificity(path: TaxonomyPath) -> int:
         return 1 + int(path.matter is not None) + int(path.subject is not None)
@@ -548,6 +601,7 @@ class EditorialTaxonomy:
         catalog_ids: Iterable[str] | None = None,
     ) -> SemanticMatch | None:
         normalized = normalize_taxonomy_text(text)
+        padded_text = f" {normalized} "
         allowed_catalogs = (
             frozenset(catalog_ids) if catalog_ids is not None else None
         )
@@ -563,6 +617,7 @@ class EditorialTaxonomy:
             if canonical_discipline in self._disciplines
             else self._disciplines.items()
         )
+        minimum_score = 1 if canonical_discipline is not None else 2
         for discipline_name, topics in disciplines:
             for topic in topics:
                 if (
@@ -570,12 +625,22 @@ class EditorialTaxonomy:
                     and str(topic["_catalog_id"]) not in allowed_catalogs
                 ):
                     continue
-                matched = [
-                    str(keyword)
-                    for keyword in topic.get("keywords", [])
-                    if normalize_taxonomy_text(str(keyword)) in normalized
-                ]
-                if matched:
+                matched: list[tuple[str, int]] = []
+                seen_keywords: set[str] = set()
+                for raw_keyword in topic.get("keywords", []):
+                    keyword = str(raw_keyword)
+                    normalized_keyword = normalize_taxonomy_text(keyword)
+                    if (
+                        not normalized_keyword
+                        or normalized_keyword in seen_keywords
+                        or f" {normalized_keyword} " not in padded_text
+                    ):
+                        continue
+                    seen_keywords.add(normalized_keyword)
+                    weight = min(3, len(normalized_keyword.split()))
+                    matched.append((keyword, weight))
+                score = sum(weight for _, weight in matched)
+                if score >= minimum_score:
                     candidates.append(
                         SemanticMatch(
                             path=TaxonomyPath(
@@ -587,15 +652,16 @@ class EditorialTaxonomy:
                                     tuple[str, ...], topic["_provenance"]
                                 ),
                             ),
-                            score=len(matched),
-                            evidence=", ".join(matched[:3]),
+                            score=score,
+                            evidence=", ".join(
+                                f"{keyword} ({weight})"
+                                for keyword, weight in matched[:3]
+                            ),
                         )
                     )
         candidates.sort(key=lambda item: item.score, reverse=True)
         if not candidates:
             return None
         if len(candidates) > 1 and candidates[0].score == candidates[1].score:
-            return None
-        if discipline is None and candidates[0].score < 2:
             return None
         return candidates[0]

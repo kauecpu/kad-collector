@@ -1,5 +1,5 @@
 {
-  "version": "2.0.0",
+  "version": "2.0.1",
   "catalogs": [
     "editorial_taxonomy.v1.json",
     "editorial_taxonomies/fgv-pcam21.v1.json",
