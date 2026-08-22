@@ -155,6 +155,71 @@ class SemanticResolutionDecisionTests(unittest.TestCase):
             decision.assessments[0].score - baseline.assessments[0].score, 2
         )
 
+    def test_weak_title_mismatch_does_not_eliminate_a_strong_candidate(self) -> None:
+        exam_variant = SemanticField(
+            status="known", normalized_values=("tipo 1",), raw_values=("Tipo 1",),
+            evidence=(SemanticEvidence.title("title", "Tipo 1"),),
+            method="title", reason="title", confidence=1.0,
+        )
+        key_variant = SemanticField(
+            status="known", normalized_values=("tipo 2",), raw_values=("Tipo 2",),
+            evidence=(SemanticEvidence.title("title", "Tipo 2"),),
+            method="title", reason="title", confidence=1.0,
+        )
+
+        decision = select_answer_key(
+            self._exam(variants=exam_variant),
+            [self._key(variants=key_variant)],
+        )
+
+        self.assertEqual(decision.selected_version_id, "key-1")
+        self.assertEqual(decision.assessments[0].conflicts, ())
+
+    def test_weak_title_match_does_not_satisfy_required_coverage(self) -> None:
+        role = SemanticField.from_evidence(
+            "roles", (SemanticEvidence.metadata("role", "Auditor"),)
+        )
+        weak_role = SemanticField(
+            status="known", normalized_values=("auditor",), raw_values=("Auditor",),
+            evidence=(SemanticEvidence.title("title", "Auditor"),),
+            method="title", reason="title", confidence=1.0,
+        )
+
+        decision = select_answer_key(
+            self._exam(roles=role),
+            [self._key(roles=weak_role)],
+        )
+
+        self.assertIsNone(decision.selected_version_id)
+        self.assertEqual(decision.outcome, "insufficient_evidence")
+
+    def test_weak_title_bonus_does_not_supply_the_decisive_margin(self) -> None:
+        organization = SemanticField(
+            status="known", normalized_values=("órgão",), raw_values=("Órgão",),
+            evidence=(
+                SemanticEvidence.metadata("organization", "Órgão"),
+                SemanticEvidence.title("title", "Órgão"),
+            ),
+            method="test", reason="strong and weak", confidence=1.0,
+        )
+        weak_organization = SemanticField(
+            status="known", normalized_values=("órgão",), raw_values=("Órgão",),
+            evidence=(SemanticEvidence.title("title", "Órgão"),),
+            method="title", reason="title", confidence=1.0,
+        )
+        better = self._key("better", organization=SemanticField.from_evidence(
+            "organization", (SemanticEvidence.metadata("organization", "Órgão"),)
+        ))
+        weaker = self._key("weaker", organization=weak_organization)
+
+        decision = select_answer_key(
+            self._exam(organization=organization),
+            [better, weaker],
+        )
+
+        self.assertEqual(decision.selected_version_id, "better")
+        self.assertEqual(decision.achieved_margin, 8)
+
     def test_missing_without_candidates(self) -> None:
         self.assertEqual(select_answer_key(self._exam(), []).outcome, "missing")
 
@@ -252,7 +317,7 @@ class SemanticResolutionDecisionTests(unittest.TestCase):
         self.assertIsNone(decision.selected_version_id)
         self.assertEqual(decision.outcome, "ambiguous")
 
-    def test_minimum_margin_six_is_ambiguous_and_eight_selects(self) -> None:
+    def test_weak_title_bonus_does_not_reduce_minimum_decisive_margin(self) -> None:
         weak_variant = SemanticField(
             status="known", normalized_values=("tipo 1",), raw_values=("Tipo 1",),
             evidence=(SemanticEvidence.title("title", "Tipo 1"),),
@@ -268,8 +333,9 @@ class SemanticResolutionDecisionTests(unittest.TestCase):
         )
         better = self._key("better", organization=organization, variants=known_variant)
         weaker = self._key("weaker", variants=weak_variant)
-        ambiguous = select_answer_key(exam, [better, weaker])
-        self.assertEqual(ambiguous.outcome, "ambiguous")
+        decisive = select_answer_key(exam, [better, weaker])
+        self.assertEqual(decisive.selected_version_id, "better")
+        self.assertEqual(decisive.achieved_margin, 8)
         clear = select_answer_key(
             self._exam(organization=organization), [better, self._key("weaker")]
         )
@@ -317,6 +383,19 @@ class SemanticResolutionDecisionTests(unittest.TestCase):
         self.assertEqual(
             decide_document_version(profile(conflict=True), (current,)).outcome, "uncertain"
         )
+
+    def test_empty_text_or_unsupported_role_is_uncertain(self) -> None:
+        empty = profile().model_copy(
+            update={
+                "content_fingerprint": ContentFingerprint(
+                    sha256="empty", page_sha256s=(), page_count=1, character_count=0
+                )
+            }
+        )
+        unsupported = profile().model_copy(update={"document_role": "unknown"})
+
+        self.assertEqual(decide_document_version(empty, ()).outcome, "uncertain")
+        self.assertEqual(decide_document_version(unsupported, ()).outcome, "uncertain")
 
     def test_changed_content_can_add_or_remove_questions_without_changing_outcome(self) -> None:
         current = KnownDocumentVersion(
@@ -489,6 +568,34 @@ class SemanticWorkflowIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(repeated.profile, result.profile)
         self.assertEqual(self.semantic_state(), before_repeat)
+
+    def test_cyclic_identity_corrections_create_events_but_immediate_retry_is_idempotent(
+        self,
+    ) -> None:
+        self.add_document(
+            "exam",
+            binary=b"cyclic-correction",
+            text="Banca: Banca\nConcurso: Concurso\nAno: 2026\nQuestão 1",
+            metadata={"board": "Banca", "concurso": "Concurso", "year": 2026},
+        )
+        self.resolve("exam")
+
+        corrections = ("Outra Banca", "Banca", "Outra Banca", "Outra Banca")
+        with patch(
+            "kad_collector.desktop_store._now",
+            return_value="2026-08-21T12:00:00+00:00",
+        ):
+            for board in corrections:
+                self.store.correct_document_identity(
+                    "exam", self.corrected_metadata(board=board), actor="coordenador"
+                )
+        events = [
+            event for event in self.store.identity_events("exam")
+            if event["action"] == "identity_corrected"
+        ]
+
+        self.assertEqual(len(events), 3)
+        self.assertEqual(len({event["eventKey"] for event in events}), 3)
 
     def test_conflicting_manual_merge_rolls_back(self) -> None:
         metadata = {"board": "Banca", "concurso": "Concurso", "year": 2026}
@@ -739,6 +846,130 @@ class SemanticWorkflowIntegrationTests(unittest.TestCase):
                 ),
             ],
         )
+
+    def test_moving_structured_middle_version_reconciles_lineage_and_archives_history(
+        self,
+    ) -> None:
+        metadata = {"board": "Banca", "concurso": "Concurso estruturado", "year": 2026}
+        version_ids: list[str] = []
+        question_ids: list[str] = []
+        for number, document_id in enumerate(("chain-one", "chain-two", "chain-three"), 1):
+            self.add_document(
+                document_id,
+                binary=f"chain-binary-{number}".encode(),
+                text=f"Prova 2026 revisão {number}\nQuestão 1\nA) Azul\nB) Verde",
+                metadata=metadata,
+            )
+            resolution = self.resolve(document_id)
+            assert resolution.document_version_id is not None
+            version_ids.append(resolution.document_version_id)
+            question_ids.append(
+                self.store.save_question(
+                    document_id,
+                    self.lineage_question(
+                        1, statement=f"Enunciado completo da versão estruturada {number}."
+                    ),
+                    QuestionClassification(),
+                )
+            )
+            if number > 1:
+                self.store.reconcile_question_lineage(document_id)
+        self.store.decide_question(
+            question_ids[2], "approved", actor="revisora", notes="Decisão da terceira versão."
+        )
+
+        self.store.correct_document_identity(
+            "chain-two",
+            DesktopImportMetadata(
+                document_type="exam",
+                board="Outra Banca",
+                concurso="Concurso estruturado",
+                year=2026,
+            ),
+            actor="coordenador",
+        )
+
+        with closing(self.store._connect()) as connection:
+            tables = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                ).fetchall()
+            }
+            self.assertIn("question_lineage_history", tables)
+            current = connection.execute(
+                "SELECT predecessor_version_id, successor_version_id FROM question_lineage "
+                "ORDER BY predecessor_version_id, successor_version_id"
+            ).fetchall()
+            history = connection.execute(
+                "SELECT predecessor_version_id, successor_version_id FROM "
+                "question_lineage_history ORDER BY predecessor_version_id, successor_version_id"
+            ).fetchall()
+        self.assertEqual(
+            [(row[0], row[1]) for row in current],
+            [(version_ids[0], version_ids[2])],
+        )
+        self.assertEqual(
+            {(row[0], row[1]) for row in history},
+            {(version_ids[0], version_ids[1]), (version_ids[1], version_ids[2])},
+        )
+        third = self.store.question(question_ids[2])
+        self.assertEqual((third["status"], third["reviewer"]), ("approved", "revisora"))
+
+    def test_lineage_archive_failure_rolls_back_identity_correction(self) -> None:
+        metadata = {"board": "Banca", "concurso": "Concurso transacional", "year": 2026}
+        for number, document_id in enumerate(("tx-one", "tx-two", "tx-three"), 1):
+            self.add_document(
+                document_id,
+                binary=f"tx-binary-{number}".encode(),
+                text=f"Prova revisão {number}\nQuestão 1\nA) Azul\nB) Verde",
+                metadata=metadata,
+            )
+            self.resolve(document_id)
+            self.store.save_question(
+                document_id,
+                self.lineage_question(1, statement=f"Questão transacional {number}."),
+                QuestionClassification(),
+            )
+            if number > 1:
+                self.store.reconcile_question_lineage(document_id)
+
+        def lineage_state() -> tuple[list[tuple[object, ...]], ...]:
+            with closing(self.store._connect()) as connection:
+                return tuple(
+                    [tuple(row) for row in connection.execute(query).fetchall()]
+                    for query in (
+                        "SELECT * FROM document_versions ORDER BY id",
+                        "SELECT * FROM question_lineage ORDER BY id",
+                        "SELECT * FROM question_lineage_history ORDER BY history_id",
+                        "SELECT * FROM document_identity_events ORDER BY event_key",
+                    )
+                )
+
+        before = lineage_state()
+        with closing(self.store._connect()) as connection:
+            connection.execute(
+                "CREATE TRIGGER fail_lineage_archive BEFORE INSERT ON question_lineage_history "
+                "BEGIN SELECT RAISE(ABORT, 'injected lineage archive'); END"
+            )
+            connection.commit()
+        try:
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "injected lineage archive"):
+                self.store.correct_document_identity(
+                    "tx-two",
+                    DesktopImportMetadata(
+                        document_type="exam",
+                        board="Outra Banca",
+                        concurso="Concurso transacional",
+                        year=2026,
+                    ),
+                    actor="coordenador",
+                )
+            self.assertEqual(lineage_state(), before)
+        finally:
+            with closing(self.store._connect()) as connection:
+                connection.execute("DROP TRIGGER fail_lineage_archive")
+                connection.commit()
 
     def test_exam_correction_switches_key_and_invalidates_only_changed_official_answers(
         self,
@@ -1793,6 +2024,30 @@ class SemanticWorkflowIntegrationTests(unittest.TestCase):
             third_processor._executor.shutdown(wait=True)
         with closing(self.store._connect()) as connection:
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM questions").fetchone()[0], 2)
+
+    def test_structure_uses_persisted_semantic_role_instead_of_legacy_filename_guess(self) -> None:
+        self.add_document(
+            "semantic-key",
+            binary=b"semantic-key-role",
+            text="Banca: Banca\nConcurso: Concurso\nAno: 2026\n1-A",
+            metadata={"board": "Banca", "concurso": "Concurso", "year": 2026},
+            declared_type="answer_key",
+            title="Documento oficial",
+        )
+        resolution = self.resolve("semantic-key")
+        self.assertEqual(resolution.profile.document_role, "answer_key")
+        processor = DesktopProcessor(self.store)
+        try:
+            with patch(
+                "kad_collector.desktop_processor.parse_question_pages",
+                side_effect=AssertionError(
+                    "papel semântico de gabarito não deve estruturar questões"
+                ),
+            ):
+                processor._structure_job("job-semantic-key", threading.Event())
+        finally:
+            processor._executor.shutdown(wait=True)
+        self.assertEqual(self.store.question_records("semantic-key"), [])
 
     def test_changed_content_with_question_added_creates_successor(self) -> None:
         metadata = {"board": "Banca", "concurso": "Concurso", "year": 2026}

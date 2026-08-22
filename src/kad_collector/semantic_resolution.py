@@ -59,6 +59,10 @@ def _title_bonus(exam: DocumentSemanticProfile, candidate: DocumentSemanticProfi
     return min(2, len(exam_values & candidate_values))
 
 
+def _weak_only(field: SemanticField) -> bool:
+    return bool(field.evidence) and all(item.strength == "weak" for item in field.evidence)
+
+
 def _assess(exam: DocumentSemanticProfile, item: AssociationCandidate) -> CandidateAssessment:
     candidate = item.profile
     conflicts: list[str] = []
@@ -78,9 +82,17 @@ def _assess(exam: DocumentSemanticProfile, item: AssociationCandidate) -> Candid
             continue
         if exam_field.status != "known":
             continue
+        if _weak_only(exam_field):
+            reasons.append(f"{name}: título fraco não participa da decisão")
+            continue
         if candidate_field.status != "known":
             if name in {"role", "stage", "turn", "variant"}:
                 reasons.append(f"{name}: cobertura desconhecida")
+                incomplete_scope = True
+            continue
+        if _weak_only(candidate_field):
+            reasons.append(f"{name}: título fraco não participa da decisão")
+            if name in {"role", "stage", "turn", "variant"}:
                 incomplete_scope = True
             continue
         if set(exam_field.normalized_values).isdisjoint(candidate_field.normalized_values):
@@ -198,7 +210,7 @@ def select_answer_key(
                 achieved_margin=0, reason="candidatos semanticamente equivalentes",
                 algorithm_version=ASSOCIATION_ALGORITHM_VERSION,
             )
-    margin = top.score - second.score if second is not None else None
+    margin = semantic_score(top) - semantic_score(second) if second is not None else None
     top_candidate = next(item for item in candidates if item.version_id == top.version_id)
     second_candidate = (
         next(item for item in candidates if item.version_id == second.version_id)
@@ -238,6 +250,18 @@ def decide_document_version(
             outcome="uncertain",
             profile=profile,
             reason="identidade semântica insuficiente ou conflitante",
+        )
+    if profile.content_fingerprint.character_count <= 0:
+        return IdentityResolution(
+            outcome="uncertain",
+            profile=profile,
+            reason="documento sem texto utilizável",
+        )
+    if profile.document_role not in {"exam", "answer_key"}:
+        return IdentityResolution(
+            outcome="uncertain",
+            profile=profile,
+            reason="papel semântico do documento não suportado",
         )
     same_identity_and_role = [
         item

@@ -100,6 +100,8 @@ class DocumentPipeline:
             document_metadata = metadata.model_copy(deep=True)
             document = normalize_local_document(path).model_copy(
                 update={
+                    "declared_type": document_metadata.document_type,
+                    "title": document_metadata.document_title or path.name,
                     "metadata": document_metadata.model_dump(
                         mode="json", exclude_none=True, exclude_defaults=True
                     )

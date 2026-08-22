@@ -32,6 +32,7 @@ from .desktop_processor import DesktopProcessor
 from .desktop_store import DesktopStore
 from .document_pipeline import DocumentPipeline
 from .models import QuestionRecord
+from .semantic_identity import semantic_public_dto
 
 MAX_REQUEST_BYTES = 5_000_000
 
@@ -152,7 +153,7 @@ class DesktopApplication:
             raise ValueError("metadados do documento inválidos") from None
         actor = _required_text(payload, "actor")
         result = self.store.update_document_metadata(document_id, metadata, actor=actor)
-        return result.model_dump(mode="json")
+        return cast(dict[str, Any], semantic_public_dto(result))
 
     def decide(self, question_id: str, payload: dict[str, Any]) -> None:
         status = payload.get("status")
@@ -293,7 +294,11 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                 if path == "/api/import":
                     job_ids = application.import_pdfs(payload)
                     self._send_json(
-                        {"jobIds": job_ids, "exactDuplicate": not job_ids},
+                        {
+                            "jobId": job_ids[0] if len(job_ids) == 1 else None,
+                            "jobIds": job_ids,
+                            "exactDuplicate": not job_ids,
+                        },
                         HTTPStatus.CREATED,
                     )
                     return

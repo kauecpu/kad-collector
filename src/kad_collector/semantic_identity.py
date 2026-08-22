@@ -18,6 +18,25 @@ if TYPE_CHECKING:
 SEMANTIC_SCHEMA_VERSION = 1
 IDENTITY_ALGORITHM_VERSION = "semantic-identity-v1"
 CONTENT_NORMALIZER_VERSION = "pdf-text-nfkc-v1"
+MAX_SEMANTIC_VALUES = 128
+MAX_SEMANTIC_NUMERIC_VALUE = 10_000
+MAX_SEMANTIC_VALUE_CHARS = 512
+MAX_PUBLIC_SEMANTIC_ITEMS = 32
+MAX_PUBLIC_SEMANTIC_CHARS = 160
+_OMITTED_PUBLIC_KEYS = frozenset(
+    {
+        "raw_value",
+        "raw_values",
+        "normalized_value",
+        "canonicalText",
+        "canonical_text",
+        "origin",
+        "original_url",
+        "resolved_url",
+        "source_page_url",
+        "traceback",
+    }
+)
 SemanticValue = str | int
 SemanticStatus = Literal["known", "unknown", "conflict"]
 EvidenceSource = Literal["declared_metadata", "pdf_text", "document_title", "human_review"]
@@ -30,6 +49,10 @@ ResolutionOutcome = Literal[
 AssociationOutcome = Literal[
     "selected", "missing", "conflict", "insufficient_evidence", "ambiguous"
 ]
+
+
+class SemanticValueLimitError(ValueError):
+    """A semantic assertion exceeded deterministic extraction limits."""
 
 METADATA_ALIASES = {
     "board": ("board", "banca"),
@@ -250,6 +273,26 @@ def stable_sha256(value: object) -> str:
     return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
 
 
+def semantic_public_dto(value: object) -> object:
+    """Return the bounded semantic read model used by desktop GET and PUT responses."""
+    if hasattr(value, "model_dump"):
+        value = value.model_dump(mode="json")
+    if isinstance(value, Mapping):
+        return {
+            str(key): semantic_public_dto(item)
+            for key, item in value.items()
+            if str(key) not in _OMITTED_PUBLIC_KEYS
+        }
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        items = list(value[:MAX_PUBLIC_SEMANTIC_ITEMS])
+        if len(value) > MAX_PUBLIC_SEMANTIC_ITEMS:
+            items.append("[itens adicionais omitidos]")
+        return [semantic_public_dto(item) for item in items]
+    if isinstance(value, str) and len(value) > MAX_PUBLIC_SEMANTIC_CHARS:
+        return "[valor omitido: excede limite de exibição]"
+    return value
+
+
 def semantic_identity_key(identity: ExamSemanticIdentity) -> str | None:
     required = (identity.board, identity.concurso, identity.year)
     if any(field.status != "known" or len(field.normalized_values) != 1 for field in required):
@@ -285,12 +328,21 @@ def build_content_fingerprint(pages: Sequence[tuple[int, str]]) -> ContentFinger
 
 
 def _values(raw_value: str | int | Sequence[str | int], field: str) -> tuple[SemanticValue, ...]:
-    values = (raw_value,) if isinstance(raw_value, (str, int)) else tuple(raw_value)
+    if isinstance(raw_value, (str, int)):
+        values: Sequence[str | int] = (raw_value,)
+    else:
+        if len(raw_value) > MAX_SEMANTIC_VALUES:
+            raise SemanticValueLimitError("lista semântica excede limite seguro")
+        values = raw_value
     expanded: list[SemanticValue] = []
     for value in values:
         if isinstance(value, int):
+            if abs(value) > MAX_SEMANTIC_NUMERIC_VALUE:
+                raise SemanticValueLimitError("valor semântico excede limite seguro")
             expanded.append(value)
             continue
+        if len(value) > MAX_SEMANTIC_VALUE_CHARS:
+            raise SemanticValueLimitError("linha semântica excede limite seguro")
         text = value.strip()
         if field == "year":
             expanded.extend(int(year) for year in _YEAR_PATTERN.findall(text))
@@ -299,29 +351,50 @@ def _values(raw_value: str | int | Sequence[str | int], field: str) -> tuple[Sem
             if interval is not None:
                 start, end = (int(item) for item in interval.groups())
                 if start <= end:
+                    if (
+                        end > MAX_SEMANTIC_NUMERIC_VALUE
+                        or end - start + 1 > MAX_SEMANTIC_VALUES
+                    ):
+                        raise SemanticValueLimitError("intervalo semântico excede limite seguro")
                     expanded.extend(f"tipo {number}" for number in range(start, end + 1))
             else:
                 parts = re.split(r"\s*[,;/]\s*", text)
+                if len(parts) > MAX_SEMANTIC_VALUES:
+                    raise SemanticValueLimitError("lista semântica excede limite seguro")
                 expanded.extend(_variant_value(part) for part in parts if part.strip())
         else:
             parts = re.split(r"\s*[,;/]\s*", text)
+            if len(parts) > MAX_SEMANTIC_VALUES:
+                raise SemanticValueLimitError("lista semântica excede limite seguro")
             expanded.extend(part.strip() for part in parts if part.strip())
+        if len(expanded) > MAX_SEMANTIC_VALUES:
+            raise SemanticValueLimitError("campo semântico excede limite seguro")
     return tuple(expanded)
 
 
 def _variant_value(value: str) -> str:
     match = re.fullmatch(r"\s*(?:v|tipo|variant|versao|versão)?\s*(\d+)\s*", value, re.I)
-    return f"tipo {match.group(1)}" if match is not None else value.strip()
+    if match is None:
+        return value.strip()
+    number = int(match.group(1))
+    if number > MAX_SEMANTIC_NUMERIC_VALUE:
+        raise SemanticValueLimitError("valor semântico excede limite seguro")
+    return f"tipo {number}"
 
 
 def _labeled_values(pages: Sequence[tuple[int, str]], field: str) -> tuple[tuple[str, str], ...]:
     labels = "|".join(re.escape(label) + "s?" for label in _PDF_LABELS[field])
     pattern = re.compile(rf"(?im)^\s*(?:{labels})\s*:\s*(?P<value>[^\r\n]+)")
-    return tuple(
-        (f"page:{page_number}", match.group("value").strip())
-        for page_number, text in pages
-        for match in pattern.finditer(text)
-    )
+    result: list[tuple[str, str]] = []
+    for page_number, text in pages:
+        for match in pattern.finditer(text):
+            value = match.group("value").strip()
+            if len(value) > MAX_SEMANTIC_VALUE_CHARS:
+                raise SemanticValueLimitError("linha semântica excede limite seguro")
+            result.append((f"page:{page_number}", value))
+            if len(result) > MAX_SEMANTIC_VALUES:
+                raise SemanticValueLimitError("evidências semânticas excedem limite seguro")
+    return tuple(result)
 
 
 def _field_from_sources(
@@ -332,31 +405,44 @@ def _field_from_sources(
 ) -> SemanticField:
     human_groups: list[tuple[SemanticEvidence, ...]] = []
     strong_groups: list[tuple[SemanticEvidence, ...]] = []
-    if human_overrides is not None and name in human_overrides:
-        values = _values(human_overrides[name], name)
-        if values:
-            human_groups.append(
-                tuple(SemanticEvidence.human_review(f"override:{name}", value) for value in values)
-            )
-    for alias in METADATA_ALIASES[name]:
-        if alias in document.metadata:
-            values = _values(document.metadata[alias], name)
+    try:
+        if human_overrides is not None and name in human_overrides:
+            values = _values(human_overrides[name], name)
+            if values:
+                human_groups.append(
+                    tuple(
+                        SemanticEvidence.human_review(f"override:{name}", value)
+                        for value in values
+                    )
+                )
+        for alias in METADATA_ALIASES[name]:
+            if alias in document.metadata:
+                values = _values(document.metadata[alias], name)
+                if values:
+                    strong_groups.append(
+                        tuple(
+                            SemanticEvidence.metadata(f"metadata:{alias}", value)
+                            for value in values
+                        )
+                    )
+        for locator, raw_value in _labeled_values(pages, name):
+            values = _values(raw_value, name)
             if values:
                 strong_groups.append(
-                    tuple(SemanticEvidence.metadata(f"metadata:{alias}", value) for value in values)
+                    tuple(SemanticEvidence.pdf_text(locator, value) for value in values)
                 )
-    for locator, raw_value in _labeled_values(pages, name):
-        values = _values(raw_value, name)
-        if values:
-            strong_groups.append(
-                tuple(SemanticEvidence.pdf_text(locator, value) for value in values)
-            )
+    except SemanticValueLimitError:
+        return SemanticField.unknown(f"{name} excede limite semântico seguro")
     if name == "variants" and not strong_groups:
         for page_number, text in pages:
-            values = tuple(
-                f"tipo {number}"
-                for number in re.findall(r"(?i)(?:prova|tipo|variant|vers[aã]o)\s*V?\s*(\d+)", text)
+            matches = re.findall(
+                r"(?i)(?:prova|tipo|variant|vers[aã]o)\s*V?\s*(\d+)", text
             )
+            if len(matches) > MAX_SEMANTIC_VALUES or any(
+                int(number) > MAX_SEMANTIC_NUMERIC_VALUE for number in matches
+            ):
+                return SemanticField.unknown(f"{name} excede limite semântico seguro")
+            values = tuple(f"tipo {int(number)}" for number in matches)
             if values:
                 strong_groups.append(tuple(
                     SemanticEvidence.pdf_text(f"page:{page_number}:variant", value)
@@ -366,6 +452,8 @@ def _field_from_sources(
         years = tuple(
             sorted({int(year) for _, text in pages for year in _YEAR_PATTERN.findall(text)})
         )
+        if len(years) > MAX_SEMANTIC_VALUES:
+            return SemanticField.unknown(f"{name} excede limite semântico seguro")
         if not strong_groups and len(years) == 1:
             strong_groups.append(
                 (SemanticEvidence.pdf_text("document:unique-year", years[0]),)
@@ -373,6 +461,8 @@ def _field_from_sources(
     weak_groups: list[tuple[SemanticEvidence, ...]] = []
     if not strong_groups and name in {"year", "turns", "variants"}:
         title_values = _title_values(document.title, name)
+        if len(title_values) > MAX_SEMANTIC_VALUES:
+            return SemanticField.unknown(f"{name} excede limite semântico seguro")
         if title_values:
             weak_groups.append(
                 tuple(SemanticEvidence.title("title", value) for value in title_values)

@@ -66,6 +66,39 @@ class SemanticContractTests(unittest.TestCase):
             ("tipo 1", "tipo 2", "tipo 3", "tipo 4"),
         )
 
+    def test_oversized_variant_interval_fails_closed_without_expansion(self) -> None:
+        profile = extract_semantic_profile(
+            normalized_document(Path("key.pdf"), declared_type="answer_key"),
+            [(1, "Banca: X\nConcurso: Y\nAno: 2026\nTipos: 1 a 10000")],
+        )
+
+        self.assertEqual(profile.coverage.variants.status, "unknown")
+        self.assertIn("limite", profile.coverage.variants.reason)
+
+    def test_oversized_variant_list_and_value_fail_closed(self) -> None:
+        oversized_list = "; ".join(str(number) for number in range(1, 2001))
+        list_profile = extract_semantic_profile(
+            normalized_document(Path("list.pdf"), declared_type="answer_key"),
+            [(1, f"Banca: X\nConcurso: Y\nAno: 2026\nTipos: {oversized_list}")],
+        )
+        value_profile = extract_semantic_profile(
+            normalized_document(Path("value.pdf"), declared_type="answer_key"),
+            [(1, "Banca: X\nConcurso: Y\nAno: 2026\nTipo: 100000000")],
+        )
+
+        self.assertEqual(list_profile.coverage.variants.status, "unknown")
+        self.assertEqual(value_profile.coverage.variants.status, "unknown")
+
+    def test_oversized_labeled_line_is_not_preserved_as_evidence(self) -> None:
+        secret = "sensitive-value-" * 400
+        profile = extract_semantic_profile(
+            normalized_document(Path("exam.pdf"), declared_type="exam"),
+            [(1, f"Banca: {secret}\nConcurso: Y\nAno: 2026")],
+        )
+
+        self.assertEqual(profile.identity.board.status, "unknown")
+        self.assertNotIn(secret, profile.model_dump_json())
+
     def test_conflicting_human_overrides_remain_unresolved(self) -> None:
         profile = extract_semantic_profile(
             normalized_document(Path("prova.pdf")),

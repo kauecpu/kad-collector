@@ -248,7 +248,9 @@ Informações editoriais da banca.
                 blocked_writer.write(stream)
 
             store = DesktopStore(root / "collector.sqlite3")
-            job_id = store.create_job([readable, blocked], metadata(), "local")
+            job_id = store.create_job(
+                [readable, blocked], metadata(document_type="exam"), "local"
+            )
             DesktopProcessor(store).run(job_id)
 
             self.assertEqual(store.job(job_id)["status"], "completed")
@@ -960,6 +962,72 @@ class DesktopSmokeTests(unittest.TestCase):
         self.assertNotIn("canonicalText", payload)
         self.assertNotIn(page_text, json.dumps(payload, ensure_ascii=False))
         self.assertNotIn("origin", json.dumps(payload, ensure_ascii=False))
+        self.assertTrue(payload["events"])
+        self.assertTrue(all("actor" in event for event in payload["events"]))
+
+    def test_identity_get_and_correction_put_return_bounded_sanitized_dtos(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "prova-dto.pdf"
+            write_blank_pdf(pdf_path)
+            secret = "DO-NOT-RETURN-SEMANTIC-SECRET"
+            long_board = ("B" * 220) + secret
+            application = DesktopApplication(root / "data")
+            job_id = application.store.create_job(
+                [pdf_path],
+                metadata(
+                    document_type="exam", board=None, concurso=None, year=None,
+                    role=None, organization=None,
+                ),
+                "local",
+            )
+            document = application.store.documents_for_job(job_id)[0]
+            application.store.save_page(
+                document["id"], 1,
+                f"Banca: {long_board}\nConcurso: Concurso DTO\nAno: 2026",
+                status="text",
+            )
+            self.assertEqual(
+                application.store.resolve_extracted_document(document["id"]).outcome,
+                "new_identity",
+            )
+            server, thread, url = start_desktop_server(application)
+            try:
+                origin = url.rstrip("/")
+                get_request = Request(
+                    f"{url}api/documents/{document['id']}/identity",
+                    headers={"X-KAD-Desktop-Token": application.token},
+                )
+                with urlopen(get_request, timeout=3) as response:
+                    get_payload = json.loads(response.read())
+
+                correction = metadata(
+                    document_type="exam", board="Banca corrigida", concurso="Concurso DTO",
+                    year=2026, role=None, organization=None,
+                ).model_dump(mode="json")
+                put_request = Request(
+                    f"{url}api/documents/{document['id']}",
+                    data=json.dumps({"metadata": correction, "actor": "coordenador"}).encode(),
+                    method="PUT",
+                    headers={
+                        "Content-Type": "application/json",
+                        "Origin": origin,
+                        "X-KAD-Desktop-Token": application.token,
+                    },
+                )
+                with urlopen(put_request, timeout=3) as response:
+                    put_payload = json.loads(response.read())
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
+        for payload in (get_payload, put_payload):
+            encoded = json.dumps(payload, ensure_ascii=False)
+            self.assertNotIn(secret, encoded)
+            self.assertNotIn('"raw_values"', encoded)
+            self.assertNotIn('"raw_value"', encoded)
+            self.assertLess(len(encoded), 20_000)
 
     def test_identity_endpoint_preserves_evidence_for_an_uncertain_document(self) -> None:
         with TemporaryDirectory() as directory:
@@ -1152,6 +1220,49 @@ class DesktopSmokeTests(unittest.TestCase):
             contract["presentation"]["details"]["reason"],
             "identidade semântica insuficiente",
         )
+
+    def test_packaged_ui_renders_safe_semantic_event_history_with_text_content(self) -> None:
+        package = resources.files("kad_collector")
+        javascript = package.joinpath("desktop_app.js").read_text(encoding="utf-8")
+        with TemporaryDirectory() as directory:
+            resource_path = Path(directory) / "desktop_app.js"
+            resource_path.write_text(javascript, encoding="utf-8")
+            runner = r"""
+const helpers = require(process.argv[1]);
+const nodes = [];
+global.document = {createElement(tag) {
+  const node = {
+    tag, children: [], value: '',
+    append(...children) {this.children.push(...children);}
+  };
+  Object.defineProperty(node, 'textContent', {
+    set(value) {this.value = String(value);}, get() {return this.value;}
+  });
+  Object.defineProperty(node, 'innerHTML', {set() {throw new Error('innerHTML is forbidden');}});
+  nodes.push(node);
+  return node;
+}};
+const root = {children: [], append(...children) {this.children.push(...children);}};
+helpers.renderSemanticIdentityHistory(root, [{
+  action: '<img src=x onerror=alert(1)>', actor: 'coordenador',
+  createdAt: '2026-08-21T00:00:00+00:00', reason: 'correção humana',
+  algorithmVersion: 'semantic-identity-v1'
+}]);
+function text(node) {return [node.value || '', ...(node.children || []).flatMap(text)];}
+console.log(JSON.stringify(text(root).filter(Boolean)));
+"""
+            completed = subprocess.run(
+                ["node", "-e", runner, str(resource_path)],
+                check=False, capture_output=True, text=True, encoding="utf-8", timeout=10,
+            )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        rendered = " ".join(json.loads(completed.stdout))
+        for value in (
+            "<img src=x onerror=alert(1)>", "coordenador",
+            "2026-08-21T00:00:00+00:00", "correção humana", "semantic-identity-v1",
+        ):
+            self.assertIn(value, rendered)
 
     def test_packaged_editorial_ui_contains_pending_and_batch_review_controls(self) -> None:
         package = resources.files("kad_collector")
@@ -1394,14 +1505,64 @@ class DesktopSmokeTests(unittest.TestCase):
                     first_status, first = import_once()
                     second_status, second = import_once()
 
+                with patch.object(
+                    application, "import_pdfs", return_value=["batch-one", "batch-two"]
+                ):
+                    batch_status, batch = import_once()
+
                 self.assertEqual(first_status, HTTPStatus.CREATED)
-                self.assertEqual(set(first), {"jobIds", "exactDuplicate"})
+                self.assertEqual(set(first), {"jobId", "jobIds", "exactDuplicate"})
                 self.assertEqual(len(first["jobIds"]), 1)
+                self.assertEqual(first["jobId"], first["jobIds"][0])
                 self.assertFalse(first["exactDuplicate"])
                 self.assertEqual(second_status, HTTPStatus.CREATED)
-                self.assertEqual(second, {"jobIds": [], "exactDuplicate": True})
+                self.assertEqual(
+                    second, {"jobId": None, "jobIds": [], "exactDuplicate": True}
+                )
+                self.assertEqual(batch_status, HTTPStatus.CREATED)
+                self.assertEqual(
+                    batch,
+                    {
+                        "jobId": None,
+                        "jobIds": ["batch-one", "batch-two"],
+                        "exactDuplicate": False,
+                    },
+                )
                 start.assert_called_once_with(first["jobIds"][0])
                 self.assertEqual(len(application.store.list_jobs()), 1)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
+    def test_import_api_rejects_empty_selection_and_directory_without_pdfs(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            empty_directory = root / "empty"
+            empty_directory.mkdir()
+            application = DesktopApplication(root / "data")
+            server, thread, url = start_desktop_server(application)
+            try:
+                origin = url.rstrip("/")
+                for paths in ([], [str(empty_directory)]):
+                    with self.subTest(paths=paths):
+                        request = Request(
+                            f"{url}api/import",
+                            data=json.dumps({"paths": paths, "metadata": {}}).encode(),
+                            method="POST",
+                            headers={
+                                "Content-Type": "application/json",
+                                "Origin": origin,
+                                "X-KAD-Desktop-Token": application.token,
+                            },
+                        )
+                        with self.assertRaises(HTTPError) as context:
+                            urlopen(request, timeout=3)
+                        self.assertEqual(context.exception.code, HTTPStatus.BAD_REQUEST)
+                        self.assertEqual(
+                            json.loads(context.exception.read()),
+                            {"error": "selecione ao menos um PDF"},
+                        )
             finally:
                 server.shutdown()
                 server.server_close()

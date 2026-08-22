@@ -547,14 +547,17 @@ class DesktopProcessor:
         for document in documents:
             if document.get("semantic_resolution") not in {"new_identity", "new_version"}:
                 continue
-            metadata = DesktopImportMetadata.model_validate(document["metadata"])
-            if _document_type(cast(str, document["filename"]), metadata) == "answer_key":
+            document_id = cast(str, document["id"])
+            semantic_role = self.store.semantic_document_view(document_id)["documentRole"]
+            if semantic_role == "answer_key":
                 version_id = cast(str | None, document.get("document_version_id"))
                 if version_id is not None:
                     new_answer_key_versions.append(version_id)
                 continue
+            if semantic_role != "exam":
+                continue
             exam_text = "\n".join(
-                str(page["text"]) for page in self.store.pages(cast(str, document["id"]))
+                str(page["text"]) for page in self.store.pages(document_id)
             )
             exam_documents.append({**document, "exam_text": exam_text})
 

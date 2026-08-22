@@ -29,6 +29,7 @@ from .semantic_identity import (
     DocumentSemanticProfile,
     IdentityResolution,
     extract_semantic_profile,
+    semantic_public_dto,
 )
 from .semantic_registry import (
     ObservationClaim,
@@ -39,6 +40,7 @@ from .semantic_registry import (
     identity_events,
     initialize_semantic_schema,
     persist_identity_correction,
+    reconcile_question_lineage_after_correction,
     record_corrected_document_link,
     record_document_link,
     record_question_lineage,
@@ -761,6 +763,7 @@ class DesktopStore:
         safe_events = [
             {
                 "action": event["action"],
+                "actor": event["actor"],
                 "algorithmVersion": event["algorithmVersion"],
                 "createdAt": event["createdAt"],
                 "reason": (
@@ -771,7 +774,7 @@ class DesktopStore:
             }
             for event in events
         ]
-        return {
+        return cast(dict[str, Any], semantic_public_dto({
             "documentId": view["documentId"],
             "resolution": view["resolution"],
             "identityStatus": view["identityStatus"],
@@ -794,7 +797,7 @@ class DesktopStore:
                 )
             ),
             "events": safe_events,
-        }
+        }))
 
     def answer_key_candidates(self, exam_version_id: str) -> list[dict[str, Any]]:
         with closing(self._connect()) as connection:
@@ -1413,6 +1416,16 @@ class DesktopStore:
                     cast(str, previous_version["profile_json"])
                 )
 
+                before_graph = {
+                    cast(str, row["id"]): (
+                        row["identity_key"], row["document_role"], row["predecessor_version_id"]
+                    )
+                    for row in connection.execute(
+                        "SELECT id, identity_key, document_role, predecessor_version_id "
+                        "FROM document_versions"
+                    ).fetchall()
+                }
+
                 result, _ = persist_identity_correction(
                     connection,
                     document_id=document_id,
@@ -1420,6 +1433,35 @@ class DesktopStore:
                     actor=reviewer,
                     corrected_at=corrected_at,
                 )
+                after_graph = {
+                    cast(str, row["id"]): (
+                        row["identity_key"], row["document_role"], row["predecessor_version_id"]
+                    )
+                    for row in connection.execute(
+                        "SELECT id, identity_key, document_role, predecessor_version_id "
+                        "FROM document_versions"
+                    ).fetchall()
+                }
+                changed_version_ids = {
+                    item
+                    for item in before_graph.keys() | after_graph.keys()
+                    if before_graph.get(item) != after_graph.get(item)
+                }
+                if changed_version_ids:
+                    correction_event = connection.execute(
+                        "SELECT event_key FROM document_identity_events "
+                        "WHERE document_version_id = ? AND action = 'identity_corrected' "
+                        "ORDER BY created_at DESC, rowid DESC LIMIT 1",
+                        (version_id,),
+                    ).fetchone()
+                    if correction_event is None:
+                        raise RuntimeError("evento de correção de identidade ausente")
+                    reconcile_question_lineage_after_correction(
+                        connection,
+                        changed_version_ids=changed_version_ids,
+                        correction_event_key=cast(str, correction_event["event_key"]),
+                        corrected_at=corrected_at,
+                    )
                 linked_documents = tuple(
                     cast(str, row["id"])
                     for row in connection.execute(

@@ -41,11 +41,35 @@ function semanticIdentityPresentation(view) {
   };
 }
 
+function renderSemanticIdentityHistory(root, events) {
+  const history = document.createElement('div');
+  history.className = 'document-identity-history';
+  const heading = document.createElement('strong');
+  heading.textContent = 'Histórico semântico';
+  history.append(heading);
+  (events || []).forEach((event) => {
+    const item = document.createElement('span');
+    item.textContent = [
+      `Ação: ${event.action || 'não informada'}`,
+      `Ator: ${event.actor || 'não informado'}`,
+      `Data: ${event.createdAt || 'não informada'}`,
+      `Motivo: ${event.reason || 'não informado'}`,
+      `Algoritmo: ${event.algorithmVersion || 'não informado'}`,
+    ].join(' · ');
+    history.append(item);
+  });
+  root.append(history);
+}
+
 if (typeof window !== 'undefined') {
-  window.KADDesktopRenderers = {semanticIdentityBadge, semanticIdentityPresentation};
+  window.KADDesktopRenderers = {
+    semanticIdentityBadge, semanticIdentityPresentation, renderSemanticIdentityHistory,
+  };
 }
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {semanticIdentityBadge, semanticIdentityPresentation};
+  module.exports = {
+    semanticIdentityBadge, semanticIdentityPresentation, renderSemanticIdentityHistory,
+  };
 }
 
 if (typeof document !== 'undefined') {
@@ -1089,6 +1113,7 @@ function renderDocumentIdentity(root, view) {
   });
   details.append(summary, detailsBody);
   root.append(details);
+  renderSemanticIdentityHistory(root, view?.events || []);
 }
 
 function renderReviewFlags() {

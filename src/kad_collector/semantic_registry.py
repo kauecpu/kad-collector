@@ -186,10 +186,8 @@ def persist_identity_correction(
         "algorithmVersion": profile.algorithm_version,
         "documentRole": profile.document_role,
     }
-    event_key = stable_sha256(
+    request_fingerprint = stable_sha256(
         {
-            "action": "identity_corrected",
-            "document_version_id": version_id,
             "actor": actor,
             "identity_key": profile.identity_key,
             "document_role": profile.document_role,
@@ -197,20 +195,64 @@ def persist_identity_correction(
             "coverage": profile.coverage.model_dump(mode="json"),
         }
     )
-    event_created = connection.execute(
-        "INSERT OR IGNORE INTO document_identity_events (event_key, document_id, "
-        "document_version_id, action, actor, algorithm_version, payload_json, created_at) "
-        "VALUES (?, ?, ?, 'identity_corrected', ?, ?, ?, ?)",
-        (
-            event_key,
-            document_id,
-            version_id,
-            actor,
-            profile.algorithm_version,
-            canonical_json(payload),
-            corrected_at,
-        ),
-    ).rowcount == 1
+    latest_event = connection.execute(
+        "SELECT event_key, actor, payload_json FROM document_identity_events "
+        "WHERE document_version_id = ? AND action = 'identity_corrected' "
+        "ORDER BY created_at DESC, rowid DESC LIMIT 1",
+        (version_id,),
+    ).fetchone()
+    latest_payload = (
+        json.loads(cast(str, latest_event["payload_json"]))
+        if latest_event is not None
+        else {}
+    )
+    same_request_as_latest = bool(
+        latest_event is not None
+        and latest_event["actor"] == actor
+        and (
+            latest_payload.get("requestFingerprint") == request_fingerprint
+            or (
+                latest_payload.get("requestFingerprint") is None
+                and latest_payload.get("newIdentityKey") == profile.identity_key
+                and latest_payload.get("documentRole") == profile.document_role
+                and latest_payload.get("newValues")
+                == profile.identity.model_dump(mode="json")
+            )
+        )
+    )
+    predecessor_event_key = (
+        cast(str, latest_event["event_key"]) if latest_event is not None else None
+    )
+    event_key = (
+        predecessor_event_key
+        if not changed and same_request_as_latest
+        else stable_sha256(
+            {
+                "action": "identity_corrected",
+                "document_version_id": version_id,
+                "predecessor_event_key": predecessor_event_key,
+                "request_fingerprint": request_fingerprint,
+            }
+        )
+    )
+    event_created = False
+    if not (not changed and same_request_as_latest):
+        payload["requestFingerprint"] = request_fingerprint
+        payload["predecessorEventKey"] = predecessor_event_key
+        event_created = connection.execute(
+            "INSERT OR IGNORE INTO document_identity_events (event_key, document_id, "
+            "document_version_id, action, actor, algorithm_version, payload_json, created_at) "
+            "VALUES (?, ?, ?, 'identity_corrected', ?, ?, ?, ?)",
+            (
+                event_key,
+                document_id,
+                version_id,
+                actor,
+                profile.algorithm_version,
+                canonical_json(payload),
+                corrected_at,
+            ),
+        ).rowcount == 1
     outcome = cast(Any, row["semantic_resolution"] or "new_identity")
     return (
         IdentityResolution(
@@ -279,6 +321,138 @@ def record_question_lineage(
     if row is None:
         raise RuntimeError("linhagem concorrente não pôde ser recarregada")
     return dict(row), created
+
+
+def reconcile_question_lineage_after_correction(
+    connection: sqlite3.Connection,
+    *,
+    changed_version_ids: set[str],
+    correction_event_key: str,
+    corrected_at: str,
+) -> None:
+    """Archive stale lineage facts and rebuild the current graph inside the correction."""
+    if not changed_version_ids:
+        return
+    placeholders = ",".join("?" for _ in changed_version_ids)
+    stale_rows = connection.execute(
+        f"SELECT ql.* FROM question_lineage ql "  # noqa: S608
+        "LEFT JOIN document_versions successor ON successor.id = ql.successor_version_id "
+        f"WHERE (ql.predecessor_version_id IN ({placeholders}) "  # noqa: S608
+        f"OR ql.successor_version_id IN ({placeholders})) "  # noqa: S608
+        "AND (successor.id IS NULL OR successor.predecessor_version_id IS NOT "
+        "ql.predecessor_version_id)",
+        (*changed_version_ids, *changed_version_ids),
+    ).fetchall()
+    for row in stale_rows:
+        history_id = stable_sha256(
+            {"correction_event_key": correction_event_key, "lineage_id": row["id"]}
+        )
+        connection.execute(
+            "INSERT OR IGNORE INTO question_lineage_history ("
+            "history_id, correction_event_key, lineage_id, predecessor_version_id, "
+            "successor_version_id, question_number, predecessor_question_id, "
+            "successor_question_id, comparison, content_equal, answer_equal, reason, "
+            "created_at, superseded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                history_id,
+                correction_event_key,
+                row["id"],
+                row["predecessor_version_id"],
+                row["successor_version_id"],
+                row["question_number"],
+                row["predecessor_question_id"],
+                row["successor_question_id"],
+                row["comparison"],
+                row["content_equal"],
+                row["answer_equal"],
+                row["reason"],
+                row["created_at"],
+                corrected_at,
+            ),
+        )
+        connection.execute("DELETE FROM question_lineage WHERE id = ?", (row["id"],))
+
+    rows = connection.execute(
+        f"SELECT id, predecessor_version_id FROM document_versions "  # noqa: S608
+        f"WHERE document_role = 'exam' AND id IN ({placeholders}) "  # noqa: S608
+        "AND predecessor_version_id IS NOT NULL ORDER BY version_number, id",
+        tuple(changed_version_ids),
+    ).fetchall()
+    for version in rows:
+        successor_version_id = cast(str, version["id"])
+        predecessor_version_id = cast(str, version["predecessor_version_id"])
+        predecessor_document = connection.execute(
+            "SELECT d.id FROM documents d JOIN questions q ON q.document_id = d.id "
+            "WHERE d.document_version_id = ? GROUP BY d.id "
+            "ORDER BY COUNT(q.id) DESC, d.created_at, d.id LIMIT 1",
+            (predecessor_version_id,),
+        ).fetchone()
+        successor_document = connection.execute(
+            "SELECT d.id FROM documents d JOIN questions q ON q.document_id = d.id "
+            "WHERE d.document_version_id = ? GROUP BY d.id "
+            "ORDER BY COUNT(q.id) DESC, d.created_at, d.id LIMIT 1",
+            (successor_version_id,),
+        ).fetchone()
+        if predecessor_document is None or successor_document is None:
+            continue
+        predecessor_questions = {
+            int(row["question_number"]): row
+            for row in connection.execute(
+                "SELECT * FROM questions WHERE document_id = ? ORDER BY question_number",
+                (predecessor_document["id"],),
+            ).fetchall()
+        }
+        successor_questions = {
+            int(row["question_number"]): row
+            for row in connection.execute(
+                "SELECT * FROM questions WHERE document_id = ? ORDER BY question_number",
+                (successor_document["id"],),
+            ).fetchall()
+        }
+        for number in sorted(predecessor_questions.keys() | successor_questions.keys()):
+            predecessor = predecessor_questions.get(number)
+            successor = successor_questions.get(number)
+            content_equal = False
+            answer_equal = False
+            if predecessor is None:
+                comparison = "added"
+                reason = "Questão adicionada na relação corrigida."
+            elif successor is None:
+                comparison = "removed"
+                reason = "Questão ausente na relação corrigida."
+            else:
+                content_equal = predecessor["fingerprint"] == successor["fingerprint"]
+                predecessor_payload = json.loads(cast(str, predecessor["payload_json"]))
+                successor_payload = json.loads(cast(str, successor["payload_json"]))
+                answer_equal = (
+                    predecessor_payload.get("answer_status")
+                    == successor_payload.get("answer_status")
+                    and predecessor_payload.get("correct_answer")
+                    == successor_payload.get("correct_answer")
+                )
+                comparison = "unchanged" if content_equal and answer_equal else "changed"
+                reason = (
+                    "Conteúdo e resposta oficial permanecem idênticos após correção."
+                    if comparison == "unchanged"
+                    else "Conteúdo ou resposta diferem na relação corrigida."
+                )
+            record_question_lineage(
+                connection,
+                predecessor_version_id=predecessor_version_id,
+                successor_version_id=successor_version_id,
+                question_number=number,
+                predecessor_question_id=(
+                    cast(str, predecessor["id"]) if predecessor is not None else None
+                ),
+                successor_question_id=(
+                    cast(str, successor["id"]) if successor is not None else None
+                ),
+                comparison=comparison,
+                content_equal=content_equal,
+                answer_equal=answer_equal,
+                reason=reason,
+                recorded_at=corrected_at,
+            )
 
 
 def _observation_origin(document: NormalizedDocument) -> dict[str, object]:
@@ -478,6 +652,23 @@ def initialize_semantic_schema(connection: sqlite3.Connection) -> None:
             answer_equal INTEGER NOT NULL,
             reason TEXT NOT NULL,
             created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS question_lineage_history (
+            history_id TEXT PRIMARY KEY,
+            correction_event_key TEXT NOT NULL REFERENCES document_identity_events(event_key),
+            lineage_id TEXT NOT NULL,
+            predecessor_version_id TEXT REFERENCES document_versions(id),
+            successor_version_id TEXT REFERENCES document_versions(id),
+            question_number INTEGER NOT NULL,
+            predecessor_question_id TEXT REFERENCES questions(id),
+            successor_question_id TEXT REFERENCES questions(id),
+            comparison TEXT NOT NULL,
+            content_equal INTEGER NOT NULL,
+            answer_equal INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            superseded_at TEXT NOT NULL,
+            UNIQUE(correction_event_key, lineage_id)
         );
         CREATE TABLE IF NOT EXISTS document_identity_events (
             event_key TEXT PRIMARY KEY,
