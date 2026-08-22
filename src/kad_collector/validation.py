@@ -19,6 +19,12 @@ _EDITORIAL_TEXT_FIELDS = (
     ("explicacao", "explanation"),
 )
 
+_APP_IMPORT_TEXT_FIELDS = tuple(
+    item
+    for item in _EDITORIAL_TEXT_FIELDS
+    if item[1] not in {"difficulty", "explanation"}
+)
+
 
 def _normalized(value: str) -> str:
     decomposed = unicodedata.normalize("NFKD", value)
@@ -27,24 +33,27 @@ def _normalized(value: str) -> str:
     ).casefold()
 
 
-def validate_editorial_question(question: QuestionRecord) -> list[str]:
+def _validate_question_for_transfer(
+    question: QuestionRecord,
+    *,
+    required_text_fields: tuple[tuple[str, str], ...],
+    purpose: str,
+) -> list[str]:
     prefix = f"questao {question.number}"
     errors: list[str] = []
-    for label, field_name in _EDITORIAL_TEXT_FIELDS:
+    for label, field_name in required_text_fields:
         value = getattr(question, field_name)
         if not isinstance(value, str) or len(value.strip()) < 2:
-            errors.append(f"{prefix}: {label} obrigatorio para exportacao")
-    if question.explanation is not None and len(question.explanation.strip()) < 10:
-        errors.append(f"{prefix}: explicacao deve ter pelo menos 10 caracteres")
+            errors.append(f"{prefix}: {label} obrigatorio para {purpose}")
     if len(question.statement.strip()) < 10:
         errors.append(f"{prefix}: enunciado deve ter pelo menos 10 caracteres")
     if question.year is None:
-        errors.append(f"{prefix}: ano obrigatorio para exportacao")
+        errors.append(f"{prefix}: ano obrigatorio para {purpose}")
     if not question.source_pages:
-        errors.append(f"{prefix}: pagina de origem obrigatoria para exportacao")
+        errors.append(f"{prefix}: pagina de origem obrigatoria para {purpose}")
     if question.answer_status != "matched" or question.correct_answer is None:
         state = "anulada" if question.answer_status == "annulled" else "sem gabarito"
-        errors.append(f"{prefix}: questao {state} nao pode ser exportada")
+        errors.append(f"{prefix}: questao {state} nao pode ser transferida")
 
     alternatives = question.alternatives
     expected_letters = list("ABCDE"[: len(alternatives)])
@@ -71,6 +80,34 @@ def validate_editorial_question(question: QuestionRecord) -> list[str]:
     )
     if any(marker in normalized_visual_text for marker in visual_markers):
         errors.append(f"{prefix}: conteudo visual exige tratamento editorial separado")
+    return errors
+
+
+def validate_app_import_question(question: QuestionRecord) -> list[str]:
+    """Validate the safe subset accepted as an app-import candidate.
+
+    Explanation and difficulty deliberately remain outside this gate. They belong to
+    publication readiness, while official answers, provenance fields and valid
+    alternatives remain mandatory.
+    """
+
+    return _validate_question_for_transfer(
+        question,
+        required_text_fields=_APP_IMPORT_TEXT_FIELDS,
+        purpose="importacao no app",
+    )
+
+
+def validate_editorial_question(question: QuestionRecord) -> list[str]:
+    errors = _validate_question_for_transfer(
+        question,
+        required_text_fields=_EDITORIAL_TEXT_FIELDS,
+        purpose="exportacao",
+    )
+    if question.explanation is not None and len(question.explanation.strip()) < 10:
+        errors.append(
+            f"questao {question.number}: explicacao deve ter pelo menos 10 caracteres"
+        )
     return errors
 
 

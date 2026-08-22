@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-from collections import Counter
 from typing import Protocol
 
 from .desktop_models import (
@@ -13,6 +12,7 @@ from .desktop_models import (
     DesktopImportMetadata,
     QuestionClassification,
 )
+from .editorial_taxonomy import EditorialTaxonomy, TaxonomyField, TaxonomyPath
 
 
 class ClassificationProvider(Protocol):
@@ -23,117 +23,6 @@ class ClassificationProvider(Protocol):
         questions: list[ClassificationRequest],
         metadata: DesktopImportMetadata,
     ) -> list[ClassificationResponseItem]: ...
-
-
-_DISCIPLINE_RULES: dict[str, tuple[str, ...]] = {
-    "Língua Portuguesa": (
-        "texto",
-        "oração",
-        "verbo",
-        "pronome",
-        "concordância",
-        "regência",
-        "crase",
-        "pontuação",
-        "sinônimo",
-        "gramática",
-    ),
-    "Matemática": (
-        "equação",
-        "porcentagem",
-        "probabilidade",
-        "função",
-        "ângulo",
-        "triângulo",
-        "razão",
-        "proporção",
-        "média aritmética",
-        "conjunto",
-    ),
-    "Direito Constitucional": (
-        "constituição federal",
-        "direitos fundamentais",
-        "controle de constitucionalidade",
-        "poder constituinte",
-        "mandado de segurança",
-    ),
-    "Direito Administrativo": (
-        "administração pública",
-        "ato administrativo",
-        "licitação",
-        "servidor público",
-        "improbidade",
-        "poder de polícia",
-    ),
-    "Informática": (
-        "sistema operacional",
-        "windows",
-        "linux",
-        "planilha",
-        "internet",
-        "segurança da informação",
-        "banco de dados",
-        "rede de computadores",
-    ),
-    "Geografia": (
-        "mapa",
-        "escala cartográfica",
-        "clima",
-        "relevo",
-        "urbanização",
-        "território",
-        "população",
-    ),
-    "História": (
-        "revolução",
-        "império",
-        "república",
-        "colonial",
-        "ditadura",
-        "guerra mundial",
-    ),
-    "Contabilidade": (
-        "patrimônio líquido",
-        "balanço patrimonial",
-        "débito",
-        "crédito",
-        "ativo circulante",
-        "demonstração contábil",
-    ),
-}
-
-_SUBJECT_RULES: dict[str, tuple[str, str, tuple[str, ...]]] = {
-    "interpretação": (
-        "Interpretação de textos",
-        "Compreensão e interpretação",
-        ("de acordo com o texto", "infere-se", "ideia central", "sentido do texto"),
-    ),
-    "concordância": (
-        "Gramática",
-        "Concordância verbal e nominal",
-        ("concordância", "concorda", "flexão verbal"),
-    ),
-    "porcentagem": (
-        "Aritmética",
-        "Porcentagem",
-        ("porcentagem", "%", "acréscimo percentual", "desconto"),
-    ),
-    "cartografia": (
-        "Cartografia",
-        "Escala cartográfica",
-        ("escala", "mapa", "coordenadas geográficas"),
-    ),
-    "licitações": (
-        "Direito Administrativo",
-        "Licitações e contratos",
-        ("licitação", "contrato administrativo", "pregão"),
-    ),
-    "constitucionalidade": (
-        "Direito Constitucional",
-        "Controle de constitucionalidade",
-        ("constitucionalidade", "ação direta", "controle difuso"),
-    ),
-}
 
 
 def _metadata_classification(metadata: DesktopImportMetadata) -> QuestionClassification:
@@ -154,6 +43,8 @@ def _metadata_classification(metadata: DesktopImportMetadata) -> QuestionClassif
             value=value,
             confidence=1 if value is not None else 0,
             evidence="Informado pelo operador na origem" if value is not None else None,
+            source="operator_metadata" if value is not None else None,
+            reason="Metadado explícito do documento" if value is not None else None,
         )
         for key, value in mapping.items()
     }
@@ -163,57 +54,185 @@ def _metadata_classification(metadata: DesktopImportMetadata) -> QuestionClassif
 class LocalRuleClassifier:
     name = "local"
 
+    def __init__(self, taxonomy: EditorialTaxonomy | None = None) -> None:
+        self.taxonomy = taxonomy or EditorialTaxonomy.load_default()
+
+    @staticmethod
+    def _classified_value(
+        value: str,
+        *,
+        confidence: float,
+        source: str,
+        evidence: str,
+        reason: str,
+    ) -> ClassificationValue:
+        return ClassificationValue(
+            value=value,
+            confidence=confidence,
+            evidence=evidence,
+            source=source,
+            reason=reason,
+        )
+
+    def _apply_path(
+        self,
+        classification: QuestionClassification,
+        path: TaxonomyPath,
+        *,
+        confidence: float,
+        source: str,
+        evidence: str,
+        reason: str,
+    ) -> None:
+        values = {
+            "discipline": path.discipline,
+            "subject": path.matter,
+            "topic": path.subject,
+        }
+        taxonomy_fields: dict[str, TaxonomyField] = {
+            "discipline": "discipline",
+            "subject": "matter",
+            "topic": "subject",
+        }
+        for field, value in values.items():
+            current = getattr(classification, field)
+            if value is None or current.value is not None:
+                continue
+            self.taxonomy.ensure_known(taxonomy_fields[field], value)
+            setattr(
+                classification,
+                field,
+                self._classified_value(
+                    value,
+                    confidence=confidence,
+                    source=source,
+                    evidence=evidence,
+                    reason=reason,
+                ),
+            )
+
+    @staticmethod
+    def _mark_unresolved(classification: QuestionClassification) -> None:
+        for field in ("discipline", "subject", "topic"):
+            current = getattr(classification, field)
+            if current.value is None:
+                setattr(
+                    classification,
+                    field,
+                    ClassificationValue(
+                        value=None,
+                        confidence=0,
+                        source="unresolved",
+                        reason="Não há evidência suficiente na taxonomia para classificar",
+                    ),
+                )
+
+    def _propagate_neighbors(
+        self, classifications: list[QuestionClassification]
+    ) -> None:
+        snapshot = [item.model_copy(deep=True) for item in classifications]
+        for index in range(1, len(snapshot) - 1):
+            previous = snapshot[index - 1]
+            current = classifications[index]
+            following = snapshot[index + 1]
+            for field in ("discipline", "subject", "topic"):
+                current_value = getattr(current, field)
+                left = getattr(previous, field)
+                right = getattr(following, field)
+                if (
+                    current_value.value is None
+                    and left.value is not None
+                    and left.value == right.value
+                    and left.confidence >= 0.8
+                    and right.confidence >= 0.8
+                ):
+                    setattr(
+                        current,
+                        field,
+                        self._classified_value(
+                            str(left.value),
+                            confidence=0.78,
+                            source="neighbor_context",
+                            evidence=f"Questões vizinhas concordam em {left.value}",
+                            reason="Campo propagado somente entre vizinhas confiáveis concordantes",
+                        ),
+                    )
+
     def classify_many(
         self,
         questions: list[ClassificationRequest],
         metadata: DesktopImportMetadata,
     ) -> list[ClassificationResponseItem]:
-        results: list[ClassificationResponseItem] = []
+        classifications: list[QuestionClassification] = []
         for question in questions:
             classification = _metadata_classification(metadata)
-            text = " ".join([question.statement, *question.alternatives]).casefold()
-            if classification.discipline.value is None:
-                scores = Counter(
-                    {
-                        discipline: sum(keyword.casefold() in text for keyword in keywords)
-                        for discipline, keywords in _DISCIPLINE_RULES.items()
-                    }
+            official_level = self.taxonomy.official_level(metadata)
+            if classification.level.value is None and official_level is not None:
+                classification.level = self._classified_value(
+                    official_level,
+                    confidence=0.98,
+                    source="official_contest_requirement",
+                    evidence="Requisito de escolaridade do edital oficial",
+                    reason="Cargo e concurso correspondem ao perfil oficial versionado",
                 )
-                best = scores.most_common(2)
-                if best and best[0][1] >= 2 and (len(best) == 1 or best[0][1] > best[1][1]):
-                    classification.discipline = ClassificationValue(
-                        value=best[0][0],
-                        confidence=min(0.9, 0.68 + best[0][1] * 0.05),
-                        evidence=f"{best[0][1]} indicadores semânticos locais",
-                    )
-            if classification.subject.value is None or classification.topic.value is None:
-                candidates: list[tuple[int, str, str, str]] = []
-                for label, (subject, topic, keywords) in _SUBJECT_RULES.items():
-                    score = sum(keyword.casefold() in text for keyword in keywords)
-                    if score:
-                        candidates.append((score, label, subject, topic))
-                candidates.sort(reverse=True)
-                if candidates:
-                    score, label, subject, topic = candidates[0]
-                    if classification.subject.value is None:
-                        classification.subject = ClassificationValue(
-                            value=subject,
-                            confidence=min(0.84, 0.65 + score * 0.07),
-                            evidence=f"Padrão local: {label}",
-                        )
-                    if classification.topic.value is None:
-                        classification.topic = ClassificationValue(
-                            value=topic,
-                            confidence=min(0.82, 0.64 + score * 0.07),
-                            evidence=f"Padrão local: {label}",
-                        )
-            results.append(
-                ClassificationResponseItem(
-                    question_number=question.question_number,
-                    classification=classification,
+            section = self.taxonomy.match_section(question.section_title)
+            section_source = "section_title"
+            if section is None:
+                section = self.taxonomy.match_section(question.context)
+                section_source = "page_section"
+            if section is not None:
+                self._apply_path(
+                    classification,
+                    section,
+                    confidence=0.96 if section_source == "section_title" else 0.91,
+                    source=section_source,
+                    evidence=question.section_title or "Título identificado na página da questão",
+                    reason="Título de seção reconhecido na taxonomia versionada",
                 )
+
+            official_range = self.taxonomy.match_official_range(
+                metadata, question.question_number
             )
-        return results
+            if official_range is not None:
+                self._apply_path(
+                    classification,
+                    official_range,
+                    confidence=0.94,
+                    source="official_exam_range",
+                    evidence=f"Questão {question.question_number} no bloco do edital oficial",
+                    reason="Intervalo de questões definido no edital oficial do concurso",
+                )
+
+            text = " ".join([question.statement, *question.alternatives])
+            semantic = self.taxonomy.semantic_match(
+                text,
+                discipline=(
+                    str(classification.discipline.value)
+                    if classification.discipline.value is not None
+                    else None
+                ),
+            )
+            if semantic is not None:
+                self._apply_path(
+                    classification,
+                    semantic.path,
+                    confidence=min(0.88, 0.72 + semantic.score * 0.04),
+                    source="local_semantic_rule",
+                    evidence=semantic.evidence,
+                    reason="Indicadores locais compatíveis com a taxonomia controlada",
+                )
+            classifications.append(classification)
+
+        self._propagate_neighbors(classifications)
+        for classification in classifications:
+            self._mark_unresolved(classification)
+        return [
+            ClassificationResponseItem(
+                question_number=question.question_number,
+                classification=classification,
+            )
+            for question, classification in zip(questions, classifications, strict=True)
+        ]
 
 
 class OpenAIClassificationProvider:
@@ -269,6 +288,34 @@ class OpenAIClassificationProvider:
         if not response.output_text:
             raise RuntimeError("a classificacao por IA nao retornou dados")
         parsed = ClassificationResponse.model_validate_json(response.output_text)
+        taxonomy = EditorialTaxonomy.load_default()
+        taxonomy_fields: dict[str, TaxonomyField] = {
+            "discipline": "discipline",
+            "subject": "matter",
+            "topic": "subject",
+        }
+        for item in parsed.items:
+            for classification_field, taxonomy_field in taxonomy_fields.items():
+                value = getattr(item.classification, classification_field)
+                if value.value is None:
+                    continue
+                try:
+                    taxonomy.ensure_known(taxonomy_field, str(value.value))
+                except ValueError:
+                    setattr(
+                        item.classification,
+                        classification_field,
+                        ClassificationValue(
+                            value=None,
+                            confidence=0,
+                            evidence=str(value.value),
+                            source="taxonomy_rejected",
+                            reason=(
+                                f"Nome rejeitado por não pertencer à taxonomia "
+                                f"{taxonomy.version}"
+                            ),
+                        ),
+                    )
         by_number = {item.question_number: item for item in parsed.items}
         local = LocalRuleClassifier().classify_many(questions, metadata)
         merged: list[ClassificationResponseItem] = []

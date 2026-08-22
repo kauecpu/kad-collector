@@ -38,6 +38,7 @@ kad_collector = [
   "desktop_ui.html",
   "desktop_app.js",
   "desktop_styles.css",
+  "editorial_taxonomy.v1.json",
   "sources.official.toml",
 ]
 

@@ -112,6 +112,8 @@ class ClassificationValue(StrictModel):
     value: str | int | None = None
     confidence: float = Field(default=0, ge=0, le=1)
     evidence: str | None = None
+    source: str | None = None
+    reason: str | None = None
 
 
 class QuestionClassification(StrictModel):
@@ -131,6 +133,8 @@ class ClassificationRequest(StrictModel):
     question_number: int = Field(ge=1)
     statement: str
     alternatives: list[str]
+    section_title: str | None = None
+    context: str | None = None
 
 
 class ClassificationResponseItem(StrictModel):

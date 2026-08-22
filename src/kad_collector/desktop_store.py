@@ -48,7 +48,7 @@ from .semantic_registry import (
     semantic_summary,
 )
 from .semantic_resolution import resolve_document_version, select_answer_key
-from .validation import validate_editorial_question
+from .validation import validate_app_import_question, validate_editorial_question
 
 
 def _now() -> str:
@@ -289,6 +289,8 @@ def question_quality_flags(
         flags.append("incomplete")
     if not (question.explanation or "").strip():
         flags.append("without_explanation")
+    if question.difficulty is None:
+        flags.append("without_difficulty")
     if question.answer_status == "annulled":
         flags.append("annulled")
     if question.answer_status == "missing":
@@ -317,7 +319,6 @@ def question_quality_flags(
         question.organization,
         question.concurso,
         question.level,
-        question.difficulty,
     )
     if any(value is None or value == "" for value in required_values):
         flags.append("missing_fields")
@@ -863,6 +864,143 @@ class DesktopStore:
             )
             for row in rows
         ]
+
+    def classification_question_rows(self) -> list[dict[str, Any]]:
+        """Return the stored question/classification inputs needed for local reclassification."""
+
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                """
+                SELECT q.id, q.document_id, q.payload_json, q.classification_json,
+                       q.updated_at,
+                       d.metadata_json
+                FROM questions q JOIN documents d ON d.id = q.document_id
+                ORDER BY q.document_id, q.question_number
+                """
+            ).fetchall()
+        return [
+            {
+                "id": cast(str, row["id"]),
+                "document_id": cast(str, row["document_id"]),
+                "question": QuestionRecord.model_validate_json(
+                    cast(str, row["payload_json"])
+                ),
+                "classification": QuestionClassification.model_validate_json(
+                    cast(str, row["classification_json"])
+                ),
+                "metadata": DesktopImportMetadata.model_validate_json(
+                    cast(str, row["metadata_json"])
+                ),
+                "updated_at": cast(str, row["updated_at"]),
+            }
+            for row in rows
+        ]
+
+    def save_reclassifications(
+        self,
+        updates: list[tuple[str, QuestionRecord, QuestionClassification, str]],
+        *,
+        taxonomy_version: str,
+    ) -> int:
+        """Persist classification-only changes without invalidating human decisions."""
+
+        changed = 0
+        updated_at = _now()
+        with closing(self._connect()) as connection:
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                for question_id, question, classification, expected_updated_at in updates:
+                    row = connection.execute(
+                        "SELECT payload_json, classification_json, flags_json, updated_at "
+                        "FROM questions "
+                        "WHERE id = ?",
+                        (question_id,),
+                    ).fetchone()
+                    if row is None:
+                        continue
+                    if row["updated_at"] != expected_updated_at:
+                        raise RuntimeError(
+                            "o acervo mudou durante a reclassificação; tente novamente"
+                        )
+                    payload_json = _json(question.model_dump(mode="json"))
+                    classification_json = _json(classification.model_dump(mode="json"))
+                    flags = question_quality_flags(question, classification)
+                    duplicate = self._duplicate_question_id_in_connection(
+                        connection,
+                        question_fingerprint(question),
+                        exclude_id=question_id,
+                    )
+                    if duplicate is not None:
+                        flags.append("duplicate")
+                    flags_json = _json(list(dict.fromkeys(flags)))
+                    if (
+                        payload_json == row["payload_json"]
+                        and classification_json == row["classification_json"]
+                        and flags_json == row["flags_json"]
+                    ):
+                        continue
+                    confidence_values = _classification_confidences(classification)
+                    confidence = min(confidence_values, default=0)
+                    cursor = connection.execute(
+                        "UPDATE questions SET payload_json = ?, classification_json = ?, "
+                        "confidence = ?, flags_json = ?, updated_at = ? "
+                        "WHERE id = ? AND updated_at = ?",
+                        (
+                            payload_json,
+                            classification_json,
+                            confidence,
+                            flags_json,
+                            updated_at,
+                            question_id,
+                            expected_updated_at,
+                        ),
+                    )
+                    if cursor.rowcount != 1:
+                        raise RuntimeError(
+                            "o acervo mudou durante a reclassificação; tente novamente"
+                        )
+                    self._audit(
+                        connection,
+                        question_id,
+                        "classification_reprocessed",
+                        "system",
+                        {
+                            "editorialFields": {
+                                key: json.loads(cast(str, row["payload_json"])).get(key)
+                                for key in ("discipline", "matter", "subject", "level")
+                            },
+                            "classification": json.loads(
+                                cast(str, row["classification_json"])
+                            ),
+                        },
+                        {
+                            "editorialFields": {
+                                "discipline": question.discipline,
+                                "matter": question.matter,
+                                "subject": question.subject,
+                                "level": question.level,
+                            },
+                            "classification": classification.model_dump(mode="json"),
+                            "taxonomyVersion": taxonomy_version,
+                        },
+                        f"Reclassificação local com taxonomia {taxonomy_version}.",
+                    )
+                    changed += 1
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+        return changed
+
+    @staticmethod
+    def _duplicate_question_id_in_connection(
+        connection: sqlite3.Connection, fingerprint: str, *, exclude_id: str
+    ) -> str | None:
+        row = connection.execute(
+            "SELECT id FROM questions WHERE fingerprint = ? AND id != ? LIMIT 1",
+            (fingerprint, exclude_id),
+        ).fetchone()
+        return cast(str, row["id"]) if row is not None else None
 
     def persist_document_link(
         self,
@@ -2248,6 +2386,29 @@ class DesktopStore:
         flags = json.loads(cast(str, payload.pop("flags_json")))
         metadata = json.loads(cast(str, payload.pop("metadata_json")))
         warnings = json.loads(cast(str, payload.pop("warnings_json")))
+        question_record = QuestionRecord.model_validate(question)
+        origin_issues: list[str] = []
+        if not str(metadata.get("provider") or "").strip():
+            origin_issues.append("provider da origem não informado")
+        if not str(metadata.get("source_url") or "").startswith("https://"):
+            origin_issues.append("URL HTTPS da origem não informada")
+        if len(str(payload.get("document_sha256") or "")) != 64:
+            origin_issues.append("hash do documento de origem ausente")
+        duplicate_issues = (
+            ["conteúdo duplicado; resolva antes da importação"]
+            if "duplicate" in flags
+            else []
+        )
+        import_issues = [
+            *validate_app_import_question(question_record),
+            *origin_issues,
+            *duplicate_issues,
+        ]
+        publication_issues = [
+            *validate_editorial_question(question_record),
+            *origin_issues,
+            *duplicate_issues,
+        ]
         payload.update(
             {
                 "question": question,
@@ -2255,8 +2416,12 @@ class DesktopStore:
                 "flags": flags,
                 "metadata": metadata,
                 "document_warnings": warnings,
+                "importable": not import_issues,
+                "import_issues": list(dict.fromkeys(import_issues)),
+                "publication_ready": not publication_issues,
+                "publication_issues": list(dict.fromkeys(publication_issues)),
                 "exportable": payload["status"] == "approved"
-                and not validate_editorial_question(QuestionRecord.model_validate(question))
+                and not validate_editorial_question(question_record)
                 and "duplicate" not in flags,
             }
         )
@@ -2280,6 +2445,10 @@ class DesktopStore:
         )
         counts["answer_missing"] = answer_statuses["missing"]
         counts["exportable"] = sum(bool(view["exportable"]) for view in views)
+        counts["importable"] = sum(bool(view["importable"]) for view in views)
+        counts["publication_ready"] = sum(
+            bool(view["publication_ready"]) for view in views
+        )
         counts["total"] = len(views)
         return dict(counts)
 
@@ -2325,6 +2494,10 @@ class DesktopStore:
             actual_statuses = {cast(str, view["status"])}
             if view["exportable"]:
                 actual_statuses.add("exportable")
+            if view["importable"]:
+                actual_statuses.add("importable")
+            if view["publication_ready"]:
+                actual_statuses.add("publication_ready")
             if not actual_statuses.intersection(filters.statuses):
                 return False
         if (
@@ -2376,7 +2549,12 @@ class DesktopStore:
                 view["question"].get("difficulty") or view["metadata"].get("difficulty")
             ),
             "statuses": lambda view: (
-                [view["status"], "exportable"] if view["exportable"] else view["status"]
+                [
+                    view["status"],
+                    *(["importable"] if view["importable"] else []),
+                    *(["publication_ready"] if view["publication_ready"] else []),
+                    *(["exportable"] if view["exportable"] else []),
+                ]
             ),
             "quality_flags": lambda view: view["flags"],
         }

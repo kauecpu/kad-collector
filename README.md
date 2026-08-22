@@ -117,8 +117,14 @@ Cada lote aceita no maximo 20 PDFs, 5.000 paginas no total, 1.000 paginas por ar
 A interface HTTP local aceita somente `127.0.0.1` ou `localhost` na porta iniciada pelo
 aplicativo; APIs de leitura e escrita exigem o token efemero da sessao.
 
-O classificador `local` usa metadados informados e regras conservadoras com confianca por
-campo. Para usar a integracao opcional ja existente com a OpenAI, defina `OPENAI_API_KEY` e,
+O classificador `local` usa a taxonomia versionada do Collector e uma cascata conservadora:
+titulo de secao, intervalo do edital, contexto das questoes vizinhas e regras semanticas
+locais. Cada valor guarda origem, confianca e justificativa. Quando nao existe evidencia
+suficiente, o campo permanece vazio e a interface apresenta **Nao classificada**; nomes fora
+da taxonomia nao sao criados. O botao **Reclassificar acervo** reaplica essa classificacao ao
+banco local sem baixar os PDFs e sem alterar gabaritos ou decisoes humanas.
+
+Para usar a integracao opcional ja existente com a OpenAI, defina `OPENAI_API_KEY` e,
 se necessario, `OPENAI_MODEL` somente na sessao que inicia o aplicativo, e selecione OpenAI
 ao criar o lote. A chave nunca e salva no SQLite, no executavel ou nos relatorios.
 
@@ -142,7 +148,12 @@ O executavel validado para Windows tambem fica disponivel na pagina de
 [Releases do KAD Collector](https://github.com/kauecpu/kad-collector/releases). Binarios nao
 sao commitados no historico Git; cada versao e publicada como artefato da release correspondente.
 
-Na interface, o card **Pendentes** abre a fila editorial. A revisao permite editar a questao,
+Na interface, o card **Importaveis** conta questoes estruturalmente aptas para entrar no app.
+Explicacao e dificuldade nao participam dessa conta; resposta oficial, alternativas validas,
+classificacao, duplicidade e origem comprovada continuam sendo barreiras. A prontidao para
+publicacao editorial permanece separada e ainda pode exigir explicacao e dificuldade.
+
+O card **Pendentes** abre a fila editorial. A revisao permite editar a questao,
 consultar o PDF na pagina de origem, enviar para excecoes com justificativa, adiar a decisao e
 aprovar individualmente ou em lote. Somente uma aprovacao humana move a questao para
 **Exportaveis**.

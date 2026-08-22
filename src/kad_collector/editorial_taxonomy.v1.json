@@ -1,0 +1,110 @@
+{
+  "version": "1.0.0",
+  "sources": [
+    "https://conhecimento.fgv.br/concursos/rfb22",
+    "https://conhecimento.fgv.br/sites/default/files/concursos/minuta_edital_rfb_revisado_1_12_-_final_limpa.pdf"
+  ],
+  "disciplines": [
+    {"name": "Língua Portuguesa", "topics": [
+      {"matter": "Interpretação de Textos", "subject": "Compreensão e Interpretação", "keywords": ["de acordo com o texto", "infere-se", "ideia central", "sentido do texto"]},
+      {"matter": "Gramática", "subject": "Concordância Verbal e Nominal", "keywords": ["concordância", "concorda", "flexão verbal"]},
+      {"matter": "Gramática", "subject": "Regência e Crase", "keywords": ["regência", "crase", "acento grave"]}
+    ]},
+    {"name": "Língua Inglesa", "topics": [
+      {"matter": "Compreensão de Textos em Inglês", "subject": "Interpretação Textual", "keywords": ["according to the text", "the author", "the passage", "means that"]}
+    ]},
+    {"name": "Raciocínio Lógico-Matemático", "topics": [
+      {"matter": "Lógica Proposicional", "subject": "Proposições e Conectivos", "keywords": ["proposição", "conectivo", "tabela verdade", "negação lógica"]},
+      {"matter": "Aritmética", "subject": "Porcentagem", "keywords": ["porcentagem", "acréscimo percentual", "desconto percentual"]}
+    ]},
+    {"name": "Estatística", "topics": [
+      {"matter": "Estatística Descritiva", "subject": "Medidas de Tendência Central", "keywords": ["média aritmética", "mediana", "moda", "desvio padrão"]},
+      {"matter": "Probabilidade", "subject": "Probabilidade de Eventos", "keywords": ["probabilidade", "evento aleatório", "espaço amostral"]}
+    ]},
+    {"name": "Economia e Finanças Públicas", "topics": [
+      {"matter": "Macroeconomia", "subject": "Política Fiscal", "keywords": ["política fiscal", "produto interno bruto", "inflação", "déficit público"]},
+      {"matter": "Finanças Públicas", "subject": "Orçamento Público", "keywords": ["orçamento público", "receita pública", "despesa pública"]}
+    ]},
+    {"name": "Administração Geral", "topics": [
+      {"matter": "Gestão Organizacional", "subject": "Planejamento Estratégico", "keywords": ["planejamento estratégico", "missão organizacional", "análise swot"]},
+      {"matter": "Gestão de Pessoas", "subject": "Liderança e Motivação", "keywords": ["liderança", "motivação", "gestão de pessoas"]}
+    ]},
+    {"name": "Administração Pública", "topics": [
+      {"matter": "Gestão Pública", "subject": "Governança Pública", "keywords": ["governança pública", "accountability", "gestão por resultados"]}
+    ]},
+    {"name": "Auditoria", "topics": [
+      {"matter": "Auditoria Governamental", "subject": "Planejamento de Auditoria", "keywords": ["planejamento de auditoria", "risco de auditoria", "procedimento de auditoria"]}
+    ]},
+    {"name": "Contabilidade Geral e Pública", "topics": [
+      {"matter": "Contabilidade Geral", "subject": "Demonstrações Contábeis", "keywords": ["balanço patrimonial", "demonstração contábil", "ativo circulante", "patrimônio líquido"]},
+      {"matter": "Contabilidade Pública", "subject": "Receita e Despesa Pública", "keywords": ["receita orçamentária", "despesa orçamentária", "restos a pagar"]}
+    ]},
+    {"name": "Fluência em Dados", "topics": [
+      {"matter": "Banco de Dados", "subject": "Modelagem e Consulta de Dados", "keywords": ["banco de dados", "sql", "data warehouse", "hadoop", "hdfs", "hbase"]},
+      {"matter": "Ciência de Dados", "subject": "Análise de Dados", "keywords": ["mineração de dados", "machine learning", "visualização de dados"]}
+    ]},
+    {"name": "Direito Administrativo", "topics": [
+      {"matter": "Atos Administrativos", "subject": "Elementos e Atributos do Ato Administrativo", "keywords": ["ato administrativo", "presunção de legitimidade", "autoexecutoriedade"]},
+      {"matter": "Licitações e Contratos", "subject": "Licitação Pública", "keywords": ["licitação", "pregão", "contrato administrativo"]}
+    ]},
+    {"name": "Direito Constitucional", "topics": [
+      {"matter": "Controle de Constitucionalidade", "subject": "Controle Concentrado e Difuso", "keywords": ["controle de constitucionalidade", "ação direta", "controle difuso"]},
+      {"matter": "Direitos Fundamentais", "subject": "Direitos e Garantias Fundamentais", "keywords": ["direitos fundamentais", "mandado de segurança", "habeas corpus"]}
+    ]},
+    {"name": "Direito Previdenciário", "topics": [
+      {"matter": "Seguridade Social", "subject": "Regime Geral de Previdência Social", "keywords": ["seguridade social", "regime geral", "benefício previdenciário", "contribuição previdenciária"]}
+    ]},
+    {"name": "Direito Tributário", "topics": [
+      {"matter": "Sistema Tributário Nacional", "subject": "Competência Tributária", "keywords": ["competência tributária", "capacidade tributária", "imunidade tributária"]},
+      {"matter": "Obrigação Tributária", "subject": "Crédito Tributário", "keywords": ["crédito tributário", "lançamento tributário", "suspensão do crédito", "extinção do crédito"]},
+      {"matter": "Sigilo Fiscal", "subject": "Sigilo Fiscal", "keywords": ["sigilo fiscal", "sigilo de informações", "art. 198"]},
+      {"matter": "Contencioso Tributário", "subject": "Processo Administrativo Fiscal", "keywords": ["processo administrativo fiscal", "contencioso", "delegacia de julgamento", "drj"]},
+      {"matter": "Obrigações Acessórias", "subject": "SPED", "keywords": ["sped", "escrituração digital", "efd", "esocial"]},
+      {"matter": "Atendimento Tributário", "subject": "Atendimento ao Contribuinte", "keywords": ["atendimento ao contribuinte", "serviços digitais ao contribuinte"]}
+    ]},
+    {"name": "Legislação Tributária", "topics": [
+      {"matter": "Tributos Federais", "subject": "Imposto sobre a Renda", "keywords": ["imposto de renda", "irpj", "irpf"]},
+      {"matter": "Tributos Federais", "subject": "IPI", "keywords": ["imposto sobre produtos industrializados", "ipi"]}
+    ]},
+    {"name": "Legislação Aduaneira", "topics": [
+      {"matter": "Administração Aduaneira", "subject": "Controle Aduaneiro", "keywords": ["aduana", "aduaneiro", "administração aduaneira", "controle aduaneiro"]},
+      {"matter": "Controle de Cargas", "subject": "Gestão de Fronteiras", "keywords": ["controle de carga", "carga e trânsito", "gestão coordenada de fronteiras"]},
+      {"matter": "Despacho Aduaneiro", "subject": "Despacho de Importação e Exportação", "keywords": ["despacho aduaneiro", "declaração de importação", "declaração de exportação", "du-e", "duimp"]}
+    ]},
+    {"name": "Transformação Digital", "topics": [
+      {"matter": "Governo Digital", "subject": "Transformação Digital do Estado", "keywords": ["transformação digital", "governo digital", "serviço público digital"]}
+    ]}
+  ],
+  "sections": [
+    {"tokens": ["administracao", "aduaneira", "modelo", "controle"], "discipline": "Legislação Aduaneira", "matter": "Administração Aduaneira", "subject": "Controle Aduaneiro"},
+    {"tokens": ["aduaneira", "modelo", "controle"], "discipline": "Legislação Aduaneira", "matter": "Administração Aduaneira", "subject": "Controle Aduaneiro"},
+    {"tokens": ["controle", "carga", "fronteiras"], "discipline": "Legislação Aduaneira", "matter": "Controle de Cargas", "subject": "Gestão de Fronteiras"},
+    {"tokens": ["despacho", "aduaneiro", "operacional"], "discipline": "Legislação Aduaneira", "matter": "Despacho Aduaneiro", "subject": "Despacho de Importação e Exportação"},
+    {"tokens": ["gestao", "credito", "tributario"], "discipline": "Direito Tributário", "matter": "Obrigação Tributária", "subject": "Crédito Tributário"},
+    {"tokens": ["arrecadacao", "cobranca", "credito", "tributario"], "discipline": "Direito Tributário", "matter": "Obrigação Tributária", "subject": "Crédito Tributário"},
+    {"tokens": ["atendimento", "contribuinte"], "discipline": "Direito Tributário", "matter": "Atendimento Tributário", "subject": "Atendimento ao Contribuinte"},
+    {"tokens": ["estado", "sociedade", "transformacao", "digital"], "discipline": "Transformação Digital", "matter": "Governo Digital", "subject": "Transformação Digital do Estado"},
+    {"tokens": ["tecnologia", "informacao", "fluencia", "dados"], "discipline": "Fluência em Dados", "matter": "Ciência de Dados", "subject": "Análise de Dados"},
+    {"tokens": ["sigilo", "fiscal"], "discipline": "Direito Tributário", "matter": "Sigilo Fiscal", "subject": "Sigilo Fiscal"},
+    {"tokens": ["sistema", "publico", "escrituracoes", "digitais"], "discipline": "Direito Tributário", "matter": "Obrigações Acessórias", "subject": "SPED"},
+    {"tokens": ["tributacao", "contencioso"], "discipline": "Direito Tributário", "matter": "Contencioso Tributário", "subject": "Processo Administrativo Fiscal"}
+  ],
+  "metadata_profiles": [
+    {"concurso_contains": "rfb22", "role_contains": "auditor", "level": "Superior"},
+    {"concurso_contains": "rfb22", "role_contains": "analista", "level": "Superior"}
+  ],
+  "exam_profiles": [
+    {"source_contains": "cns101", "role_contains": "auditor", "stage_contains": "objetiva", "ranges": [
+      [1, 10, "Língua Portuguesa"], [11, 18, "Língua Inglesa"], [19, 26, "Raciocínio Lógico-Matemático"], [27, 32, "Estatística"], [33, 38, "Economia e Finanças Públicas"], [39, 46, "Administração Geral"], [47, 54, "Administração Pública"], [55, 62, "Auditoria"], [63, 70, "Contabilidade Geral e Pública"], [71, 80, "Fluência em Dados"]
+    ]},
+    {"source_contains": "cns201", "role_contains": "auditor", "stage_contains": "objetiva", "ranges": [
+      [1, 8, "Direito Administrativo"], [9, 16, "Direito Constitucional"], [17, 26, "Direito Previdenciário"], [27, 38, "Direito Tributário"], [39, 48, "Legislação Tributária"], [49, 60, "Legislação Aduaneira"]
+    ]},
+    {"source_contains": "cns102", "role_contains": "analista", "stage_contains": "objetiva", "ranges": [
+      [1, 15, "Língua Portuguesa"], [16, 25, "Língua Inglesa"], [26, 35, "Raciocínio Lógico-Matemático"], [36, 45, "Estatística"], [46, 55, "Administração Geral"], [56, 70, "Fluência em Dados"]
+    ]},
+    {"source_contains": "cns202", "role_contains": "analista", "stage_contains": "objetiva", "ranges": [
+      [1, 14, "Direito Constitucional"], [15, 26, "Direito Administrativo"], [27, 42, "Direito Tributário"], [43, 56, "Legislação Tributária"], [57, 70, "Legislação Aduaneira"]
+    ]}
+  ]
+}
