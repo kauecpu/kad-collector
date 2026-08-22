@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
+from .editorial_taxonomy import EditorialTaxonomy, TaxonomyPath
 from .models import Alternative, QuestionRecord
 from .static_parser import FuvestStaticExtractor
 
@@ -29,6 +31,11 @@ _COMMENTARY_BOUNDARY = re.compile(
     r"resposta\s+esperada)\b",
     re.IGNORECASE,
 )
+_SECTION_RESET = re.compile(
+    r"^\s*(?:prova\s+discursiva|quest(?:ões|oes)\s+discursivas|"
+    r"redaç(?:ão|ao)|estudo\s+de\s+caso)\s*$",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -40,6 +47,105 @@ class _QuestionBuilder:
     active_alternative: str | None = None
     correct_answer: str | None = None
     collecting_content: bool = True
+
+
+@dataclass(frozen=True)
+class QuestionSectionContext:
+    section_title: str
+    block_id: str
+    page_number: int
+    path: TaxonomyPath
+
+
+def map_question_sections(
+    pages: list[dict[str, Any]],
+    taxonomy: EditorialTaxonomy,
+    *,
+    catalog_ids: Iterable[str] | None = None,
+) -> dict[tuple[int, int], QuestionSectionContext]:
+    """Associate each numbered question with the nearest controlled heading."""
+    sections: dict[tuple[int, int], QuestionSectionContext] = {}
+    active_title: str | None = None
+    active_path: TaxonomyPath | None = None
+    active_block: str | None = None
+    block_number = 0
+    for page in pages:
+        page_number = int(page["page_number"])
+        recent_lines: list[str] = []
+        for raw_line in str(page["text"]).splitlines():
+            line = " ".join(raw_line.split())
+            if not line:
+                recent_lines.clear()
+                continue
+            if _SECTION_RESET.match(line):
+                active_title = None
+                active_path = None
+                active_block = None
+                recent_lines.clear()
+                continue
+            question_match = _QUESTION_LINE.match(line)
+            if question_match is not None:
+                number = int(question_match.group("number"))
+                explicit = _EXPLICIT_QUESTION.match(line) is not None
+                punctuation = bool(re.search(rf"{number}\s*[).:\-]", line))
+                bare_number = line.isdigit()
+                if (
+                    1 <= number <= 200
+                    and (explicit or punctuation or bare_number)
+                    and active_title is not None
+                    and active_path is not None
+                    and active_block is not None
+                ):
+                    sections[(number, page_number)] = QuestionSectionContext(
+                        section_title=active_title,
+                        block_id=active_block,
+                        page_number=page_number,
+                        path=active_path,
+                    )
+                    recent_lines.clear()
+                    continue
+
+            recent_lines.append(line)
+            recent_lines = recent_lines[-3:]
+            heading_path: TaxonomyPath | None = None
+            heading_title: str | None = None
+            for width in range(1, len(recent_lines) + 1):
+                candidate = " ".join(recent_lines[-width:])
+                candidate_path = taxonomy.match_context_heading(
+                    candidate, catalog_ids=catalog_ids
+                )
+                if candidate_path is not None:
+                    heading_path = candidate_path
+                    heading_title = candidate
+                    break
+            if heading_path is not None:
+                canonical = (
+                    heading_path.discipline,
+                    heading_path.matter,
+                    heading_path.subject,
+                )
+                previous = (
+                    active_path.discipline,
+                    active_path.matter,
+                    active_path.subject,
+                ) if active_path is not None else None
+                if canonical != previous:
+                    block_number += 1
+                    active_block = f"section-{block_number}"
+                active_title = str(heading_title).split(":", 1)[0].strip()
+                active_path = heading_path
+                continue
+    return sections
+
+
+def question_section_context(
+    sections: dict[tuple[int, int], QuestionSectionContext],
+    question: QuestionRecord,
+) -> QuestionSectionContext | None:
+    for page_number in question.source_pages:
+        if context := sections.get((question.number, page_number)):
+            return context
+    return None
 
 
 def _clean(lines: list[str]) -> str:

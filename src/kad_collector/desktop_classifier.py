@@ -38,6 +38,9 @@ def _metadata_classification(metadata: DesktopImportMetadata) -> QuestionClassif
         "topic": metadata.topic,
         "difficulty": metadata.difficulty,
     }
+    provenance = [
+        item for item in (metadata.provider, metadata.source_url) if item is not None
+    ]
     values = {
         key: ClassificationValue(
             value=value,
@@ -45,6 +48,7 @@ def _metadata_classification(metadata: DesktopImportMetadata) -> QuestionClassif
             evidence="Informado pelo operador na origem" if value is not None else None,
             source="operator_metadata" if value is not None else None,
             reason="Metadado explícito do documento" if value is not None else None,
+            provenance=provenance if value is not None else [],
         )
         for key, value in mapping.items()
     }
@@ -65,6 +69,7 @@ class LocalRuleClassifier:
         source: str,
         evidence: str,
         reason: str,
+        provenance: tuple[str, ...] | list[str] = (),
     ) -> ClassificationValue:
         return ClassificationValue(
             value=value,
@@ -72,6 +77,7 @@ class LocalRuleClassifier:
             evidence=evidence,
             source=source,
             reason=reason,
+            provenance=list(provenance),
         )
 
     def _apply_path(
@@ -108,14 +114,49 @@ class LocalRuleClassifier:
                     source=source,
                     evidence=evidence,
                     reason=reason,
+                    provenance=path.provenance,
                 ),
             )
+
+    def _canonicalize_metadata_values(
+        self, classification: QuestionClassification
+    ) -> None:
+        taxonomy_fields: dict[str, TaxonomyField] = {
+            "discipline": "discipline",
+            "subject": "matter",
+            "topic": "subject",
+        }
+        for classification_field, taxonomy_field in taxonomy_fields.items():
+            current = getattr(classification, classification_field)
+            if current.value is None:
+                continue
+            original = str(current.value)
+            try:
+                canonical = self.taxonomy.canonical_name(taxonomy_field, original)
+            except ValueError:
+                setattr(
+                    classification,
+                    classification_field,
+                    ClassificationValue(
+                        value=None,
+                        confidence=0,
+                        evidence=original,
+                        source="taxonomy_rejected",
+                        reason=(
+                            f"Nome informado não pertence à taxonomia "
+                            f"{self.taxonomy.version}"
+                        ),
+                        provenance=current.provenance,
+                    ),
+                )
+                continue
+            current.value = canonical
 
     @staticmethod
     def _mark_unresolved(classification: QuestionClassification) -> None:
         for field in ("discipline", "subject", "topic"):
             current = getattr(classification, field)
-            if current.value is None:
+            if current.value is None and current.source != "taxonomy_rejected":
                 setattr(
                     classification,
                     field,
@@ -128,7 +169,9 @@ class LocalRuleClassifier:
                 )
 
     def _propagate_neighbors(
-        self, classifications: list[QuestionClassification]
+        self,
+        classifications: list[QuestionClassification],
+        questions: list[ClassificationRequest],
     ) -> None:
         snapshot = [item.model_copy(deep=True) for item in classifications]
         for index in range(1, len(snapshot) - 1):
@@ -141,6 +184,11 @@ class LocalRuleClassifier:
                 right = getattr(following, field)
                 if (
                     current_value.value is None
+                    and (
+                        questions[index - 1].block_id
+                        == questions[index].block_id
+                        == questions[index + 1].block_id
+                    )
                     and left.value is not None
                     and left.value == right.value
                     and left.confidence >= 0.8
@@ -155,6 +203,9 @@ class LocalRuleClassifier:
                             source="neighbor_context",
                             evidence=f"Questões vizinhas concordam em {left.value}",
                             reason="Campo propagado somente entre vizinhas confiáveis concordantes",
+                            provenance=list(
+                                dict.fromkeys([*left.provenance, *right.provenance])
+                            ),
                         ),
                     )
 
@@ -164,8 +215,10 @@ class LocalRuleClassifier:
         metadata: DesktopImportMetadata,
     ) -> list[ClassificationResponseItem]:
         classifications: list[QuestionClassification] = []
+        catalog_ids = self.taxonomy.relevant_catalog_ids(metadata)
         for question in questions:
             classification = _metadata_classification(metadata)
+            self._canonicalize_metadata_values(classification)
             official_level = self.taxonomy.official_level(metadata)
             if classification.level.value is None and official_level is not None:
                 classification.level = self._classified_value(
@@ -175,12 +228,21 @@ class LocalRuleClassifier:
                     evidence="Requisito de escolaridade do edital oficial",
                     reason="Cargo e concurso correspondem ao perfil oficial versionado",
                 )
-            section = self.taxonomy.match_section(question.section_title)
+            section = self.taxonomy.match_section(
+                question.section_title, catalog_ids=catalog_ids
+            )
             section_source = "section_title"
             if section is None:
-                section = self.taxonomy.match_section(question.context)
+                section = self.taxonomy.match_context_heading(
+                    question.context, catalog_ids=catalog_ids
+                )
                 section_source = "page_section"
-            if section is not None:
+            section_is_specific = (
+                section is not None
+                and section.matter is not None
+                and section.subject is not None
+            )
+            if section is not None and section_is_specific:
                 self._apply_path(
                     classification,
                     section,
@@ -202,6 +264,18 @@ class LocalRuleClassifier:
                     evidence=f"Questão {question.question_number} no bloco do edital oficial",
                     reason="Intervalo de questões definido no edital oficial do concurso",
                 )
+            if section is not None and not section_is_specific:
+                self._apply_path(
+                    classification,
+                    section,
+                    confidence=0.96 if section_source == "section_title" else 0.91,
+                    source=section_source,
+                    evidence=(
+                        question.section_title
+                        or "Título identificado na página da questão"
+                    ),
+                    reason="Título de seção reconhecido na taxonomia versionada",
+                )
 
             text = " ".join([question.statement, *question.alternatives])
             semantic = self.taxonomy.semantic_match(
@@ -211,6 +285,7 @@ class LocalRuleClassifier:
                     if classification.discipline.value is not None
                     else None
                 ),
+                catalog_ids=catalog_ids,
             )
             if semantic is not None:
                 self._apply_path(
@@ -223,7 +298,7 @@ class LocalRuleClassifier:
                 )
             classifications.append(classification)
 
-        self._propagate_neighbors(classifications)
+        self._propagate_neighbors(classifications, questions)
         for classification in classifications:
             self._mark_unresolved(classification)
         return [

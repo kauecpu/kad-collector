@@ -1,0 +1,44 @@
+{
+  "id": "fgv-stn24",
+  "version": "1.0.0",
+  "match": {
+    "concurso_contains": ["stn"],
+    "organization_contains": ["secretaria do tesouro nacional"],
+    "source_contains": ["/stn", "edital-stn"]
+  },
+  "sources": [
+    {
+      "id": "opening-notice",
+      "title": "Edital nº 01/2024 da Secretaria do Tesouro Nacional",
+      "url": "https://conhecimento.fgv.br/sites/default/files/concursos/edital-stn-28.05.pdf"
+    }
+  ],
+  "disciplines": [
+    {
+      "name": "Tecnologia da Informação",
+      "aliases": ["TI"],
+      "topics": [
+        {
+          "matter": "Infraestrutura de TI",
+          "subject": "Redes de Computadores",
+          "headings": ["REDES DE COMPUTADORES"],
+          "keywords": ["arquitetura tcp/ip", "endereçamento ip", "protocolo snmp"]
+        },
+        {
+          "matter": "Segurança da Informação",
+          "subject": "Gestão da Segurança da Informação",
+          "headings": ["SEGURANÇA DA INFORMAÇÃO"],
+          "keywords": ["segurança da informação", "gestão de riscos", "iso/iec 27001"]
+        }
+      ]
+    }
+  ],
+  "metadata_profiles": [
+    {
+      "concurso_contains": "stn",
+      "role_contains": "auditor federal",
+      "level": "Superior"
+    }
+  ],
+  "exam_profiles": []
+}

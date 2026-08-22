@@ -1,0 +1,62 @@
+{
+  "id": "fgv-pcam21",
+  "version": "1.0.0",
+  "match": {
+    "concurso_contains": ["pcam21"],
+    "organization_contains": ["policia civil do amazonas"],
+    "source_contains": ["pcam21", "pc_am"]
+  },
+  "sources": [
+    {
+      "id": "opening-notice",
+      "title": "Edital de Abertura nº 01/2021 da Polícia Civil do Amazonas",
+      "url": "https://conhecimento.fgv.br/sites/default/files/concursos/edital_01_pc_am.pdf"
+    }
+  ],
+  "disciplines": [
+    {
+      "name": "Direito Penal",
+      "aliases": ["Direito Penal Geral"],
+      "topics": [
+        {
+          "matter": "Direito Penal Geral",
+          "subject": "Teoria do Crime",
+          "headings": ["TEORIA DO CRIME"],
+          "keywords": ["fato típico", "ilicitude", "culpabilidade"]
+        }
+      ]
+    },
+    {
+      "name": "Direito Processual Penal",
+      "aliases": ["Processo Penal"],
+      "topics": [
+        {
+          "matter": "Investigação Criminal",
+          "subject": "Inquérito Policial",
+          "headings": ["INQUÉRITO POLICIAL"],
+          "keywords": ["inquérito policial", "investigação criminal"]
+        }
+      ]
+    },
+    {
+      "name": "Criminalística",
+      "aliases": [],
+      "topics": [
+        {
+          "matter": "Perícia Criminal",
+          "subject": "Local de Crime",
+          "headings": ["LOCAL DE CRIME"],
+          "keywords": ["local de crime", "vestígio", "cadeia de custódia"]
+        }
+      ]
+    }
+  ],
+  "metadata_profiles": [
+    {
+      "concurso_contains": "pcam21",
+      "role_contains": "delegado",
+      "level": "Superior"
+    }
+  ],
+  "exam_profiles": []
+}

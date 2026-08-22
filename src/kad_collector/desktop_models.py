@@ -114,6 +114,7 @@ class ClassificationValue(StrictModel):
     evidence: str | None = None
     source: str | None = None
     reason: str | None = None
+    provenance: list[str] = Field(default_factory=list)
 
 
 class QuestionClassification(StrictModel):
@@ -134,6 +135,7 @@ class ClassificationRequest(StrictModel):
     statement: str
     alternatives: list[str]
     section_title: str | None = None
+    block_id: str | None = None
     context: str | None = None
 
 
