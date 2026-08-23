@@ -1,0 +1,418 @@
+schema_version = 1
+id = "receita-federal-2022-rfb22"
+contest_name = "Concurso Público para a Receita Federal do Brasil - Edital nº 1/2022"
+contest_aliases = ["RFB22"]
+organization = "Receita Federal do Brasil"
+board = "Fundação Getulio Vargas"
+notice_year = 2022
+source_page_url = "https://conhecimento.fgv.br/concursos/rfb22"
+evidence_urls = [
+  "https://conhecimento.fgv.br/concursos/rfb22",
+  "https://conhecimento.fgv.br/sites/default/files/concursos/edital_receita_federal_-_3a_retificacao.pdf",
+]
+robots_policy = "ignore"
+crawl_delay_policy = "ignore"
+policy_basis = "Decisão administrativa registrada em config/sources.official.toml para as fontes oficiais em 18/08/2026."
+
+[[applications]]
+id = "rfb22-main-2023-03-19"
+title = "Primeira etapa - provas objetiva e discursiva"
+stage = "Primeira etapa - provas objetiva e discursiva"
+application_date = 2023-03-19
+support_status = "supported"
+notes = "Aplicação principal prevista no Edital nº 1/2022; cadernos publicados pela FGV em 21/03/2023."
+
+[[applications]]
+id = "rfb22-formation-2023"
+title = "Curso de Formação Profissional - aplicação de 2023"
+stage = "Segunda etapa - Curso de Formação Profissional"
+application_date = 2023-11-12
+support_status = "inventory_only"
+notes = "Aplicação separada da primeira etapa; documentos sem regressão oficial nesta versão."
+
+[[applications]]
+id = "rfb22-formation-sub-judice-2024"
+title = "Curso de Formação Profissional - aplicação sub judice de 2024"
+stage = "Segunda etapa - Curso de Formação Profissional - sub judice"
+application_date = 2024-07-28
+support_status = "inventory_only"
+notes = "Aplicação judicial posterior; não integra as contagens da aplicação principal."
+
+[[applications]]
+id = "rfb22-formation-2025"
+title = "Curso de Formação Profissional - aplicação de 2025"
+stage = "Segunda etapa - Curso de Formação Profissional"
+application_date = 2025-04-20
+support_status = "inventory_only"
+notes = "Nova convocação do curso; não integra as contagens da aplicação principal."
+
+[[applications]]
+id = "rfb22-formation-sub-judice-2025"
+title = "Curso de Formação Profissional - aplicação sub judice de 2025"
+stage = "Segunda etapa - Curso de Formação Profissional - sub judice"
+application_date = 2025-12-21
+support_status = "inventory_only"
+notes = "Aplicação judicial posterior; não integra as contagens da aplicação principal."
+
+[[documents]]
+id = "rfb22-main-2023-answer-key-preliminary"
+kind = "answer_key"
+path = "official/2023-main/answer-key-preliminary.pdf"
+source_url = "https://conhecimento.fgv.br/sites/default/files/concursos/serfb-01-gabaritos-para-publicacao-20230320.pdf"
+size_bytes = 837690
+page_count = 4
+sha256 = "85119a7917509050789a66bb18f0cc8d20bfd55cef56f682f04a1abb1b85e470"
+title = "Gabarito Oficial Preliminar da Prova Objetiva"
+application_id = "rfb22-main-2023-03-19"
+published_on = 2023-03-21
+roles = ["Auditor-Fiscal da Receita Federal do Brasil", "Analista-Tributário da Receita Federal do Brasil"]
+content_kinds = ["answer_key"]
+answer_key_status = "preliminary"
+answer_scopes = [
+  { role = "Auditor-Fiscal da Receita Federal do Brasil", shift = "Manhã", booklet_types = [1, 2, 3, 4], first = 1, last = 80, count = 80 },
+  { role = "Auditor-Fiscal da Receita Federal do Brasil", shift = "Tarde", booklet_types = [1, 2, 3, 4], first = 1, last = 60, count = 60 },
+  { role = "Analista-Tributário da Receita Federal do Brasil", shift = "Manhã", booklet_types = [1, 2, 3, 4], first = 1, last = 70, count = 70 },
+  { role = "Analista-Tributário da Receita Federal do Brasil", shift = "Tarde", booklet_types = [1, 2, 3, 4], first = 1, last = 70, count = 70 },
+]
+
+[[documents]]
+id = "rfb22-main-2023-answer-key-auditor-definitive"
+kind = "answer_key"
+path = "official/2023-main/answer-key-auditor-definitive.pdf"
+source_url = "https://conhecimento.fgv.br/sites/default/files/concursos/serfb-gabarito-defintivo-auditor-_0.pdf"
+size_bytes = 551014
+page_count = 2
+sha256 = "0ed2b2aba1fcf103d6c9bd6dd06ef38b012aea111d73255a928ec414aa0b6a28"
+title = "Gabarito Oficial Definitivo da Prova Objetiva - Auditor-Fiscal"
+application_id = "rfb22-main-2023-03-19"
+published_on = 2023-05-16
+roles = ["Auditor-Fiscal da Receita Federal do Brasil"]
+content_kinds = ["answer_key"]
+answer_key_status = "definitive"
+answer_scopes = [
+  { role = "Auditor-Fiscal da Receita Federal do Brasil", shift = "Manhã", booklet_types = [1, 2, 3, 4], first = 1, last = 80, count = 80 },
+  { role = "Auditor-Fiscal da Receita Federal do Brasil", shift = "Tarde", booklet_types = [1, 2, 3, 4], first = 1, last = 60, count = 60 },
+]
+
+[[documents]]
+id = "rfb22-main-2023-answer-key-analyst-definitive"
+kind = "answer_key"
+path = "official/2023-main/answer-key-analyst-definitive.pdf"
+source_url = "https://conhecimento.fgv.br/sites/default/files/concursos/gabarito-definitivo-rfb_analista-_0.pdf"
+size_bytes = 368755
+page_count = 2
+sha256 = "637eb6ce1f55ab85fe8251241a01cc202c56a0d80311f6840431934b2e33b023"
+title = "Gabarito Oficial Definitivo da Prova Objetiva - Analista-Tributário"
+application_id = "rfb22-main-2023-03-19"
+published_on = 2023-04-24
+roles = ["Analista-Tributário da Receita Federal do Brasil"]
+content_kinds = ["answer_key"]
+answer_key_status = "definitive"
+answer_scopes = [
+  { role = "Analista-Tributário da Receita Federal do Brasil", shift = "Manhã", booklet_types = [1, 2, 3, 4], first = 1, last = 70, count = 70 },
+  { role = "Analista-Tributário da Receita Federal do Brasil", shift = "Tarde", booklet_types = [1, 2, 3, 4], first = 1, last = 70, count = 70 },
+]
+
+[[documents]]
+id = "rfb22-main-2023-auditor-morning-type-1"
+kind = "exam"
+path = "official/2023-main/auditor-morning-type-1.pdf"
+source_url = "https://conhecimento.fgv.br/sites/default/files/concursos/cns101-auditor-fiscal-da-receita-federal-do-brasil-afrfbcns101-tipo-1.pdf"
+size_bytes = 1396390
+page_count = 20
+sha256 = "e8e9018cd3b63c8af73e3a4646ff6219dcf424b58490393e33a001807be6e751"
+title = "Auditor-Fiscal - manhã - tipo 1"
+application_id = "rfb22-main-2023-03-19"
+published_on = 2023-03-21
+roles = ["Auditor-Fiscal da Receita Federal do Brasil"]
+shift = "Manhã"
+booklet_type = 1
+content_kinds = ["objective"]
+sections = [{ kind = "objective", first = 1, last = 80, count = 80 }]
+answer_key_id = "rfb22-main-2023-answer-key-auditor-definitive"
+extraction_sha256 = "ce702d109cfea5838876fe3425140225f0ab4095e48ecf0ebbd30dff46dcef57"
+
+[[documents]]
+id = "rfb22-main-2023-auditor-morning-type-2"
+kind = "exam"
+path = "official/2023-main/auditor-morning-type-2.pdf"
+source_url = "https://conhecimento.fgv.br/sites/default/files/concursos/cns101-auditor-fiscal-da-receita-federal-do-brasil-afrfbcns101-tipo-2.pdf"
+size_bytes = 1390077
+page_count = 20
+sha256 = "828c34ea13ead168c347859ec376ed53ed14dea1e1f927541832546cd378dc22"
+title = "Auditor-Fiscal - manhã - tipo 2"
+application_id = "rfb22-main-2023-03-19"
+published_on = 2023-03-21
+roles = ["Auditor-Fiscal da Receita Federal do Brasil"]
+shift = "Manhã"
+booklet_type = 2
+content_kinds = ["objective"]
+sections = [{ kind = "objective", first = 1, last = 80, count = 80 }]
+answer_key_id = "rfb22-main-2023-answer-key-auditor-definitive"
+extraction_sha256 = "dc440fb9ca53603011147e900cd7715435a581f28d0c46aa2f6d739b3b492cc6"
+
+[[documents]]
+id = "rfb22-main-2023-auditor-morning-type-3"
+kind = "exam"
+path = "official/2023-main/auditor-morning-type-3.pdf"
+source_url = "https://conhecimento.fgv.br/sites/default/files/concursos/cns101-auditor-fiscal-da-receita-federal-do-brasil-afrfbcns101-tipo-3.pdf"
+size_bytes = 1396878
+page_count = 20
+sha256 = "9db18069b200632ef8b80f9dd297c4d622f2e76ad8e0f5b0c1ea354d15a452ba"
+title = "Auditor-Fiscal - manhã - tipo 3"
+application_id = "rfb22-main-2023-03-19"
+published_on = 2023-03-21
+roles = ["Auditor-Fiscal da Receita Federal do Brasil"]
+shift = "Manhã"
+booklet_type = 3
+content_kinds = ["objective"]
+sections = [{ kind = "objective", first = 1, last = 80, count = 80 }]
+answer_key_id = "rfb22-main-2023-answer-key-auditor-definitive"
+extraction_sha256 = "83678c61907ca95b7b32bd06c6d7974a7774bb8b7e43f7801cc6d491f3c1f4a4"
+
+[[documents]]
+id = "rfb22-main-2023-auditor-morning-type-4"
+kind = "exam"
+path = "official/2023-main/auditor-morning-type-4.pdf"
+source_url = "https://conhecimento.fgv.br/sites/default/files/concursos/cns101-auditor-fiscal-da-receita-federal-do-brasil-afrfbcns101-tipo-4.pdf"
+size_bytes = 1391181
+page_count = 20
+sha256 = "248e9c90a6f6fcbbaa636348c1eee3fc8a5fcce4966512b52b95bf4179b014dc"
+title = "Auditor-Fiscal - manhã - tipo 4"
+application_id = "rfb22-main-2023-03-19"
+published_on = 2023-03-21
+roles = ["Auditor-Fiscal da Receita Federal do Brasil"]
+shift = "Manhã"
+booklet_type = 4
+content_kinds = ["objective"]
+sections = [{ kind = "objective", first = 1, last = 80, count = 80 }]
+answer_key_id = "rfb22-main-2023-answer-key-auditor-definitive"
+extraction_sha256 = "05a6c457984854bfc4089487e084f1c5d0fd8760b64b63b0c05810dd154b7794"
+
+[[documents]]
+id = "rfb22-main-2023-auditor-afternoon-type-1"
+kind = "exam"
+path = "official/2023-main/auditor-afternoon-type-1.pdf"
+source_url = "https://conhecimento.fgv.br/sites/default/files/concursos/cns201-auditor-fiscal-da-receita-federal-do-brasil-afrfbcns201-tipo-1.pdf"
+size_bytes = 1151680
+page_count = 20
+sha256 = "df9cf3786c15957ba48a8bd2a31efae3b6f8a6ebf0bcbfcc7bcc441a622d0eff"
+title = "Auditor-Fiscal - tarde - tipo 1"
+application_id = "rfb22-main-2023-03-19"
+published_on = 2023-03-21
+roles = ["Auditor-Fiscal da Receita Federal do Brasil"]
+shift = "Tarde"
+booklet_type = 1
+content_kinds = ["objective", "discursive"]
+sections = [{ kind = "objective", first = 1, last = 60, count = 60 }, { kind = "discursive", first = 1, last = 2, count = 2 }]
+answer_key_id = "rfb22-main-2023-answer-key-auditor-definitive"
+extraction_sha256 = "4f605ed5762a732ceb5723d3cb7eeea183df2745d8621411f240f6fca68b6f25"
+
+[[documents]]
+id = "rfb22-main-2023-auditor-afternoon-type-2"
+kind = "exam"
+path = "official/2023-main/auditor-afternoon-type-2.pdf"
+source_url = "https://conhecimento.fgv.br/sites/default/files/concursos/cns201-auditor-fiscal-da-receita-federal-do-brasil-afrfbcns201-tipo-2.pdf"
+size_bytes = 1143915
+page_count = 20
+sha256 = "20168f61285e57bab23693f930613958d553d919e9cee2071fb5176bd077d75f"
+title = "Auditor-Fiscal - tarde - tipo 2"
+application_id = "rfb22-main-2023-03-19"
+published_on = 2023-03-21
+roles = ["Auditor-Fiscal da Receita Federal do Brasil"]
+shift = "Tarde"
+booklet_type = 2
+content_kinds = ["objective", "discursive"]
+sections = [{ kind = "objective", first = 1, last = 60, count = 60 }, { kind = "discursive", first = 1, last = 2, count = 2 }]
+answer_key_id = "rfb22-main-2023-answer-key-auditor-definitive"
+extraction_sha256 = "a7f748fac7bea2d700b31660d55f48e84375dfaced5a3b78b5b51a66107c203f"
+
+[[documents]]
+id = "rfb22-main-2023-auditor-afternoon-type-3"
+kind = "exam"
+path = "official/2023-main/auditor-afternoon-type-3.pdf"
+source_url = "https://conhecimento.fgv.br/sites/default/files/concursos/cns201-auditor-fiscal-da-receita-federal-do-brasil-afrfbcns201-tipo-3.pdf"
+size_bytes = 1144717
+page_count = 20
+sha256 = "0f46baaa08b7cd495a80d15979f437e8f5cc947142550ecc61a637207d9c2f10"
+title = "Auditor-Fiscal - tarde - tipo 3"
+application_id = "rfb22-main-2023-03-19"
+published_on = 2023-03-21
+roles = ["Auditor-Fiscal da Receita Federal do Brasil"]
+shift = "Tarde"
+booklet_type = 3
+content_kinds = ["objective", "discursive"]
+sections = [{ kind = "objective", first = 1, last = 60, count = 60 }, { kind = "discursive", first = 1, last = 2, count = 2 }]
+answer_key_id = "rfb22-main-2023-answer-key-auditor-definitive"
+extraction_sha256 = "8efa6b87f20f3d1d6d0bde1df4294e2fc54e9cd6fc3f3566471fbb4ca9147b00"
+
+[[documents]]
+id = "rfb22-main-2023-auditor-afternoon-type-4"
+kind = "exam"
+path = "official/2023-main/auditor-afternoon-type-4.pdf"
+source_url = "https://conhecimento.fgv.br/sites/default/files/concursos/cns201-auditor-fiscal-da-receita-federal-do-brasil-afrfbcns201-tipo-4.pdf"
+size_bytes = 1145039
+page_count = 20
+sha256 = "2a723aab6430835b3f66a6f0c1320feaa31e3ffc99a984b580268ffadf480086"
+title = "Auditor-Fiscal - tarde - tipo 4"
+application_id = "rfb22-main-2023-03-19"
+published_on = 2023-03-21
+roles = ["Auditor-Fiscal da Receita Federal do Brasil"]
+shift = "Tarde"
+booklet_type = 4
+content_kinds = ["objective", "discursive"]
+sections = [{ kind = "objective", first = 1, last = 60, count = 60 }, { kind = "discursive", first = 1, last = 2, count = 2 }]
+answer_key_id = "rfb22-main-2023-answer-key-auditor-definitive"
+extraction_sha256 = "ade2ab77adb612f33a6bea80d98ecddacb1f0d7ef80f80e6d97e3ec6b0c426f8"
+
+[[documents]]
+id = "rfb22-main-2023-analyst-morning-type-1"
+kind = "exam"
+path = "official/2023-main/analyst-morning-type-1.pdf"
+source_url = "https://conhecimento.fgv.br/sites/default/files/concursos/cns102-analista-tributario-da-receita-federal-do-brasil-atrfbcns102-tipo-1.pdf"
+size_bytes = 1252673
+page_count = 16
+sha256 = "d9b051f7d8ffe91e4ed5d62a2eb56a70e8b2ac61a9138830d9a84595b7f6a404"
+title = "Analista-Tributário - manhã - tipo 1"
+application_id = "rfb22-main-2023-03-19"
+published_on = 2023-03-21
+roles = ["Analista-Tributário da Receita Federal do Brasil"]
+shift = "Manhã"
+booklet_type = 1
+content_kinds = ["objective"]
+sections = [{ kind = "objective", first = 1, last = 70, count = 70 }]
+answer_key_id = "rfb22-main-2023-answer-key-analyst-definitive"
+extraction_sha256 = "78ff3a9bfd1eb1834402ee7851abf525f3491de4a19031854674be3bce786479"
+
+[[documents]]
+id = "rfb22-main-2023-analyst-morning-type-2"
+kind = "exam"
+path = "official/2023-main/analyst-morning-type-2.pdf"
+source_url = "https://conhecimento.fgv.br/sites/default/files/concursos/cns102-analista-tributario-da-receita-federal-do-brasil-atrfbcns102-tipo-2.pdf"
+size_bytes = 1253143
+page_count = 16
+sha256 = "902a10165b6e9c07ad937f2e4ff1a5fea3e9a5a9363425fe2ad90866506969b0"
+title = "Analista-Tributário - manhã - tipo 2"
+application_id = "rfb22-main-2023-03-19"
+published_on = 2023-03-21
+roles = ["Analista-Tributário da Receita Federal do Brasil"]
+shift = "Manhã"
+booklet_type = 2
+content_kinds = ["objective"]
+sections = [{ kind = "objective", first = 1, last = 70, count = 70 }]
+answer_key_id = "rfb22-main-2023-answer-key-analyst-definitive"
+extraction_sha256 = "879ff42101f58f6695986bc1d4ddc225dce42d6db326f606f1e44e60663a11af"
+
+[[documents]]
+id = "rfb22-main-2023-analyst-morning-type-3"
+kind = "exam"
+path = "official/2023-main/analyst-morning-type-3.pdf"
+source_url = "https://conhecimento.fgv.br/sites/default/files/concursos/cns102-analista-tributario-da-receita-federal-do-brasil-atrfbcns102-tipo-3.pdf"
+size_bytes = 1253604
+page_count = 16
+sha256 = "f2eb0ca095e451e829c67031ea77cee4eff0a8cb6e824221364b77ff19b7978b"
+title = "Analista-Tributário - manhã - tipo 3"
+application_id = "rfb22-main-2023-03-19"
+published_on = 2023-03-21
+roles = ["Analista-Tributário da Receita Federal do Brasil"]
+shift = "Manhã"
+booklet_type = 3
+content_kinds = ["objective"]
+sections = [{ kind = "objective", first = 1, last = 70, count = 70 }]
+answer_key_id = "rfb22-main-2023-answer-key-analyst-definitive"
+extraction_sha256 = "55d6f34971873da3d19414fc943087214c7792a6a6a90951e7fff56b9fb4e548"
+
+[[documents]]
+id = "rfb22-main-2023-analyst-morning-type-4"
+kind = "exam"
+path = "official/2023-main/analyst-morning-type-4.pdf"
+source_url = "https://conhecimento.fgv.br/sites/default/files/concursos/cns102-analista-tributario-da-receita-federal-do-brasil-atrfbcns102-tipo-4.pdf"
+size_bytes = 1254609
+page_count = 16
+sha256 = "a2a8f4f78f234e52295b46b290c5beef5f619c3b11d441dec81d09a0c227fbc4"
+title = "Analista-Tributário - manhã - tipo 4"
+application_id = "rfb22-main-2023-03-19"
+published_on = 2023-03-21
+roles = ["Analista-Tributário da Receita Federal do Brasil"]
+shift = "Manhã"
+booklet_type = 4
+content_kinds = ["objective"]
+sections = [{ kind = "objective", first = 1, last = 70, count = 70 }]
+answer_key_id = "rfb22-main-2023-answer-key-analyst-definitive"
+extraction_sha256 = "a4856423d14ee15ee1ed3b10cce157b26cb67e01dac6fe2d4d793dd23fa1a402"
+
+[[documents]]
+id = "rfb22-main-2023-analyst-afternoon-type-1"
+kind = "exam"
+path = "official/2023-main/analyst-afternoon-type-1.pdf"
+source_url = "https://conhecimento.fgv.br/sites/default/files/concursos/cns202-analista-tributario-da-receita-federal-do-brasil-atrfbcns202-tipo-1.pdf"
+size_bytes = 1175027
+page_count = 20
+sha256 = "8bba7135349c9347383a848244c4226eabf2bb1c4fe3ca910adcbe0249e2d491"
+title = "Analista-Tributário - tarde - tipo 1"
+application_id = "rfb22-main-2023-03-19"
+published_on = 2023-03-21
+roles = ["Analista-Tributário da Receita Federal do Brasil"]
+shift = "Tarde"
+booklet_type = 1
+content_kinds = ["objective", "discursive"]
+sections = [{ kind = "objective", first = 1, last = 70, count = 70 }, { kind = "discursive", first = 1, last = 1, count = 1 }]
+answer_key_id = "rfb22-main-2023-answer-key-analyst-definitive"
+extraction_sha256 = "55fd85e0eefb6fdbde0379fbf73e5bf3e5d757d5b789aaa5c21e6d2545497ca0"
+
+[[documents]]
+id = "rfb22-main-2023-analyst-afternoon-type-2"
+kind = "exam"
+path = "official/2023-main/analyst-afternoon-type-2.pdf"
+source_url = "https://conhecimento.fgv.br/sites/default/files/concursos/cns202-analista-tributario-da-receita-federal-do-brasil-atrfbcns202-tipo-2.pdf"
+size_bytes = 1174996
+page_count = 20
+sha256 = "c7a24cb3ba537ea0111f1ee1e50b36b78e65cb5aefaa25ab3b7b2d84c8fbbb65"
+title = "Analista-Tributário - tarde - tipo 2"
+application_id = "rfb22-main-2023-03-19"
+published_on = 2023-03-21
+roles = ["Analista-Tributário da Receita Federal do Brasil"]
+shift = "Tarde"
+booklet_type = 2
+content_kinds = ["objective", "discursive"]
+sections = [{ kind = "objective", first = 1, last = 70, count = 70 }, { kind = "discursive", first = 1, last = 1, count = 1 }]
+answer_key_id = "rfb22-main-2023-answer-key-analyst-definitive"
+extraction_sha256 = "27e0ed4e5ab3755b3aca7daf2be07e239124edcad7cd24eb8a2e10cfc7c8f5f5"
+
+[[documents]]
+id = "rfb22-main-2023-analyst-afternoon-type-3"
+kind = "exam"
+path = "official/2023-main/analyst-afternoon-type-3.pdf"
+source_url = "https://conhecimento.fgv.br/sites/default/files/concursos/cns202-analista-tributario-da-receita-federal-do-brasil-atrfbcns202-tipo-3.pdf"
+size_bytes = 1175764
+page_count = 20
+sha256 = "cd73e53bed00ee55c8d87e50e4208a81a9cc108d31b4f78956d1201cfcbbe49a"
+title = "Analista-Tributário - tarde - tipo 3"
+application_id = "rfb22-main-2023-03-19"
+published_on = 2023-03-21
+roles = ["Analista-Tributário da Receita Federal do Brasil"]
+shift = "Tarde"
+booklet_type = 3
+content_kinds = ["objective", "discursive"]
+sections = [{ kind = "objective", first = 1, last = 70, count = 70 }, { kind = "discursive", first = 1, last = 1, count = 1 }]
+answer_key_id = "rfb22-main-2023-answer-key-analyst-definitive"
+extraction_sha256 = "9bc27162023d7e52433237d3abe201a43e01a99043d89f1d1c4ad7316d19da2a"
+
+[[documents]]
+id = "rfb22-main-2023-analyst-afternoon-type-4"
+kind = "exam"
+path = "official/2023-main/analyst-afternoon-type-4.pdf"
+source_url = "https://conhecimento.fgv.br/sites/default/files/concursos/cns202-analista-tributario-da-receita-federal-do-brasil-atrfbcns202-tipo-4.pdf"
+size_bytes = 1175923
+page_count = 20
+sha256 = "e81cc944e960ef8313a1fc8ea26db8719d6d755ff70418d13a40afcee7045b0d"
+title = "Analista-Tributário - tarde - tipo 4"
+application_id = "rfb22-main-2023-03-19"
+published_on = 2023-03-21
+roles = ["Analista-Tributário da Receita Federal do Brasil"]
+shift = "Tarde"
+booklet_type = 4
+content_kinds = ["objective", "discursive"]
+sections = [{ kind = "objective", first = 1, last = 70, count = 70 }, { kind = "discursive", first = 1, last = 1, count = 1 }]
+answer_key_id = "rfb22-main-2023-answer-key-analyst-definitive"
+extraction_sha256 = "9c87eac6a795d53c3f593424ebef9bd9f54e461379657ef2babdc6e9c57f0ef2"
