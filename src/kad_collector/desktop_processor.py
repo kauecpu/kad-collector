@@ -24,7 +24,7 @@ from .desktop_models import (
 )
 from .desktop_parser import (
     map_question_sections,
-    parse_question_pages,
+    parse_question_document,
     question_section_context,
 )
 from .desktop_store import DesktopStore
@@ -35,6 +35,7 @@ from .document_matching import (
     structural_v_number,
 )
 from .editorial_taxonomy import EditorialTaxonomy
+from .fgv_parser import BankParsingContext
 from .models import QuestionRecord
 from .semantic_identity import (
     AssociationCandidate,
@@ -78,6 +79,24 @@ def _variant_number(document: dict[str, Any]) -> int | None:
         re.IGNORECASE,
     )
     return int(match.group("number")) if match else None
+
+
+def _parsing_context(document: dict[str, Any]) -> BankParsingContext:
+    metadata = DesktopImportMetadata.model_validate(document["metadata"])
+    booklet_type: int | None = None
+    if metadata.variant:
+        match = re.fullmatch(r"(?i)(?:tipo|prova|v)\s*([1-9]\d*)", metadata.variant)
+        if match:
+            booklet_type = int(match.group(1))
+    return BankParsingContext(
+        document_id=cast(str, document["id"]),
+        board=metadata.board,
+        provider=metadata.provider,
+        contest=metadata.concurso,
+        role=metadata.role,
+        shift=metadata.turn,
+        booklet_type=booklet_type,
+    )
 
 
 def _document_group(
@@ -713,14 +732,29 @@ class DesktopProcessor:
             ):
                 continue
             document_id = cast(str, document["id"])
-            if self.store.question_records(document_id):
+            if (
+                self.store.question_records(document_id)
+                and document["status"] != "structuring"
+            ):
                 self._associate_exam(document)
                 self.store.reconcile_question_lineage(document_id)
                 continue
             pages = self.store.pages(document_id)
-            questions, warnings = parse_question_pages(pages)
+            parsing = parse_question_document(pages, _parsing_context(document))
+            questions = list(parsing.objective_questions)
+            warnings = parsing.warning_messages()
             existing_warnings = list(cast(list[str], document["warnings"]))
             existing_warnings.extend(warnings)
+            self.store.update_document(
+                document_id,
+                status="structuring",
+                parsing_result_json=json.dumps(
+                    parsing.to_payload(), ensure_ascii=False, sort_keys=True
+                ),
+                warnings_json=json.dumps(
+                    list(dict.fromkeys(existing_warnings)), ensure_ascii=False
+                ),
+            )
             if not questions:
                 existing_warnings.append("nenhuma questão foi separada automaticamente")
                 self.store.update_document(
@@ -805,7 +839,7 @@ class DesktopProcessor:
                 )
             self.store.update_document(
                 document_id,
-                status="processed",
+                status="exception" if parsing.status == "incomplete" else "processed",
                 warnings_json=json.dumps(
                     list(dict.fromkeys(existing_warnings)), ensure_ascii=False
                 ),

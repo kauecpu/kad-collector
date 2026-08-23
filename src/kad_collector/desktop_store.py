@@ -374,6 +374,7 @@ class DesktopStore:
                     needs_ocr INTEGER NOT NULL DEFAULT 0,
                     metadata_json TEXT NOT NULL,
                     normalized_json TEXT,
+                    parsing_result_json TEXT,
                     warnings_json TEXT NOT NULL DEFAULT '[]',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
@@ -457,6 +458,8 @@ class DesktopStore:
             }
             if "normalized_json" not in document_columns:
                 connection.execute("ALTER TABLE documents ADD COLUMN normalized_json TEXT")
+            if "parsing_result_json" not in document_columns:
+                connection.execute("ALTER TABLE documents ADD COLUMN parsing_result_json TEXT")
             initialize_semantic_schema(connection)
             connection.commit()
 
@@ -1449,6 +1452,12 @@ class DesktopStore:
             if normalized_json is not None
             else None
         )
+        parsing_result_json = payload.pop("parsing_result_json", None)
+        payload["parsing_result"] = (
+            json.loads(cast(str, parsing_result_json))
+            if parsing_result_json is not None
+            else None
+        )
         payload["needs_ocr"] = bool(payload["needs_ocr"])
         return payload
 
@@ -1485,6 +1494,7 @@ class DesktopStore:
             "needs_ocr",
             "warnings_json",
             "metadata_json",
+            "parsing_result_json",
         }
         selected = {key: value for key, value in changes.items() if key in allowed}
         if not selected:

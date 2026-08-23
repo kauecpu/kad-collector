@@ -14,7 +14,7 @@ from unittest.mock import patch
 from reportlab.pdfgen import canvas
 
 from kad_collector.desktop_models import DesktopImportMetadata, QuestionClassification
-from kad_collector.desktop_processor import DesktopProcessor, parse_question_pages
+from kad_collector.desktop_processor import DesktopProcessor, parse_question_document
 from kad_collector.desktop_store import DesktopStore
 from kad_collector.document_contract import NormalizedDocument
 from kad_collector.models import Alternative, QuestionRecord
@@ -2049,8 +2049,8 @@ class SemanticWorkflowIntegrationTests(unittest.TestCase):
         first_processor = DesktopProcessor(self.store)
         try:
             with patch(
-                "kad_collector.desktop_processor.parse_question_pages",
-                wraps=parse_question_pages,
+                "kad_collector.desktop_processor.parse_question_document",
+                wraps=parse_question_document,
             ) as parser:
                 first_processor._structure_job("job-first", threading.Event())
                 self.assertEqual(parser.call_count, 1)
@@ -2064,7 +2064,7 @@ class SemanticWorkflowIntegrationTests(unittest.TestCase):
         second_processor = DesktopProcessor(self.store)
         try:
             with patch(
-                "kad_collector.desktop_processor.parse_question_pages",
+                "kad_collector.desktop_processor.parse_question_document",
                 side_effect=AssertionError("republicação não deve estruturar"),
             ):
                 second_processor._structure_job("job-second", threading.Event())
@@ -2082,8 +2082,8 @@ class SemanticWorkflowIntegrationTests(unittest.TestCase):
         third_processor = DesktopProcessor(self.store)
         try:
             with patch(
-                "kad_collector.desktop_processor.parse_question_pages",
-                wraps=parse_question_pages,
+                "kad_collector.desktop_processor.parse_question_document",
+                wraps=parse_question_document,
             ) as parser:
                 third_processor._structure_job("job-third", threading.Event())
                 self.assertEqual(parser.call_count, 1)
@@ -2106,7 +2106,7 @@ class SemanticWorkflowIntegrationTests(unittest.TestCase):
         processor = DesktopProcessor(self.store)
         try:
             with patch(
-                "kad_collector.desktop_processor.parse_question_pages",
+                "kad_collector.desktop_processor.parse_question_document",
                 side_effect=AssertionError(
                     "papel semântico de gabarito não deve estruturar questões"
                 ),
@@ -2162,7 +2162,7 @@ class SemanticWorkflowIntegrationTests(unittest.TestCase):
         processor = DesktopProcessor(self.store)
         try:
             with patch(
-                "kad_collector.desktop_processor.parse_question_pages",
+                "kad_collector.desktop_processor.parse_question_document",
                 side_effect=AssertionError("parser não deveria ser chamado"),
             ):
                 processor._structure_job("job-unknown", threading.Event())
@@ -2291,7 +2291,7 @@ class SemanticWorkflowIntegrationTests(unittest.TestCase):
                     side_effect=RuntimeError("injected resolution failure"),
                 ),
                 patch(
-                    "kad_collector.desktop_processor.parse_question_pages",
+                    "kad_collector.desktop_processor.parse_question_document",
                     side_effect=AssertionError("parser não deveria ser chamado"),
                 ),
             ):

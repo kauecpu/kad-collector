@@ -354,6 +354,59 @@ Informações editoriais da banca.
             self.assertIn("without_explanation", question["flags"])
             self.assertEqual(question["question"]["source_pages"], [1])
 
+    def test_fgv_document_with_open_interval_is_preserved_as_incomplete(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "rfb22-incompleta.pdf"
+            write_text_pdf(
+                pdf_path,
+                [
+                    [
+                        "MANHA",
+                        "Auditor-Fiscal da Receita Federal do Brasil",
+                        "TIPO 1",
+                        "1",
+                        "Assinale a alternativa correta sobre o tema apresentado.",
+                        "(A) Primeira alternativa.",
+                        "(B) Segunda alternativa.",
+                    ]
+                ],
+            )
+            store = DesktopStore(root / "collector.sqlite3")
+            job_id = store.create_job(
+                [pdf_path],
+                metadata(
+                    provider="fgv_conhecimento",
+                    board="FGV",
+                    concurso="RFB22",
+                    role="Auditor-Fiscal da Receita Federal do Brasil",
+                    turn="Manhã",
+                    variant="Tipo 1",
+                    document_type="exam",
+                ),
+                "local",
+            )
+
+            processor = DesktopProcessor(store)
+            try:
+                processor.run(job_id)
+
+                document = store.documents_for_job(job_id)[0]
+                parsing = document["parsing_result"]
+                self.assertEqual(document["status"], "exception")
+                self.assertEqual(parsing["status"], "incomplete")
+                self.assertEqual(parsing["summary"]["objectiveFound"], 1)
+                self.assertEqual(len(parsing["exceptions"]), 79)
+                self.assertEqual(len(store.question_records(document["id"])), 1)
+
+                store.update_document(document["id"], status="structuring")
+                processor._structure_job(job_id, threading.Event())
+                recovered = store.document(document["id"])
+                self.assertEqual(recovered["status"], "exception")
+                self.assertEqual(len(store.question_records(document["id"])), 1)
+            finally:
+                processor._executor.shutdown(wait=True)
+
     def test_direct_import_and_automatic_collection_converge_with_the_real_processor(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)

@@ -7,7 +7,7 @@ import tempfile
 import tomllib
 import unicodedata
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -16,7 +16,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from pypdf import PdfReader
 
 from .answer_key import AnswerEntry, parse_answer_key
-from .desktop_parser import parse_question_pages
+from .desktop_parser import parse_question_document
+from .fgv_parser import BankParsingContext
 from .models import QuestionRecord
 
 DocumentKind = Literal["exam", "answer_key"]
@@ -459,7 +460,20 @@ def _execute_rfb22_exam(
         raise OfficialRegressionError(
             f"page count mismatch: {exam.id} ({len(pages)} != {exam.page_count})"
         )
-    identity = inspect_rfb22_booklet(pages)
+    parsing = parse_question_document(
+        pages,
+        BankParsingContext(
+            document_id=exam.id,
+            board=exam.board,
+            provider="fgv_conhecimento",
+            contest=exam.contest_aliases[0],
+            application_id=exam.application_id,
+            role=exam.roles[0],
+            shift=exam.shift,
+            booklet_type=exam.booklet_type,
+        ),
+    )
+    identity = parsing.identity
     if identity.role not in exam.roles:
         raise OfficialRegressionError(f"role mismatch: {exam.id} ({identity.role})")
     if identity.shift != exam.shift:
@@ -468,20 +482,44 @@ def _execute_rfb22_exam(
         raise OfficialRegressionError(
             f"booklet type mismatch: {exam.id} ({identity.booklet_type})"
         )
-    if identity.content_kinds != exam.content_kinds:
+    content_kinds: tuple[ContentKind, ...] = (
+        ("objective", "discursive")
+        if parsing.discursive_numbers
+        else ("objective",)
+    )
+    if content_kinds != exam.content_kinds:
         raise OfficialRegressionError(
-            f"content kinds mismatch: {exam.id} ({identity.content_kinds})"
+            f"content kinds mismatch: {exam.id} ({content_kinds})"
         )
+    configured_sections = tuple(
+        (section.kind, section.first, section.last, section.count)
+        for section in parsing.expected_intervals
+    )
+    manifest_sections = tuple(
+        (section.kind, section.first, section.last, section.count)
+        for section in exam.sections
+    )
+    if configured_sections != manifest_sections:
+        raise OfficialRegressionError(
+            f"FGV profile differs from official manifest: {exam.id}"
+        )
+    if parsing.status != "completed":
+        reasons = [exception.reason for exception in parsing.exceptions]
+        raise OfficialRegressionError(f"{exam.id} incomplete parsing: {reasons}")
+    if "discursive" in exam.content_kinds and not any(
+        section.kind == "answer_sheet" for section in parsing.sections
+    ):
+        raise OfficialRegressionError(f"answer sheet section not detected: {exam.id}")
 
     objective = next(section for section in exam.sections if section.kind == "objective")
-    questions, warnings = parse_question_pages(pages)
+    questions = list(parsing.objective_questions)
     objective_result = _assert_numbers(
         f"{exam.id} objective",
         [question.number for question in questions],
         objective,
     )
-    if warnings:
-        raise OfficialRegressionError(f"{exam.id} parser warnings: {warnings}")
+    if parsing.warnings:
+        raise OfficialRegressionError(f"{exam.id} parser warnings: {parsing.warnings}")
     objective_result["digest"] = _question_digest(questions)
     if exam.extraction_sha256 and objective_result["digest"] != exam.extraction_sha256:
         raise OfficialRegressionError(
@@ -493,7 +531,7 @@ def _execute_rfb22_exam(
         None,
     )
     if discursive is None:
-        if identity.discursive_numbers:
+        if parsing.discursive_numbers:
             raise OfficialRegressionError(f"unexpected discursive section: {exam.id}")
         discursive_result: dict[str, object] = {
             "count": 0,
@@ -506,7 +544,7 @@ def _execute_rfb22_exam(
     else:
         discursive_result = _assert_numbers(
             f"{exam.id} discursive",
-            list(identity.discursive_numbers),
+            list(parsing.discursive_numbers),
             discursive,
         )
 
@@ -516,7 +554,7 @@ def _execute_rfb22_exam(
     entries = parse_answer_key(
         answer_key_text,
         variant=f"Tipo {identity.booklet_type}",
-        role=identity.role,
+        role=identity.role or exam.roles[0],
         turn=identity.shift,
     )
     answer_result = _assert_numbers(f"{exam.id} answer key", list(entries), scope)
@@ -528,11 +566,74 @@ def _execute_rfb22_exam(
         "role": identity.role,
         "shift": identity.shift,
         "booklet_type": identity.booklet_type,
-        "content_kinds": list(identity.content_kinds),
+        "content_kinds": list(content_kinds),
+        "adapter_id": parsing.adapter_id,
+        "adapter_version": parsing.adapter_version,
+        "profile_id": parsing.profile_id,
+        "parsing_status": parsing.status,
+        "sections": [asdict(section) for section in parsing.sections],
         "objective": objective_result,
         "discursive": discursive_result,
         "answer_key_id": answer_key.id,
         "answer_key": answer_result,
+    }
+
+
+def _execute_missing_marker_probe(
+    exam: OfficialDocumentSpec, exam_path: Path
+) -> dict[str, object]:
+    pages = _read_pdf_pages(exam_path)
+    objective = next(section for section in exam.sections if section.kind == "objective")
+    target = objective.first + 1 if objective.count > 1 else objective.first
+    marker = re.compile(rf"^\s*{target}\s*$")
+    changed = False
+    mutated_pages: list[dict[str, object]] = []
+    for page in pages:
+        lines: list[str] = []
+        for line in str(page["text"]).splitlines():
+            if not changed and marker.match(line):
+                changed = True
+                continue
+            lines.append(line)
+        mutated_pages.append(
+            {
+                "page_number": cast(int, page["page_number"]),
+                "text": "\n".join(lines),
+            }
+        )
+    if not changed:
+        raise OfficialRegressionError(
+            f"negative marker probe could not remove question {target}: {exam.id}"
+        )
+    result = parse_question_document(
+        mutated_pages,
+        BankParsingContext(
+            document_id=f"{exam.id}-missing-{target}",
+            board=exam.board,
+            provider="fgv_conhecimento",
+            contest=exam.contest_aliases[0],
+            application_id=exam.application_id,
+            role=exam.roles[0],
+            shift=exam.shift,
+            booklet_type=exam.booklet_type,
+        ),
+    )
+    matching = [
+        exception
+        for exception in result.exceptions
+        if exception.section == "objective"
+        and exception.expected_number == target
+        and exception.reason == "questão esperada não extraída"
+    ]
+    if result.status != "incomplete" or not matching:
+        raise OfficialRegressionError(
+            f"negative marker probe did not block completion: {exam.id}"
+        )
+    return {
+        "document_id": exam.id,
+        "removed_question": target,
+        "status": result.status,
+        "exception": asdict(matching[0]),
     }
 
 
@@ -603,6 +704,13 @@ def run_official_regression(manifest_path: Path, report_path: Path) -> dict[str,
         else:
             cases.append({"id": exam.id, "status": "passed", "result": result})
 
+    first_exam = next(
+        document for document in supported_documents if document.kind == "exam"
+    )
+    negative_probe = _execute_missing_marker_probe(
+        first_exam, fixture_paths[first_exam.id]
+    )
+
     passed = sum(case["status"] == "passed" for case in cases)
     report: dict[str, object] = {
         "schema_version": loaded.spec.schema_version,
@@ -623,6 +731,7 @@ def run_official_regression(manifest_path: Path, report_path: Path) -> dict[str,
             for document in supported_documents
         ],
         "cases": cases,
+        "negative_marker_probe": negative_probe,
         "summary": {
             "supported_documents": len(supported_documents),
             "exam_cases": len(cases),

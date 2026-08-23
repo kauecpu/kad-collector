@@ -41,6 +41,7 @@ kad_collector = [
   "editorial_taxonomy.v1.json",
   "editorial_taxonomy.bundle.v2.json",
   "editorial_taxonomies/*.json",
+  "fgv_section_profiles.v1.toml",
   "sources.official.toml",
 ]
 

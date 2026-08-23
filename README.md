@@ -827,5 +827,11 @@ Prepare e execute o pacote com:
 O inventario, as contagens oficiais, as fontes e a politica de manutencao estao descritos em
 `tests/regression/rfb22/README.md`.
 
+O pipeline usa um [adaptador FGV orientado por secoes](docs/fgv-section-parser.md). O adaptador
+separa as partes objetiva e discursiva antes de interpretar numeros isolados e compara o
+resultado com `src/kad_collector/fgv_section_profiles.v1.toml`. Uma lacuna, duplicidade, quebra
+de ordem ou numero fora do intervalo mantem as questoes extraidas, registra excecoes
+estruturadas e impede que o documento seja marcado como processado.
+
 Artefatos dentro de `data/` podem conter material protegido e nao devem ser enviados ao
 GitHub. Nunca contorne autenticacao, CAPTCHA, bloqueios, paywalls ou restricoes tecnicas.
