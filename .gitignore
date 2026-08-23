@@ -168,4 +168,6 @@ config/sources.toml
 
 # Local regression artifacts (official PDFs may be copyrighted)
 tests/regression/official/
+tests/regression/rfb22/official/
 tests/regression/report.json
+tests/regression/rfb22-report.json

@@ -810,5 +810,22 @@ Republicacao, OCR real e rejeicao explicita de documento nao relacionado permane
 como `planned`. A [documentacao de manutencao](tests/regression/README.md) e a
 [matriz final](tests/regression/COVERAGE.md) explicam os limites e o processo de atualizacao.
 
+### Regressao oficial do RFB22
+
+O contrato versionado em `tests/regression/rfb22/manifest.v1.toml` separa a aplicacao
+principal de 19/03/2023 dos cursos de formacao e aplicacoes sub judice posteriores. Ele cobre
+os 16 cadernos da primeira etapa e os tres gabaritos publicados para essa aplicacao. Os PDFs
+ficam fora do Git e os testes nao acessam a rede.
+
+Prepare e execute o pacote com:
+
+```cmd
+.venv\Scripts\python.exe scripts\prepare_official_contest_fixtures.py
+.venv\Scripts\python.exe scripts\run_official_regression.py
+```
+
+O inventario, as contagens oficiais, as fontes e a politica de manutencao estao descritos em
+`tests/regression/rfb22/README.md`.
+
 Artefatos dentro de `data/` podem conter material protegido e nao devem ser enviados ao
 GitHub. Nunca contorne autenticacao, CAPTCHA, bloqueios, paywalls ou restricoes tecnicas.
