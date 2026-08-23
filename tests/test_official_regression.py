@@ -7,7 +7,8 @@ from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
-from kad_collector.desktop_parser import parse_question_pages
+from kad_collector.desktop_parser import parse_question_document
+from kad_collector.fgv_parser import BankParsingContext
 from kad_collector.official_regression import (
     OfficialRegressionError,
     QuestionSectionSpec,
@@ -116,11 +117,23 @@ Texto da questão discursiva.
             }
         ]
 
-        questions, warnings = parse_question_pages(pages)
+        result = parse_question_document(
+            pages,
+            BankParsingContext(
+                document_id="synthetic-rfb22-analyst-afternoon",
+                board="Fundação Getulio Vargas",
+                provider="fgv_conhecimento",
+                contest="RFB22",
+                role="Analista-Tributário da Receita Federal do Brasil",
+                shift="Tarde",
+                booklet_type=1,
+            ),
+        )
 
-        self.assertEqual([question.number for question in questions], [1, 2])
-        self.assertEqual(warnings, [])
-        self.assertIn("Primeiro item da lista", questions[1].statement)
+        self.assertEqual([question.number for question in result.objective_questions], [1, 2])
+        self.assertEqual(result.warnings, ())
+        self.assertIn("Primeiro item da lista", result.objective_questions[1].statement)
+        self.assertEqual(result.status, "incomplete")
 
     def test_manifest_loader_reports_a_malformed_toml(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

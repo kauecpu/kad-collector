@@ -6,6 +6,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .editorial_taxonomy import EditorialTaxonomy, TaxonomyPath
+from .fgv_parser import (
+    BankParsingContext,
+    BankParsingResult,
+    FgvDocumentIdentity,
+    FgvSectionAdapter,
+)
 from .models import Alternative, QuestionRecord
 from .static_parser import FuvestStaticExtractor
 
@@ -36,11 +42,6 @@ _SECTION_RESET = re.compile(
     r"redaç(?:ão|ao)|estudo\s+de\s+caso)\s*$",
     re.IGNORECASE,
 )
-_RFB22_HEADER = re.compile(
-    r"(?i)CONCURSO P[ÚU]BLICO DA RECEITA FEDERAL DO BRASIL"
-)
-
-
 @dataclass
 class _QuestionBuilder:
     number: int
@@ -301,30 +302,9 @@ def _generic_parse(
     return [selected[number] for number in sorted(selected)], warnings
 
 
-def _rfb22_objective_pages(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Keep the objective section of RFB22 mixed afternoon booklets."""
-    objective_pages: list[dict[str, Any]] = []
-    discursive_started = False
-    for page in pages:
-        text = str(page["text"])
-        if discursive_started:
-            continue
-        split = re.split(
-            r"(?im)^\s*Prova\s+Discursiva\s*$",
-            text,
-            maxsplit=1,
-        )
-        objective_text = split[0]
-        if objective_text.strip():
-            objective_pages.append(
-                {"page_number": int(page["page_number"]), "text": objective_text}
-            )
-        if len(split) == 2:
-            discursive_started = True
-    return objective_pages
-
-
-def parse_question_pages(pages: list[dict[str, Any]]) -> tuple[list[QuestionRecord], list[str]]:
+def _legacy_parse_question_pages(
+    pages: list[dict[str, Any]],
+) -> tuple[list[QuestionRecord], list[str]]:
     combined = "\n\n".join(
         f"--- Pagina {page['page_number']} ---\n{page['text']}" for page in pages if page["text"]
     )
@@ -339,15 +319,66 @@ def parse_question_pages(pages: list[dict[str, Any]]) -> tuple[list[QuestionReco
             for item in result.questions
         ]
         return questions, result.warnings
-    if _RFB22_HEADER.search(combined):
-        return _generic_parse(
-            _rfb22_objective_pages(pages),
-            allow_standalone_numbers=True,
-            allow_punctuated_numbers=False,
-        )
     has_explicit_questions = any(
         _EXPLICIT_QUESTION.match(line)
         for page in pages
         for line in str(page["text"]).splitlines()
     )
     return _generic_parse(pages, allow_standalone_numbers=not has_explicit_questions)
+
+
+def parse_fgv_objective_pages(
+    pages: list[dict[str, Any]],
+) -> tuple[list[QuestionRecord], list[str]]:
+    return _generic_parse(
+        pages,
+        allow_standalone_numbers=True,
+        allow_punctuated_numbers=False,
+    )
+
+
+def parse_question_document(
+    pages: list[dict[str, Any]], context: BankParsingContext
+) -> BankParsingResult:
+    adapter = FgvSectionAdapter()
+    if adapter.supports(context):
+        return adapter.parse(
+            pages,
+            context,
+            parse_fgv_objective_pages,
+        )
+    questions, warnings = _legacy_parse_question_pages(pages)
+    return BankParsingResult(
+        adapter_id="generic",
+        adapter_version="1.0",
+        profile_id=None,
+        identity=FgvDocumentIdentity(
+            role=context.role,
+            shift=context.shift,
+            booklet_type=context.booklet_type,
+            evidence=(),
+        ),
+        sections=(),
+        objective_questions=tuple(questions),
+        discursive_numbers=(),
+        expected_intervals=(),
+        exceptions=(),
+        warnings=tuple(warnings),
+        status="completed",
+        summary={
+            "objectiveFound": len(questions),
+            "discursiveFound": 0,
+            "exceptions": 0,
+            "numberingClosed": False,
+            "status": "legacy_unbounded",
+        },
+    )
+
+
+def parse_question_pages(
+    pages: list[dict[str, Any]], context: BankParsingContext | None = None
+) -> tuple[list[QuestionRecord], list[str]]:
+    if context is None:
+        return _legacy_parse_question_pages(pages)
+    result = parse_question_document(pages, context)
+    return list(result.objective_questions), result.warning_messages()

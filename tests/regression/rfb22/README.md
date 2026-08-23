@@ -58,5 +58,10 @@ A regressão não acessa a rede. Para cada caderno, ela valida:
 - associação ao gabarito definitivo do mesmo cargo, turno e tipo;
 - digest determinístico da extração objetiva.
 
+A execução usa o adaptador `fgv-sections` e exige que o perfil empacotado coincida com os
+intervalos deste manifesto. O relatório também contém `negative_marker_probe`: o executor
+remove um marcador de uma cópia em memória, exige o estado `incomplete` e confere a exceção da
+questão ausente. Nenhum PDF local é alterado nesse teste.
+
 Qualquer questão ausente encerra o comando com código 2 e registra o caso no relatório local
 ignorado pelo Git.

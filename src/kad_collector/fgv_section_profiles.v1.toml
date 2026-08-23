@@ -1,0 +1,43 @@
+schema_version = 1
+
+[[profiles]]
+id = "rfb22-main-auditor-morning"
+application_id = "rfb22-main-2023-03-19"
+contest_aliases = ["RFB22"]
+roles = ["Auditor-Fiscal da Receita Federal do Brasil"]
+shift = "Manhã"
+booklet_types = [1, 2, 3, 4]
+sections = [{ kind = "objective", first = 1, last = 80, count = 80 }]
+
+[[profiles]]
+id = "rfb22-main-auditor-afternoon"
+application_id = "rfb22-main-2023-03-19"
+contest_aliases = ["RFB22"]
+roles = ["Auditor-Fiscal da Receita Federal do Brasil"]
+shift = "Tarde"
+booklet_types = [1, 2, 3, 4]
+sections = [
+  { kind = "objective", first = 1, last = 60, count = 60 },
+  { kind = "discursive", first = 1, last = 2, count = 2 },
+]
+
+[[profiles]]
+id = "rfb22-main-analyst-morning"
+application_id = "rfb22-main-2023-03-19"
+contest_aliases = ["RFB22"]
+roles = ["Analista-Tributário da Receita Federal do Brasil"]
+shift = "Manhã"
+booklet_types = [1, 2, 3, 4]
+sections = [{ kind = "objective", first = 1, last = 70, count = 70 }]
+
+[[profiles]]
+id = "rfb22-main-analyst-afternoon"
+application_id = "rfb22-main-2023-03-19"
+contest_aliases = ["RFB22"]
+roles = ["Analista-Tributário da Receita Federal do Brasil"]
+shift = "Tarde"
+booklet_types = [1, 2, 3, 4]
+sections = [
+  { kind = "objective", first = 1, last = 70, count = 70 },
+  { kind = "discursive", first = 1, last = 1, count = 1 },
+]
