@@ -31,6 +31,12 @@ from .document_contract import NormalizedDocument, normalize_local_document
 from .editorial_taxonomy import EditorialTaxonomy
 from .import_readiness import diagnose_import_readiness
 from .models import QuestionRecord
+from .question_equivalence import (
+    initialize_question_equivalence_schema,
+    invalidate_question_equivalence,
+    question_equivalence_view,
+    sync_canonical_editorial_from_question,
+)
 from .semantic_identity import (
     IDENTITY_ALGORITHM_VERSION,
     DocumentAssociationDecision,
@@ -468,6 +474,7 @@ class DesktopStore:
                 connection.execute("ALTER TABLE documents ADD COLUMN parsing_result_json TEXT")
             initialize_semantic_schema(connection)
             initialize_canonical_identity_schema(connection)
+            initialize_question_equivalence_schema(connection)
             connection.commit()
 
     def create_job(
@@ -915,6 +922,14 @@ class DesktopStore:
                        q.updated_at,
                        d.metadata_json
                 FROM questions q JOIN documents d ON d.id = q.document_id
+                LEFT JOIN question_occurrences qo ON qo.question_id = q.id
+                LEFT JOIN question_group_occurrences qgo
+                  ON qgo.occurrence_id = qo.id AND qgo.status = 'active'
+                LEFT JOIN question_equivalence_groups qeg ON qeg.id = qgo.group_id
+                LEFT JOIN canonical_questions cq ON cq.group_id = qeg.id
+                WHERE qo.id IS NULL OR (
+                    qeg.status = 'confirmed' AND cq.representative_occurrence_id = qo.id
+                )
                 ORDER BY q.document_id, q.question_number
                 """
             ).fetchall()
@@ -1024,6 +1039,9 @@ class DesktopStore:
                             "taxonomyVersion": taxonomy_version,
                         },
                         f"Reclassificação local com taxonomia {taxonomy_version}.",
+                    )
+                    sync_canonical_editorial_from_question(
+                        connection, question_id, changed_at=updated_at
                     )
                     changed += 1
                 connection.commit()
@@ -2151,6 +2169,14 @@ class DesktopStore:
                     reason="Decisão editorial invalidada após reprocessamento alterado.",
                     changed_at=created_at,
                 )
+            if existing is not None and existing["fingerprint"] != fingerprint:
+                invalidate_question_equivalence(
+                    connection,
+                    question_id,
+                    actor="system",
+                    reason="reprocessamento alterou o conteúdo de uma ocorrência",
+                    changed_at=created_at,
+                )
             connection.commit()
         return question_id
 
@@ -2194,8 +2220,40 @@ class DesktopStore:
             row = connection.execute(
                 """
                 SELECT q.*, d.filename, d.local_path, d.sha256 AS document_sha256,
-                       d.metadata_json, d.warnings_json, d.job_id
+                       d.metadata_json, d.warnings_json, d.job_id,
+                       qo.id AS equivalence_occurrence_id,
+                       qeg.id AS equivalence_group_id,
+                       qeg.status AS equivalence_group_status,
+                       qeg.reason AS equivalence_reason,
+                       qeg.expected_occurrences AS equivalence_expected_occurrences,
+                       qeg.occurrence_count AS equivalence_occurrence_count,
+                       cq.id AS canonical_question_id,
+                       COALESCE(cq.representative_occurrence_id,
+                                qeg.representative_occurrence_id)
+                           AS representative_occurrence_id,
+                       cq.editorial_status AS canonical_editorial_status,
+                       NOT EXISTS (
+                           SELECT 1 FROM question_group_occurrences fresh_go
+                           JOIN question_occurrences fresh_o
+                             ON fresh_o.id = fresh_go.occurrence_id
+                           JOIN questions fresh_q ON fresh_q.id = fresh_o.question_id
+                           WHERE fresh_go.group_id = qeg.id AND fresh_go.status = 'active'
+                             AND (fresh_o.source_updated_at != fresh_q.updated_at
+                               OR fresh_o.answer_key_link_id IS NOT fresh_q.answer_key_link_id
+                               OR NOT EXISTS (
+                                   SELECT 1 FROM document_links fresh_link
+                                   WHERE fresh_link.id = fresh_q.answer_key_link_id
+                                     AND fresh_link.status = 'active'
+                                     AND fresh_link.algorithm_version =
+                                         'semantic-association-v2'
+                               ))
+                       ) AS equivalence_group_fresh
                 FROM questions q JOIN documents d ON d.id = q.document_id
+                LEFT JOIN question_occurrences qo ON qo.question_id = q.id
+                LEFT JOIN question_group_occurrences qgo
+                  ON qgo.occurrence_id = qo.id AND qgo.status = 'active'
+                LEFT JOIN question_equivalence_groups qeg ON qeg.id = qgo.group_id
+                LEFT JOIN canonical_questions cq ON cq.group_id = qeg.id
                 WHERE q.id = ?
                 """,
                 (question_id,),
@@ -2203,6 +2261,10 @@ class DesktopStore:
         if row is None:
             raise ValueError("questao nao encontrada")
         return self._question_view(row)
+
+    def question_equivalence(self, question_id: str) -> dict[str, Any] | None:
+        with closing(self._connect()) as connection:
+            return question_equivalence_view(connection, question_id)
 
     def update_question(
         self,
@@ -2230,6 +2292,7 @@ class DesktopStore:
             flag in flags for flag in ("annulled", "visual", "without_answer", "incomplete")
         ):
             next_status = "exception"
+        changed_at = _now()
         with closing(self._connect()) as connection:
             connection.execute(
                 """
@@ -2248,9 +2311,16 @@ class DesktopStore:
                     next_status,
                     actor,
                     notes,
-                    _now(),
+                    changed_at,
                     question_id,
                 ),
+            )
+            invalidate_question_equivalence(
+                connection,
+                question_id,
+                actor=actor,
+                reason="conteúdo da ocorrência alterado; equivalência exige revalidação",
+                changed_at=changed_at,
             )
             self._audit(
                 connection,
@@ -2282,15 +2352,26 @@ class DesktopStore:
             errors = validate_editorial_question(question)
             if errors:
                 raise ValueError("questao ainda nao exportavel: " + "; ".join(errors))
-            if "duplicate" in before["flags"]:
+            equivalence = cast(dict[str, Any] | None, before.get("question_equivalence"))
+            if equivalence and (
+                equivalence.get("status") != "confirmed"
+                or not equivalence.get("isRepresentative")
+                or not equivalence.get("groupFresh")
+            ):
+                raise ValueError("revalide a equivalência antes de aprovar")
+            if "duplicate" in before["flags"] and not equivalence:
                 raise ValueError("resolva a duplicata antes de aprovar")
         with closing(self._connect()) as connection:
+            changed_at = _now()
             connection.execute(
                 """
                 UPDATE questions SET status = ?, reviewer = ?, review_notes = ?,
                     updated_at = ?, exported_at = NULL WHERE id = ?
                 """,
-                (status, actor.strip(), notes, _now(), question_id),
+                (status, actor.strip(), notes, changed_at, question_id),
+            )
+            sync_canonical_editorial_from_question(
+                connection, question_id, changed_at=changed_at
             )
             action = "deferred" if status == "pending" else status
             self._audit(
@@ -2328,7 +2409,14 @@ class DesktopStore:
                 continue
             question = QuestionRecord.model_validate(before["question"])
             errors = validate_editorial_question(question)
-            if "duplicate" in before["flags"]:
+            equivalence = cast(dict[str, Any] | None, before.get("question_equivalence"))
+            if equivalence and (
+                equivalence.get("status") != "confirmed"
+                or not equivalence.get("isRepresentative")
+                or not equivalence.get("groupFresh")
+            ):
+                errors.append(f"questao {question.number}: equivalencia nao confirmada")
+            if "duplicate" in before["flags"] and not equivalence:
                 errors.append(f"questao {question.number}: duplicata nao resolvida")
             invalid.extend(errors)
         if invalid:
@@ -2356,6 +2444,9 @@ class DesktopStore:
                     before,
                     {"status": "approved"},
                     notes,
+                )
+                sync_canonical_editorial_from_question(
+                    connection, question_id, changed_at=now
                 )
             connection.commit()
         return len(before_views)
@@ -2681,7 +2772,13 @@ class DesktopStore:
 
     def query(self, filters: DesktopFilterSet) -> dict[str, Any]:
         rows = self._all_question_rows()
-        views = [self._question_view(row) for row in rows]
+        all_views = [self._question_view(row) for row in rows]
+        views = [
+            view
+            for view in all_views
+            if not view.get("question_equivalence")
+            or view["question_equivalence"].get("isRepresentative")
+        ]
         selected = [view for view in views if self._matches(view, filters)]
         return {
             "questions": selected,
@@ -2692,11 +2789,30 @@ class DesktopStore:
         }
 
     def export_candidates(self, filters: DesktopFilterSet) -> list[dict[str, Any]]:
-        return [
-            self._question_view(row)
-            for row in self._all_question_rows()
-            if self._matches(self._question_view(row), filters)
-        ]
+        views = [self._question_view(row) for row in self._all_question_rows()]
+        selected = [view for view in views if self._matches(view, filters)]
+        representatives = {
+            cast(str, view["question_equivalence"]["occurrenceId"]): view
+            for view in views
+            if view.get("question_equivalence")
+            and view["question_equivalence"].get("isRepresentative")
+        }
+        result: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for view in selected:
+            equivalence = cast(dict[str, Any] | None, view.get("question_equivalence"))
+            candidate = view
+            key = f"occurrence:{view['id']}"
+            if equivalence and equivalence.get("status") == "confirmed":
+                representative_id = cast(
+                    str | None, equivalence.get("representativeOccurrenceId")
+                )
+                candidate = representatives.get(representative_id or "", view)
+                key = f"group:{equivalence['groupId']}"
+            if key not in seen:
+                seen.add(key)
+                result.append(candidate)
+        return result
 
     def _all_question_rows(self) -> list[sqlite3.Row]:
         with closing(self._connect()) as connection:
@@ -2726,10 +2842,42 @@ class DesktopStore:
                                WHERE l.id = q.answer_key_link_id
                                  AND l.status = 'active'
                                  AND l.algorithm_version = 'semantic-association-v2'
-                           )) AS valid_answer_association
+                           )) AS valid_answer_association,
+                           qo.id AS equivalence_occurrence_id,
+                           qeg.id AS equivalence_group_id,
+                           qeg.status AS equivalence_group_status,
+                           qeg.reason AS equivalence_reason,
+                           qeg.expected_occurrences AS equivalence_expected_occurrences,
+                           qeg.occurrence_count AS equivalence_occurrence_count,
+                           cq.id AS canonical_question_id,
+                           COALESCE(cq.representative_occurrence_id,
+                                    qeg.representative_occurrence_id)
+                               AS representative_occurrence_id,
+                           cq.editorial_status AS canonical_editorial_status,
+                           NOT EXISTS (
+                               SELECT 1 FROM question_group_occurrences fresh_go
+                               JOIN question_occurrences fresh_o
+                                 ON fresh_o.id = fresh_go.occurrence_id
+                               JOIN questions fresh_q ON fresh_q.id = fresh_o.question_id
+                               WHERE fresh_go.group_id = qeg.id AND fresh_go.status = 'active'
+                                 AND (fresh_o.source_updated_at != fresh_q.updated_at
+                                   OR fresh_o.answer_key_link_id IS NOT fresh_q.answer_key_link_id
+                                   OR NOT EXISTS (
+                                       SELECT 1 FROM document_links fresh_link
+                                       WHERE fresh_link.id = fresh_q.answer_key_link_id
+                                         AND fresh_link.status = 'active'
+                                         AND fresh_link.algorithm_version =
+                                             'semantic-association-v2'
+                                   ))
+                           ) AS equivalence_group_fresh
                     FROM questions q JOIN documents d ON d.id = q.document_id
                     LEFT JOIN canonical_contests cc ON cc.id = d.canonical_contest_id
                     LEFT JOIN exam_applications ea ON ea.id = d.canonical_application_id
+                    LEFT JOIN question_occurrences qo ON qo.question_id = q.id
+                    LEFT JOIN question_group_occurrences qgo
+                      ON qgo.occurrence_id = qo.id AND qgo.status = 'active'
+                    LEFT JOIN question_equivalence_groups qeg ON qeg.id = qgo.group_id
+                    LEFT JOIN canonical_questions cq ON cq.group_id = qeg.id
                     ORDER BY d.filename, q.question_number
                     """
                 ).fetchall()
@@ -2745,6 +2893,33 @@ class DesktopStore:
         warnings = json.loads(cast(str, payload.pop("warnings_json")))
         scope_ids = json.loads(payload.pop("canonical_scope_ids_json", None) or "[]")
         aliases = json.loads(payload.pop("canonical_aliases_json", None) or "[]")
+        occurrence_id = cast(str | None, payload.pop("equivalence_occurrence_id", None))
+        group_id = cast(str | None, payload.pop("equivalence_group_id", None))
+        group_status = cast(str | None, payload.pop("equivalence_group_status", None))
+        representative_id = cast(
+            str | None, payload.pop("representative_occurrence_id", None)
+        )
+        equivalence = (
+            {
+                "occurrenceId": occurrence_id,
+                "groupId": group_id,
+                "status": group_status,
+                "reason": payload.pop("equivalence_reason", None),
+                "expectedOccurrences": payload.pop(
+                    "equivalence_expected_occurrences", None
+                ),
+                "occurrenceCount": payload.pop("equivalence_occurrence_count", None),
+                "canonicalQuestionId": payload.pop("canonical_question_id", None),
+                "representativeOccurrenceId": representative_id,
+                "isRepresentative": bool(
+                    occurrence_id and representative_id == occurrence_id
+                ),
+                "editorialStatus": payload.pop("canonical_editorial_status", None),
+                "groupFresh": bool(payload.pop("equivalence_group_fresh", False)),
+            }
+            if occurrence_id is not None
+            else None
+        )
         question_record = QuestionRecord.model_validate(question)
         source_document = str(metadata.get("document_title") or payload["filename"])
         import_diagnosis = diagnose_import_readiness(
@@ -2766,10 +2941,27 @@ class DesktopStore:
             for item in import_diagnosis.issues
             if item.code == "unresolved_duplicate"
         ]
+        canonical_duplicate = bool(
+            equivalence
+            and equivalence["status"] == "confirmed"
+            and equivalence["isRepresentative"]
+            and equivalence["groupFresh"]
+        )
+        equivalence_ready = bool(
+            equivalence is None
+            or (
+                equivalence["status"] == "confirmed"
+                and equivalence["isRepresentative"]
+                and equivalence["groupFresh"]
+            )
+        )
+        if canonical_duplicate:
+            duplicate_issues = []
         publication_issues = [
             *validate_editorial_question(question_record),
             *origin_issues,
             *duplicate_issues,
+            *([] if equivalence_ready else ["equivalência canônica exige revalidação"]),
         ]
         readiness_states = ["importable" if import_diagnosis.importable else "blocked"]
         if any(
@@ -2791,10 +2983,12 @@ class DesktopStore:
                 "readiness_states": readiness_states,
                 "publication_ready": not publication_issues,
                 "publication_issues": list(dict.fromkeys(publication_issues)),
+                "question_equivalence": equivalence,
                 "exportable": payload["status"] == "approved"
                 and bool(payload.get("valid_answer_association"))
+                and equivalence_ready
                 and not validate_editorial_question(question_record)
-                and "duplicate" not in flags,
+                and ("duplicate" not in flags or canonical_duplicate),
             }
         )
         if payload.get("canonical_document_id"):
@@ -3054,6 +3248,10 @@ class DesktopStore:
                     )""",  # noqa: S608
                 (now, now, *question_ids),
             )
+            for question_id in question_ids:
+                sync_canonical_editorial_from_question(
+                    connection, question_id, changed_at=now
+                )
             connection.commit()
 
     def document_exceptions(self, document_ids: set[str] | None = None) -> list[dict[str, Any]]:

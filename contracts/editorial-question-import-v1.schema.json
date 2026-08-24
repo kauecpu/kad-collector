@@ -85,6 +85,53 @@
             }
           }
         },
+        "canonicalQuestion": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["questionId", "groupId", "occurrenceCount", "provenances"],
+          "properties": {
+            "questionId": { "type": "string", "minLength": 1 },
+            "groupId": { "type": "string", "minLength": 1 },
+            "occurrenceCount": { "type": "integer", "minimum": 1 },
+            "provenances": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "occurrenceId", "questionId", "questionNumber", "pages", "answerStatus"
+                ],
+                "properties": {
+                  "occurrenceId": { "type": "string", "minLength": 1 },
+                  "questionId": { "type": "string", "minLength": 1 },
+                  "documentId": { "type": ["string", "null"], "minLength": 1 },
+                  "documentVersionId": { "type": ["string", "null"], "minLength": 1 },
+                  "scopeId": { "type": ["string", "null"], "minLength": 1 },
+                  "role": { "type": ["string", "null"] },
+                  "shift": { "type": ["string", "null"] },
+                  "booklet": { "type": ["string", "null"] },
+                  "questionNumber": { "type": "integer", "minimum": 1 },
+                  "pages": {
+                    "type": "array",
+                    "items": { "type": "integer", "minimum": 1 }
+                  },
+                  "sha256": {
+                    "type": ["string", "null"],
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "url": { "type": ["string", "null"] },
+                  "answer": {
+                    "type": ["string", "null"],
+                    "enum": ["A", "B", "C", "D", "E", null]
+                  },
+                  "answerStatus": { "type": "string", "minLength": 1 },
+                  "answerKeyLinkId": { "type": ["string", "null"] }
+                }
+              }
+            }
+          }
+        },
         "publicationStatus": { "const": "draft" }
       }
     }

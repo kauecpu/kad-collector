@@ -37,6 +37,35 @@ class EditorialCanonicalIdentity(StrictModel):
     aliases: list[str] = Field(default_factory=list)
 
 
+class EditorialQuestionProvenance(StrictModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    occurrence_id: str = Field(alias="occurrenceId", min_length=1)
+    question_id: str = Field(alias="questionId", min_length=1)
+    document_id: str | None = Field(default=None, alias="documentId")
+    document_version_id: str | None = Field(default=None, alias="documentVersionId")
+    scope_id: str | None = Field(default=None, alias="scopeId")
+    role: str | None = None
+    shift: str | None = None
+    booklet: str | None = None
+    question_number: int = Field(alias="questionNumber", ge=1)
+    pages: list[int] = Field(default_factory=list)
+    sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    url: str | None = None
+    answer: Literal["A", "B", "C", "D", "E"] | None = None
+    answer_status: str = Field(alias="answerStatus", min_length=1)
+    answer_key_link_id: str | None = Field(default=None, alias="answerKeyLinkId")
+
+
+class EditorialCanonicalQuestion(StrictModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    question_id: str = Field(alias="questionId", min_length=1)
+    group_id: str = Field(alias="groupId", min_length=1)
+    occurrence_count: int = Field(alias="occurrenceCount", ge=1)
+    provenances: list[EditorialQuestionProvenance] = Field(min_length=1)
+
+
 class EditorialQuestionData(StrictModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -57,6 +86,9 @@ class EditorialQuestionData(StrictModel):
     explanation: str
     canonical_identity: EditorialCanonicalIdentity | None = Field(
         default=None, alias="canonicalIdentity"
+    )
+    canonical_question: EditorialCanonicalQuestion | None = Field(
+        default=None, alias="canonicalQuestion"
     )
     publication_status: Literal["draft"] = Field(alias="publicationStatus")
 
@@ -130,12 +162,22 @@ def build_editorial_record(
     question: QuestionRecord,
     *,
     canonical_identity: dict[str, Any] | EditorialCanonicalIdentity | None = None,
+    canonical_question: dict[str, Any] | EditorialCanonicalQuestion | None = None,
 ) -> EditorialImportRecordV1:
     issues = [*validate_editorial_question(question), *_source_errors(batch.source_document)]
     if issues:
         raise ValueError("; ".join(issues))
 
-    stable_id = stable_question_id(batch, question)
+    canonical_question_value = (
+        EditorialCanonicalQuestion.model_validate(canonical_question)
+        if isinstance(canonical_question, dict)
+        else canonical_question
+    )
+    stable_id = (
+        f"cq-{canonical_question_value.question_id}"
+        if canonical_question_value is not None
+        else stable_question_id(batch, question)
+    )
     canonical_value = (
         EditorialCanonicalIdentity.model_validate(canonical_identity)
         if isinstance(canonical_identity, dict)
@@ -165,6 +207,7 @@ def build_editorial_record(
         correct=question.correct_answer,  # type: ignore[arg-type]
         explanation=(question.explanation or "").strip(),
         canonicalIdentity=canonical_value,
+        canonicalQuestion=canonical_question_value,
         publicationStatus="draft",
     )
     fingerprint_payload = data.model_dump(mode="json", by_alias=True, exclude_none=True)

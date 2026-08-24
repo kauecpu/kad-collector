@@ -127,12 +127,24 @@ def _evaluate_filtered_questions(
     for view in candidates:
         question = QuestionRecord.model_validate(view["question"])
         issues = validate_editorial_question(question)
+        equivalence = store.question_equivalence(cast(str, view["id"]))
+        confirmed_representative = bool(
+            equivalence
+            and equivalence.get("status") == "confirmed"
+            and equivalence.get("groupFresh")
+            and equivalence.get("occurrenceId")
+            == equivalence.get("representativeOccurrenceId")
+        )
         if view["status"] != "approved":
             issues.append("questão ainda não aprovada na revisão editorial")
         if not view.get("valid_answer_association"):
             issues.append("resposta sem associação semantic-association-v2 ativa e válida")
-        if "duplicate" in view["flags"]:
+        if "duplicate" in view["flags"] and not confirmed_representative:
             issues.append("conteúdo duplicado; resolva antes da exportação")
+        if equivalence and not confirmed_representative:
+            issues.append(
+                "grupo de equivalência ainda não confirmado ou ocorrência não representante"
+            )
         metadata = cast(dict[str, Any], view["metadata"])
         if not str(metadata.get("provider") or "").strip():
             issues.append("provider da origem não informado")
@@ -145,6 +157,28 @@ def _evaluate_filtered_questions(
             issues.append("PDF de evidência não encontrado")
         elif _sha256(source_path) != expected_sha:
             issues.append("PDF de evidência diverge do hash processado")
+        canonical_question: dict[str, Any] | None = None
+        provenance_evidence: dict[str, Path] = {}
+        if confirmed_representative and equivalence is not None:
+            public_provenances: list[dict[str, Any]] = []
+            for raw_provenance in cast(list[dict[str, Any]], equivalence["provenances"]):
+                provenance = dict(raw_provenance)
+                provenance_path = Path(str(provenance.pop("localPath", "")))
+                provenance.pop("filename", None)
+                provenance_sha = str(provenance.get("sha256") or "")
+                if not provenance_path.is_file():
+                    issues.append("PDF de evidência de uma proveniência não encontrado")
+                elif _sha256(provenance_path) != provenance_sha:
+                    issues.append("PDF de proveniência diverge do hash processado")
+                else:
+                    provenance_evidence[provenance_sha] = provenance_path
+                public_provenances.append(provenance)
+            canonical_question = {
+                "questionId": equivalence["canonicalQuestionId"],
+                "groupId": equivalence["groupId"],
+                "occurrenceCount": equivalence["occurrenceCount"],
+                "provenances": public_provenances,
+            }
         if issues:
             exceptions.append(_question_exception(view, issues))
             reason_counts.update(issues)
@@ -154,6 +188,7 @@ def _evaluate_filtered_questions(
                 _batch_for(view, question),
                 question,
                 canonical_identity=cast(dict[str, Any] | None, view.get("canonical_identity")),
+                canonical_question=canonical_question,
             )
         except ValueError as exc:
             issues = [str(exc)]
@@ -176,6 +211,7 @@ def _evaluate_filtered_questions(
         included_views.append(view)
         exported_ids.append(cast(str, view["id"]))
         evidence[expected_sha] = source_path
+        evidence.update(provenance_evidence)
 
     return _DesktopExportEvaluation(
         selected=len(candidates),
