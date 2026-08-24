@@ -80,6 +80,21 @@ def _ollama_response() -> dict[str, Any]:
 
 
 class OllamaAIProviderTests(unittest.TestCase):
+    def test_defaults_to_loopback_without_api_key_or_background_call(self) -> None:
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("kad_collector.ollama_ai_provider.httpx.Client") as client_factory,
+        ):
+            provider = OllamaCanonicalEnrichmentProvider(MODEL)
+
+        self.assertEqual(provider.model, MODEL)
+        client_factory.assert_called_once_with(
+            base_url="http://127.0.0.1:11434",
+            timeout=180.0,
+            trust_env=False,
+        )
+        client_factory.return_value.post.assert_not_called()
+
     def test_posts_native_schema_request_and_returns_usage_metrics(self) -> None:
         calls: list[httpx.Request] = []
 

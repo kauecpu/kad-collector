@@ -1,5 +1,9 @@
 # Benchmark controlado da classificação canônica
 
+Este documento trata apenas das APIs pagas Gemini, Qwen e DeepSeek. O benchmark sem custo de
+API executado pelo Ollama tem preflight, checkpoints e aprovações próprios em
+[`ollama-local-ai.md`](ollama-local-ai.md). Um fluxo não faz fallback para o outro.
+
 O benchmark compara Gemini, Qwen e DeepSeek sobre a mesma amostra e o mesmo contrato de
 produção. Ele avalia somente disciplina, matéria, assunto e nível. Dificuldade, explicação,
 gabarito e dados de identidade não entram no payload.
