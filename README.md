@@ -223,6 +223,16 @@ SELECT exam_version_id, COUNT(*) FROM document_links WHERE status = 'active' GRO
 SELECT event_key, COUNT(*) FROM document_identity_events GROUP BY event_key HAVING COUNT(*) > 1;
 ```
 
+### Identidade canônica de concursos e aplicações
+
+O catálogo `canonical-identity-v1` separa concurso, aplicação, cargo, etapa, turno, caderno e
+documento oficial. Aliases como `RFB22` funcionam como entrada e resolvem para IDs estáveis; os
+nomes de exibição podem mudar sem alterar relações. Documentos locais são vinculados ao catálogo
+por SHA-256 ou `external_id`, com conflitos enviados para revisão.
+
+A migração, o diagrama, a regressão RFB22 e os comandos de simulação e aplicação estão em
+[`docs/canonical-identity-v1.md`](docs/canonical-identity-v1.md).
+
 Para consulta pela interface local, `GET /api/bootstrap` inclui `semanticSummary` e
 `GET /api/documents/{id}/identity` devolve o read model de identidade. Ambos usam o token
 efêmero da sessão; o segundo endpoint não devolve `canonicalText` nem texto integral do PDF.

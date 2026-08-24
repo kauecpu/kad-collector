@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal, cast
 
 from .answer_key import parse_answer_key
+from .canonical_identity import canonicalize_profile_for_version
 from .semantic_identity import (
     AssociationCandidate,
     DocumentAssociationDecision,
@@ -62,7 +63,11 @@ def build_runtime_context(
     ).fetchone()
     if row is None:
         raise ValueError("versão de prova não encontrada")
-    exam_profile = DocumentSemanticProfile.model_validate_json(cast(str, row["profile_json"]))
+    exam_profile = canonicalize_profile_for_version(
+        connection,
+        exam_version_id,
+        DocumentSemanticProfile.model_validate_json(cast(str, row["profile_json"])),
+    )
     question_rows = connection.execute(
         "SELECT q.question_number FROM questions q JOIN documents d ON d.id = q.document_id "
         "WHERE d.document_version_id = ? ORDER BY q.question_number",
@@ -93,8 +98,10 @@ def build_runtime_context(
             for number, entry in entries.items()
         }
         answer_updates[version_id] = updates
-        candidate_profile = DocumentSemanticProfile.model_validate_json(
-            canonical_json(item["profile"])
+        candidate_profile = canonicalize_profile_for_version(
+            connection,
+            version_id,
+            DocumentSemanticProfile.model_validate_json(canonical_json(item["profile"])),
         )
         candidates.append(
             AssociationCandidate(

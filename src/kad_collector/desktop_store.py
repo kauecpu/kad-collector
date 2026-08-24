@@ -14,6 +14,11 @@ from typing import Any, Literal, cast
 
 from .answer_association import decide_runtime_association, invalidate_answer_association
 from .answer_key import parse_answer_key
+from .canonical_identity import (
+    canonical_identity_for_version,
+    canonical_summary,
+    initialize_canonical_identity_schema,
+)
 from .desktop_limits import validate_pdf_batch
 from .desktop_models import (
     ClassifierProviderName,
@@ -462,6 +467,7 @@ class DesktopStore:
             if "parsing_result_json" not in document_columns:
                 connection.execute("ALTER TABLE documents ADD COLUMN parsing_result_json TEXT")
             initialize_semantic_schema(connection)
+            initialize_canonical_identity_schema(connection)
             connection.commit()
 
     def create_job(
@@ -700,11 +706,22 @@ class DesktopStore:
 
     def semantic_document_view(self, document_id: str) -> dict[str, Any]:
         with closing(self._connect()) as connection:
-            return semantic_document_view(connection, document_id)
+            view = semantic_document_view(connection, document_id)
+            version_id = cast(str | None, view["documentVersionId"])
+            view["canonicalIdentity"] = (
+                canonical_identity_for_version(connection, version_id)
+                if version_id is not None
+                else None
+            )
+            return view
 
     def semantic_summary(self) -> dict[str, int]:
         with closing(self._connect()) as connection:
             return semantic_summary(connection)
+
+    def canonical_summary(self) -> dict[str, int]:
+        with closing(self._connect()) as connection:
+            return canonical_summary(connection)
 
     def semantic_presentation_summary(self) -> dict[str, int]:
         """Return the compact, stable semantic read model for the desktop bootstrap."""
@@ -2690,6 +2707,20 @@ class DesktopStore:
                            d.metadata_json, d.warnings_json, d.job_id,
                            d.size_bytes, d.created_at AS document_created_at,
                            d.semantic_resolution,
+                           d.canonical_contest_id, d.canonical_application_id,
+                           d.canonical_document_id,
+                           cc.canonical_key AS canonical_contest_key,
+                           cc.display_name AS canonical_contest_name,
+                           ea.canonical_key AS canonical_application_key,
+                           ea.display_name AS canonical_application_name,
+                           (SELECT json_group_array(cds.scope_id)
+                            FROM canonical_document_scopes cds
+                            WHERE cds.document_id = d.canonical_document_id)
+                               AS canonical_scope_ids_json,
+                           (SELECT json_group_array(ca.raw_value)
+                            FROM contest_aliases ca
+                            WHERE ca.contest_id = d.canonical_contest_id
+                              AND ca.status = 'active') AS canonical_aliases_json,
                            (d.document_version_id IS NULL OR EXISTS(
                                SELECT 1 FROM document_links l
                                WHERE l.id = q.answer_key_link_id
@@ -2697,6 +2728,8 @@ class DesktopStore:
                                  AND l.algorithm_version = 'semantic-association-v2'
                            )) AS valid_answer_association
                     FROM questions q JOIN documents d ON d.id = q.document_id
+                    LEFT JOIN canonical_contests cc ON cc.id = d.canonical_contest_id
+                    LEFT JOIN exam_applications ea ON ea.id = d.canonical_application_id
                     ORDER BY d.filename, q.question_number
                     """
                 ).fetchall()
@@ -2710,6 +2743,8 @@ class DesktopStore:
         flags = json.loads(cast(str, payload.pop("flags_json")))
         metadata = json.loads(cast(str, payload.pop("metadata_json")))
         warnings = json.loads(cast(str, payload.pop("warnings_json")))
+        scope_ids = json.loads(payload.pop("canonical_scope_ids_json", None) or "[]")
+        aliases = json.loads(payload.pop("canonical_aliases_json", None) or "[]")
         question_record = QuestionRecord.model_validate(question)
         source_document = str(metadata.get("document_title") or payload["filename"])
         import_diagnosis = diagnose_import_readiness(
@@ -2762,6 +2797,18 @@ class DesktopStore:
                 and "duplicate" not in flags,
             }
         )
+        if payload.get("canonical_document_id"):
+            payload["canonical_identity"] = {
+                "contestId": payload.get("canonical_contest_id"),
+                "contestKey": payload.get("canonical_contest_key"),
+                "contestName": payload.get("canonical_contest_name"),
+                "applicationId": payload.get("canonical_application_id"),
+                "applicationKey": payload.get("canonical_application_key"),
+                "applicationName": payload.get("canonical_application_name"),
+                "documentId": payload.get("canonical_document_id"),
+                "scopeIds": sorted(set(scope_ids)),
+                "aliases": sorted(set(aliases)),
+            }
         if document_title := metadata.get("document_title"):
             payload["stored_filename"] = payload["filename"]
             payload["filename"] = document_title

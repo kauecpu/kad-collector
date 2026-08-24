@@ -178,6 +178,32 @@ class EditorialExportTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "HTTPS"):
                 build_editorial_record(source_batch, source_batch.questions[0])
 
+    def test_record_exports_canonical_identity_without_replacing_display_text(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "prova.pdf"
+            source.write_bytes(b"evidence")
+            source_batch = batch(source, [question(1)])
+            record = build_editorial_record(
+                source_batch,
+                source_batch.questions[0],
+                canonical_identity={
+                    "contestId": "contest-id",
+                    "contestKey": "contest-key",
+                    "contestName": "Concurso Exemplo 2026",
+                    "applicationId": "application-id",
+                    "applicationKey": "application-key",
+                    "applicationName": "Aplicação principal",
+                    "documentId": "document-id",
+                    "scopeIds": ["scope-id"],
+                    "aliases": ["EX26"],
+                },
+            )
+            payload = record.model_dump(mode="json", by_alias=True, exclude_none=True)
+
+        self.assertEqual(payload["data"]["concurso"], "Concurso Exemplo 2026")
+        self.assertEqual(payload["data"]["canonicalIdentity"]["contestId"], "contest-id")
+        self.assertEqual(payload["data"]["canonicalIdentity"]["scopeIds"], ["scope-id"])
+
 
 if __name__ == "__main__":
     unittest.main()

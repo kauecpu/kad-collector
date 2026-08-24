@@ -23,6 +23,20 @@ class EditorialAlternative(StrictModel):
     text: str = Field(min_length=1)
 
 
+class EditorialCanonicalIdentity(StrictModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    contest_id: str = Field(alias="contestId", min_length=1)
+    contest_key: str = Field(alias="contestKey", min_length=1)
+    contest_name: str = Field(alias="contestName", min_length=1)
+    application_id: str = Field(alias="applicationId", min_length=1)
+    application_key: str = Field(alias="applicationKey", min_length=1)
+    application_name: str = Field(alias="applicationName", min_length=1)
+    document_id: str = Field(alias="documentId", min_length=1)
+    scope_ids: list[str] = Field(alias="scopeIds", min_length=1)
+    aliases: list[str] = Field(default_factory=list)
+
+
 class EditorialQuestionData(StrictModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -41,6 +55,9 @@ class EditorialQuestionData(StrictModel):
     alternatives: list[EditorialAlternative] = Field(min_length=2, max_length=5)
     correct: Literal["A", "B", "C", "D", "E"]
     explanation: str
+    canonical_identity: EditorialCanonicalIdentity | None = Field(
+        default=None, alias="canonicalIdentity"
+    )
     publication_status: Literal["draft"] = Field(alias="publicationStatus")
 
 
@@ -109,13 +126,21 @@ def _source_errors(document: DocumentRecord) -> list[str]:
 
 
 def build_editorial_record(
-    batch: QuestionBatch, question: QuestionRecord
+    batch: QuestionBatch,
+    question: QuestionRecord,
+    *,
+    canonical_identity: dict[str, Any] | EditorialCanonicalIdentity | None = None,
 ) -> EditorialImportRecordV1:
     issues = [*validate_editorial_question(question), *_source_errors(batch.source_document)]
     if issues:
         raise ValueError("; ".join(issues))
 
     stable_id = stable_question_id(batch, question)
+    canonical_value = (
+        EditorialCanonicalIdentity.model_validate(canonical_identity)
+        if isinstance(canonical_identity, dict)
+        else canonical_identity
+    )
     data = EditorialQuestionData(
         id=stable_id,
         discipline=question.discipline or "",
@@ -125,7 +150,11 @@ def build_editorial_record(
         year=question.year or 0,
         role=question.role or "",
         institution=question.organization or "",
-        concurso=question.concurso or "",
+        concurso=(
+            canonical_value.contest_name
+            if canonical_value is not None
+            else question.concurso or ""
+        ),
         level=question.level,  # type: ignore[arg-type]
         difficulty=question.difficulty,  # type: ignore[arg-type]
         statement=question.statement.strip(),
@@ -135,9 +164,10 @@ def build_editorial_record(
         ],
         correct=question.correct_answer,  # type: ignore[arg-type]
         explanation=(question.explanation or "").strip(),
+        canonicalIdentity=canonical_value,
         publicationStatus="draft",
     )
-    fingerprint_payload = data.model_dump(mode="json", by_alias=True)
+    fingerprint_payload = data.model_dump(mode="json", by_alias=True, exclude_none=True)
     fingerprint_payload.pop("id")
     fingerprint = _canonical_sha256(fingerprint_payload)
     provider = _slug(batch.source_document.source_id, maximum=100)
@@ -216,7 +246,9 @@ def export_admin_package(
         seen_fingerprints.add(record.source.fingerprint)
         records.append(record)
 
-    record_payloads = [item.model_dump(mode="json", by_alias=True) for item in records]
+    record_payloads = [
+        item.model_dump(mode="json", by_alias=True, exclude_none=True) for item in records
+    ]
     exception_payloads = [
         item.model_dump(mode="json", by_alias=True) for item in exceptions
     ]
