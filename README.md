@@ -143,18 +143,23 @@ uma disciplina. Somente uma linha compativel com cabecalho controlado e o catalo
 correspondente aos metadados do concurso pode acionar essa etapa da cascata. Essa restricao
 evita que termos comuns de um concurso recebam silenciosamente a classificacao de outro.
 
-O enriquecimento das questoes canonicas aceita `openai`, `gemini`, `qwen` e `deepseek`, mas
-continua desligado por padrao. Ele so faz chamadas externas quando a execucao combina
-`--apply`, `--enable-ai` e um provedor configurado. Terra permanece como padrao da OpenAI;
-os demais defaults sao Gemini 3.7 Flash, Qwen 3.7 Plus e DeepSeek V4 Pro. Consulte
-`docs/canonical-ai-providers.md` antes de configurar as chaves e os endpoints regionais.
+A classificacao canonica aceita `gemini`, `qwen` e `deepseek` e permanece desligada por
+padrao. Uma chamada externa exige `--apply`, `--enable-ai` e a escolha explicita de um desses
+tres provedores. Nao existe fallback automatico entre eles. Consulte
+`docs/canonical-ai-providers.md` antes de configurar chaves e endpoints regionais.
 
-O motor local sempre roda primeiro. A IA recebe apenas campos ausentes, texto da questao,
-opcoes fechadas da taxonomia e metadados editoriais ja conhecidos. Ela nao pode criar nomes,
-escolher gabarito, resolver identidade ou substituir classificacoes locais ou humanas. Sem
-chave, sem internet ou com resposta invalida, o processamento preserva o resultado local e
-encaminha a pendencia para revisao. Chaves nunca sao salvas no SQLite, no executavel ou nos
-relatorios.
+O motor local sempre roda primeiro. A IA recebe, em uma chamada por questao, somente os campos
+ausentes entre disciplina, materia, assunto e nivel, alem do texto da questao, das opcoes
+fechadas da taxonomia e dos valores editoriais conhecidos. Dificuldade e explicacao permanecem
+opcionais: nao acionam IA, nao entram na metrica de completude e nao enviam a questao para
+revisao. A IA nao pode criar nomes, escolher gabarito, resolver identidade ou substituir
+classificacoes locais ou humanas. Sem chave, sem internet ou com resposta invalida, o
+processamento preserva o resultado local e encaminha apenas a pendencia taxonomica para
+revisao. Chaves nunca sao salvas no SQLite, no executavel ou nos relatorios.
+
+O benchmark planejado comparara Gemini, Qwen e DeepSeek apenas em disciplina, materia,
+assunto e nivel. Cada provedor sera executado separadamente sobre o mesmo conjunto; esta
+configuracao nao dispara o benchmark automaticamente.
 
 Os filtros usam OR dentro da mesma categoria e AND entre categorias. Origem, conteudo,
 qualidade e situacao possuem contagens facetadas, busca, chips ativos e filtros salvos. Uma
@@ -246,11 +251,12 @@ com escopo e resposta oficial compatíveis e direciona classificação e exporta
 representante. O algoritmo, o modelo de auditoria, a CLI e os limites da regressão sintética
 RFB22 estão em [`docs/question-equivalence-v1.md`](docs/question-equivalence-v1.md).
 
-### Classificação e enriquecimento canônico
+### Classificação canônica
 
-`canonical-classification-v1` executa a taxonomia local sobre representantes elegíveis, envia
-à IA somente os campos que continuarem ausentes e encaminha incertezas para revisão humana. O
-contrato restrito, a política de confiança, a auditoria, a privacidade e os comandos estão em
+`canonical-classification-v2` executa a taxonomia local sobre representantes elegíveis, envia
+à IA somente disciplina, matéria, assunto e nível que continuarem ausentes e encaminha
+incertezas para revisão humana. O contrato restrito, a política de confiança, a auditoria, a
+privacidade e os comandos estão em
 [`docs/canonical-classification-v1.md`](docs/canonical-classification-v1.md).
 
 Para consulta pela interface local, `GET /api/bootstrap` inclui `semanticSummary` e

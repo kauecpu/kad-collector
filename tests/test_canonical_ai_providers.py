@@ -19,14 +19,14 @@ from kad_collector.canonical_classification import (
     CanonicalAIResponse,
     CanonicalClassificationError,
 )
-from kad_collector.cli import build_parser
+from kad_collector.cli import build_parser, main
 
 
 def _request() -> CanonicalAIRequest:
     return CanonicalAIRequest(
         canonical_question_id="canonical-1",
         content_fingerprint="sha256",
-        requested_fields=("difficulty",),
+        requested_fields=("subject",),
         statement="A norma apresentada resolve a situação descrita.",
         alternatives=("Primeira alternativa", "Segunda alternativa"),
         known_fields={"discipline": "Direito"},
@@ -45,8 +45,8 @@ def _response_payload() -> dict[str, object]:
     return {
         "suggestions": [
             {
-                "field": "difficulty",
-                "value": "Média",
+                "field": "subject",
+                "value": "Aplicação da lei",
                 "confidence": 0.91,
                 "evidence": "O enunciado exige interpretação da regra apresentada.",
             }
@@ -92,7 +92,7 @@ def _client(completion: Any) -> tuple[Any, _Recorder, _Recorder]:
 class CanonicalAIProvidersTests(unittest.TestCase):
     def test_cli_accepts_all_dormant_providers(self) -> None:
         parser = build_parser()
-        for provider in ("openai", "gemini", "qwen", "deepseek"):
+        for provider in ("gemini", "qwen", "deepseek"):
             with self.subTest(provider=provider):
                 args = parser.parse_args(
                     [
@@ -105,6 +105,29 @@ class CanonicalAIProvidersTests(unittest.TestCase):
                 )
                 self.assertEqual(args.provider, provider)
                 self.assertFalse(args.enable_ai)
+
+    def test_cli_rejects_openai_and_requires_an_explicit_provider_for_ai(self) -> None:
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(
+                [
+                    "classify-canonical-questions",
+                    "--database",
+                    "collector.sqlite3",
+                    "--provider",
+                    "openai",
+                ]
+            )
+        with patch("sys.stderr"):
+            result = main(
+                [
+                    "classify-canonical-questions",
+                    "--database",
+                    "collector.sqlite3",
+                    "--enable-ai",
+                ]
+            )
+        self.assertEqual(result, 1)
 
     def test_qwen_uses_json_mode_and_disables_thinking(self) -> None:
         client, recorder, _ = _client(_completion())
@@ -121,7 +144,7 @@ class CanonicalAIProvidersTests(unittest.TestCase):
         self.assertIn("JSON", call["messages"][0]["content"])
         sent = json.loads(call["messages"][1]["content"])
         self.assertEqual(sent["outputSchema"]["properties"]["suggestions"]["items"]
-                         ["properties"]["field"]["enum"], ["difficulty"])
+                         ["properties"]["field"]["enum"], ["subject"])
         self.assertNotIn("correct_answer", json.dumps(sent))
 
     def test_deepseek_uses_json_mode_and_disables_thinking(self) -> None:
@@ -140,8 +163,8 @@ class CanonicalAIProvidersTests(unittest.TestCase):
         parsed = CanonicalAIResponse(
             suggestions=[
                 AISuggestion(
-                    field="difficulty",
-                    value="Média",
+                    field="subject",
+                    value="Aplicação da lei",
                     confidence=0.91,
                     evidence="O enunciado exige interpretação da regra apresentada.",
                 )
@@ -173,8 +196,12 @@ class CanonicalAIProvidersTests(unittest.TestCase):
                 provider.enrich(_request())
 
     def test_factory_rejects_unknown_provider(self) -> None:
-        with self.assertRaisesRegex(CanonicalClassificationError, "desconhecido"):
-            create_canonical_ai_provider("unknown")
+        for provider in ("openai", "unknown"):
+            with (
+                self.subTest(provider=provider),
+                self.assertRaisesRegex(CanonicalClassificationError, "desconhecido"),
+            ):
+                create_canonical_ai_provider(provider)
 
 
 if __name__ == "__main__":

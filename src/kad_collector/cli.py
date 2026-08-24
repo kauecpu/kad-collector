@@ -251,8 +251,7 @@ def build_parser() -> argparse.ArgumentParser:
     classify_canonical.add_argument("--enable-ai", action="store_true")
     classify_canonical.add_argument(
         "--provider",
-        choices=["openai", "gemini", "qwen", "deepseek"],
-        default="openai",
+        choices=["gemini", "qwen", "deepseek"],
     )
     classify_canonical.add_argument("--model")
     classify_canonical.add_argument("--run-id")
@@ -491,6 +490,8 @@ def _run(args: argparse.Namespace) -> int:
         )
         return 0
     if args.command == "classify-canonical-questions":
+        if args.enable_ai and args.provider is None:
+            raise ValueError("--provider é obrigatório quando --enable-ai é usado")
         provider = (
             create_canonical_ai_provider(args.provider, args.model)
             if args.enable_ai
