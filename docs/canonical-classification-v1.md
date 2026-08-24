@@ -77,8 +77,8 @@ prompt, o schema ou as regras de aplicação.
 
 O banco registra separadamente a questão canônica, hash do conteúdo, campos solicitados,
 provedor, modelo, versão do prompt, horários, payload seguro, resposta estruturada, validação,
-tokens e custo informado. O cliente usa `store=false`; a política de retenção do provedor ainda
-deve ser considerada antes de habilitar IA em dados operacionais.
+tokens e custo informado. OpenAI usa `store=false`; as políticas de retenção e região de cada
+provedor devem ser consideradas antes de habilitar IA em dados operacionais.
 
 ## Validação e confiança
 
@@ -159,7 +159,7 @@ kad-collector classify-canonical-questions `
   --report data/reports/canonical-classification-rfb22.json
 ```
 
-Aplicação com o provedor permitido:
+Aplicação com um provedor configurado:
 
 ```powershell
 kad-collector classify-canonical-questions `
@@ -173,6 +173,10 @@ kad-collector classify-canonical-questions `
   --limit 100 `
   --report data/reports/canonical-classification-rfb22.json
 ```
+
+Os valores aceitos em `--provider` são `openai`, `gemini`, `qwen` e `deepseek`. Seus modelos
+padrão, variáveis de ambiente, endpoints e parâmetros de raciocínio estão documentados em
+`docs/canonical-ai-providers.md`. Todos permanecem inativos sem `--enable-ai`.
 
 Repita a mesma configuração e o mesmo `run-id` até `remaining` chegar a zero. O relatório inclui
 elegíveis, campos determinísticos, completas, candidatas e chamadas de IA, campos solicitados,

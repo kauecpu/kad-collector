@@ -9,8 +9,8 @@ from .ai_processor import process_extraction_manifest
 from .answer_association import revalidate_answer_key_associations
 from .answer_key import match_answer_key
 from .automation import run_automatic
+from .canonical_ai_providers import create_canonical_ai_provider
 from .canonical_classification import (
-    OpenAICanonicalEnrichmentProvider,
     classification_review_items,
     review_canonical_classification,
     run_canonical_classification,
@@ -249,7 +249,11 @@ def build_parser() -> argparse.ArgumentParser:
     classify_canonical.add_argument("--contest", help="alias canônico opcional")
     classify_canonical.add_argument("--apply", action="store_true")
     classify_canonical.add_argument("--enable-ai", action="store_true")
-    classify_canonical.add_argument("--provider", choices=["openai"], default="openai")
+    classify_canonical.add_argument(
+        "--provider",
+        choices=["openai", "gemini", "qwen", "deepseek"],
+        default="openai",
+    )
     classify_canonical.add_argument("--model")
     classify_canonical.add_argument("--run-id")
     classify_canonical.add_argument("--limit", type=int)
@@ -488,8 +492,8 @@ def _run(args: argparse.Namespace) -> int:
         return 0
     if args.command == "classify-canonical-questions":
         provider = (
-            OpenAICanonicalEnrichmentProvider(args.model)
-            if args.enable_ai and args.provider == "openai"
+            create_canonical_ai_provider(args.provider, args.model)
+            if args.enable_ai
             else None
         )
         store = DesktopStore(args.database)

@@ -23,7 +23,7 @@ marcados como `needs_ocr` e nao seguem automaticamente para a IA.
 ## Requisitos
 
 - Python 3.11 ou superior;
-- uma chave da API OpenAI apenas para os fluxos gerais que usam a etapa `process`;
+- uma chave do provedor escolhido apenas quando uma etapa de IA for habilitada;
 - acesso local ao painel administrativo do KAD para importar o JSONL revisado.
 
 ## Instalacao no Windows (CMD)
@@ -37,7 +37,7 @@ python -m pip install -e ".[database,dev]"
 copy config\sources.example.toml config\sources.toml
 ```
 
-Para as etapas que usam IA, defina a chave somente na sessao atual do CMD:
+Para a etapa geral `process`, defina a chave OpenAI somente na sessao atual do CMD:
 
 ```cmd
 set OPENAI_API_KEY=sua_chave
@@ -143,12 +143,18 @@ uma disciplina. Somente uma linha compativel com cabecalho controlado e o catalo
 correspondente aos metadados do concurso pode acionar essa etapa da cascata. Essa restricao
 evita que termos comuns de um concurso recebam silenciosamente a classificacao de outro.
 
-Para usar o ultimo recurso opcional com a OpenAI, defina `OPENAI_API_KEY` e, se necessario,
-`OPENAI_MODEL` somente na sessao que inicia o aplicativo, e selecione OpenAI ao criar o lote.
-O motor local sempre roda primeiro. A IA recebe apenas IDs de opcoes fechadas da taxonomia e
-nao pode criar nomes nem substituir classificacoes locais ou humanas. Sem chave, sem internet
-ou com resposta invalida, o processamento continua com o mesmo resultado local. A chave nunca
-e salva no SQLite, no executavel ou nos relatorios.
+O enriquecimento das questoes canonicas aceita `openai`, `gemini`, `qwen` e `deepseek`, mas
+continua desligado por padrao. Ele so faz chamadas externas quando a execucao combina
+`--apply`, `--enable-ai` e um provedor configurado. Terra permanece como padrao da OpenAI;
+os demais defaults sao Gemini 3.7 Flash, Qwen 3.7 Plus e DeepSeek V4 Pro. Consulte
+`docs/canonical-ai-providers.md` antes de configurar as chaves e os endpoints regionais.
+
+O motor local sempre roda primeiro. A IA recebe apenas campos ausentes, texto da questao,
+opcoes fechadas da taxonomia e metadados editoriais ja conhecidos. Ela nao pode criar nomes,
+escolher gabarito, resolver identidade ou substituir classificacoes locais ou humanas. Sem
+chave, sem internet ou com resposta invalida, o processamento preserva o resultado local e
+encaminha a pendencia para revisao. Chaves nunca sao salvas no SQLite, no executavel ou nos
+relatorios.
 
 Os filtros usam OR dentro da mesma categoria e AND entre categorias. Origem, conteudo,
 qualidade e situacao possuem contagens facetadas, busca, chips ativos e filtros salvos. Uma
