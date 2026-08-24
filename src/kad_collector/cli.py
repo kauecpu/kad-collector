@@ -20,6 +20,7 @@ from .json_utils import read_json, write_json
 from .models import CollectionFilters, QuestionBatch
 from .pdf_extractor import extract_manifest
 from .promotion import build_promotion_package, dry_run_promotion
+from .question_equivalence import run_question_equivalence_migration
 from .regression import RegressionError, run_regression
 from .review import approve_batch
 from .review_server import serve_review_application
@@ -218,6 +219,22 @@ def build_parser() -> argparse.ArgumentParser:
     canonical_identities.add_argument(
         "--report", type=_path, default=Path("data/reports/canonical-identity-migration.json")
     )
+    equivalence = subparsers.add_parser(
+        "migrate-question-equivalence",
+        help="simula ou aplica a consolidação question-equivalence-v1",
+    )
+    equivalence.add_argument("--database", type=_path, required=True)
+    equivalence.add_argument(
+        "--contest", help="alias canônico opcional, por exemplo RFB22"
+    )
+    equivalence.add_argument("--apply", action="store_true")
+    equivalence.add_argument("--run-id")
+    equivalence.add_argument("--limit", type=int)
+    equivalence.add_argument(
+        "--report",
+        type=_path,
+        default=Path("data/reports/question-equivalence-migration.json"),
+    )
     return parser
 
 
@@ -400,6 +417,26 @@ def _run(args: argparse.Namespace) -> int:
             f"{payload['mappedDocuments']} documentos migrados; "
             f"{payload['unresolvedDocuments']} incompletos; "
             f"{payload['ambiguousDocuments']} ambíguos. Relatório: {args.report}"
+        )
+        return 0
+    if args.command == "migrate-question-equivalence":
+        store = DesktopStore(args.database)
+        with closing(store._connect()) as connection:
+            equivalence_report = run_question_equivalence_migration(
+                connection,
+                contest_alias=args.contest,
+                apply=args.apply,
+                run_id=args.run_id,
+                limit=args.limit,
+            )
+        payload = equivalence_report.as_dict()
+        write_json(args.report, payload)
+        print(
+            f"Equivalência {payload['mode']}: {payload['occurrencesTotal']} ocorrências; "
+            f"{payload['confirmedGroups']} grupos confirmados; "
+            f"{payload['canonicalQuestions']} questões canônicas; "
+            f"{payload['sentToReview']} grupos para revisão; "
+            f"{payload['remaining']} pendentes. Relatório: {args.report}"
         )
         return 0
     if args.command == "approve":

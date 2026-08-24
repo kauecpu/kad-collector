@@ -233,6 +233,13 @@ por SHA-256 ou `external_id`, com conflitos enviados para revisão.
 A migração, o diagrama, a regressão RFB22 e os comandos de simulação e aplicação estão em
 [`docs/canonical-identity-v1.md`](docs/canonical-identity-v1.md).
 
+### Equivalência e questão canônica
+
+`question-equivalence-v1` preserva todas as ocorrências por caderno, confirma grupos somente
+com escopo e resposta oficial compatíveis e direciona classificação e exportação para uma única
+representante. O algoritmo, o modelo de auditoria, a CLI e os limites da regressão sintética
+RFB22 estão em [`docs/question-equivalence-v1.md`](docs/question-equivalence-v1.md).
+
 Para consulta pela interface local, `GET /api/bootstrap` inclui `semanticSummary` e
 `GET /api/documents/{id}/identity` devolve o read model de identidade. Ambos usam o token
 efêmero da sessão; o segundo endpoint não devolve `canonicalText` nem texto integral do PDF.
