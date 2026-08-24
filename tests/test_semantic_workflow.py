@@ -497,6 +497,12 @@ class SemanticWorkflowIntegrationTests(unittest.TestCase):
         declared_type: str = "exam",
         title: str = "Prova 2026",
     ) -> None:
+        metadata = {
+            "stage": "Prova objetiva",
+            "turn": "Manhã",
+            "variant": "Tipo 1",
+            **metadata,
+        }
         path = Path(self.directory.name) / f"{document_id}.pdf"
         path.write_bytes(binary)
         normalized = NormalizedDocument(
@@ -552,6 +558,9 @@ class SemanticWorkflowIntegrationTests(unittest.TestCase):
             "board": "Banca",
             "concurso": "Concurso",
             "year": 2026,
+            "stage": "Prova objetiva",
+            "turn": "Manhã",
+            "variant": "Tipo 1",
         }
         values.update(changes)
         return DesktopImportMetadata.model_validate(values)
@@ -579,7 +588,7 @@ class SemanticWorkflowIntegrationTests(unittest.TestCase):
                 for table in tables
             }
 
-    def test_manual_identity_correction_is_audited_and_preserves_question_decision(self) -> None:
+    def test_manual_identity_correction_invalidates_unlinked_official_answer(self) -> None:
         self.add_document(
             "exam",
             binary=b"manual-correction",
@@ -612,8 +621,9 @@ class SemanticWorkflowIntegrationTests(unittest.TestCase):
         self.assertEqual(result.profile.identity.variants.normalized_values, ("tipo 2",))
         self.assertEqual(result.profile.content_fingerprint, original.profile.content_fingerprint)
         question = self.store.question(question_id)
-        self.assertEqual(question["status"], "approved")
-        self.assertEqual(question["reviewer"], "revisora")
+        self.assertEqual(question["status"], "exception")
+        self.assertIsNone(question["reviewer"])
+        self.assertEqual(question["question"]["answer_status"], "missing")
         corrected = [
             event for event in self.store.identity_events("exam")
             if event["action"] == "identity_corrected"
@@ -1310,7 +1320,10 @@ class SemanticWorkflowIntegrationTests(unittest.TestCase):
         self.add_document(
             "key",
             binary=b"key-no-candidate",
-            text="Banca: Banca\nConcurso: Concurso\nAno: 2026\nCargo: Analista\n1 - B",
+            text=(
+                "Banca: Banca\nConcurso: Concurso\nAno: 2026\n"
+                "Cargo: Analista\n1 - B\n2 - B"
+            ),
             metadata={**core, "role": "Analista"},
             declared_type="answer_key",
             title="Gabarito Analista",
@@ -1319,7 +1332,7 @@ class SemanticWorkflowIntegrationTests(unittest.TestCase):
         first_id = self.store.save_question(
             "exam", self.lineage_question(1), QuestionClassification()
         )
-        missing_id = self.store.save_question(
+        second_id = self.store.save_question(
             "exam",
             self.lineage_question(2, answer_status="missing", correct_answer=None),
             QuestionClassification(),
@@ -1346,9 +1359,14 @@ class SemanticWorkflowIntegrationTests(unittest.TestCase):
                 (exam.document_version_id,),
             ).fetchone()[0]
         self.assertEqual((active, rejected), (0, 1))
-        self.assertEqual(self.store.question(first_id)["question"]["correct_answer"], "B")
-        missing = self.store.question(missing_id)["question"]
-        self.assertEqual((missing["answer_status"], missing["correct_answer"]), ("missing", None))
+        first = self.store.question(first_id)
+        self.assertEqual(
+            (first["question"]["answer_status"], first["question"]["correct_answer"]),
+            ("missing", None),
+        )
+        self.assertEqual(first["status"], "exception")
+        second = self.store.question(second_id)["question"]
+        self.assertEqual((second["answer_status"], second["correct_answer"]), ("missing", None))
 
     def test_concurrent_corrections_leave_one_coherent_version_and_auditable_history(self) -> None:
         self.add_document(

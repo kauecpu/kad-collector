@@ -50,7 +50,7 @@ ResolutionOutcome = Literal[
     "exact_duplicate", "republication", "new_version", "new_identity", "uncertain"
 ]
 AssociationOutcome = Literal[
-    "selected", "missing", "conflict", "insufficient_evidence", "ambiguous"
+    "selected", "missing", "conflict", "insufficient_evidence", "ambiguous", "incomplete"
 ]
 
 
@@ -288,10 +288,32 @@ class IdentityResolution(FrozenSemanticModel):
     algorithm_version: str = IDENTITY_ALGORITHM_VERSION
 
 
+class QuestionInterval(FrozenSemanticModel):
+    first: int
+    last: int
+
+    @model_validator(mode="after")
+    def validate_interval(self) -> QuestionInterval:
+        if self.first < 1:
+            raise ValueError("o intervalo deve começar em uma questão positiva")
+        if self.last < self.first:
+            raise ValueError("o fim do intervalo não pode anteceder o início")
+        return self
+
+
 class AssociationCandidate(FrozenSemanticModel):
     version_id: str
     profile: DocumentSemanticProfile
     predecessor_version_id: str | None = None
+    question_interval: QuestionInterval | None = None
+
+
+class AssociationFieldComparison(FrozenSemanticModel):
+    field: str
+    status: Literal["matched", "incompatible", "incomplete"]
+    exam_values: tuple[SemanticValue, ...] = ()
+    candidate_values: tuple[SemanticValue, ...] = ()
+    reason: str
 
 
 class CandidateAssessment(FrozenSemanticModel):
@@ -300,6 +322,8 @@ class CandidateAssessment(FrozenSemanticModel):
     score: int
     matched_fields: tuple[str, ...] = ()
     conflicts: tuple[str, ...] = ()
+    incomplete_fields: tuple[str, ...] = ()
+    comparisons: tuple[AssociationFieldComparison, ...] = ()
     reasons: tuple[str, ...] = ()
 
 

@@ -192,7 +192,12 @@ def parse_answer_key(
         return grid_entries
     entries: dict[int, AnswerEntry] = {}
     variants = list(dict.fromkeys(item.upper() for item in _VARIANT_PATTERN.findall(text)))
-    normalized_variant = (variant or "").upper()
+    requested_variant_number = _variant_number(variant)
+    normalized_variant = (
+        f"V{requested_variant_number}"
+        if requested_variant_number is not None
+        else (variant or "").upper()
+    )
     for line in text.splitlines():
         matches = list(_INLINE_PATTERN.finditer(line))
         if not matches:

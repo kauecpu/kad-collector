@@ -40,7 +40,6 @@ from .models import QuestionRecord
 from .semantic_identity import (
     AssociationCandidate,
     DocumentAssociationDecision,
-    DocumentSemanticProfile,
     extract_semantic_profile,
 )
 from .semantic_resolution import select_answer_key
@@ -854,28 +853,8 @@ class DesktopProcessor:
         self, exam: dict[str, Any]
     ) -> tuple[dict[str, Any] | None, DocumentAssociationDecision]:
         exam_version_id = cast(str, exam["document_version_id"])
-        exam_profile = DocumentSemanticProfile.model_validate_json(
-            json.dumps(self.store.semantic_document_view(cast(str, exam["id"]))["profile"])
-        )
-        candidates = self.store.answer_key_candidates(exam_version_id)
-        decision = select_answer_key(
-            exam_profile,
-            [
-                AssociationCandidate(
-                    version_id=cast(str, candidate["answer_key_version_id"]),
-                    profile=DocumentSemanticProfile.model_validate_json(
-                        json.dumps(candidate["profile"])
-                    ),
-                    predecessor_version_id=cast(
-                        str | None, candidate["predecessor_version_id"]
-                    ),
-                )
-                for candidate in candidates
-            ],
-        )
-        if decision.selected_version_id is None:
-            return None, decision
-        return self.store.answer_key_document(decision.selected_version_id), decision
+        answer_key, decision = self.store.answer_key_association(exam_version_id)
+        return answer_key, decision
 
     def _associate_exam(self, exam: dict[str, Any]) -> tuple[bool, bool]:
         answer_key, decision = self._association_for_exam(exam)

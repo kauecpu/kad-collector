@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, cast
 
+from .answer_association import decide_runtime_association, invalidate_answer_association
 from .answer_key import parse_answer_key
 from .desktop_limits import validate_pdf_batch
 from .desktop_models import (
@@ -27,7 +28,7 @@ from .import_readiness import diagnose_import_readiness
 from .models import QuestionRecord
 from .semantic_identity import (
     IDENTITY_ALGORITHM_VERSION,
-    AssociationCandidate,
+    DocumentAssociationDecision,
     DocumentSemanticProfile,
     IdentityResolution,
     extract_semantic_profile,
@@ -1037,6 +1038,15 @@ class DesktopStore:
             connection.commit()
         return link_id
 
+    def answer_key_association(
+        self, exam_version_id: str
+    ) -> tuple[dict[str, Any] | None, DocumentAssociationDecision]:
+        with closing(self._connect()) as connection:
+            _, decision = decide_runtime_association(connection, exam_version_id)
+        if decision.selected_version_id is None:
+            return None, decision
+        return self.answer_key_document(decision.selected_version_id), decision
+
     def apply_answer_key_updates(
         self,
         document_id: str,
@@ -1049,17 +1059,6 @@ class DesktopStore:
         with closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
-                current = connection.execute(
-                    "SELECT answer_key_version_id FROM document_links "
-                    "WHERE exam_version_id = ? AND status = 'active'",
-                    (exam_version_id,),
-                ).fetchone()
-                if (
-                    current is not None
-                    and current["answer_key_version_id"] == answer_key_version_id
-                ):
-                    connection.commit()
-                    return False
                 exam_row = connection.execute(
                     "SELECT profile_json FROM document_versions "
                     "WHERE id = ? AND document_role = 'exam'",
@@ -1068,26 +1067,21 @@ class DesktopStore:
                 if exam_row is None:
                     connection.rollback()
                     return False
-                candidates = active_answer_key_candidates(connection, exam_version_id)
-                current_decision = select_answer_key(
-                    DocumentSemanticProfile.model_validate_json(
-                        cast(str, exam_row["profile_json"])
-                    ),
-                    [
-                        AssociationCandidate(
-                            version_id=cast(str, candidate["answer_key_version_id"]),
-                            profile=DocumentSemanticProfile.model_validate_json(
-                                _json(candidate["profile"])
-                            ),
-                            predecessor_version_id=cast(
-                                str | None, candidate["predecessor_version_id"]
-                            ),
-                        )
-                        for candidate in candidates
-                    ],
+                _, current_decision = decide_runtime_association(
+                    connection, exam_version_id
                 )
                 if current_decision.selected_version_id != answer_key_version_id:
                     connection.commit()
+                    return False
+                link_id = record_document_link(
+                    connection,
+                    exam_version_id,
+                    answer_key_version_id,
+                    current_decision,
+                    _now(),
+                )
+                if link_id is None:
+                    connection.rollback()
                     return False
                 rows = connection.execute(
                     "SELECT * FROM questions WHERE document_id = ? ORDER BY question_number",
@@ -1099,8 +1093,15 @@ class DesktopStore:
                     update = updates.get(int(row["question_number"]))
                     if update is None:
                         continue
+                    current_payload = json.loads(cast(str, row["payload_json"]))
+                    if (
+                        current_payload.get("answer_status") == update[0]
+                        and current_payload.get("correct_answer") == update[1]
+                        and row["answer_key_link_id"] == link_id
+                    ):
+                        continue
                     question = QuestionRecord.model_validate(
-                        json.loads(cast(str, row["payload_json"]))
+                        current_payload
                     ).model_copy(
                         update={"answer_status": update[0], "correct_answer": update[1]}
                     )
@@ -1141,7 +1142,9 @@ class DesktopStore:
                     connection.execute(
                         "UPDATE questions SET payload_json = ?, fingerprint = ?, "
                         "decision_fingerprint = ?, confidence = ?, flags_json = ?, status = ?, "
-                        "reviewer = ?, review_notes = ?, exported_at = ?, updated_at = ? "
+                        "reviewer = ?, review_notes = ?, exported_at = ?, "
+                        "answer_key_link_id = ?, answer_invalidated_at = NULL, "
+                        "answer_invalidation_reason = NULL, updated_at = ? "
                         "WHERE id = ?",
                         (
                             _json(question.model_dump(mode="json")),
@@ -1153,6 +1156,7 @@ class DesktopStore:
                             reviewer,
                             review_notes,
                             exported_at,
+                            link_id,
                             now,
                             row["id"],
                         ),
@@ -1187,17 +1191,7 @@ class DesktopStore:
                         )
                     applied += 1
                 if not applied:
-                    connection.rollback()
-                    return False
-                link_id = record_document_link(
-                    connection,
-                    exam_version_id,
-                    answer_key_version_id,
-                    current_decision,
-                    now,
-                )
-                if link_id is None:
-                    connection.rollback()
+                    connection.commit()
                     return False
                 connection.commit()
                 return True
@@ -1769,6 +1763,12 @@ class DesktopStore:
                 select_answer_key(old_profile, []),
                 corrected_at,
             )
+            invalidate_answer_association(
+                connection,
+                exam_version_id=corrected_version_id,
+                reason="Resposta invalidada após o documento deixar de ser uma prova.",
+                changed_at=corrected_at,
+            )
         for exam in affected:
             exam_version_id = cast(str, exam["exam_version_id"])
             document_id = cast(str | None, exam["document_id"])
@@ -1777,25 +1777,19 @@ class DesktopStore:
             exam_profile = DocumentSemanticProfile.model_validate_json(
                 cast(str, exam["profile_json"])
             )
-            candidates = active_answer_key_candidates(connection, exam_version_id)
-            decision = select_answer_key(
-                exam_profile,
-                [
-                    AssociationCandidate(
-                        version_id=cast(str, candidate["answer_key_version_id"]),
-                        profile=DocumentSemanticProfile.model_validate_json(
-                            _json(candidate["profile"])
-                        ),
-                        predecessor_version_id=cast(
-                            str | None, candidate["predecessor_version_id"]
-                        ),
-                    )
-                    for candidate in candidates
-                ],
-            )
+            _, decision = decide_runtime_association(connection, exam_version_id)
             if decision.selected_version_id is None:
                 record_corrected_document_link(
                     connection, exam_version_id, decision, corrected_at
+                )
+                invalidate_answer_association(
+                    connection,
+                    exam_version_id=exam_version_id,
+                    reason=(
+                        "Resposta invalidada porque a correção semântica removeu "
+                        "a associação de gabarito válida."
+                    ),
+                    changed_at=corrected_at,
                 )
                 continue
             key_document = connection.execute(
@@ -1805,8 +1799,21 @@ class DesktopStore:
                 (decision.selected_version_id,),
             ).fetchone()
             if key_document is None:
+                incomplete_decision = decision.model_copy(
+                    update={
+                        "outcome": "incomplete",
+                        "selected_version_id": None,
+                        "reason": "documento operacional do gabarito não localizado",
+                    }
+                )
                 record_corrected_document_link(
-                    connection, exam_version_id, decision, corrected_at
+                    connection, exam_version_id, incomplete_decision, corrected_at
+                )
+                invalidate_answer_association(
+                    connection,
+                    exam_version_id=exam_version_id,
+                    reason="Resposta invalidada porque o gabarito não possui documento local.",
+                    changed_at=corrected_at,
                 )
                 continue
             answer_text = "\n".join(
@@ -1857,6 +1864,14 @@ class DesktopStore:
         updates: dict[int, tuple[str, str | None]],
         corrected_at: str,
     ) -> None:
+        link_id = record_corrected_document_link(
+            connection,
+            exam_version_id,
+            decision,
+            corrected_at,
+        )
+        if link_id is None:
+            raise RuntimeError("a correção não produziu vínculo de gabarito ativo")
         rows = connection.execute(
             "SELECT * FROM questions WHERE document_id = ? ORDER BY question_number",
             (document_id,),
@@ -1914,12 +1929,15 @@ class DesktopStore:
                 and row["reviewer"] == reviewer
                 and row["review_notes"] == review_notes
                 and row["exported_at"] == exported_at
+                and row["answer_key_link_id"] == link_id
             ):
                 continue
             connection.execute(
                 "UPDATE questions SET payload_json = ?, fingerprint = ?, "
                 "decision_fingerprint = ?, confidence = ?, flags_json = ?, status = ?, "
-                "reviewer = ?, review_notes = ?, exported_at = ?, updated_at = ? WHERE id = ?",
+                "reviewer = ?, review_notes = ?, exported_at = ?, answer_key_link_id = ?, "
+                "answer_invalidated_at = NULL, answer_invalidation_reason = NULL, "
+                "updated_at = ? WHERE id = ?",
                 (
                     payload_json,
                     fingerprint,
@@ -1930,6 +1948,7 @@ class DesktopStore:
                     reviewer,
                     review_notes,
                     exported_at,
+                    link_id,
                     corrected_at,
                     row["id"],
                 ),
@@ -1959,12 +1978,6 @@ class DesktopStore:
                     reason="Decisão editorial invalidada após mudança da resposta oficial.",
                     changed_at=corrected_at,
                 )
-        record_corrected_document_link(
-            connection,
-            exam_version_id,
-            decision,
-            corrected_at,
-        )
 
     def page_exists(self, document_id: str, page_number: int) -> bool:
         with closing(self._connect()) as connection:
@@ -2676,7 +2689,13 @@ class DesktopStore:
                     SELECT q.*, d.filename, d.local_path, d.sha256 AS document_sha256,
                            d.metadata_json, d.warnings_json, d.job_id,
                            d.size_bytes, d.created_at AS document_created_at,
-                           d.semantic_resolution
+                           d.semantic_resolution,
+                           (d.document_version_id IS NULL OR EXISTS(
+                               SELECT 1 FROM document_links l
+                               WHERE l.id = q.answer_key_link_id
+                                 AND l.status = 'active'
+                                 AND l.algorithm_version = 'semantic-association-v2'
+                           )) AS valid_answer_association
                     FROM questions q JOIN documents d ON d.id = q.document_id
                     ORDER BY d.filename, q.question_number
                     """
@@ -2738,6 +2757,7 @@ class DesktopStore:
                 "publication_ready": not publication_issues,
                 "publication_issues": list(dict.fromkeys(publication_issues)),
                 "exportable": payload["status"] == "approved"
+                and bool(payload.get("valid_answer_association"))
                 and not validate_editorial_question(question_record)
                 and "duplicate" not in flags,
             }
@@ -2973,7 +2993,18 @@ class DesktopStore:
         with closing(self._connect()) as connection:
             connection.execute(
                 f"""UPDATE questions SET status = 'exported', exported_at = ?, updated_at = ?
-                    WHERE id IN ({placeholders})""",  # noqa: S608
+                    WHERE id IN ({placeholders}) AND (
+                        EXISTS (
+                            SELECT 1 FROM documents d
+                            WHERE d.id = questions.document_id
+                              AND d.document_version_id IS NULL
+                        ) OR EXISTS (
+                            SELECT 1 FROM document_links l
+                            WHERE l.id = questions.answer_key_link_id
+                              AND l.status = 'active'
+                              AND l.algorithm_version = 'semantic-association-v2'
+                        )
+                    )""",  # noqa: S608
                 (now, now, *question_ids),
             )
             connection.commit()

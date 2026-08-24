@@ -8,6 +8,7 @@ from typing import Any, cast
 from .semantic_identity import (
     IDENTITY_ALGORITHM_VERSION,
     AssociationCandidate,
+    AssociationFieldComparison,
     AssociationOutcome,
     CandidateAssessment,
     DocumentAssociationDecision,
@@ -15,19 +16,22 @@ from .semantic_identity import (
     ExamSemanticIdentity,
     IdentityResolution,
     KnownDocumentVersion,
+    QuestionInterval,
     SemanticField,
     canonical_json,
     semantic_role_values_compatible,
     stable_sha256,
 )
 
-ASSOCIATION_ALGORITHM_VERSION = "semantic-association-v1"
+ASSOCIATION_ALGORITHM_VERSION = "semantic-association-v2"
 MATCH_WEIGHTS = {
     "board": 12, "concurso": 12, "year": 12, "organization": 8,
-    "role": 10, "stage": 8, "turn": 8, "variant": 8,
+    "role": 10, "stage": 8, "turn": 8, "variant": 8, "interval": 12,
 }
-MINIMUM_SCORE = 36
+REQUIRED_SCOPE_FIELDS = ("role", "stage", "turn", "variant")
+MINIMUM_SCORE = 82
 MINIMUM_MARGIN = 8
+LEGACY_MINIMUM_SCORE = 36
 
 
 def _field(profile: DocumentSemanticProfile, name: str) -> SemanticField:
@@ -44,22 +48,6 @@ def _field_name(name: str) -> str:
     return {"role": "roles", "turn": "turns", "variant": "variants"}.get(name, name)
 
 
-def _title_bonus(exam: DocumentSemanticProfile, candidate: DocumentSemanticProfile) -> int:
-    exam_values = {
-        value for name in ExamSemanticIdentity.model_fields
-        for field in (_field(exam, name),)
-        for value in field.normalized_values
-        if any(item.source == "document_title" for item in field.evidence)
-    }
-    candidate_values = {
-        value for name in ExamSemanticIdentity.model_fields
-        for field in (_field(candidate, name),)
-        for value in field.normalized_values
-        if any(item.source == "document_title" for item in field.evidence)
-    }
-    return min(2, len(exam_values & candidate_values))
-
-
 def _weak_only(field: SemanticField) -> bool:
     return bool(field.evidence) and all(item.strength == "weak" for item in field.evidence)
 
@@ -70,7 +58,43 @@ def _role_fields_compatible(exam: SemanticField, candidate: SemanticField) -> bo
     )
 
 
-def _assess(exam: DocumentSemanticProfile, item: AssociationCandidate) -> CandidateAssessment:
+def _comparison(
+    name: str,
+    status: str,
+    exam_values: Sequence[str | int],
+    candidate_values: Sequence[str | int],
+    reason: str,
+) -> AssociationFieldComparison:
+    return AssociationFieldComparison(
+        field=name,
+        status=cast(Any, status),
+        exam_values=tuple(exam_values),
+        candidate_values=tuple(candidate_values),
+        reason=reason,
+    )
+
+
+def _title_bonus(exam: DocumentSemanticProfile, candidate: DocumentSemanticProfile) -> int:
+    exam_values = {
+        value
+        for name in ExamSemanticIdentity.model_fields
+        for field in (_field(exam, name),)
+        for value in field.normalized_values
+        if any(item.source == "document_title" for item in field.evidence)
+    }
+    candidate_values = {
+        value
+        for name in ExamSemanticIdentity.model_fields
+        for field in (_field(candidate, name),)
+        for value in field.normalized_values
+        if any(item.source == "document_title" for item in field.evidence)
+    }
+    return min(2, len(exam_values & candidate_values))
+
+
+def _assess_legacy(
+    exam: DocumentSemanticProfile, item: AssociationCandidate
+) -> CandidateAssessment:
     candidate = item.profile
     conflicts: list[str] = []
     incomplete_scope = False
@@ -80,6 +104,8 @@ def _assess(exam: DocumentSemanticProfile, item: AssociationCandidate) -> Candid
     if candidate.has_conflict:
         conflicts.append("perfil do candidato contém conflito")
     for name, weight in MATCH_WEIGHTS.items():
+        if name == "interval":
+            continue
         exam_field = _field(
             exam, name if name not in {"role", "turn", "variant"} else _field_name(name)
         )
@@ -93,13 +119,13 @@ def _assess(exam: DocumentSemanticProfile, item: AssociationCandidate) -> Candid
             reasons.append(f"{name}: título fraco não participa da decisão")
             continue
         if candidate_field.status != "known":
-            if name in {"role", "stage", "turn", "variant"}:
+            if name in REQUIRED_SCOPE_FIELDS:
                 reasons.append(f"{name}: cobertura desconhecida")
                 incomplete_scope = True
             continue
         if _weak_only(candidate_field):
             reasons.append(f"{name}: título fraco não participa da decisão")
-            if name in {"role", "stage", "turn", "variant"}:
+            if name in REQUIRED_SCOPE_FIELDS:
                 incomplete_scope = True
             continue
         values_compatible = (
@@ -113,13 +139,265 @@ def _assess(exam: DocumentSemanticProfile, item: AssociationCandidate) -> Candid
             conflicts.append(f"{name}: valores incompatíveis")
             continue
         matched.append(name)
+        exam_strong = any(item.strength == "strong" for item in exam_field.evidence)
+        candidate_strong = any(item.strength == "strong" for item in candidate_field.evidence)
+        if exam_strong and candidate_strong:
+            score += weight
+    score += _title_bonus(exam, candidate)
+
+    def has_strong_evidence(field: SemanticField) -> bool:
+        return bool(field.evidence) and any(
+            item.strength == "strong" for item in field.evidence
+        )
+
+    strong_ok = all(
+        _field(exam, name).status == "known"
+        and _candidate_field(candidate, name).status == "known"
+        and not set(_field(exam, name).normalized_values).isdisjoint(
+            _candidate_field(candidate, name).normalized_values
+        )
+        and has_strong_evidence(_field(exam, name))
+        and has_strong_evidence(_candidate_field(candidate, name))
+        for name in {"board", "concurso", "year"}
+    )
+    if not strong_ok:
+        reasons.append("banca, concurso e ano não formam três evidências fortes")
+    if score > 0:
+        reasons.append(f"pontuação semântica: {score}")
+    return CandidateAssessment(
+        version_id=item.version_id,
+        compatible=not conflicts and not incomplete_scope and strong_ok,
+        score=score,
+        matched_fields=tuple(matched),
+        conflicts=tuple(conflicts),
+        reasons=tuple(reasons),
+    )
+
+
+def _select_answer_key_legacy(
+    exam_profile: DocumentSemanticProfile,
+    candidates: Sequence[AssociationCandidate],
+) -> DocumentAssociationDecision:
+    assessments = tuple(
+        sorted(
+            (_assess_legacy(exam_profile, item) for item in candidates),
+            key=lambda value: (-value.score, value.version_id),
+        )
+    )
+    if not assessments:
+        return DocumentAssociationDecision(
+            outcome="missing", selected_version_id=None, assessments=(),
+            minimum_score=LEGACY_MINIMUM_SCORE, minimum_margin=MINIMUM_MARGIN,
+            achieved_margin=None, reason="nenhum gabarito candidato",
+            algorithm_version=ASSOCIATION_ALGORITHM_VERSION,
+        )
+    compatible = [
+        item for item in assessments
+        if item.compatible and item.score >= LEGACY_MINIMUM_SCORE
+    ]
+    if not compatible:
+        outcome: AssociationOutcome = (
+            "conflict" if any(item.conflicts for item in assessments)
+            else "insufficient_evidence"
+        )
+        return DocumentAssociationDecision(
+            outcome=outcome, selected_version_id=None, assessments=assessments,
+            minimum_score=LEGACY_MINIMUM_SCORE, minimum_margin=MINIMUM_MARGIN,
+            achieved_margin=None,
+            reason=(
+                "candidato eliminado por conflito conhecido"
+                if outcome == "conflict" else "evidência semântica insuficiente"
+            ),
+            algorithm_version=ASSOCIATION_ALGORITHM_VERSION,
+        )
+
+    def semantic_score(assessment: CandidateAssessment) -> int:
+        candidate = next(
+            item for item in candidates if item.version_id == assessment.version_id
+        )
+        return assessment.score - _title_bonus(exam_profile, candidate.profile)
+
+    top = max(
+        compatible,
+        key=lambda item: (semantic_score(item), item.score, item.version_id),
+    )
+    second = next((item for item in compatible if item.version_id != top.version_id), None)
+    best_semantic = semantic_score(top)
+    tied = [item for item in compatible if semantic_score(item) == best_semantic]
+    definitive_tiebreak = False
+    if len(tied) > 1:
+        tied_candidates = [
+            next(item for item in candidates if item.version_id == assessment.version_id)
+            for assessment in tied
+        ]
+        definitives = [
+            item for item in tied_candidates if item.profile.answer_key_state == "definitive"
+        ]
+        preliminaries = [
+            item for item in tied_candidates if item.profile.answer_key_state == "preliminary"
+        ]
+        unique_definitive = (
+            definitives[0]
+            if len(definitives) == 1
+            and len(preliminaries) == len(tied_candidates) - 1
+            else None
+        )
+        if unique_definitive is None:
+            return DocumentAssociationDecision(
+                outcome="ambiguous", selected_version_id=None, assessments=assessments,
+                minimum_score=LEGACY_MINIMUM_SCORE, minimum_margin=MINIMUM_MARGIN,
+                achieved_margin=0, reason="candidatos semanticamente equivalentes",
+                algorithm_version=ASSOCIATION_ALGORITHM_VERSION,
+            )
+        top = next(
+            item for item in compatible if item.version_id == unique_definitive.version_id
+        )
+        second = next((item for item in compatible if item.version_id != top.version_id), None)
+        definitive_tiebreak = True
+    margin = semantic_score(top) - semantic_score(second) if second is not None else None
+    top_candidate = next(item for item in candidates if item.version_id == top.version_id)
+    second_candidate = (
+        next(item for item in candidates if item.version_id == second.version_id)
+        if second is not None else None
+    )
+    predecessor_exception = (
+        second_candidate is not None
+        and top_candidate.profile.answer_key_state == "definitive"
+        and second_candidate.profile.answer_key_state == "preliminary"
+        and top_candidate.predecessor_version_id == second_candidate.version_id
+    )
+    if (
+        second is not None and margin is not None and margin < MINIMUM_MARGIN
+        and not predecessor_exception and not definitive_tiebreak
+    ):
+        return DocumentAssociationDecision(
+            outcome="ambiguous", selected_version_id=None, assessments=assessments,
+            minimum_score=LEGACY_MINIMUM_SCORE, minimum_margin=MINIMUM_MARGIN,
+            achieved_margin=margin, reason="margem entre candidatos insuficiente",
+            algorithm_version=ASSOCIATION_ALGORITHM_VERSION,
+        )
+    return DocumentAssociationDecision(
+        outcome="selected", selected_version_id=top.version_id, assessments=assessments,
+        minimum_score=LEGACY_MINIMUM_SCORE, minimum_margin=MINIMUM_MARGIN,
+        achieved_margin=margin, reason="candidato com evidência semântica suficiente",
+        algorithm_version=ASSOCIATION_ALGORITHM_VERSION,
+    )
+
+
+def _assess(
+    exam: DocumentSemanticProfile,
+    exam_interval: QuestionInterval | None,
+    item: AssociationCandidate,
+) -> CandidateAssessment:
+    candidate = item.profile
+    conflicts: list[str] = []
+    incomplete: list[str] = []
+    matched: list[str] = []
+    comparisons: list[AssociationFieldComparison] = []
+    reasons: list[str] = []
+    score = 0
+    if candidate.has_conflict:
+        conflicts.append("perfil do candidato contém conflito")
+    for name, weight in MATCH_WEIGHTS.items():
+        if name == "interval":
+            continue
+        exam_field = _field(
+            exam, name if name not in {"role", "turn", "variant"} else _field_name(name)
+        )
+        candidate_field = _candidate_field(candidate, name)
+        if exam_field.status == "conflict" or candidate_field.status == "conflict":
+            conflicts.append(f"{name}: conflito conhecido")
+            comparisons.append(_comparison(
+                name, "incompatible", exam_field.normalized_values,
+                candidate_field.normalized_values, "campo semântico conflitante",
+            ))
+            continue
+        if exam_field.status != "known":
+            if name in REQUIRED_SCOPE_FIELDS or name in {"board", "concurso", "year"}:
+                incomplete.append(name)
+                comparisons.append(_comparison(
+                    name, "incomplete", (), candidate_field.normalized_values,
+                    "metadado obrigatório ausente na prova",
+                ))
+            continue
+        if _weak_only(exam_field):
+            if name in REQUIRED_SCOPE_FIELDS or name in {"board", "concurso", "year"}:
+                incomplete.append(name)
+                comparisons.append(_comparison(
+                    name, "incomplete", exam_field.normalized_values,
+                    candidate_field.normalized_values,
+                    "a prova possui somente evidência fraca",
+                ))
+            continue
+        if candidate_field.status != "known":
+            if name in REQUIRED_SCOPE_FIELDS or name in {"board", "concurso", "year"}:
+                incomplete.append(name)
+                comparisons.append(_comparison(
+                    name, "incomplete", exam_field.normalized_values, (),
+                    "metadado obrigatório ausente no gabarito",
+                ))
+            continue
+        if _weak_only(candidate_field):
+            if name in REQUIRED_SCOPE_FIELDS or name in {"board", "concurso", "year"}:
+                incomplete.append(name)
+                comparisons.append(_comparison(
+                    name, "incomplete", exam_field.normalized_values,
+                    candidate_field.normalized_values,
+                    "o gabarito possui somente evidência fraca",
+                ))
+            continue
+        values_compatible = (
+            _role_fields_compatible(exam_field, candidate_field)
+            if name == "role"
+            else not set(exam_field.normalized_values).isdisjoint(
+                candidate_field.normalized_values
+            )
+        )
+        if not values_compatible:
+            conflicts.append(f"{name}: valores incompatíveis")
+            comparisons.append(_comparison(
+                name, "incompatible", exam_field.normalized_values,
+                candidate_field.normalized_values, "valores normalizados não coincidem",
+            ))
+            continue
+        matched.append(name)
+        comparisons.append(_comparison(
+            name, "matched", exam_field.normalized_values,
+            candidate_field.normalized_values, "valores normalizados compatíveis",
+        ))
         exam_strong = any(evidence.strength == "strong" for evidence in exam_field.evidence)
         candidate_strong = any(
             evidence.strength == "strong" for evidence in candidate_field.evidence
         )
         if exam_strong and candidate_strong:
             score += weight
-    score += _title_bonus(exam, candidate)
+    if exam_interval is None or item.question_interval is None:
+        incomplete.append("interval")
+        comparisons.append(_comparison(
+            "interval", "incomplete",
+            (() if exam_interval is None else (exam_interval.first, exam_interval.last)),
+            (() if item.question_interval is None else (
+                item.question_interval.first, item.question_interval.last
+            )),
+            "intervalo objetivo ausente na prova ou no gabarito",
+        ))
+    elif exam_interval != item.question_interval:
+        conflicts.append("interval: valores incompatíveis")
+        comparisons.append(_comparison(
+            "interval", "incompatible",
+            (exam_interval.first, exam_interval.last),
+            (item.question_interval.first, item.question_interval.last),
+            "o intervalo do gabarito não fecha com o da prova",
+        ))
+    else:
+        matched.append("interval")
+        score += MATCH_WEIGHTS["interval"]
+        comparisons.append(_comparison(
+            "interval", "matched",
+            (exam_interval.first, exam_interval.last),
+            (item.question_interval.first, item.question_interval.last),
+            "intervalos objetivos idênticos",
+        ))
     strong = {"board", "concurso", "year"}
     def has_strong_evidence(field: Any) -> bool:
         return bool(field.evidence) and any(
@@ -137,15 +415,26 @@ def _assess(exam: DocumentSemanticProfile, item: AssociationCandidate) -> Candid
         for name in strong
     )
     if not strong_ok:
-        reasons.append("banca, concurso e ano não formam três evidências fortes")
+        for name in strong:
+            if (
+                not any(item.startswith(f"{name}:") for item in conflicts)
+                and name not in incomplete
+            ):
+                incomplete.append(name)
+        reasons.append("banca, concurso e ano não formam três evidências fortes compatíveis")
+    if candidate.answer_key_state == "definitive":
+        score += 8
+        reasons.append("gabarito definitivo recebe prioridade editorial explícita")
     if score > 0:
         reasons.append(f"pontuação semântica: {score}")
     return CandidateAssessment(
         version_id=item.version_id,
-        compatible=not conflicts and not incomplete_scope and strong_ok,
+        compatible=not conflicts and not incomplete and strong_ok,
         score=score,
         matched_fields=tuple(matched),
         conflicts=tuple(conflicts),
+        incomplete_fields=tuple(dict.fromkeys(incomplete)),
+        comparisons=tuple(comparisons),
         reasons=tuple(reasons),
     )
 
@@ -153,9 +442,13 @@ def _assess(exam: DocumentSemanticProfile, item: AssociationCandidate) -> Candid
 def select_answer_key(
     exam_profile: DocumentSemanticProfile,
     candidates: Sequence[AssociationCandidate],
+    *,
+    exam_interval: QuestionInterval | None = None,
 ) -> DocumentAssociationDecision:
+    if exam_interval is None and all(item.question_interval is None for item in candidates):
+        return _select_answer_key_legacy(exam_profile, candidates)
     assessments = tuple(sorted(
-        (_assess(exam_profile, item) for item in candidates),
+        (_assess(exam_profile, exam_interval, item) for item in candidates),
         key=lambda value: (-value.score, value.version_id),
     ))
     if not assessments:
@@ -169,76 +462,35 @@ def select_answer_key(
     if not compatible:
         outcome: AssociationOutcome = (
             "conflict" if any(item.conflicts for item in assessments)
+            else "incomplete" if any(item.incomplete_fields for item in assessments)
             else "insufficient_evidence"
         )
         return DocumentAssociationDecision(
             outcome=outcome, selected_version_id=None, assessments=assessments,
             minimum_score=MINIMUM_SCORE, minimum_margin=MINIMUM_MARGIN,
-            achieved_margin=None, reason=("candidato eliminado por conflito conhecido"
-                                          if outcome == "conflict"
-                                          else "evidência semântica insuficiente"),
+            achieved_margin=None, reason=(
+                "candidato eliminado por conflito conhecido"
+                if outcome == "conflict"
+                else "metadado obrigatório ou intervalo ausente"
+                if outcome == "incomplete"
+                else "evidência semântica insuficiente"
+            ),
             algorithm_version=ASSOCIATION_ALGORITHM_VERSION,
         )
     top = compatible[0]
     second = compatible[1] if len(compatible) > 1 else None
-    def semantic_score(assessment: CandidateAssessment) -> int:
-        candidate = next(item for item in candidates if item.version_id == assessment.version_id)
-        return assessment.score - _title_bonus(exam_profile, candidate.profile)
-
-    top = max(
-        compatible,
-        key=lambda item: (semantic_score(item), item.score, item.version_id),
-    )
-    second = next((item for item in compatible if item.version_id != top.version_id), None)
-    best_semantic = semantic_score(top)
-    tied = [item for item in compatible if semantic_score(item) == best_semantic]
-    definitive_tiebreak = False
+    best_semantic = top.score
+    tied = [item for item in compatible if item.score == best_semantic]
     if len(tied) > 1:
-        tied_candidates = [
-            next(item for item in candidates if item.version_id == assessment.version_id)
-            for assessment in tied
-        ]
-        definitives = [
-            item for item in tied_candidates
-            if item.profile.answer_key_state == "definitive"
-        ]
-        preliminaries = [
-            item for item in tied_candidates
-            if item.profile.answer_key_state == "preliminary"
-        ]
-        unique_definitive = (
-            definitives[0]
-            if len(definitives) == 1
-            and len(preliminaries) == len(tied_candidates) - 1
-            else None
+        return DocumentAssociationDecision(
+            outcome="ambiguous", selected_version_id=None, assessments=assessments,
+            minimum_score=MINIMUM_SCORE, minimum_margin=MINIMUM_MARGIN,
+            achieved_margin=0, reason="candidatos válidos empatados na melhor classificação",
+            algorithm_version=ASSOCIATION_ALGORITHM_VERSION,
         )
-        if unique_definitive is not None:
-            definitive = unique_definitive
-            top = next(item for item in compatible if item.version_id == definitive.version_id)
-            second = next((item for item in compatible if item.version_id != top.version_id), None)
-            definitive_tiebreak = True
-        else:
-            return DocumentAssociationDecision(
-                outcome="ambiguous", selected_version_id=None, assessments=assessments,
-                minimum_score=MINIMUM_SCORE, minimum_margin=MINIMUM_MARGIN,
-                achieved_margin=0, reason="candidatos semanticamente equivalentes",
-                algorithm_version=ASSOCIATION_ALGORITHM_VERSION,
-            )
-    margin = semantic_score(top) - semantic_score(second) if second is not None else None
-    top_candidate = next(item for item in candidates if item.version_id == top.version_id)
-    second_candidate = (
-        next(item for item in candidates if item.version_id == second.version_id)
-        if second is not None else None
-    )
-    predecessor_exception = (
-        second_candidate is not None
-        and top_candidate.profile.answer_key_state == "definitive"
-        and second_candidate.profile.answer_key_state == "preliminary"
-        and top_candidate.predecessor_version_id == second_candidate.version_id
-    )
+    margin = top.score - second.score if second is not None else None
     if (
         second is not None and margin is not None and margin < MINIMUM_MARGIN
-        and not predecessor_exception and not definitive_tiebreak
     ):
         return DocumentAssociationDecision(
             outcome="ambiguous", selected_version_id=None, assessments=assessments,
