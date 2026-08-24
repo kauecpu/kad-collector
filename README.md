@@ -157,9 +157,11 @@ classificacoes locais ou humanas. Sem chave, sem internet ou com resposta invali
 processamento preserva o resultado local e encaminha apenas a pendencia taxonomica para
 revisao. Chaves nunca sao salvas no SQLite, no executavel ou nos relatorios.
 
-O benchmark planejado comparara Gemini, Qwen e DeepSeek apenas em disciplina, materia,
-assunto e nivel. Cada provedor sera executado separadamente sobre o mesmo conjunto; esta
-configuracao nao dispara o benchmark automaticamente.
+O benchmark controlado compara Gemini, Qwen e DeepSeek apenas em disciplina, materia,
+assunto e nivel. A preparacao e offline; piloto e lote final exigem aprovacoes separadas,
+identificador exato da amostra e teto de custo. Consulte
+[`docs/canonical-ai-benchmark.md`](docs/canonical-ai-benchmark.md). A configuracao das chaves
+nao dispara nenhuma chamada automaticamente.
 
 Os filtros usam OR dentro da mesma categoria e AND entre categorias. Origem, conteudo,
 qualidade e situacao possuem contagens facetadas, busca, chips ativos e filtros salvos. Uma

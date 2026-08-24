@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 1,
+  "phase": "offline-preflight",
+  "status": "awaiting-paid-pilot-approval",
+  "benchmarkId": "canonical-ai-1642c8aeef150352",
+  "sampleFingerprint": "1642c8aeef15035248a4c50a0a79ac6de3b59c41104f3a9b1d8a0987ffdcadf9",
+  "createdAt": "2026-08-24T05:18:33.366255+00:00",
+  "sample": {
+    "requested": 200,
+    "availableOfficialStructureReferences": 314,
+    "selected": 200,
+    "referenceAudit": {
+      "examined": 1005,
+      "accepted": 314,
+      "rejected": 691,
+      "duplicateOccurrences": 0
+    },
+    "referenceKind": "official_structure_reference",
+    "distributions": {
+      "discipline": {
+        "Direito Tributário": 102,
+        "Fluência em Dados": 29,
+        "Legislação Aduaneira": 50,
+        "Transformação Digital": 19
+      },
+      "matter": {
+        "Administração Aduaneira": 18,
+        "Atendimento Tributário": 4,
+        "Ciência de Dados": 29,
+        "Contencioso Tributário": 38,
+        "Controle de Cargas": 15,
+        "Despacho Aduaneiro": 17,
+        "Governo Digital": 19,
+        "Obrigação Tributária": 49,
+        "Obrigações Acessórias": 6,
+        "Sigilo Fiscal": 5
+      },
+      "subject": {
+        "Análise de Dados": 29,
+        "Atendimento ao Contribuinte": 4,
+        "Controle Aduaneiro": 18,
+        "Crédito Tributário": 49,
+        "Despacho de Importação e Exportação": 17,
+        "Gestão de Fronteiras": 15,
+        "Processo Administrativo Fiscal": 38,
+        "SPED": 6,
+        "Sigilo Fiscal": 5,
+        "Transformação Digital do Estado": 19
+      },
+      "level": {
+        "Superior": 200
+      }
+    },
+    "contests": {
+      "RFB22": 200
+    },
+    "hiddenFields": {
+      "discipline+matter+subject": 10,
+      "discipline+matter+subject+level": 10,
+      "level": 10,
+      "matter+subject": 160,
+      "subject": 10
+    },
+    "observedMissingPatterns": {
+      "complete": 483,
+      "matter+subject": 522
+    }
+  },
+  "payload": {
+    "estimatedBytesTotalPerProvider": 648431,
+    "estimatedInputTokensPerProvider": 216204,
+    "estimatedOutputTokensPerProvider": 21140,
+    "estimationMethod": "UTF-8 bytes divided by 3, rounded up"
+  },
+  "pricing": {
+    "checkedAt": "2026-08-24",
+    "currency": "USD",
+    "unit": "1M tokens",
+    "providers": {
+      "gemini": {
+        "model": "gemini-3.7-flash",
+        "inputUsd": 0.75,
+        "outputUsd": 3.75,
+        "basis": "paid tier introductory price through 2026-12-31",
+        "sourceUrl": "https://ai.google.dev/gemini-api/docs/pricing"
+      },
+      "qwen": {
+        "model": "qwen3.7-plus",
+        "inputUsd": 0.4,
+        "outputUsd": 1.6,
+        "basis": "international list price, non-thinking, request up to 256K tokens",
+        "sourceUrl": "https://www.alibabacloud.com/help/en/model-studio/model-pricing"
+      },
+      "deepseek": {
+        "model": "deepseek-v4-pro",
+        "inputUsd": 0.435,
+        "outputUsd": 0.87,
+        "basis": "cache-miss input and non-thinking output",
+        "sourceUrl": "https://api-docs.deepseek.com/quick_start/pricing/"
+      }
+    },
+    "usdBrl": {
+      "rate": 5.1625,
+      "rateDate": "2026-08-21",
+      "basis": "PTAX venda do último dia útil disponível",
+      "sourceUrl": "https://www.bcb.gov.br/"
+    }
+  },
+  "providers": {
+    "gemini": {
+      "model": "gemini-3.7-flash",
+      "plannedCalls": 200,
+      "estimatedInputTokens": 216204,
+      "estimatedOutputTokens": 21140,
+      "estimatedCostUsd": 0.241428,
+      "estimatedCostBrl": 1.2464,
+      "pilotEstimatedCostUsd": 0.014965
+    },
+    "qwen": {
+      "model": "qwen3.7-plus",
+      "plannedCalls": 200,
+      "estimatedInputTokens": 216204,
+      "estimatedOutputTokens": 21140,
+      "estimatedCostUsd": 0.120306,
+      "estimatedCostBrl": 0.6211,
+      "pilotEstimatedCostUsd": 0.007455
+    },
+    "deepseek": {
+      "model": "deepseek-v4-pro",
+      "plannedCalls": 200,
+      "estimatedInputTokens": 216204,
+      "estimatedOutputTokens": 21140,
+      "estimatedCostUsd": 0.112441,
+      "estimatedCostBrl": 0.5805,
+      "pilotEstimatedCostUsd": 0.006962
+    }
+  },
+  "cost": {
+    "estimatedTotalUsd": 0.474175,
+    "estimatedTotalBrl": 2.4479,
+    "suggestedMaximumUsdWith25PercentMargin": 0.592719,
+    "suggestedMaximumBrlWith25PercentMargin": 3.0599
+  },
+  "plannedCalls": {
+    "pilot": 30,
+    "fullRemainder": 570,
+    "maximum": 600
+  },
+  "networkCallsPerformed": 0
+}

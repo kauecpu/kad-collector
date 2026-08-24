@@ -164,6 +164,7 @@ data/approved/
 data/promotion/
 data/results/
 data/state/
+data/benchmarks/local/
 config/sources.toml
 
 # Local regression artifacts (official PDFs may be copyrighted)

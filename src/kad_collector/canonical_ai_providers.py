@@ -15,7 +15,8 @@ from .canonical_classification import (
 )
 
 
-def _messages(request: CanonicalAIRequest) -> list[dict[str, str]]:
+def canonical_ai_messages(request: CanonicalAIRequest) -> list[dict[str, str]]:
+    """Build the production prompt used by providers and controlled benchmarks."""
     payload = {
         "outputSchema": canonical_ai_response_schema(request.requested_fields),
         "request": request.safe_payload(),
@@ -77,7 +78,13 @@ class _OpenAICompatibleCanonicalProvider:
     base_url_env = ""
     default_base_url = ""
 
-    def __init__(self, model: str | None = None, *, client: Any | None = None) -> None:
+    def __init__(
+        self,
+        model: str | None = None,
+        *,
+        client: Any | None = None,
+        max_retries: int = 2,
+    ) -> None:
         self.model = model or os.environ.get(self.model_env, self.default_model)
         self._configuration_error: str | None = None
         if client is not None:
@@ -111,7 +118,7 @@ class _OpenAICompatibleCanonicalProvider:
             api_key=api_key,
             base_url=base_url,
             timeout=180.0,
-            max_retries=2,
+            max_retries=max_retries,
         )
 
     def _require_client(self) -> Any:
@@ -146,7 +153,7 @@ class GeminiCanonicalEnrichmentProvider(_OpenAICompatibleCanonicalProvider):
         client = self._require_client()
         return client.beta.chat.completions.parse(
             model=self.model,
-            messages=_messages(request),
+            messages=canonical_ai_messages(request),
             response_format=CanonicalAIResponse,
             reasoning_effort="low",
             max_tokens=2_000,
@@ -174,7 +181,7 @@ class QwenCanonicalEnrichmentProvider(_OpenAICompatibleCanonicalProvider):
         client = self._require_client()
         return client.chat.completions.create(
             model=self.model,
-            messages=_messages(request),
+            messages=canonical_ai_messages(request),
             response_format={"type": "json_object"},
             max_tokens=2_000,
             extra_body={"enable_thinking": False},
@@ -193,7 +200,7 @@ class DeepSeekCanonicalEnrichmentProvider(_OpenAICompatibleCanonicalProvider):
         client = self._require_client()
         return client.chat.completions.create(
             model=self.model,
-            messages=_messages(request),
+            messages=canonical_ai_messages(request),
             response_format={"type": "json_object"},
             max_tokens=2_000,
             extra_body={"thinking": {"type": "disabled"}},
@@ -203,6 +210,8 @@ class DeepSeekCanonicalEnrichmentProvider(_OpenAICompatibleCanonicalProvider):
 def create_canonical_ai_provider(
     provider: str,
     model: str | None = None,
+    *,
+    max_retries: int = 2,
 ) -> CanonicalAIProvider:
     providers: dict[str, type[Any]] = {
         "gemini": GeminiCanonicalEnrichmentProvider,
@@ -212,4 +221,4 @@ def create_canonical_ai_provider(
     provider_class = providers.get(provider)
     if provider_class is None:
         raise CanonicalClassificationError(f"provedor de IA desconhecido: {provider}")
-    return cast(CanonicalAIProvider, provider_class(model))
+    return cast(CanonicalAIProvider, provider_class(model, max_retries=max_retries))
