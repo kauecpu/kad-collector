@@ -114,6 +114,16 @@ class OllamaPreflightTests(unittest.TestCase):
 
         self.assertEqual(client.chat_requests, [])
 
+    def test_probe_id_ignores_harmless_free_space_fluctuation(self) -> None:
+        first = inspect_ollama_environment(
+            client=FakeAdminClient(self.models), free_bytes=40 * GIB
+        )
+        second = inspect_ollama_environment(
+            client=FakeAdminClient(self.models), free_bytes=39 * GIB
+        )
+
+        self.assertEqual(first["probeId"], second["probeId"])
+
     def test_probe_uses_structured_output_and_requires_full_gpu(self) -> None:
         client = FakeAdminClient(self.models)
         preflight = inspect_ollama_environment(client=client, free_bytes=40 * GIB)

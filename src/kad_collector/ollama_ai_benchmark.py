@@ -579,12 +579,15 @@ def execute_ollama_ai_benchmark(
                     paused = True
                     break
                 except Exception as exc:
+                    category = _error_category(exc)
                     record.update(
                         {
                             "status": "failed",
-                            "schemaValid": False,
+                            "schemaValid": (
+                                None if category == "provider_failure" else False
+                            ),
                             "errorType": type(exc).__name__,
-                            "errorCategory": _error_category(exc),
+                            "errorCategory": category,
                         }
                     )
                 record["wallLatencyMs"] = round(
@@ -712,7 +715,9 @@ def summarize_ollama_ai_benchmark(
             for record in failed
             if record.get("errorCategory") == "outside_taxonomy"
         ]
-        schema_failures = [record for record in failed if not record.get("schemaValid")]
+        schema_failures = [
+            record for record in failed if record.get("schemaValid") is False
+        ]
         model_interruptions = [
             item for item in interruptions if item.get("model") == tag
         ]

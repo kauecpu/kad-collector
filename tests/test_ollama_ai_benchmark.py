@@ -421,6 +421,48 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
             self.assertEqual(metrics["schemaFailures"], 10)
             self.assertEqual(metrics["prohibitedFieldAttempts"], 10)
 
+    def test_provider_failure_is_not_misreported_as_schema_failure(self) -> None:
+        manifest = read_json(self.manifest)
+        model = manifest["models"][0]
+        item = self.items[0]
+        write_json(
+            self.checkpoint,
+            {
+                "schemaVersion": 1,
+                "benchmarkId": manifest["benchmarkId"],
+                "manifestFingerprint": manifest["manifestFingerprint"],
+                "sampleFingerprint": manifest["sampleFingerprint"],
+                "records": [
+                    {
+                        "key": "provider-failure",
+                        "phase": "smoke",
+                        "model": model["tag"],
+                        "digest": model["digest"],
+                        "referenceQuestionId": item["referenceQuestionId"],
+                        "contentFingerprint": item["contentFingerprint"],
+                        "requestedFields": item["hiddenFields"],
+                        "status": "failed",
+                        "schemaValid": None,
+                        "errorType": "RuntimeError",
+                        "errorCategory": "provider_failure",
+                        "wallLatencyMs": 1,
+                    }
+                ],
+                "warmups": [],
+                "interruptions": [],
+            },
+        )
+
+        report = summarize_ollama_ai_benchmark(
+            self.local_bundle,
+            manifest_path=self.manifest,
+            checkpoint_path=self.checkpoint,
+        )
+
+        metrics = report["models"][model["tag"]]
+        self.assertEqual(metrics["failures"], 1)
+        self.assertEqual(metrics["schemaFailures"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

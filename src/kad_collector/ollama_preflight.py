@@ -134,13 +134,17 @@ def _details(item: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 def _probe_material(report: Mapping[str, Any]) -> dict[str, Any]:
+    disk = cast(Mapping[str, Any], report["disk"])
     return {
         "ollamaVersion": cast(Mapping[str, Any], report["ollama"])["version"],
         "baseUrl": cast(Mapping[str, Any], report["ollama"])["baseUrl"],
         "targets": report["targets"],
         "missingModels": report["missingModels"],
         "invalidModels": report["invalidModels"],
-        "disk": report["disk"],
+        "disk": {
+            "minimumFreeBytes": disk["minimumFreeBytes"],
+            "sufficient": disk["sufficient"],
+        },
     }
 
 
