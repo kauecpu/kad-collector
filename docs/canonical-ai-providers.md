@@ -15,7 +15,6 @@ não fazem parte do payload.
 
 | Provedor | CLI | Modelo padrão | Chave | Endpoint |
 | --- | --- | --- | --- | --- |
-| OpenAI | `openai` | `gpt-5.6-terra` | `OPENAI_API_KEY` | gerenciado pelo SDK |
 | Google | `gemini` | `gemini-3.7-flash` | `GEMINI_API_KEY` | `GEMINI_BASE_URL` |
 | Alibaba Cloud | `qwen` | `qwen3.7-plus` | `DASHSCOPE_API_KEY` ou `QWEN_API_KEY` | `QWEN_BASE_URL` |
 | DeepSeek | `deepseek` | `deepseek-v4-pro` | `DEEPSEEK_API_KEY` | `DEEPSEEK_BASE_URL` |
@@ -52,7 +51,6 @@ Troque apenas o provedor e o `run-id` para preparar avaliações separadas. Não
 
 ## Contrato por provedor
 
-- OpenAI usa Responses API, JSON Schema estrito, `store=false` e raciocínio baixo.
 - Gemini usa a interface OpenAI-compatible, Structured Outputs com Pydantic e raciocínio baixo.
 - Qwen usa a interface OpenAI-compatible, JSON mode e `enable_thinking=false`.
 - DeepSeek usa a interface OpenAI-compatible, JSON mode e `thinking.type=disabled`.
@@ -64,7 +62,6 @@ no máximo duas vezes; o coletor não alterna silenciosamente de provedor.
 
 ## Fontes técnicas
 
-- OpenAI: <https://developers.openai.com/api/docs/models/gpt-5.6-terra>
 - Gemini OpenAI compatibility: <https://ai.google.dev/gemini-api/docs/openai>
 - Gemini 3.7 Flash: <https://ai.google.dev/gemini-api/docs/models/gemini-3.7-flash>
 - Qwen Structured Output: <https://www.alibabacloud.com/help/en/model-studio/qwen-structured-output>
@@ -74,3 +71,11 @@ no máximo duas vezes; o coletor não alterna silenciosamente de provedor.
 
 Os testes automatizados usam clientes falsos e não fazem chamadas de rede. A ativação real deve
 começar com limite pequeno, banco de avaliação e revisão humana dos resultados.
+
+## Campos avaliados
+
+O benchmark compara Gemini, Qwen e DeepSeek somente nos quatro campos taxonômicos:
+`discipline`, `matter`, `subject` e `level`. Dificuldade e explicação são campos editoriais
+opcionais. A ausência deles não aciona IA, não altera a completude e não aumenta a fila de
+revisão. Cada questão incompleta gera no máximo uma chamada, contendo todos os campos
+taxonômicos ausentes.

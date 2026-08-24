@@ -2,7 +2,7 @@
 
 ## Finalidade
 
-`canonical-classification-v1` classifica e enriquece somente a representante de cada grupo
+`canonical-classification-v2` classifica somente a representante de cada grupo
 confirmado por `question-equivalence-v1`. Documentos e ocorrências continuam como evidência;
 eles não recebem classificações editoriais independentes.
 
@@ -14,8 +14,9 @@ questão canônica elegível -> taxonomia determinística -> IA restrita aos cam
 ```
 
 Classificação não faz scraping. Scraping obtém o documento; extração estrutura o conteúdo do
-PDF; classificação relaciona esse conteúdo à taxonomia; enriquecimento acrescenta dificuldade
-e explicação. Nenhuma dessas etapas pode decidir identidade oficial ou gabarito.
+PDF; classificação relaciona esse conteúdo à taxonomia. Dificuldade e explicação são dados
+editoriais opcionais fora deste fluxo. Nenhuma dessas etapas pode decidir identidade oficial
+ou gabarito.
 
 ## Elegibilidade
 
@@ -55,8 +56,6 @@ A IA pode sugerir somente campos que continuaram ausentes depois da taxonomia:
 - `matter`;
 - `subject`;
 - `level`;
-- `difficulty`;
-- `explanation`.
 
 O schema rejeita propriedades extras. Uma segunda lista local proíbe, entre outros, resposta,
 letra correta, `answer_status`, vínculo de gabarito, intervalo, concurso, aplicação, cargo,
@@ -77,8 +76,8 @@ prompt, o schema ou as regras de aplicação.
 
 O banco registra separadamente a questão canônica, hash do conteúdo, campos solicitados,
 provedor, modelo, versão do prompt, horários, payload seguro, resposta estruturada, validação,
-tokens e custo informado. OpenAI usa `store=false`; as políticas de retenção e região de cada
-provedor devem ser consideradas antes de habilitar IA em dados operacionais.
+tokens e custo informado. As políticas de retenção e região de cada provedor devem ser
+consideradas antes de habilitar IA em dados operacionais.
 
 ## Validação e confiança
 
@@ -90,30 +89,30 @@ Antes de aplicar, o coletor exige:
 
 - nome existente na taxonomia;
 - caminho válido `discipline -> matter -> subject`;
-- valor de nível ou dificuldade dentro do contrato editorial;
-- explicação com lógica mínima e sem referência normativa ausente do conteúdo fornecido;
+- valor de nível dentro do contrato editorial;
 - campo solicitado e ainda ausente;
 - ausência de propriedade extra ou proibida.
 
-Baixa confiança, schema inválido, conflito taxonômico, explicação sem suporte e falha permanente
+Baixa confiança, schema inválido, conflito taxonômico e falha permanente
 do provedor entram na fila. A fila expõe questão, campos pendentes, sugestão, confiança,
 evidência e motivo. O revisor pode `accept`, `correct` ou `reject`; ator, data, justificativa e
 valor decidido ficam auditados.
 
 Os estados são:
 
-- `complete`: todos os campos editoriais existem, sem revisão pendente;
-- `incomplete`: ainda há campo ausente;
+- `complete`: disciplina, matéria, assunto e nível existem, sem revisão taxonômica pendente;
+- `incomplete`: ainda falta um desses quatro campos;
 - `needs_review`: existe item pendente ou bloqueio;
 - `rejected`: o revisor rejeitou a sugestão;
 - `approved`: classificação completa e questão editorial já aprovada/exportada.
 
 ## Explicação e dificuldade
 
-`difficulty` e `explanation` são enriquecimento editorial. Eles não alteram fingerprints de
-equivalência, não confirmam grupos, não resolvem gabaritos ou identidade e não tornam uma
-questão publicável sem os demais requisitos. Alterá-los atualiza apenas a versão editorial da
-canônica.
+`difficulty` e `explanation` são campos editoriais opcionais. Eles não alteram fingerprints de
+equivalência, não confirmam grupos e não resolvem gabaritos ou identidade. A ausência deles não
+aciona IA, não aparece em `requestedFields`, não aumenta `aiCandidates`, não marca a
+classificação como incompleta e não envia a questão para revisão. Valores existentes e decisões
+humanas continuam preservados no histórico.
 
 Uma mudança no enunciado ou nas alternativas invalida resultados derivados ativos e itens de
 revisão pendentes. O grupo de equivalência também é bloqueado até revalidação. Registros
@@ -167,14 +166,14 @@ kad-collector classify-canonical-questions `
   --contest RFB22 `
   --apply `
   --enable-ai `
-  --provider openai `
-  --model gpt-5.6-terra `
+  --provider gemini `
   --run-id classification-rfb22-2026-08 `
   --limit 100 `
   --report data/reports/canonical-classification-rfb22.json
 ```
 
-Os valores aceitos em `--provider` são `openai`, `gemini`, `qwen` e `deepseek`. Seus modelos
+Os valores aceitos em `--provider` são `gemini`, `qwen` e `deepseek`. O provedor é obrigatório
+quando `--enable-ai` é usado e não existe fallback automático. Seus modelos
 padrão, variáveis de ambiente, endpoints e parâmetros de raciocínio estão documentados em
 `docs/canonical-ai-providers.md`. Todos permanecem inativos sem `--enable-ai`.
 
@@ -182,6 +181,10 @@ Repita a mesma configuração e o mesmo `run-id` até `remaining` chegar a zero.
 elegíveis, campos determinísticos, completas, candidatas e chamadas de IA, campos solicitados,
 sugestões aceitas/rejeitadas, baixa confiança, revisão, falhas, tokens, custo, restantes e
 contagens por concurso selecionado, cargo, turno e disciplina.
+
+O benchmark planejado executará Gemini, Qwen e DeepSeek separadamente sobre o mesmo conjunto e
+avaliará apenas disciplina, matéria, assunto e nível. O benchmark de 200 questões não faz parte
+desta alteração.
 
 Operação da fila:
 

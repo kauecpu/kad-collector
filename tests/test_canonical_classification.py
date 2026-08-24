@@ -66,7 +66,7 @@ def _taxonomy() -> EditorialTaxonomy:
 
 
 class FakeProvider:
-    name = "fake"
+    name = "gemini"
     model = "fake-v1"
 
     def __init__(
@@ -205,11 +205,6 @@ class CanonicalClassificationTests(unittest.TestCase):
             {
                 "suggestions": [
                     _suggestion("level", "Superior"),
-                    _suggestion("difficulty", "Média"),
-                    _suggestion(
-                        "explanation",
-                        "A alternativa correta é compatível com a norma apresentada no enunciado.",
-                    ),
                 ]
             }
         )
@@ -229,19 +224,22 @@ class CanonicalClassificationTests(unittest.TestCase):
             ).fetchone()
 
         self.assertEqual(report.deterministic_classified, 3)
-        self.assertEqual(report.ai_accepted, 3)
+        self.assertEqual(report.ai_accepted, 1)
         self.assertEqual(len(provider.requests), 1)
-        self.assertEqual(
-            provider.requests[0].requested_fields,
-            ("level", "difficulty", "explanation"),
-        )
+        self.assertEqual(provider.requests[0].requested_fields, ("level",))
+        self.assertEqual(report.requested_fields, {"level": 1})
         safe = provider.requests[0].safe_payload()
         self.assertNotIn("correct_answer", json.dumps(safe))
         self.assertNotIn("answer_key_link_id", json.dumps(safe))
+        self.assertNotIn("difficulty", json.dumps(safe))
+        self.assertNotIn("explanation", json.dumps(safe))
         payload = json.loads(str(stored["payload_json"]))
         self.assertEqual(payload["discipline"], "Direito")
         self.assertEqual(payload["matter"], "Normas")
         self.assertEqual(payload["subject"], "Aplicação da lei")
+        self.assertEqual(payload["level"], "Superior")
+        self.assertIsNone(payload["difficulty"])
+        self.assertIsNone(payload["explanation"])
 
     def test_complete_question_and_non_representative_occurrence_never_call_ai(self) -> None:
         fixture, _ = _seed_canonical(self.root)
@@ -264,11 +262,11 @@ class CanonicalClassificationTests(unittest.TestCase):
         self.assertEqual(report.already_complete, 1)
         self.assertEqual(provider.requests, [])
 
-    def test_human_value_is_preserved_and_human_missing_value_goes_to_review(self) -> None:
+    def test_human_missing_taxonomy_value_goes_to_review(self) -> None:
         fixture, rows = _seed_canonical(self.root)
         _, question_id = rows[0]
-        _clear_fields(fixture, question_id, {"difficulty"}, human_missing="difficulty")
-        provider = FakeProvider({"suggestions": [_suggestion("difficulty", "Difícil")]})
+        _clear_fields(fixture, question_id, {"level"}, human_missing="level")
+        provider = FakeProvider({"suggestions": [_suggestion("level", "Superior")]})
         with closing(fixture.store._connect()) as connection:
             report = run_canonical_classification(
                 connection,
@@ -284,12 +282,94 @@ class CanonicalClassificationTests(unittest.TestCase):
         self.assertEqual(report.review_required, 1)
         self.assertEqual(items[0]["reason"], "decisão humana deixou campo sem valor")
 
+    def test_optional_editorial_fields_do_not_trigger_ai_incompleteness_or_review(self) -> None:
+        fixture, rows = _seed_canonical(self.root)
+        canonical_id, question_id = rows[0]
+        _clear_fields(
+            fixture,
+            question_id,
+            {"difficulty", "explanation"},
+            human_missing="difficulty",
+        )
+        provider = FakeProvider()
+        with closing(fixture.store._connect()) as connection:
+            report = run_canonical_classification(
+                connection,
+                apply=True,
+                enable_ai=True,
+                provider=provider,
+                run_id="optional-editorial-fields",
+                taxonomy=self.taxonomy,
+            )
+            state = connection.execute(
+                "SELECT status,missing_fields_json FROM canonical_classification_states "
+                "WHERE canonical_question_id = ?",
+                (canonical_id,),
+            ).fetchone()
+
+        self.assertEqual(provider.requests, [])
+        self.assertEqual(report.ai_candidates, 0)
+        self.assertEqual(report.review_required, 0)
+        self.assertEqual(report.requested_fields, {})
+        self.assertEqual(state["status"], "complete")
+        self.assertEqual(json.loads(str(state["missing_fields_json"])), [])
+
+    def test_ai_requests_only_subject_when_it_is_the_only_missing_field(self) -> None:
+        question = _question(statement="Assinale a alternativa adequada ao caso descrito.")
+        fixture, rows = _seed_canonical(self.root, question=question)
+        _, question_id = rows[0]
+        _clear_fields(fixture, question_id, {"subject"})
+        provider = FakeProvider(
+            {"suggestions": [_suggestion("subject", "Aplicação da lei")]}
+        )
+        with closing(fixture.store._connect()) as connection:
+            report = run_canonical_classification(
+                connection,
+                apply=True,
+                enable_ai=True,
+                provider=provider,
+                run_id="subject-only",
+                taxonomy=self.taxonomy,
+            )
+
+        self.assertEqual(len(provider.requests), 1)
+        self.assertEqual(provider.requests[0].requested_fields, ("subject",))
+        self.assertEqual(report.requested_fields, {"subject": 1})
+
+    def test_ai_groups_missing_matter_and_subject_in_one_request(self) -> None:
+        question = _question(statement="Assinale a alternativa adequada ao caso descrito.")
+        fixture, rows = _seed_canonical(self.root, question=question)
+        _, question_id = rows[0]
+        _clear_fields(fixture, question_id, {"matter", "subject"})
+        provider = FakeProvider(
+            {
+                "suggestions": [
+                    _suggestion("matter", "Normas"),
+                    _suggestion("subject", "Aplicação da lei"),
+                ]
+            }
+        )
+        with closing(fixture.store._connect()) as connection:
+            report = run_canonical_classification(
+                connection,
+                apply=True,
+                enable_ai=True,
+                provider=provider,
+                run_id="matter-and-subject",
+                taxonomy=self.taxonomy,
+            )
+
+        self.assertEqual(len(provider.requests), 1)
+        self.assertEqual(provider.requests[0].requested_fields, ("matter", "subject"))
+        self.assertEqual(report.ai_sent, 1)
+        self.assertEqual(report.ai_accepted, 2)
+
     def test_low_confidence_enters_queue_and_human_correction_is_audited(self) -> None:
         fixture, rows = _seed_canonical(self.root)
         canonical_id, question_id = rows[0]
-        _clear_fields(fixture, question_id, {"difficulty"})
+        _clear_fields(fixture, question_id, {"level"})
         provider = FakeProvider(
-            {"suggestions": [_suggestion("difficulty", "Difícil", confidence=0.55)]}
+            {"suggestions": [_suggestion("level", "Superior", confidence=0.55)]}
         )
         with closing(fixture.store._connect()) as connection:
             report = run_canonical_classification(
@@ -306,7 +386,7 @@ class CanonicalClassificationTests(unittest.TestCase):
                 items[0]["id"],
                 decision="correct",
                 actor="editora",
-                value="Média",
+                value="Superior",
                 evidence="Revisão editorial direta.",
                 taxonomy=self.taxonomy,
             )
@@ -323,9 +403,9 @@ class CanonicalClassificationTests(unittest.TestCase):
     def test_rejected_suggestion_is_not_requested_again_for_the_same_content(self) -> None:
         fixture, rows = _seed_canonical(self.root)
         _, question_id = rows[0]
-        _clear_fields(fixture, question_id, {"difficulty"})
+        _clear_fields(fixture, question_id, {"level"})
         low_confidence = FakeProvider(
-            {"suggestions": [_suggestion("difficulty", "Difícil", confidence=0.4)]}
+            {"suggestions": [_suggestion("level", "Superior", confidence=0.4)]}
         )
         with closing(fixture.store._connect()) as connection:
             run_canonical_classification(
@@ -342,10 +422,10 @@ class CanonicalClassificationTests(unittest.TestCase):
                 item["id"],
                 decision="reject",
                 actor="editora",
-                evidence="A evidência não sustenta dificuldade.",
+                evidence="A evidência não sustenta o nível.",
                 taxonomy=self.taxonomy,
             )
-            retry = FakeProvider({"suggestions": [_suggestion("difficulty", "Média")]})
+            retry = FakeProvider({"suggestions": [_suggestion("level", "Superior")]})
             report = run_canonical_classification(
                 connection,
                 apply=True,
@@ -361,15 +441,28 @@ class CanonicalClassificationTests(unittest.TestCase):
     def test_invalid_ai_outputs_are_rejected_without_mutating_editorial_data(self) -> None:
         cases = {
             "forbidden": {
-                "suggestions": [_suggestion("difficulty", "Média")],
+                "suggestions": [_suggestion("level", "Superior")],
                 "answer": "A",
             },
-            "extra": {"suggestions": [{**_suggestion("difficulty", "Média"), "unexpected": True}]},
+            "extra": {
+                "suggestions": [
+                    {**_suggestion("level", "Superior"), "unexpected": True}
+                ]
+            },
             "identity": {
-                "suggestions": [_suggestion("difficulty", "Média")],
+                "suggestions": [_suggestion("level", "Superior")],
                 "contest": "Outro concurso",
             },
             "taxonomy": {"suggestions": [_suggestion("matter", "Matéria inexistente")]},
+            "difficulty": {"suggestions": [_suggestion("difficulty", "Média")]},
+            "explanation": {
+                "suggestions": [
+                    _suggestion(
+                        "explanation",
+                        "A alternativa segue a norma apresentada no enunciado.",
+                    )
+                ]
+            },
         }
         for index, (name, response) in enumerate(cases.items()):
             with self.subTest(name=name):
@@ -381,7 +474,7 @@ class CanonicalClassificationTests(unittest.TestCase):
                 )
                 fixture, rows = _seed_canonical(root, question=question)
                 _, question_id = rows[0]
-                missing = {"matter"} if name == "taxonomy" else {"difficulty"}
+                missing = {"matter"} if name == "taxonomy" else {"level"}
                 _clear_fields(fixture, question_id, missing)
                 provider = FakeProvider(response)
                 with closing(fixture.store._connect()) as connection:
@@ -413,7 +506,7 @@ class CanonicalClassificationTests(unittest.TestCase):
         )
         fixture, rows = _seed_canonical(self.root, question=injected)
         _, question_id = rows[0]
-        _clear_fields(fixture, question_id, {"difficulty"})
+        _clear_fields(fixture, question_id, {"level"})
         provider = FakeProvider(error=RuntimeError("timeout permanente"))
         with closing(fixture.store._connect()) as connection:
             report = run_canonical_classification(
@@ -464,7 +557,7 @@ class CanonicalClassificationTests(unittest.TestCase):
 
         stale, rows = _seed_canonical(self.root / "stale")
         _, representative_id = rows[0]
-        _clear_fields(stale, representative_id, {"difficulty"})
+        _clear_fields(stale, representative_id, {"level"})
         with closing(stale.store._connect()) as connection:
             connection.execute(
                 "UPDATE questions SET updated_at = '2099-01-01T00:00:00+00:00' WHERE id = ?",
@@ -513,15 +606,10 @@ class CanonicalClassificationTests(unittest.TestCase):
             )
             sync_canonical_editorial_from_question(connection, question_id, changed_at=UPDATED)
             connection.commit()
-        _clear_fields(fixture, question_id, {"explanation"})
+        _clear_fields(fixture, question_id, {"level"})
         provider = FakeProvider(
             {
-                "suggestions": [
-                    _suggestion(
-                        "explanation",
-                        "A alternativa correta segue a norma apresentada no enunciado.",
-                    )
-                ]
+                "suggestions": [_suggestion("level", "Superior")]
             }
         )
         with closing(fixture.store._connect()) as connection:
@@ -545,6 +633,28 @@ class CanonicalClassificationTests(unittest.TestCase):
         self.assertEqual(stored.discipline.value, "Direito")
         self.assertEqual(stored.subject.source, "deterministic")
         self.assertEqual(stored.subject.value, "Normas")
+
+    def test_dry_run_with_ai_enabled_never_calls_provider(self) -> None:
+        fixture, rows = _seed_canonical(self.root)
+        _, question_id = rows[0]
+        _clear_fields(fixture, question_id, {"level"})
+        provider = FakeProvider({"suggestions": [_suggestion("level", "Superior")]})
+        with closing(fixture.store._connect()) as connection:
+            report = run_canonical_classification(
+                connection,
+                enable_ai=True,
+                provider=provider,
+                run_id="dry-run-ai",
+                taxonomy=self.taxonomy,
+            )
+            requests = connection.execute(
+                "SELECT COUNT(*) FROM canonical_ai_requests"
+            ).fetchone()[0]
+
+        self.assertEqual(provider.requests, [])
+        self.assertEqual(report.ai_candidates, 1)
+        self.assertEqual(report.ai_sent, 0)
+        self.assertEqual(requests, 0)
 
     def test_dry_run_rolls_back_and_apply_resumes_same_run_with_limit(self) -> None:
         fixture, _ = _seed_canonical(self.root, second_number=True)
@@ -589,20 +699,12 @@ class CanonicalClassificationTests(unittest.TestCase):
         self.assertEqual(repeated.processed, 0)
         self.assertEqual(item_count, 2)
 
-    def test_editorial_enrichment_keeps_identity_but_content_change_invalidates_it(self) -> None:
+    def test_taxonomy_update_keeps_identity_but_content_change_invalidates_it(self) -> None:
         fixture, rows = _seed_canonical(self.root)
         canonical_id, question_id = rows[0]
-        _clear_fields(fixture, question_id, {"difficulty", "explanation"})
+        _clear_fields(fixture, question_id, {"level"})
         provider = FakeProvider(
-            {
-                "suggestions": [
-                    _suggestion("difficulty", "Média"),
-                    _suggestion(
-                        "explanation",
-                        "A alternativa correta decorre diretamente da norma apresentada.",
-                    ),
-                ]
-            }
+            {"suggestions": [_suggestion("level", "Superior")]}
         )
         with closing(fixture.store._connect()) as connection:
             before = connection.execute(
@@ -621,7 +723,17 @@ class CanonicalClassificationTests(unittest.TestCase):
                 "SELECT content_fingerprint FROM canonical_questions WHERE id = ?",
                 (canonical_id,),
             ).fetchone()["content_fingerprint"]
+            payload = json.loads(
+                str(
+                    connection.execute(
+                        "SELECT payload_json FROM canonical_questions WHERE id = ?",
+                        (canonical_id,),
+                    ).fetchone()["payload_json"]
+                )
+            )
         self.assertEqual(before, after)
+        self.assertEqual(payload["difficulty"], "Média")
+        self.assertTrue(payload["explanation"])
 
         view = fixture.store.question(question_id)
         changed = QuestionRecord.model_validate(view["question"]).model_copy(

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
-import re
 import sqlite3
 import uuid
 from collections import Counter
@@ -27,8 +25,8 @@ from .question_equivalence import sync_canonical_editorial_from_question
 from .semantic_identity import canonical_json, stable_sha256
 
 CANONICAL_CLASSIFICATION_SCHEMA_VERSION = 1
-CANONICAL_CLASSIFICATION_ALGORITHM_VERSION = "canonical-classification-v1"
-CANONICAL_ENRICHMENT_PROMPT_VERSION = "canonical-enrichment-v1"
+CANONICAL_CLASSIFICATION_ALGORITHM_VERSION = "canonical-classification-v2"
+CANONICAL_ENRICHMENT_PROMPT_VERSION = "canonical-taxonomy-v2"
 MINIMUM_AI_CONFIDENCE = 0.78
 
 CANONICAL_AI_INSTRUCTIONS = (
@@ -43,10 +41,14 @@ ClassificationState = Literal["complete", "incomplete", "needs_review", "rejecte
 ReviewDecision = Literal["accept", "correct", "reject"]
 
 CLASSIFICATION_FIELDS = ("discipline", "matter", "subject", "level")
-ENRICHMENT_FIELDS = ("difficulty", "explanation")
-ALLOWED_AI_FIELDS = (*CLASSIFICATION_FIELDS, *ENRICHMENT_FIELDS)
+OPTIONAL_EDITORIAL_FIELDS = ("difficulty", "explanation")
+ALLOWED_AI_FIELDS = CLASSIFICATION_FIELDS
+REVIEWABLE_FIELDS = (*CLASSIFICATION_FIELDS, *OPTIONAL_EDITORIAL_FIELDS)
+SUPPORTED_CANONICAL_AI_PROVIDERS = frozenset({"gemini", "qwen", "deepseek"})
 FORBIDDEN_AI_FIELDS = frozenset(
     {
+        "difficulty",
+        "explanation",
         "correct",
         "correct_answer",
         "answer",
@@ -87,9 +89,6 @@ _TAXONOMY_FIELD: dict[str, TaxonomyField] = {
 }
 _LEVELS = frozenset({"Fundamental", "Médio", "Superior"})
 _DIFFICULTIES = frozenset({"Fácil", "Média", "Difícil"})
-_UNSUPPORTED_CITATION = re.compile(
-    r"(?i)\b(?:lei|decreto|art(?:igo)?|s[uú]mula)\s*(?:n[º°.]?\s*)?\d+"
-)
 
 
 class CanonicalClassificationError(ValueError):
@@ -176,58 +175,6 @@ def canonical_ai_response_schema(requested_fields: tuple[str, ...]) -> dict[str,
             }
         },
     }
-
-
-class OpenAICanonicalEnrichmentProvider:
-    name = "openai"
-
-    def __init__(self, model: str | None = None, *, client: Any | None = None) -> None:
-        self.model = model or os.environ.get("OPENAI_MODEL", "gpt-5.6-terra")
-        if client is not None:
-            self._client = client
-            return
-        api_key = os.environ.get("OPENAI_API_KEY")
-        if not api_key:
-            self._client = None
-            return
-        try:
-            from openai import OpenAI
-        except ImportError:
-            self._client = None
-            return
-        self._client = OpenAI(api_key=api_key, timeout=180.0, max_retries=2)
-
-    def enrich(self, request: CanonicalAIRequest) -> CanonicalAIResult:
-        if self._client is None:
-            raise CanonicalClassificationError(
-                "provedor OpenAI indisponível; configure OPENAI_API_KEY"
-            )
-        response = self._client.responses.create(
-            model=self.model,
-            instructions=CANONICAL_AI_INSTRUCTIONS,
-            input=json.dumps(request.safe_payload(), ensure_ascii=False),
-            reasoning={"effort": "low"},
-            text={
-                "format": {
-                    "type": "json_schema",
-                    "name": "canonical_question_enrichment",
-                    "strict": True,
-                    "schema": canonical_ai_response_schema(request.requested_fields),
-                },
-                "verbosity": "low",
-            },
-            max_output_tokens=2_000,
-            store=False,
-        )
-        if not response.output_text:
-            raise CanonicalClassificationError("provedor retornou resposta vazia")
-        parsed = json.loads(cast(str, response.output_text))
-        usage = getattr(response, "usage", None)
-        return CanonicalAIResult(
-            response=cast(dict[str, Any], parsed),
-            input_tokens=cast(int | None, getattr(usage, "input_tokens", None)),
-            output_tokens=cast(int | None, getattr(usage, "output_tokens", None)),
-        )
 
 
 @dataclass
@@ -556,7 +503,6 @@ def _human_blocked(classification: QuestionClassification) -> bool:
             classification.subject,
             classification.topic,
             classification.level,
-            classification.difficulty,
         )
     )
 
@@ -614,16 +560,6 @@ def _path_is_valid(taxonomy: EditorialTaxonomy, values: dict[str, str]) -> bool:
         and (requested["subject"] is None or path.subject == requested["subject"])
         for path in paths
     )
-
-
-def _explanation_supported(question: QuestionRecord, explanation: str) -> bool:
-    citation = _UNSUPPORTED_CITATION.search(explanation)
-    if citation is None:
-        return True
-    source = " ".join(
-        [question.statement, *(item.text for item in question.alternatives)]
-    ).casefold()
-    return citation.group(0).casefold() in source
 
 
 def _record_field(
@@ -836,7 +772,8 @@ def _state(
         connection.execute(
             "SELECT COUNT(*) FROM canonical_classification_review_queue "
             "WHERE canonical_question_id = ? AND content_fingerprint = ? "
-            "AND status = 'pending'",
+            "AND status = 'pending' "
+            "AND (field_name = '*' OR field_name IN ('discipline','matter','subject','level'))",
             (canonical_question_id, content_fingerprint),
         ).fetchone()[0]
     )
@@ -950,7 +887,6 @@ def _validate_ai_response(
     *,
     request: CanonicalAIRequest,
     taxonomy: EditorialTaxonomy,
-    question: QuestionRecord,
 ) -> tuple[dict[str, tuple[str, float, str, str]], list[AISuggestion]]:
     forbidden = set(response).intersection(FORBIDDEN_AI_FIELDS)
     if forbidden:
@@ -979,8 +915,6 @@ def _validate_ai_response(
             )
         value = _canonical_taxonomy_value(taxonomy, suggestion.field, suggestion.value)
         proposed[suggestion.field] = value
-        if suggestion.field == "explanation" and not _explanation_supported(question, value):
-            raise CanonicalClassificationError("explicação contém referência sem suporte")
         if suggestion.confidence < MINIMUM_AI_CONFIDENCE:
             low_confidence.append(suggestion.model_copy(update={"value": value}))
             continue
@@ -1053,7 +987,9 @@ def _process_row(
     rejected = connection.execute(
         "SELECT id FROM canonical_classification_review_queue "
         "WHERE canonical_question_id = ? AND content_fingerprint = ? "
-        "AND status = 'rejected' AND decision = 'reject' ORDER BY decided_at,id LIMIT 1",
+        "AND status = 'rejected' AND decision = 'reject' "
+        "AND (field_name = '*' OR field_name IN ('discipline','matter','subject','level')) "
+        "ORDER BY decided_at,id LIMIT 1",
         (canonical_question_id, content_fingerprint),
     ).fetchone()
     if rejected is not None:
@@ -1082,7 +1018,9 @@ def _process_row(
     pending = connection.execute(
         "SELECT id,reason FROM canonical_classification_review_queue "
         "WHERE canonical_question_id = ? AND content_fingerprint = ? "
-        "AND status = 'pending' ORDER BY created_at,id LIMIT 1",
+        "AND status = 'pending' "
+        "AND (field_name = '*' OR field_name IN ('discipline','matter','subject','level')) "
+        "ORDER BY created_at,id LIMIT 1",
         (canonical_question_id, content_fingerprint),
     ).fetchone()
     if pending is not None:
@@ -1151,7 +1089,7 @@ def _process_row(
         .classification
     )
     deterministic_fields: dict[str, tuple[str, float, str, str]] = {}
-    for field_name in (*CLASSIFICATION_FIELDS, "difficulty"):
+    for field_name in CLASSIFICATION_FIELDS:
         if field_name not in _missing_fields(question.model_dump(mode="json"), classification):
             continue
         candidate = _classification_value(local, field_name)
@@ -1346,7 +1284,6 @@ def _process_row(
             provider_result.response,
             request=request,
             taxonomy=taxonomy,
-            question=question,
         )
         for suggestion in low_confidence:
             item_id = _queue_review(
@@ -1545,6 +1482,12 @@ def run_canonical_classification(
 ) -> CanonicalClassificationReport:
     if limit is not None and limit < 1:
         raise CanonicalClassificationError("limit deve ser positivo")
+    if enable_ai and provider is None:
+        raise CanonicalClassificationError("IA habilitada sem provedor explícito")
+    if enable_ai and provider is not None and provider.name not in SUPPORTED_CANONICAL_AI_PROVIDERS:
+        raise CanonicalClassificationError(
+            f"provedor não permitido na classificação canônica: {provider.name}"
+        )
     initialize_canonical_classification_schema(connection)
     connection.commit()
     active_taxonomy = taxonomy or EditorialTaxonomy.load_default()
@@ -1591,7 +1534,8 @@ def run_canonical_classification(
             ),
         )
         existing = connection.execute(
-            "SELECT mode,contest_id,ai_enabled,provider,model,taxonomy_version "
+            "SELECT mode,contest_id,ai_enabled,provider,model,taxonomy_version,"
+            "algorithm_version,prompt_version "
             "FROM canonical_classification_runs WHERE id = ?",
             (effective_run_id,),
         ).fetchone()
@@ -1602,6 +1546,8 @@ def run_canonical_classification(
             provider_name,
             model,
             active_taxonomy.version,
+            CANONICAL_CLASSIFICATION_ALGORITHM_VERSION,
+            CANONICAL_ENRICHMENT_PROMPT_VERSION,
         )
         actual = tuple(
             existing[name]
@@ -1612,6 +1558,8 @@ def run_canonical_classification(
                 "provider",
                 "model",
                 "taxonomy_version",
+                "algorithm_version",
+                "prompt_version",
             )
         )
         if actual != expected:
@@ -1691,6 +1639,11 @@ def classification_review_items(
             raise CanonicalClassificationError(resolution.reason)
         contest_id = resolution.contest_id
     clause = "" if contest_id is None else "AND g.contest_id = ?"
+    if status == "pending":
+        clause += (
+            " AND (rq.field_name = '*' OR "
+            "rq.field_name IN ('discipline','matter','subject','level'))"
+        )
     parameters: tuple[Any, ...] = (status,) if contest_id is None else (status, contest_id)
     rows = connection.execute(
         "SELECT rq.*,cq.payload_json,r.display_name AS role,sh.official_name AS shift,"
@@ -1768,7 +1721,7 @@ def review_canonical_classification(
         applied_value: str | None = None
         if decision in {"accept", "correct"}:
             field_name = cast(str, row["field_name"])
-            if field_name not in ALLOWED_AI_FIELDS:
+            if field_name not in REVIEWABLE_FIELDS:
                 raise CanonicalClassificationError(
                     "item geral só pode ser rejeitado; escolha um campo específico"
                 )

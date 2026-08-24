@@ -11,7 +11,6 @@ from .canonical_classification import (
     CanonicalAIResponse,
     CanonicalAIResult,
     CanonicalClassificationError,
-    OpenAICanonicalEnrichmentProvider,
     canonical_ai_response_schema,
 )
 
@@ -206,7 +205,6 @@ def create_canonical_ai_provider(
     model: str | None = None,
 ) -> CanonicalAIProvider:
     providers: dict[str, type[Any]] = {
-        "openai": OpenAICanonicalEnrichmentProvider,
         "gemini": GeminiCanonicalEnrichmentProvider,
         "qwen": QwenCanonicalEnrichmentProvider,
         "deepseek": DeepSeekCanonicalEnrichmentProvider,
