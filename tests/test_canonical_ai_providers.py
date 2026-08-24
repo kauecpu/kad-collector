@@ -92,7 +92,7 @@ def _client(completion: Any) -> tuple[Any, _Recorder, _Recorder]:
 class CanonicalAIProvidersTests(unittest.TestCase):
     def test_cli_accepts_all_dormant_providers(self) -> None:
         parser = build_parser()
-        for provider in ("gemini", "qwen", "deepseek"):
+        for provider in ("gemini", "qwen", "deepseek", "ollama"):
             with self.subTest(provider=provider):
                 args = parser.parse_args(
                     [

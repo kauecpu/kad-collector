@@ -44,7 +44,9 @@ CLASSIFICATION_FIELDS = ("discipline", "matter", "subject", "level")
 OPTIONAL_EDITORIAL_FIELDS = ("difficulty", "explanation")
 ALLOWED_AI_FIELDS = CLASSIFICATION_FIELDS
 REVIEWABLE_FIELDS = (*CLASSIFICATION_FIELDS, *OPTIONAL_EDITORIAL_FIELDS)
-SUPPORTED_CANONICAL_AI_PROVIDERS = frozenset({"gemini", "qwen", "deepseek"})
+SUPPORTED_CANONICAL_AI_PROVIDERS = frozenset(
+    {"gemini", "qwen", "deepseek", "ollama"}
+)
 FORBIDDEN_AI_FIELDS = frozenset(
     {
         "difficulty",
@@ -95,6 +97,10 @@ class CanonicalClassificationError(ValueError):
     """The canonical classification workflow cannot prove a requested change."""
 
 
+class CanonicalAIProviderUnavailableError(CanonicalClassificationError):
+    """The selected AI provider is temporarily unavailable."""
+
+
 class AISuggestion(StrictModel):
     field: str = Field(min_length=1)
     value: str = Field(min_length=1)
@@ -140,6 +146,9 @@ class CanonicalAIResult:
     input_tokens: int | None = None
     output_tokens: int | None = None
     estimated_cost: float | None = None
+    provider_metrics: dict[str, int | float | str | bool | None] = field(
+        default_factory=dict
+    )
 
 
 class CanonicalAIProvider(Protocol):

@@ -258,7 +258,7 @@ def build_parser() -> argparse.ArgumentParser:
     classify_canonical.add_argument("--enable-ai", action="store_true")
     classify_canonical.add_argument(
         "--provider",
-        choices=["gemini", "qwen", "deepseek"],
+        choices=["gemini", "qwen", "deepseek", "ollama"],
     )
     classify_canonical.add_argument("--model")
     classify_canonical.add_argument("--run-id")
