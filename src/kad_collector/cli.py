@@ -9,6 +9,12 @@ from .ai_processor import process_extraction_manifest
 from .answer_association import revalidate_answer_key_associations
 from .answer_key import match_answer_key
 from .automation import run_automatic
+from .canonical_classification import (
+    OpenAICanonicalEnrichmentProvider,
+    classification_review_items,
+    review_canonical_classification,
+    run_canonical_classification,
+)
 from .canonical_identity import run_canonical_identity_migration
 from .collector import collect_documents
 from .config import load_config
@@ -235,6 +241,47 @@ def build_parser() -> argparse.ArgumentParser:
         type=_path,
         default=Path("data/reports/question-equivalence-migration.json"),
     )
+    classify_canonical = subparsers.add_parser(
+        "classify-canonical-questions",
+        help="simula ou aplica taxonomia e enriquecimento nas questões canônicas",
+    )
+    classify_canonical.add_argument("--database", type=_path, required=True)
+    classify_canonical.add_argument("--contest", help="alias canônico opcional")
+    classify_canonical.add_argument("--apply", action="store_true")
+    classify_canonical.add_argument("--enable-ai", action="store_true")
+    classify_canonical.add_argument("--provider", choices=["openai"], default="openai")
+    classify_canonical.add_argument("--model")
+    classify_canonical.add_argument("--run-id")
+    classify_canonical.add_argument("--limit", type=int)
+    classify_canonical.add_argument(
+        "--report",
+        type=_path,
+        default=Path("data/reports/canonical-classification.json"),
+    )
+    list_classification_review = subparsers.add_parser(
+        "list-canonical-classification-review",
+        help="lista itens da fila de revisão da classificação canônica",
+    )
+    list_classification_review.add_argument("--database", type=_path, required=True)
+    list_classification_review.add_argument("--contest", help="alias canônico opcional")
+    list_classification_review.add_argument("--status", default="pending")
+    list_classification_review.add_argument(
+        "--report",
+        type=_path,
+        default=Path("data/reports/canonical-classification-review.json"),
+    )
+    decide_classification_review = subparsers.add_parser(
+        "review-canonical-classification",
+        help="aceita, corrige ou rejeita um item da fila canônica",
+    )
+    decide_classification_review.add_argument("--database", type=_path, required=True)
+    decide_classification_review.add_argument("--item", required=True)
+    decide_classification_review.add_argument(
+        "--decision", choices=["accept", "correct", "reject"], required=True
+    )
+    decide_classification_review.add_argument("--actor", required=True)
+    decide_classification_review.add_argument("--value")
+    decide_classification_review.add_argument("--evidence")
     return parser
 
 
@@ -437,6 +484,59 @@ def _run(args: argparse.Namespace) -> int:
             f"{payload['canonicalQuestions']} questões canônicas; "
             f"{payload['sentToReview']} grupos para revisão; "
             f"{payload['remaining']} pendentes. Relatório: {args.report}"
+        )
+        return 0
+    if args.command == "classify-canonical-questions":
+        provider = (
+            OpenAICanonicalEnrichmentProvider(args.model)
+            if args.enable_ai and args.provider == "openai"
+            else None
+        )
+        store = DesktopStore(args.database)
+        with closing(store._connect()) as connection:
+            classification_report = run_canonical_classification(
+                connection,
+                contest_alias=args.contest,
+                apply=args.apply,
+                enable_ai=args.enable_ai,
+                provider=provider,
+                run_id=args.run_id,
+                limit=args.limit,
+            )
+        payload = classification_report.as_dict()
+        write_json(args.report, payload)
+        print(
+            f"Classificação canônica {payload['mode']}: {payload['processed']} processadas; "
+            f"{payload['deterministicClassified']} campos determinísticos; "
+            f"{payload['aiSent']} chamadas de IA; "
+            f"{payload['reviewRequired']} para revisão; "
+            f"{payload['remaining']} pendentes. Relatório: {args.report}"
+        )
+        return 0
+    if args.command == "list-canonical-classification-review":
+        store = DesktopStore(args.database)
+        with closing(store._connect()) as connection:
+            items = classification_review_items(
+                connection,
+                contest_alias=args.contest,
+                status=args.status,
+            )
+        write_json(args.report, {"status": args.status, "items": items})
+        print(f"Fila canônica: {len(items)} itens. Relatório: {args.report}")
+        return 0
+    if args.command == "review-canonical-classification":
+        store = DesktopStore(args.database)
+        with closing(store._connect()) as connection:
+            result = review_canonical_classification(
+                connection,
+                args.item,
+                decision=args.decision,
+                actor=args.actor,
+                value=args.value,
+                evidence=args.evidence,
+            )
+        print(
+            f"Revisão canônica {result['decision']}: {result['itemId']} (estado {result['state']})"
         )
         return 0
     if args.command == "approve":
