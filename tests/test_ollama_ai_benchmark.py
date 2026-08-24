@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +24,10 @@ from kad_collector.ollama_ai_benchmark import (
     summarize_ollama_ai_benchmark,
 )
 from kad_collector.ollama_ai_provider import OllamaUnavailableError
-from kad_collector.ollama_preflight import OLLAMA_BENCHMARK_TARGETS
+from kad_collector.ollama_preflight import (
+    OLLAMA_BENCHMARK_TARGETS,
+    ollama_probe_report_id,
+)
 from kad_collector.semantic_identity import stable_sha256
 
 EXPECTED = {
@@ -37,15 +41,17 @@ EXPECTED = {
 class FakeBenchmarkAdmin:
     base_url = "http://127.0.0.1:11434"
 
-    def __init__(self) -> None:
+    def __init__(self, models: list[dict[str, Any]] | None = None) -> None:
         self.active_model: str | None = None
         self.unloaded: list[str] = []
+        self.models = models or []
+        self.command_environments: list[dict[str, str]] = []
 
     def version(self) -> str:
         return "0.11.10"
 
     def tags(self) -> list[dict[str, Any]]:
-        return []
+        return self.models
 
     def chat(self, payload: dict[str, Any]) -> dict[str, Any]:
         raise AssertionError("benchmark deve usar o provedor, não o cliente administrativo")
@@ -160,13 +166,10 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
             }
             for index, target in enumerate(OLLAMA_BENCHMARK_TARGETS, 1)
         ]
-        write_json(
-            self.preflight,
-            {
+        preflight_report = {
                 "schemaVersion": 1,
                 "kind": "ollama-local-preflight-probe",
                 "probeId": "probe-test",
-                "probeReportId": "probe-report-test",
                 "networkScope": "loopback",
                 "ollama": {
                     "baseUrl": "http://127.0.0.1:11434",
@@ -174,13 +177,24 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
                 },
                 "models": models,
                 "readyForBenchmark": True,
-            },
-        )
+        }
+        preflight_report["probeReportId"] = ollama_probe_report_id(preflight_report)
+        write_json(self.preflight, preflight_report)
+        self.installed_models = [
+            {
+                "name": model["tag"],
+                "model": model["tag"],
+                "digest": model["digest"],
+                "details": {"quantization_level": model["quantization"]},
+            }
+            for model in models
+        ]
         prepared = prepare_ollama_ai_benchmark(
             self.source_bundle,
             preflight_path=self.preflight,
             local_bundle_path=self.local_bundle,
             manifest_path=self.manifest,
+            local_artifact_root=self.root,
         )
         self.benchmark_id = str(prepared["benchmarkId"])
 
@@ -248,7 +262,17 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
         *,
         unavailable_after: int | None = None,
         forbidden: bool = False,
+        processor: str = "100% GPU",
     ) -> dict[str, Any]:
+        admin.models = self.installed_models
+
+        def command_runner(
+            command: tuple[str, ...], environment: Mapping[str, str]
+        ) -> str:
+            self.assertEqual(command, ("ollama", "ps"))
+            admin.command_environments.append(dict(environment))
+            return f"{admin.active_model} abc 9 GB {processor}"
+
         return execute_ollama_ai_benchmark(
             self.local_bundle,
             manifest_path=self.manifest,
@@ -269,6 +293,8 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
                 forbidden=forbidden,
             ),
             admin_client=admin,
+            command_runner=command_runner,
+            local_artifact_root=self.root,
         )
 
     def test_preparation_freezes_exact_models_without_inference(self) -> None:
@@ -283,7 +309,72 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
         self.assertEqual(manifest["parameters"]["concurrency"], 1)
         self.assertEqual(manifest["parameters"]["numCtx"], 4096)
         self.assertEqual(manifest["sampleSize"], 200)
+        self.assertEqual(
+            manifest["localBundleFingerprint"], stable_sha256(bundle["items"])
+        )
         self.assertEqual(bundle["manifest"], manifest)
+
+    def test_raw_question_change_invalidates_prepared_bundle(self) -> None:
+        bundle = read_json(self.local_bundle)
+        bundle["items"][0]["request"]["question"]["statement"] = "conteúdo alterado"
+        write_json(self.local_bundle, bundle)
+
+        with self.assertRaisesRegex(CanonicalClassificationError, "conteúdo bruto"):
+            self._run_smoke({}, FakeBenchmarkAdmin())
+
+    def test_preparation_rejects_requested_fields_that_diverge_from_hidden_fields(
+        self,
+    ) -> None:
+        source = read_json(self.source_bundle)
+        source["items"][0]["request"]["requestedFields"] = ["subject"]
+        write_json(self.source_bundle, source)
+
+        with self.assertRaisesRegex(CanonicalClassificationError, "campos solicitados"):
+            prepare_ollama_ai_benchmark(
+                self.source_bundle,
+                preflight_path=self.preflight,
+                local_bundle_path=self.root / "other-bundle.json",
+                manifest_path=self.root / "other-manifest.json",
+                local_artifact_root=self.root,
+            )
+
+    def test_tampered_preflight_report_is_rejected_before_inference(self) -> None:
+        preflight = read_json(self.preflight)
+        preflight["models"][0]["processor"] = "80% GPU 20% CPU"
+        write_json(self.preflight, preflight)
+
+        with self.assertRaisesRegex(CanonicalClassificationError, "alterado"):
+            self._run_smoke({}, FakeBenchmarkAdmin())
+
+    def test_live_digest_drift_is_rejected_before_inference(self) -> None:
+        admin = FakeBenchmarkAdmin(self.installed_models)
+        admin.models[0] = {**admin.models[0], "digest": "sha256:changed"}
+
+        with self.assertRaisesRegex(CanonicalClassificationError, "digest vivo"):
+            self._run_smoke({}, admin)
+
+    def test_missing_live_model_stops_before_inference_with_pull_instruction(self) -> None:
+        admin = FakeBenchmarkAdmin(self.installed_models[:-1])
+
+        with self.assertRaisesRegex(
+            CanonicalClassificationError,
+            r"não está instalado.*ollama pull gemma3:12b-it-qat",
+        ):
+            execute_ollama_ai_benchmark(
+                self.local_bundle,
+                manifest_path=self.manifest,
+                preflight_path=self.preflight,
+                checkpoint_path=self.checkpoint,
+                phase="smoke",
+                approved_benchmark_id=self.benchmark_id,
+                max_new_calls=30,
+                provider_factory=lambda _: (_ for _ in ()).throw(AssertionError()),
+                admin_client=admin,
+                command_runner=lambda _, __: "unused",
+                local_artifact_root=self.root,
+            )
+
+        self.assertFalse(self.checkpoint.exists())
 
     def test_cli_exposes_prepare_run_and_aggregate_report_commands(self) -> None:
         parser = build_parser()
@@ -349,6 +440,10 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
                 expected_ids,
             )
         self.assertEqual(admin.unloaded, [target.tag for target in OLLAMA_BENCHMARK_TARGETS])
+        self.assertEqual(
+            admin.command_environments,
+            [{"OLLAMA_HOST": admin.base_url}] * len(OLLAMA_BENCHMARK_TARGETS),
+        )
 
         with self.assertRaisesRegex(CanonicalClassificationError, "30"):
             execute_ollama_ai_benchmark(
@@ -360,7 +455,9 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
                 approved_benchmark_id=self.benchmark_id,
                 max_new_calls=31,
                 provider_factory=lambda _: (_ for _ in ()).throw(AssertionError()),
-                admin_client=FakeBenchmarkAdmin(),
+                admin_client=FakeBenchmarkAdmin(self.installed_models),
+                command_runner=lambda _, __: "unused",
+                local_artifact_root=self.root,
             )
 
     def test_resume_skips_checkpointed_pairs(self) -> None:
@@ -371,6 +468,34 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
 
         self.assertEqual(result["newCalls"], 0)
         self.assertEqual(resumed_calls, {})
+
+    def test_tampered_checkpoint_record_is_rejected(self) -> None:
+        self._run_smoke({}, FakeBenchmarkAdmin())
+        checkpoint = read_json(self.checkpoint)
+        checkpoint["records"][0]["key"] = "tampered"
+        write_json(self.checkpoint, checkpoint)
+
+        with self.assertRaisesRegex(CanonicalClassificationError, "chave inválida"):
+            summarize_ollama_ai_benchmark(
+                self.local_bundle,
+                manifest_path=self.manifest,
+                checkpoint_path=self.checkpoint,
+                local_artifact_root=self.root,
+            )
+
+    def test_checkpoint_rejects_unknown_record_status(self) -> None:
+        self._run_smoke({}, FakeBenchmarkAdmin())
+        checkpoint = read_json(self.checkpoint)
+        checkpoint["records"][0]["status"] = "mystery"
+        write_json(self.checkpoint, checkpoint)
+
+        with self.assertRaisesRegex(CanonicalClassificationError, "status desconhecido"):
+            summarize_ollama_ai_benchmark(
+                self.local_bundle,
+                manifest_path=self.manifest,
+                checkpoint_path=self.checkpoint,
+                local_artifact_root=self.root,
+            )
 
     def test_unavailable_model_pauses_without_completing_current_pair(self) -> None:
         first = self._run_smoke({}, FakeBenchmarkAdmin(), unavailable_after=2)
@@ -386,6 +511,94 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
         self.assertEqual(resumed["newCalls"], 29)
         self.assertEqual(len(read_json(self.checkpoint)["records"]), 30)
 
+    def test_hardware_gate_pauses_during_warmup_before_measured_calls(self) -> None:
+        admin = FakeBenchmarkAdmin(self.installed_models)
+        result = self._run_smoke({}, admin, processor="80% GPU 20% CPU")
+        checkpoint = read_json(self.checkpoint)
+
+        self.assertEqual(result["status"], "paused")
+        self.assertEqual(result["newCalls"], 0)
+        self.assertEqual(checkpoint["records"], [])
+        self.assertEqual(checkpoint["interruptions"][0]["stage"], "warmup")
+
+    def test_cleanup_failure_is_checkpointed_without_masking_completed_calls(self) -> None:
+        class CleanupFailingAdmin(FakeBenchmarkAdmin):
+            def unload(self, model: str) -> None:
+                raise RuntimeError("detalhe sensível que não deve ser persistido")
+
+        admin = CleanupFailingAdmin(self.installed_models)
+        result = self._run_smoke({}, admin)
+        checkpoint = read_json(self.checkpoint)
+
+        self.assertEqual(result["status"], "paused")
+        self.assertEqual(result["newCalls"], 10)
+        self.assertEqual(len(checkpoint["cleanupFailures"]), 1)
+        self.assertEqual(checkpoint["cleanupFailures"][0]["status"], "unresolved")
+        self.assertEqual(checkpoint["cleanupFailures"][0]["errorType"], "RuntimeError")
+        self.assertNotIn("detalhe sensível", json.dumps(checkpoint))
+
+        resumed = self._run_smoke({}, FakeBenchmarkAdmin())
+        resumed_checkpoint = read_json(self.checkpoint)
+
+        self.assertEqual(resumed["status"], "completed")
+        self.assertEqual(resumed["newCalls"], 20)
+        self.assertEqual(resumed_checkpoint["cleanupFailures"][0]["status"], "resolved")
+        self.assertIsInstance(
+            resumed_checkpoint["cleanupFailures"][0]["resolvedAt"], str
+        )
+
+    def test_unresolved_final_cleanup_blocks_full_and_positive_recommendation(self) -> None:
+        final_tag = OLLAMA_BENCHMARK_TARGETS[-1].tag
+
+        class FinalCleanupFailingAdmin(FakeBenchmarkAdmin):
+            def unload(self, model: str) -> None:
+                if model == final_tag:
+                    raise RuntimeError("unload failed")
+                super().unload(model)
+
+        failing_admin = FinalCleanupFailingAdmin(self.installed_models)
+        smoke = self._run_smoke({}, failing_admin)
+        report = summarize_ollama_ai_benchmark(
+            self.local_bundle,
+            manifest_path=self.manifest,
+            checkpoint_path=self.checkpoint,
+            local_artifact_root=self.root,
+        )
+
+        self.assertEqual(smoke["newCalls"], 30)
+        self.assertEqual(smoke["status"], "paused")
+        self.assertEqual(report["cleanupFailures"]["unresolved"], 1)
+        self.assertIn("Smoke incompleto", report["recommendation"])
+
+        full = execute_ollama_ai_benchmark(
+            self.local_bundle,
+            manifest_path=self.manifest,
+            preflight_path=self.preflight,
+            checkpoint_path=self.checkpoint,
+            phase="full",
+            approved_benchmark_id=self.benchmark_id,
+            max_new_calls=570,
+            provider_factory=lambda _: (_ for _ in ()).throw(AssertionError()),
+            admin_client=failing_admin,
+            command_runner=lambda _, __: "unused",
+            local_artifact_root=self.root,
+        )
+
+        self.assertEqual(full["status"], "paused")
+        self.assertEqual(full["newCalls"], 0)
+
+        resolved = self._run_smoke({}, FakeBenchmarkAdmin())
+        resolved_report = summarize_ollama_ai_benchmark(
+            self.local_bundle,
+            manifest_path=self.manifest,
+            checkpoint_path=self.checkpoint,
+            local_artifact_root=self.root,
+        )
+        self.assertEqual(resolved["status"], "completed")
+        self.assertEqual(resolved["newCalls"], 0)
+        self.assertEqual(resolved_report["cleanupFailures"]["unresolved"], 0)
+        self.assertNotIn("Smoke incompleto", resolved_report["recommendation"])
+
     def test_full_requires_successful_smoke_and_a_new_phase(self) -> None:
         with self.assertRaisesRegex(CanonicalClassificationError, "smoke"):
             execute_ollama_ai_benchmark(
@@ -397,7 +610,9 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
                 approved_benchmark_id=self.benchmark_id,
                 max_new_calls=570,
                 provider_factory=lambda _: (_ for _ in ()).throw(AssertionError()),
-                admin_client=FakeBenchmarkAdmin(),
+                admin_client=FakeBenchmarkAdmin(self.installed_models),
+                command_runner=lambda _, __: "unused",
+                local_artifact_root=self.root,
             )
 
     def test_aggregate_report_excludes_raw_content_and_local_paths(self) -> None:
@@ -408,6 +623,7 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
             manifest_path=self.manifest,
             checkpoint_path=self.checkpoint,
             report_path=self.report,
+            local_artifact_root=self.root,
         )
         serialized = json.dumps(report, ensure_ascii=False)
 
@@ -432,9 +648,19 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
                 "benchmarkId": manifest["benchmarkId"],
                 "manifestFingerprint": manifest["manifestFingerprint"],
                 "sampleFingerprint": manifest["sampleFingerprint"],
+                "localBundleFingerprint": manifest["localBundleFingerprint"],
                 "records": [
                     {
-                        "key": "provider-failure",
+                        "key": stable_sha256(
+                            {
+                                "benchmark": manifest["benchmarkId"],
+                                "model": model["tag"],
+                                "digest": model["digest"],
+                                "question": item["referenceQuestionId"],
+                                "fingerprint": item["contentFingerprint"],
+                                "fields": item["hiddenFields"],
+                            }
+                        ),
                         "phase": "smoke",
                         "model": model["tag"],
                         "digest": model["digest"],
@@ -450,6 +676,7 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
                 ],
                 "warmups": [],
                 "interruptions": [],
+                "cleanupFailures": [],
             },
         )
 
@@ -457,6 +684,7 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
             self.local_bundle,
             manifest_path=self.manifest,
             checkpoint_path=self.checkpoint,
+            local_artifact_root=self.root,
         )
 
         metrics = report["models"][model["tag"]]

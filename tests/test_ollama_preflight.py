@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from collections.abc import Mapping
 from typing import Any
 
 from kad_collector.canonical_classification import CanonicalClassificationError
@@ -115,7 +116,7 @@ class OllamaPreflightTests(unittest.TestCase):
                 preflight=preflight,
                 approved_probe_id="wrong",
                 client=client,
-                command_runner=lambda _: "",
+                command_runner=lambda _, __: "",
                 windows_log_reader=lambda: "",
             )
 
@@ -134,15 +135,23 @@ class OllamaPreflightTests(unittest.TestCase):
     def test_probe_uses_structured_output_and_requires_full_gpu(self) -> None:
         client = FakeAdminClient(self.models)
         preflight = inspect_ollama_environment(client=client, free_bytes=40 * GIB)
+        command_environments: list[dict[str, str]] = []
+
+        def command_runner(
+            command: tuple[str, ...], environment: Mapping[str, str]
+        ) -> str:
+            self.assertEqual(command, ("ollama", "ps"))
+            command_environments.append(dict(environment))
+            return (
+                "NAME ID SIZE PROCESSOR UNTIL\n"
+                f"{client.active_model} abc 9 GB 100% GPU 4 minutes"
+            )
 
         report = probe_ollama_models(
             preflight=preflight,
             approved_probe_id=str(preflight["probeId"]),
             client=client,
-            command_runner=lambda command: (
-                "NAME ID SIZE PROCESSOR UNTIL\n"
-                f"{client.active_model} abc 9 GB 100% GPU 4 minutes"
-            ),
+            command_runner=command_runner,
             windows_log_reader=lambda: (
                 "time=... msg=\"offloaded 41/41 layers to GPU\"\n"
                 "time=... msg=\"offloaded 49/49 layers to GPU\""
@@ -152,6 +161,10 @@ class OllamaPreflightTests(unittest.TestCase):
         self.assertTrue(report["readyForBenchmark"])
         self.assertEqual(len(client.chat_requests), 3)
         self.assertEqual(client.unloaded, self.tags)
+        self.assertEqual(
+            command_environments,
+            [{"OLLAMA_HOST": client.base_url}] * len(self.tags),
+        )
         for request in client.chat_requests:
             self.assertFalse(request["stream"])
             self.assertFalse(request["think"])
@@ -173,13 +186,53 @@ class OllamaPreflightTests(unittest.TestCase):
                 preflight=preflight,
                 approved_probe_id=str(preflight["probeId"]),
                 client=client,
-                command_runner=lambda _: (
+                command_runner=lambda _, __: (
                     f"{client.active_model} abc 9 GB 80% GPU 20% CPU 4 minutes"
                 ),
                 windows_log_reader=lambda: "",
             )
 
         self.assertEqual(client.unloaded, [self.tags[0]])
+
+    def test_cleanup_failure_does_not_mask_the_primary_probe_error(self) -> None:
+        class CleanupFailingClient(FakeAdminClient):
+            def unload(self, model: str) -> None:
+                raise RuntimeError("cleanup indisponível")
+
+        client = CleanupFailingClient(self.models)
+        preflight = inspect_ollama_environment(client=client, free_bytes=40 * GIB)
+
+        with self.assertRaisesRegex(CanonicalClassificationError, "100% GPU"):
+            probe_ollama_models(
+                preflight=preflight,
+                approved_probe_id=str(preflight["probeId"]),
+                client=client,
+                command_runner=lambda _, __: (
+                    f"{client.active_model} abc 9 GB 80% GPU 20% CPU"
+                ),
+                windows_log_reader=lambda: "",
+            )
+
+    def test_probe_rejects_loaded_context_or_digest_drift(self) -> None:
+        class DriftedClient(FakeAdminClient):
+            def running_models(self) -> list[dict[str, Any]]:
+                rows = super().running_models()
+                rows[0]["digest"] = "sha256:changed"
+                return rows
+
+        client = DriftedClient(self.models)
+        preflight = inspect_ollama_environment(client=client, free_bytes=40 * GIB)
+
+        with self.assertRaisesRegex(CanonicalClassificationError, "digest carregado"):
+            probe_ollama_models(
+                preflight=preflight,
+                approved_probe_id=str(preflight["probeId"]),
+                client=client,
+                command_runner=lambda _, __: (
+                    f"{client.active_model} abc 9 GB 100% GPU"
+                ),
+                windows_log_reader=lambda: "",
+            )
 
     def test_cli_exposes_inspection_and_explicit_probe_gate(self) -> None:
         parser = build_parser()

@@ -164,6 +164,17 @@ class OllamaAIProviderTests(unittest.TestCase):
             "http://[::1]:11434",
         )
 
+    def test_rejects_injected_client_with_remote_base_url(self) -> None:
+        remote_client = httpx.Client(
+            transport=httpx.MockTransport(
+                lambda _: httpx.Response(200, json=_ollama_response())
+            ),
+            base_url="https://example.com",
+        )
+
+        with self.assertRaisesRegex(CanonicalClassificationError, "loopback"):
+            OllamaCanonicalEnrichmentProvider(MODEL, client=remote_client)
+
     def test_connection_failure_raises_availability_error(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
             raise httpx.ConnectError("offline", request=request)

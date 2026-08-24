@@ -22,8 +22,20 @@ DEFAULT_CONTEXT_LENGTH = 4096
 DEFAULT_OUTPUT_TOKENS = 512
 
 
-class OllamaUnavailableError(CanonicalAIProviderUnavailableError):
+class OllamaBlockingError(CanonicalAIProviderUnavailableError):
+    """A local Ollama gate requires operator action before continuing."""
+
+
+class OllamaUnavailableError(OllamaBlockingError):
     """The local Ollama service cannot complete the request now."""
+
+
+class OllamaModelMissingError(OllamaBlockingError):
+    """The selected Ollama model is not installed locally."""
+
+
+class OllamaHardwareGateError(OllamaBlockingError):
+    """The selected model does not satisfy the local hardware gate."""
 
 
 class _OllamaMessage(BaseModel):
@@ -83,6 +95,19 @@ class OllamaCanonicalEnrichmentProvider:
         base_url = validate_ollama_base_url(
             os.environ.get("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL)
         )
+        if client is not None:
+            try:
+                injected_base_url = validate_ollama_base_url(
+                    str(client.base_url).rstrip("/")
+                )
+            except CanonicalClassificationError as exc:
+                raise CanonicalClassificationError(
+                    "cliente Ollama injetado deve usar loopback local"
+                ) from exc
+            if injected_base_url != base_url:
+                raise CanonicalClassificationError(
+                    "cliente Ollama deve usar o mesmo endpoint loopback configurado"
+                )
         self._client = client
         if self._client is None and self.model:
             self._client = httpx.Client(
@@ -124,8 +149,9 @@ class OllamaCanonicalEnrichmentProvider:
                 f"Ollama local indisponível (HTTP {response.status_code})"
             )
         if response.status_code == 404:
-            raise CanonicalClassificationError(
-                f"modelo Ollama {self.model!r} não está instalado"
+            raise OllamaModelMissingError(
+                f"modelo Ollama {self.model!r} não está instalado; "
+                f"execute 'ollama pull {self.model}' somente após autorização"
             )
         if response.status_code >= 400:
             raise CanonicalClassificationError(

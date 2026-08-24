@@ -21,13 +21,19 @@ from .editorial_taxonomy import EditorialTaxonomy
 from .json_utils import read_json, write_json
 from .ollama_ai_provider import (
     DEFAULT_CONTEXT_LENGTH,
+    OllamaBlockingError,
     OllamaCanonicalEnrichmentProvider,
-    OllamaUnavailableError,
+    OllamaHardwareGateError,
+    OllamaModelMissingError,
 )
+from .ollama_local_paths import LOCAL_ARTIFACT_ROOT, validate_local_artifact_path
 from .ollama_preflight import (
     OLLAMA_BENCHMARK_TARGETS,
     HttpOllamaAdminClient,
     OllamaAdminClient,
+    OllamaCommandRunner,
+    ollama_processor_for_model,
+    validate_ollama_probe_report,
 )
 from .semantic_identity import stable_sha256
 
@@ -67,7 +73,22 @@ def _safe_item(item: Mapping[str, Any]) -> dict[str, Any]:
         ) from exc
 
 
-def _validated_preflight(path: Path) -> dict[str, Any]:
+def _validate_request_alignment(item: Mapping[str, Any]) -> None:
+    request = item.get("request")
+    if not isinstance(request, Mapping):
+        raise CanonicalClassificationError("questão local sem requisição de IA")
+    if request.get("requestedFields") != item.get("hiddenFields"):
+        raise CanonicalClassificationError(
+            "campos solicitados divergiram dos campos ocultos do benchmark"
+        )
+
+
+def _validated_preflight(
+    path: Path, *, artifact_root: Path = LOCAL_ARTIFACT_ROOT
+) -> dict[str, Any]:
+    validate_local_artifact_path(
+        path, label="relatório de probe", artifact_root=artifact_root
+    )
     preflight = cast(dict[str, Any], read_json(path))
     if preflight.get("kind") != "ollama-local-preflight-probe":
         raise CanonicalClassificationError("relatório informado não é um probe Ollama")
@@ -75,6 +96,7 @@ def _validated_preflight(path: Path) -> dict[str, Any]:
         raise CanonicalClassificationError("probe Ollama não liberou o benchmark")
     if preflight.get("networkScope") != "loopback":
         raise CanonicalClassificationError("probe Ollama não está restrito a loopback")
+    validate_ollama_probe_report(preflight)
     models = preflight.get("models")
     if not isinstance(models, list):
         raise CanonicalClassificationError("probe Ollama sem modelos")
@@ -97,7 +119,11 @@ def _validated_preflight(path: Path) -> dict[str, Any]:
             raise CanonicalClassificationError(
                 f"{target.tag} não foi validado com contexto {DEFAULT_CONTEXT_LENGTH}"
             )
-        if model.get("quantization") != target.expected_quantization:
+        quantization = model.get("quantization")
+        if (
+            not isinstance(quantization, str)
+            or quantization.casefold() != target.expected_quantization.casefold()
+        ):
             raise CanonicalClassificationError(
                 f"quantização do modelo {target.tag} divergiu do plano"
             )
@@ -120,7 +146,23 @@ def prepare_ollama_ai_benchmark(
     preflight_path: Path,
     local_bundle_path: Path,
     manifest_path: Path,
+    local_artifact_root: Path = LOCAL_ARTIFACT_ROOT,
 ) -> dict[str, Any]:
+    validate_local_artifact_path(
+        canonical_bundle_path,
+        label="bundle canônico com conteúdo bruto",
+        artifact_root=local_artifact_root,
+    )
+    validate_local_artifact_path(
+        preflight_path,
+        label="relatório de probe",
+        artifact_root=local_artifact_root,
+    )
+    validate_local_artifact_path(
+        local_bundle_path,
+        label="bundle local",
+        artifact_root=local_artifact_root,
+    )
     source = cast(dict[str, Any], read_json(canonical_bundle_path))
     source_manifest = cast(Mapping[str, Any], source.get("manifest") or {})
     source_items = cast(list[Mapping[str, Any]], source.get("items") or [])
@@ -128,17 +170,22 @@ def prepare_ollama_ai_benchmark(
         raise CanonicalClassificationError(
             f"benchmark local exige {LOCAL_BENCHMARK_SAMPLE_SIZE} questões"
         )
+    for item in source_items:
+        _validate_request_alignment(item)
     safe_items = [_safe_item(item) for item in source_items]
     manifest_items = cast(list[Mapping[str, Any]], source_manifest.get("items") or [])
     if safe_items != manifest_items:
         raise CanonicalClassificationError("bundle local divergiu do manifesto canônico")
     source_fingerprint = stable_sha256(safe_items)
+    local_bundle_fingerprint = stable_sha256(source_items)
     if source_manifest.get("sampleFingerprint") != source_fingerprint:
         raise CanonicalClassificationError("fingerprint da amostra canônica não confere")
     if source_manifest.get("promptVersion") != CANONICAL_ENRICHMENT_PROMPT_VERSION:
         raise CanonicalClassificationError("prompt canônico mudou desde a preparação")
 
-    preflight = _validated_preflight(preflight_path)
+    preflight = _validated_preflight(
+        preflight_path, artifact_root=local_artifact_root
+    )
     probe_models = {
         str(item["tag"]): item
         for item in cast(list[Mapping[str, Any]], preflight["models"])
@@ -159,6 +206,7 @@ def prepare_ollama_ai_benchmark(
         "sourceAlgorithmVersion": source_manifest.get("algorithmVersion"),
         "sourceBenchmarkId": source_manifest.get("benchmarkId"),
         "sampleFingerprint": source_fingerprint,
+        "localBundleFingerprint": local_bundle_fingerprint,
         "sampleSize": len(safe_items),
         "taxonomyVersion": source_manifest.get("taxonomyVersion"),
         "promptVersion": source_manifest.get("promptVersion"),
@@ -199,8 +247,14 @@ def prepare_ollama_ai_benchmark(
 
 
 def _validate_local_bundle(
-    local_bundle_path: Path, manifest_path: Path
+    local_bundle_path: Path,
+    manifest_path: Path,
+    *,
+    artifact_root: Path = LOCAL_ARTIFACT_ROOT,
 ) -> tuple[dict[str, Any], dict[str, Any], list[Mapping[str, Any]]]:
+    validate_local_artifact_path(
+        local_bundle_path, label="bundle local", artifact_root=artifact_root
+    )
     bundle = cast(dict[str, Any], read_json(local_bundle_path))
     embedded = cast(dict[str, Any], bundle.get("manifest") or {})
     public = cast(dict[str, Any], read_json(manifest_path))
@@ -216,6 +270,12 @@ def _validate_local_bundle(
         raise CanonicalClassificationError("bundle local não contém 200 questões")
     if [_safe_item(item) for item in items] != public.get("items"):
         raise CanonicalClassificationError("questões locais divergiram do manifesto")
+    if stable_sha256(items) != public.get("localBundleFingerprint"):
+        raise CanonicalClassificationError(
+            "conteúdo bruto do bundle local divergiu do manifesto"
+        )
+    for item in items:
+        _validate_request_alignment(item)
     return bundle, public, items
 
 
@@ -259,13 +319,161 @@ def _checkpoint_key(
     )
 
 
-def _load_checkpoint(path: Path, manifest: Mapping[str, Any]) -> dict[str, Any]:
+def _load_checkpoint(
+    path: Path,
+    manifest: Mapping[str, Any],
+    *,
+    artifact_root: Path = LOCAL_ARTIFACT_ROOT,
+) -> dict[str, Any]:
+    validate_local_artifact_path(
+        path, label="checkpoint local", artifact_root=artifact_root
+    )
     if path.exists():
         checkpoint = cast(dict[str, Any], read_json(path))
-        for name in ("benchmarkId", "manifestFingerprint", "sampleFingerprint"):
+        if checkpoint.get("schemaVersion") != LOCAL_BENCHMARK_SCHEMA_VERSION:
+            raise CanonicalClassificationError(
+                "versão do schema do checkpoint local é incompatível"
+            )
+        for name in (
+            "benchmarkId",
+            "manifestFingerprint",
+            "sampleFingerprint",
+            "localBundleFingerprint",
+        ):
             if checkpoint.get(name) != manifest.get(name):
                 raise CanonicalClassificationError(
                     f"checkpoint divergiu do manifesto em {name}"
+                )
+        checkpoint.setdefault("cleanupFailures", [])
+        for collection_name in (
+            "records",
+            "warmups",
+            "interruptions",
+            "cleanupFailures",
+        ):
+            if not isinstance(checkpoint.get(collection_name), list):
+                raise CanonicalClassificationError(
+                    f"checkpoint local sem {collection_name} válidos"
+                )
+        records = cast(list[Any], checkpoint["records"])
+        models = {
+            str(model["tag"]): model
+            for model in cast(list[Mapping[str, Any]], manifest["models"])
+        }
+        items = {
+            str(item["referenceQuestionId"]): item
+            for item in cast(list[Mapping[str, Any]], manifest["items"])
+        }
+        seen: set[str] = set()
+        for record in records:
+            if not isinstance(record, Mapping):
+                raise CanonicalClassificationError("registro inválido no checkpoint")
+            model = models.get(str(record.get("model")))
+            item = items.get(str(record.get("referenceQuestionId")))
+            if model is None or item is None:
+                raise CanonicalClassificationError(
+                    "checkpoint referencia modelo ou questão desconhecidos"
+                )
+            expected_key = _checkpoint_key(
+                str(manifest["benchmarkId"]), model, item
+            )
+            key = record.get("key")
+            if key != expected_key or key in seen:
+                raise CanonicalClassificationError(
+                    "checkpoint contém chave inválida ou duplicada"
+                )
+            seen.add(str(key))
+            expected_phase = (
+                "smoke"
+                if str(item["referenceQuestionId"])
+                in cast(list[str], manifest["smokeReferenceQuestionIds"])
+                else "full"
+            )
+            if (
+                record.get("phase") != expected_phase
+                or record.get("digest") != model["digest"]
+                or record.get("contentFingerprint")
+                != item["contentFingerprint"]
+                or record.get("requestedFields") != item["hiddenFields"]
+            ):
+                raise CanonicalClassificationError(
+                    "registro do checkpoint divergiu do manifesto"
+                )
+            status = record.get("status")
+            if status == "completed":
+                if (
+                    record.get("schemaValid") is not True
+                    or not isinstance(record.get("suggestions"), Mapping)
+                    or not isinstance(record.get("fieldCorrect"), Mapping)
+                    or not isinstance(record.get("allFieldsCorrect"), bool)
+                ):
+                    raise CanonicalClassificationError(
+                        "registro concluído do checkpoint está incompleto"
+                    )
+            elif status == "failed":
+                if not isinstance(record.get("errorType"), str) or not isinstance(
+                    record.get("errorCategory"), str
+                ):
+                    raise CanonicalClassificationError(
+                        "registro de falha do checkpoint está incompleto"
+                    )
+            else:
+                raise CanonicalClassificationError(
+                    "registro do checkpoint possui status desconhecido"
+                )
+
+        for warmup in cast(list[Any], checkpoint["warmups"]):
+            if not isinstance(warmup, Mapping):
+                raise CanonicalClassificationError("warm-up inválido no checkpoint")
+            model = models.get(str(warmup.get("model")))
+            if (
+                model is None
+                or warmup.get("phase") not in {"smoke", "full"}
+                or warmup.get("digest") != model["digest"]
+                or warmup.get("status") not in {"completed", "failed"}
+            ):
+                raise CanonicalClassificationError("warm-up divergiu do manifesto")
+            if warmup.get("status") == "completed" and warmup.get(
+                "processor"
+            ) != "100% GPU":
+                raise CanonicalClassificationError(
+                    "warm-up concluído sem comprovação de 100% GPU"
+                )
+            if warmup.get("status") == "failed" and not isinstance(
+                warmup.get("errorType"), str
+            ):
+                raise CanonicalClassificationError(
+                    "falha de warm-up sem tipo de erro"
+                )
+
+        for interruption in cast(list[Any], checkpoint["interruptions"]):
+            if (
+                not isinstance(interruption, Mapping)
+                or str(interruption.get("model")) not in models
+                or interruption.get("phase") not in {"smoke", "full"}
+                or interruption.get("stage") not in {"warmup", "measured"}
+                or not isinstance(interruption.get("interruptionType"), str)
+            ):
+                raise CanonicalClassificationError(
+                    "interrupção inválida no checkpoint"
+                )
+
+        for cleanup in cast(list[Any], checkpoint["cleanupFailures"]):
+            if (
+                not isinstance(cleanup, Mapping)
+                or str(cleanup.get("model")) not in models
+                or cleanup.get("phase") not in {"smoke", "full"}
+                or cleanup.get("status") not in {"unresolved", "resolved"}
+                or not isinstance(cleanup.get("errorType"), str)
+            ):
+                raise CanonicalClassificationError(
+                    "falha de limpeza inválida no checkpoint"
+                )
+            if cleanup.get("status") == "resolved" and not isinstance(
+                cleanup.get("resolvedAt"), str
+            ):
+                raise CanonicalClassificationError(
+                    "falha de limpeza resolvida sem auditoria"
                 )
         return checkpoint
     return {
@@ -273,9 +481,11 @@ def _load_checkpoint(path: Path, manifest: Mapping[str, Any]) -> dict[str, Any]:
         "benchmarkId": manifest["benchmarkId"],
         "manifestFingerprint": manifest["manifestFingerprint"],
         "sampleFingerprint": manifest["sampleFingerprint"],
+        "localBundleFingerprint": manifest["localBundleFingerprint"],
         "records": [],
         "warmups": [],
         "interruptions": [],
+        "cleanupFailures": [],
     }
 
 
@@ -294,16 +504,37 @@ def _peak_vram(admin: OllamaAdminClient, model: str) -> int | None:
         if name == model:
             size = item.get("size")
             value = item.get("size_vram")
-            if not isinstance(size, int) or isinstance(size, bool):
-                raise CanonicalClassificationError(
-                    f"Ollama não informou o tamanho carregado de {model}"
-                )
-            if not isinstance(value, int) or isinstance(value, bool) or value < size:
-                raise CanonicalClassificationError(
-                    f"{model} deixou de executar integralmente na GPU"
-                )
+            if (
+                not isinstance(size, int)
+                or isinstance(size, bool)
+                or not isinstance(value, int)
+                or isinstance(value, bool)
+            ):
+                return None
             return value
     return None
+
+
+def _require_full_gpu(
+    admin: OllamaAdminClient,
+    model: str,
+    command_runner: OllamaCommandRunner | None,
+) -> str:
+    try:
+        processor = ollama_processor_for_model(
+            model,
+            base_url=admin.base_url,
+            command_runner=command_runner,
+        )
+    except CanonicalClassificationError as exc:
+        raise OllamaHardwareGateError(
+            f"não foi possível confirmar 100% GPU para {model}"
+        ) from exc
+    if processor != "100% GPU":
+        raise OllamaHardwareGateError(
+            f"{model} não está executando com PROCESSOR 100% GPU"
+        )
+    return processor
 
 
 def _telemetry(result: Any, admin: OllamaAdminClient, model: str) -> dict[str, Any]:
@@ -357,6 +588,88 @@ def _preflight_matches_manifest(
             )
 
 
+def _live_ollama_matches_manifest(
+    admin: OllamaAdminClient,
+    preflight: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+) -> None:
+    from .ollama_ai_provider import validate_ollama_base_url
+
+    live_base_url = validate_ollama_base_url(admin.base_url)
+    approved_base_url = validate_ollama_base_url(
+        str(cast(Mapping[str, Any], preflight["ollama"])["baseUrl"])
+    )
+    if live_base_url != approved_base_url:
+        raise CanonicalClassificationError(
+            "endpoint vivo do Ollama divergiu do probe aprovado"
+        )
+    live_version = admin.version()
+    if live_version != manifest.get("ollamaVersion"):
+        raise CanonicalClassificationError(
+            "versão viva do Ollama divergiu da versão preparada"
+        )
+    installed = {
+        str(item.get("name", item.get("model", ""))): item
+        for item in admin.tags()
+        if isinstance(item, Mapping)
+    }
+    for model in cast(list[Mapping[str, Any]], manifest["models"]):
+        tag = str(model["tag"])
+        current = installed.get(tag)
+        if current is None:
+            raise OllamaModelMissingError(
+                f"modelo Ollama {tag!r} não está instalado; "
+                f"execute 'ollama pull {tag}' somente após autorização"
+            )
+        if current.get("digest") != model.get("digest"):
+            raise CanonicalClassificationError(
+                f"digest vivo de {tag} divergiu do manifesto"
+            )
+        details = current.get("details")
+        quantization = (
+            details.get("quantization_level")
+            if isinstance(details, Mapping)
+            else None
+        )
+        expected_quantization = model.get("quantization")
+        if (
+            not isinstance(quantization, str)
+            or not isinstance(expected_quantization, str)
+            or quantization.casefold() != expected_quantization.casefold()
+        ):
+            raise CanonicalClassificationError(
+                f"quantização viva de {tag} divergiu do manifesto"
+            )
+
+
+def _unresolved_cleanup_failures(
+    cleanup_failures: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    return [item for item in cleanup_failures if item.get("status") != "resolved"]
+
+
+def _retry_cleanup_failures(
+    admin: OllamaAdminClient,
+    cleanup_failures: list[dict[str, Any]],
+    *,
+    checkpoint: Mapping[str, Any],
+    checkpoint_path: Path,
+) -> bool:
+    for failure in _unresolved_cleanup_failures(cleanup_failures):
+        model = str(failure["model"])
+        try:
+            admin.unload(model)
+        except Exception as exc:
+            failure["lastErrorType"] = type(exc).__name__
+            failure["lastAttemptAt"] = _now()
+            write_json(checkpoint_path, checkpoint)
+            return False
+        failure["status"] = "resolved"
+        failure["resolvedAt"] = _now()
+        write_json(checkpoint_path, checkpoint)
+    return True
+
+
 def execute_ollama_ai_benchmark(
     local_bundle_path: Path,
     *,
@@ -368,7 +681,24 @@ def execute_ollama_ai_benchmark(
     max_new_calls: int,
     provider_factory: LocalProviderFactory = _default_provider_factory,
     admin_client: OllamaAdminClient | None = None,
+    command_runner: OllamaCommandRunner | None = None,
+    local_artifact_root: Path = LOCAL_ARTIFACT_ROOT,
 ) -> dict[str, Any]:
+    validate_local_artifact_path(
+        local_bundle_path,
+        label="bundle local",
+        artifact_root=local_artifact_root,
+    )
+    validate_local_artifact_path(
+        preflight_path,
+        label="relatório de probe",
+        artifact_root=local_artifact_root,
+    )
+    validate_local_artifact_path(
+        checkpoint_path,
+        label="checkpoint local",
+        artifact_root=local_artifact_root,
+    )
     if max_new_calls < 1:
         raise ValueError("max_new_calls deve ser positivo")
     phase_limit = SMOKE_MAX_CALLS if phase == "smoke" else FULL_MAX_CALLS
@@ -376,21 +706,45 @@ def execute_ollama_ai_benchmark(
         raise CanonicalClassificationError(
             f"fase {phase} permite no máximo {phase_limit} novas chamadas medidas"
         )
-    _, manifest, items = _validate_local_bundle(local_bundle_path, manifest_path)
+    _, manifest, items = _validate_local_bundle(
+        local_bundle_path, manifest_path, artifact_root=local_artifact_root
+    )
     if approved_benchmark_id != manifest["benchmarkId"]:
         raise CanonicalClassificationError("aprovação não corresponde ao benchmark local")
-    preflight = _validated_preflight(preflight_path)
+    preflight = _validated_preflight(
+        preflight_path, artifact_root=local_artifact_root
+    )
     _preflight_matches_manifest(preflight, manifest)
     taxonomy = EditorialTaxonomy.load_default()
     if taxonomy.version != manifest["taxonomyVersion"]:
         raise CanonicalClassificationError("taxonomia mudou desde a preparação")
-    checkpoint = _load_checkpoint(checkpoint_path, manifest)
+    checkpoint = _load_checkpoint(
+        checkpoint_path, manifest, artifact_root=local_artifact_root
+    )
     records = cast(list[dict[str, Any]], checkpoint["records"])
     warmups = cast(list[dict[str, Any]], checkpoint["warmups"])
     interruptions = cast(list[dict[str, Any]], checkpoint["interruptions"])
+    cleanup_failures = cast(list[dict[str, Any]], checkpoint["cleanupFailures"])
     models = cast(list[Mapping[str, Any]], manifest["models"])
     phase_items = items[:SMOKE_SIZE] if phase == "smoke" else items[SMOKE_SIZE:]
     completed = {str(record["key"]) for record in records}
+    admin = admin_client
+
+    if _unresolved_cleanup_failures(cleanup_failures):
+        admin = admin or HttpOllamaAdminClient()
+        if not _retry_cleanup_failures(
+            admin,
+            cleanup_failures,
+            checkpoint=checkpoint,
+            checkpoint_path=checkpoint_path,
+        ):
+            return {
+                "benchmarkId": manifest["benchmarkId"],
+                "phase": phase,
+                "status": "paused",
+                "newCalls": 0,
+                "totalCheckpointRecords": len(records),
+            }
 
     if phase == "full":
         smoke_keys = {
@@ -403,9 +757,12 @@ def execute_ollama_ai_benchmark(
             for record in records
             if record.get("phase") == "smoke" and record.get("status") == "completed"
         }
-        if not smoke_keys.issubset(successful_smoke):
+        if (
+            not smoke_keys.issubset(successful_smoke)
+            or _unresolved_cleanup_failures(cleanup_failures)
+        ):
             raise CanonicalClassificationError(
-                "smoke válido dos três modelos é obrigatório antes da fase full"
+                "smoke válido e sem limpeza pendente é obrigatório antes da fase full"
             )
 
     expected_phase_keys = {
@@ -423,7 +780,8 @@ def execute_ollama_ai_benchmark(
             "totalCheckpointRecords": len(records),
         }
 
-    admin = admin_client or HttpOllamaAdminClient()
+    admin = admin or HttpOllamaAdminClient()
+    _live_ollama_matches_manifest(admin, preflight, manifest)
     new_calls = 0
     paused = False
     session_id = stable_sha256(
@@ -453,6 +811,7 @@ def execute_ollama_ai_benchmark(
                     request=_request_from_item(pending_items[0]),
                     taxonomy=taxonomy,
                 )
+                processor = _require_full_gpu(admin, tag, command_runner)
                 warmups.append(
                     {
                         "sessionId": session_id,
@@ -460,6 +819,7 @@ def execute_ollama_ai_benchmark(
                         "model": tag,
                         "digest": model["digest"],
                         "status": "completed",
+                        "processor": processor,
                         "completedAt": _now(),
                         "wallLatencyMs": round(
                             (time.perf_counter() - warmup_started) * 1000, 3
@@ -468,7 +828,7 @@ def execute_ollama_ai_benchmark(
                     }
                 )
                 write_json(checkpoint_path, checkpoint)
-            except (OllamaUnavailableError, KeyboardInterrupt) as exc:
+            except (OllamaBlockingError, KeyboardInterrupt) as exc:
                 interruptions.append(
                     {
                         "sessionId": session_id,
@@ -563,7 +923,7 @@ def execute_ollama_ai_benchmark(
                             ),
                         }
                     )
-                except (OllamaUnavailableError, KeyboardInterrupt) as exc:
+                except (OllamaBlockingError, KeyboardInterrupt) as exc:
                     interruptions.append(
                         {
                             "sessionId": session_id,
@@ -600,9 +960,33 @@ def execute_ollama_ai_benchmark(
             if paused:
                 break
         finally:
-            admin.unload(tag)
+            try:
+                admin.unload(tag)
+            except Exception as cleanup_error:
+                cleanup_failures.append(
+                    {
+                        "sessionId": session_id,
+                        "phase": phase,
+                        "model": tag,
+                        "status": "unresolved",
+                        "errorType": type(cleanup_error).__name__,
+                        "failedAt": _now(),
+                    }
+                )
+                write_json(checkpoint_path, checkpoint)
+                paused = True
+        if paused:
+            break
 
-    status = "completed" if expected_phase_keys.issubset(completed) else "paused"
+    status = (
+        "completed"
+        if (
+            not paused
+            and expected_phase_keys.issubset(completed)
+            and not _unresolved_cleanup_failures(cleanup_failures)
+        )
+        else "paused"
+    )
     return {
         "benchmarkId": manifest["benchmarkId"],
         "phase": phase,
@@ -648,12 +1032,18 @@ def summarize_ollama_ai_benchmark(
     manifest_path: Path,
     checkpoint_path: Path,
     report_path: Path | None = None,
+    local_artifact_root: Path = LOCAL_ARTIFACT_ROOT,
 ) -> dict[str, Any]:
-    _, manifest, items = _validate_local_bundle(local_bundle_path, manifest_path)
-    checkpoint = _load_checkpoint(checkpoint_path, manifest)
+    _, manifest, items = _validate_local_bundle(
+        local_bundle_path, manifest_path, artifact_root=local_artifact_root
+    )
+    checkpoint = _load_checkpoint(
+        checkpoint_path, manifest, artifact_root=local_artifact_root
+    )
     records = cast(list[dict[str, Any]], checkpoint["records"])
     warmups = cast(list[dict[str, Any]], checkpoint["warmups"])
     interruptions = cast(list[dict[str, Any]], checkpoint["interruptions"])
+    cleanup_failures = cast(list[dict[str, Any]], checkpoint["cleanupFailures"])
     models = cast(list[Mapping[str, Any]], manifest["models"])
     indexed: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
     for record in records:
@@ -802,6 +1192,21 @@ def summarize_ollama_ai_benchmark(
             }
 
     maximum_records = len(items) * len(models)
+    expected_smoke_keys = {
+        _checkpoint_key(str(manifest["benchmarkId"]), model, item)
+        for model in models
+        for item in items[:SMOKE_SIZE]
+    }
+    successful_smoke_keys = {
+        str(record["key"])
+        for record in records
+        if record.get("phase") == "smoke" and record.get("status") == "completed"
+    }
+    unresolved_cleanup_count = len(_unresolved_cleanup_failures(cleanup_failures))
+    smoke_complete = (
+        expected_smoke_keys.issubset(successful_smoke_keys)
+        and unresolved_cleanup_count == 0
+    )
     report = {
         "schemaVersion": LOCAL_BENCHMARK_SCHEMA_VERSION,
         "algorithmVersion": LOCAL_BENCHMARK_ALGORITHM_VERSION,
@@ -814,11 +1219,15 @@ def summarize_ollama_ai_benchmark(
         "generatedAt": _now(),
         "records": len(records),
         "maximumRecords": maximum_records,
+        "cleanupFailures": {
+            "total": len(cleanup_failures),
+            "unresolved": unresolved_cleanup_count,
+        },
         "models": by_model,
         "pairedComparison": paired,
         "recommendation": (
             "Smoke incompleto; não executar a fase full."
-            if len(records) < SMOKE_MAX_CALLS
+            if not smoke_complete
             else (
                 "Comparar os critérios editoriais antes de autorizar a fase full; "
                 "nenhum vencedor foi escolhido."

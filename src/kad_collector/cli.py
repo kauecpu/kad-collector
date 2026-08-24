@@ -36,6 +36,7 @@ from .ollama_ai_benchmark import (
     prepare_ollama_ai_benchmark,
     summarize_ollama_ai_benchmark,
 )
+from .ollama_local_paths import validate_local_artifact_path
 from .ollama_preflight import (
     HttpOllamaAdminClient,
     inspect_ollama_environment,
@@ -613,8 +614,10 @@ def _run(args: argparse.Namespace) -> int:
             f"Classificação canônica {payload['mode']}: {payload['processed']} processadas; "
             f"{payload['deterministicClassified']} campos determinísticos; "
             f"{payload['aiSent']} chamadas de IA; "
+            f"{payload['providerFailures']} falhas do provedor; "
             f"{payload['reviewRequired']} para revisão; "
-            f"{payload['remaining']} pendentes. Relatório: {args.report}"
+            f"{payload['remaining']} pendentes; estado {payload['status']}. "
+            f"Relatório: {args.report}"
         )
         return 0
     if args.command == "list-canonical-classification-review":
@@ -689,6 +692,7 @@ def _run(args: argparse.Namespace) -> int:
             raise ValueError("--approved-probe-id é obrigatório com --probe-models")
         if args.approved_probe_id and not args.probe_models:
             raise ValueError("--approved-probe-id só pode ser usado com --probe-models")
+        validate_local_artifact_path(args.report, label="relatório de preflight")
         client = HttpOllamaAdminClient()
         inspection = inspect_ollama_environment(client=client)
         preflight_report = (

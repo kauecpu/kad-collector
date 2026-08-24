@@ -38,6 +38,8 @@ OLLAMA_BENCHMARK_TARGETS = (
     OllamaBenchmarkTarget("gemma3:12b-it-qat", "Q4_0"),
 )
 
+OllamaCommandRunner = Callable[[tuple[str, ...], Mapping[str, str]], str]
+
 
 class OllamaAdminClient(Protocol):
     base_url: str
@@ -153,6 +155,18 @@ def _probe_id(report: Mapping[str, Any]) -> str:
     return f"ollama-probe-{digest}"
 
 
+def ollama_probe_report_id(report: Mapping[str, Any]) -> str:
+    material = {
+        key: value for key, value in report.items() if key != "probeReportId"
+    }
+    return "ollama-probe-report-" + stable_sha256(canonical_json(material))[:20]
+
+
+def validate_ollama_probe_report(report: Mapping[str, Any]) -> None:
+    if report.get("probeReportId") != ollama_probe_report_id(report):
+        raise CanonicalClassificationError("relatório de probe Ollama foi alterado")
+
+
 def _default_model_volume() -> Path:
     configured = os.environ.get("OLLAMA_MODELS")
     return Path(configured) if configured else Path.home() / ".ollama" / "models"
@@ -200,13 +214,14 @@ def inspect_ollama_environment(
             isinstance(quantization, str)
             and quantization.casefold() == target.expected_quantization.casefold()
         )
-        if not matches:
+        digest = model.get("digest") if isinstance(model.get("digest"), str) else None
+        if not matches or not digest:
             invalid.append(target.tag)
         target_rows.append(
             {
                 "tag": target.tag,
                 "installed": True,
-                "digest": model.get("digest") if isinstance(model.get("digest"), str) else None,
+                "digest": digest,
                 "sizeBytes": _integer(model, "size"),
                 "format": details.get("format"),
                 "family": details.get("family"),
@@ -246,13 +261,16 @@ def inspect_ollama_environment(
     return report
 
 
-def _default_command_runner(command: tuple[str, ...]) -> str:
+def _default_command_runner(
+    command: tuple[str, ...], environment: Mapping[str, str]
+) -> str:
     completed = subprocess.run(
         command,
         check=False,
         capture_output=True,
         text=True,
         timeout=30,
+        env={**os.environ, **environment},
     )
     if completed.returncode != 0:
         raise CanonicalClassificationError(
@@ -284,6 +302,19 @@ def _processor_for_model(output: str, model: str) -> str | None:
     return None
 
 
+def ollama_processor_for_model(
+    model: str,
+    *,
+    base_url: str,
+    command_runner: OllamaCommandRunner | None = None,
+) -> str | None:
+    active_base_url = validate_ollama_base_url(base_url)
+    runner = command_runner or _default_command_runner
+    return _processor_for_model(
+        runner(("ollama", "ps"), {"OLLAMA_HOST": active_base_url}), model
+    )
+
+
 def _latest_layer_count(log_text: str) -> tuple[int | None, int | None]:
     matches = re.findall(r"offloaded\s+(\d+)\s*/\s*(\d+)\s+layers", log_text, re.I)
     if not matches:
@@ -297,7 +328,7 @@ def probe_ollama_models(
     preflight: Mapping[str, Any],
     approved_probe_id: str,
     client: OllamaAdminClient | None = None,
-    command_runner: Callable[[tuple[str, ...]], str] | None = None,
+    command_runner: OllamaCommandRunner | None = None,
     windows_log_reader: Callable[[], str] | None = None,
 ) -> dict[str, Any]:
     expected_probe_id = _probe_id(preflight)
@@ -309,6 +340,14 @@ def probe_ollama_models(
         raise CanonicalClassificationError("preflight ainda não está pronto para o probe")
 
     active_client = client or HttpOllamaAdminClient()
+    active_base_url = validate_ollama_base_url(active_client.base_url)
+    expected_base_url = validate_ollama_base_url(
+        str(cast(Mapping[str, Any], preflight["ollama"])["baseUrl"])
+    )
+    if active_base_url != expected_base_url:
+        raise CanonicalClassificationError(
+            "cliente administrativo divergiu do endpoint loopback aprovado"
+        )
     runner = command_runner or _default_command_runner
     read_log = windows_log_reader or _default_windows_log_reader
     expected_tags = [target.tag for target in OLLAMA_BENCHMARK_TARGETS]
@@ -323,6 +362,7 @@ def probe_ollama_models(
     }
 
     for tag in expected_tags:
+        primary_error: BaseException | None = None
         try:
             response = active_client.chat(
                 {
@@ -363,15 +403,44 @@ def probe_ollama_models(
             )
             if running is None:
                 raise CanonicalClassificationError(f"{tag} não apareceu em /api/ps")
-            processor = _processor_for_model(runner(("ollama", "ps")), tag)
+            processor = ollama_processor_for_model(
+                tag,
+                base_url=active_base_url,
+                command_runner=runner,
+            )
             size = _integer(running, "size")
             size_vram = _integer(running, "size_vram")
-            if processor != "100% GPU" or size is None or size_vram is None or size_vram < size:
+            if processor != "100% GPU":
                 raise CanonicalClassificationError(
                     f"{tag} não atingiu o requisito de 100% GPU"
                 )
             loaded_layers, total_layers = _latest_layer_count(read_log())
             model_info = installed_by_tag[tag]
+            context_length = _integer(running, "context_length")
+            if context_length != DEFAULT_CONTEXT_LENGTH:
+                raise CanonicalClassificationError(
+                    f"{tag} não carregou com contexto {DEFAULT_CONTEXT_LENGTH}"
+                )
+            installed_digest = model_info.get("digest")
+            running_digest = running.get("digest")
+            if (
+                not isinstance(installed_digest, str)
+                or not installed_digest
+                or running_digest != installed_digest
+            ):
+                raise CanonicalClassificationError(
+                    f"digest carregado de {tag} divergiu do modelo aprovado"
+                )
+            quantization = model_info.get("quantization")
+            target = next(item for item in OLLAMA_BENCHMARK_TARGETS if item.tag == tag)
+            if (
+                not isinstance(quantization, str)
+                or quantization.casefold()
+                != target.expected_quantization.casefold()
+            ):
+                raise CanonicalClassificationError(
+                    f"quantização carregada de {tag} divergiu do plano"
+                )
             results.append(
                 {
                     "tag": tag,
@@ -381,7 +450,7 @@ def probe_ollama_models(
                     "processor": processor,
                     "sizeBytes": size,
                     "sizeVramBytes": size_vram,
-                    "contextLength": _integer(running, "context_length"),
+                    "contextLength": context_length,
                     "loadedLayers": loaded_layers,
                     "totalLayers": total_layers,
                     "layerDetailReason": (
@@ -395,8 +464,17 @@ def probe_ollama_models(
                     "outputTokens": _integer(response, "eval_count"),
                 }
             )
+        except BaseException as exc:
+            primary_error = exc
+            raise
         finally:
-            active_client.unload(tag)
+            try:
+                active_client.unload(tag)
+            except Exception as cleanup_error:
+                if primary_error is None:
+                    raise CanonicalClassificationError(
+                        f"falha ao descarregar {tag} depois do probe"
+                    ) from cleanup_error
 
     report = {
         "schemaVersion": 1,
@@ -408,7 +486,5 @@ def probe_ollama_models(
         "models": results,
         "readyForBenchmark": len(results) == len(expected_tags),
     }
-    report["probeReportId"] = "ollama-probe-report-" + stable_sha256(
-        canonical_json(report)
-    )[:20]
+    report["probeReportId"] = ollama_probe_report_id(report)
     return report

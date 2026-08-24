@@ -29,9 +29,10 @@ Instale o Ollama pelo procedimento oficial para
 [Windows](https://docs.ollama.com/windows) e mantenha o driver AMD atualizado. O nome da placa
 não prova que houve offload. O suporte depende da versão do Ollama e do driver instalados.
 
-O preflight consulta `/api/ps` e executa `ollama ps`. O probe só passa quando a coluna
-`PROCESSOR` informa `100% GPU` e `size_vram` cobre o tamanho carregado. Uso parcial de CPU ou
-ausência dessas métricas bloqueia o benchmark. A documentação de referência está em
+O preflight consulta `/api/ps` e executa `ollama ps` contra o mesmo `OLLAMA_BASE_URL`. O probe
+só passa quando a coluna `PROCESSOR` informa exatamente `100% GPU`. `size` e `size_vram` ficam
+como telemetria; o critério operacional é a coluna do próprio Ollama. Uso parcial de CPU
+bloqueia o benchmark. A documentação de referência está em
 [GPU](https://docs.ollama.com/gpu) e
 [Troubleshooting](https://docs.ollama.com/troubleshooting).
 
@@ -84,8 +85,9 @@ kad-collector preflight-ollama-ai `
   --approved-probe-id ollama-probe-...
 ```
 
-O identificador é derivado da versão, digests, quantizações e estado do preflight. Alterar esses
-dados invalida a aprovação.
+O identificador é derivado da versão, digests, quantizações e estado do preflight. O relatório
+do probe também recebe um fingerprint próprio. Alterar qualquer desses dados invalida a
+aprovação.
 
 ## Classificação comum
 
@@ -107,9 +109,10 @@ Sem `--enable-ai`, o cliente não é criado. O motor determinístico roda primei
 uma chamada por questão, somente com os campos ausentes entre disciplina, matéria, assunto e
 nível. Resposta, gabarito, identidade, dificuldade e explicação ficam fora do contrato.
 
-Cada questão aplicada é confirmada antes da próxima. Se o Ollama parar ou o computador for
-desligado, execute novamente o mesmo comando com o mesmo `run-id`. Itens concluídos não são
-reenviados. `Ctrl+C` preserva o último checkpoint.
+Cada questão aplicada é confirmada antes da próxima. Falta do modelo, perda do serviço ou falha
+do requisito de GPU pausam a execução sem mandar a questão para revisão. Se o Ollama parar ou o
+computador for desligado, execute novamente o mesmo comando com o mesmo `run-id`. Itens
+concluídos não são reenviados. `Ctrl+C` preserva o último checkpoint.
 
 ## Preparação do benchmark
 
@@ -124,9 +127,9 @@ kad-collector prepare-ollama-ai-benchmark `
   --manifest docs\benchmarks\ollama-ai-manifest.v1.json
 ```
 
-Essa etapa não cria provedores. O manifesto versionável contém IDs, fingerprints, campos
-ocultos, referências, modelos, digests, quantizações, parâmetros e versão do Ollama. Enunciados
-e alternativas ficam somente no bundle local ignorado pelo Git.
+Essa etapa não cria provedores. O manifesto versionável contém IDs, fingerprints da amostra e
+do conteúdo bruto, campos ocultos, referências, modelos, digests, quantizações, parâmetros e
+versão do Ollama. Enunciados e alternativas ficam somente no bundle local ignorado pelo Git.
 
 ## Smoke test
 
@@ -144,10 +147,14 @@ kad-collector run-ollama-ai-benchmark `
   --max-new-calls 30
 ```
 
-Há um aquecimento registrado por modelo antes das 30 chamadas medidas. Portanto, um smoke novo
-faz três aquecimentos e no máximo 30 medições. Não há retentativa automática. Resposta inválida
-é registrada como falha; indisponibilidade deixa a combinação atual pendente. Repetir o comando
-pula todos os pares modelo/questão já gravados.
+Antes da primeira inferência, a execução confere novamente endpoint, versão, tags, digests e
+quantizações no Ollama vivo. Há um aquecimento registrado por modelo antes das 30 chamadas
+medidas. Portanto, um smoke novo faz três aquecimentos e no máximo 30 medições. Não há
+retentativa automática. Resposta inválida é registrada como falha; indisponibilidade, modelo
+ausente ou perda do requisito de GPU pausam antes de gravar a combinação atual. Repetir o
+comando pula todos os pares modelo/questão já gravados. Se um unload falhar, o checkpoint
+mantém a pendência e tenta descarregar esse modelo antes de qualquer inferência seguinte. A
+fase full e a recomendação positiva permanecem bloqueadas enquanto houver limpeza pendente.
 
 Gere o relatório agregado:
 
@@ -193,5 +200,7 @@ Mantenha em `data/benchmarks/local/`:
 - preflight operacional;
 - logs detalhados.
 
-Esse diretório já está no `.gitignore`. Somente manifesto sem texto, relatório agregado,
-documentação e testes devem entrar no Git.
+O Collector rejeita esses artefatos fora dessa raiz, inclusive em outro repositório ou pasta
+sincronizada. Testes automatizados só podem usar uma raiz temporária quando ela é injetada
+explicitamente no código de teste. Esse diretório já está no `.gitignore`. Somente manifesto
+sem texto, relatório agregado, documentação e testes devem entrar no Git.
