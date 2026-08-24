@@ -16,7 +16,11 @@ from .models import (
     ReviewQueue,
     ReviewQueueItem,
 )
-from .semantic_identity import AssociationCandidate, profile_from_document_record
+from .semantic_identity import (
+    AssociationCandidate,
+    QuestionInterval,
+    profile_from_document_record,
+)
 from .semantic_resolution import select_answer_key
 from .validation import batch_content_sha256, validate_questions
 
@@ -41,6 +45,7 @@ def _select_answer_key(
     exam: DocumentRecord,
     candidates: list[ExtractedDocument],
     exam_content: str = "",
+    exam_numbers: list[int] | None = None,
 ) -> tuple[ExtractedDocument | None, list[str]]:
     textual = [
         candidate
@@ -52,14 +57,30 @@ def _select_answer_key(
     if not textual:
         return None, ["nenhum gabarito oficial textual encontrado"]
     exam_profile = profile_from_document_record(exam, [(1, exam_content)])
-    association_candidates = [
-        AssociationCandidate(
-            version_id=item.document.sha256,
-            profile=profile_from_document_record(item.document, [(1, item.text)]),
+    def interval(numbers: list[int]) -> QuestionInterval | None:
+        ordered = sorted(set(numbers))
+        if not ordered or len(ordered) != ordered[-1] - ordered[0] + 1:
+            return None
+        return QuestionInterval(first=ordered[0], last=ordered[-1])
+
+    variant = _variant(exam)
+    role = _metadata_value(exam, "role", "cargo")
+    turn = _metadata_value(exam, "turn", "turno")
+    association_candidates = []
+    for item in textual:
+        entries = parse_answer_key(item.text, variant=variant, role=role, turn=turn)
+        association_candidates.append(
+            AssociationCandidate(
+                version_id=item.document.sha256,
+                profile=profile_from_document_record(item.document, [(1, item.text)]),
+                question_interval=(interval(list(entries)) if exam_numbers is not None else None),
+            )
         )
-        for item in textual
-    ]
-    decision = select_answer_key(exam_profile, association_candidates)
+    decision = select_answer_key(
+        exam_profile,
+        association_candidates,
+        exam_interval=(interval(exam_numbers) if exam_numbers is not None else None),
+    )
     if decision.outcome == "ambiguous":
         titles = ", ".join(item.document.title for item in textual[:3])
         return None, [f"associacao de gabarito ambigua: {titles}"]
@@ -67,6 +88,11 @@ def _select_answer_key(
         return None, ["gabaritos encontrados, mas nenhum corresponde claramente a prova"]
     if decision.selected_version_id is None and decision.outcome == "conflict":
         return None, ["gabaritos encontrados, mas nenhum corresponde claramente a prova"]
+    if decision.selected_version_id is None and decision.outcome == "incomplete":
+        return None, [
+            "gabaritos encontrados, mas nenhum corresponde claramente; "
+            "associacao incompleta, revise metadados e intervalos"
+        ]
     if decision.selected_version_id is not None:
         return next(
             item for item in textual if item.document.sha256 == decision.selected_version_id
@@ -106,7 +132,10 @@ def prepare_review_queue(
             for question in batch.questions
         )
         answer_key, pairing_issues = _select_answer_key(
-            batch.source_document, answer_keys, exam_content
+            batch.source_document,
+            answer_keys,
+            exam_content,
+            [question.number for question in batch.questions],
         )
         issues.extend(pairing_issues)
         updated = batch

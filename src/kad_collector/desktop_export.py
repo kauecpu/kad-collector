@@ -129,6 +129,8 @@ def _evaluate_filtered_questions(
         issues = validate_editorial_question(question)
         if view["status"] != "approved":
             issues.append("questão ainda não aprovada na revisão editorial")
+        if not view.get("valid_answer_association"):
+            issues.append("resposta sem associação semantic-association-v2 ativa e válida")
         if "duplicate" in view["flags"]:
             issues.append("conteúdo duplicado; resolva antes da exportação")
         metadata = cast(dict[str, Any], view["metadata"])

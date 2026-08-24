@@ -208,6 +208,7 @@ C
         ).model_copy(update={"metadata": {
             "banca": "FUVEST", "concurso": "Vestibular", "ano": "2026",
             "cargo": "Vestibular", "orgao": "Universidade de Sao Paulo", "variant": "V1",
+            "stage": "Primeira fase", "turn": "Manha",
         }})
         answer = document(
             "answer_key",
@@ -217,6 +218,7 @@ C
         ).model_copy(update={"metadata": {
             "banca": "FUVEST", "concurso": "Vestibular", "ano": "2026",
             "cargo": "Vestibular", "orgao": "Universidade de Sao Paulo", "variant": "V1",
+            "stage": "Primeira fase", "turn": "Manha",
         }})
         other_answer = document(
             "answer_key",
@@ -325,6 +327,8 @@ C
                     "concurso": "Concurso Fiscal",
                     "cargo": "Analista Tributario",
                     "variant": "V1",
+                    "stage": "Prova objetiva",
+                    "turn": "Manha",
                 },
             }
         )
@@ -343,6 +347,8 @@ C
                     "concurso": "Concurso Fiscal",
                     "cargo": "Analista Tributario",
                     "variant": "V1",
+                    "stage": "Prova objetiva",
+                    "turn": "Manha",
                 },
             }
         )
@@ -409,7 +415,8 @@ C
             "1",
         ).model_copy(update={"source_id": "exam_source", "metadata": {
             "banca": "Banca Fiscal", "concurso": "Concurso Fiscal", "ano": "2026",
-            "cargo": "Analista", "variant": "V1",
+            "cargo": "Analista", "variant": "V1", "stage": "Prova objetiva",
+            "turn": "Manha",
         }})
         first = document(
             "answer_key",
@@ -418,7 +425,8 @@ C
             "2",
         ).model_copy(update={"source_id": "first_answers_source", "metadata": {
             "banca": "Banca Fiscal", "concurso": "Concurso Fiscal", "ano": "2026",
-            "cargo": "Analista", "variant": "V1",
+            "cargo": "Analista", "variant": "V1", "stage": "Prova objetiva",
+            "turn": "Manha",
         }})
         second = first.model_copy(
             update={
@@ -531,6 +539,8 @@ C
                     "cargo": "Analista",
                     "orgao": "Secretaria da Fazenda",
                     "variant": "V1",
+                    "stage": "Prova objetiva",
+                    "turn": "Manha",
                 }
             }
         )
@@ -547,6 +557,8 @@ C
                     "cargo": "Analista",
                     "orgao": "Secretaria da Fazenda",
                     "variant": "V1",
+                    "stage": "Prova objetiva",
+                    "turn": "Manha",
                 }
             }
         )
@@ -563,6 +575,8 @@ C
                     "cargo": "Analista",
                     "orgao": "Secretaria da Fazenda",
                     "variant": "V2",
+                    "stage": "Prova objetiva",
+                    "turn": "Manha",
                 }
             }
         )
@@ -579,6 +593,8 @@ C
                     "cargo": "Auditor",
                     "orgao": "Secretaria da Fazenda",
                     "variant": "V1",
+                    "stage": "Prova objetiva",
+                    "turn": "Manha",
                 }
             }
         )
@@ -595,6 +611,8 @@ C
                     "cargo": "Analista",
                     "orgao": "Secretaria da Fazenda",
                     "variant": "V1",
+                    "stage": "Prova objetiva",
+                    "turn": "Tarde",
                 }
             }
         )

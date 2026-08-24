@@ -110,7 +110,7 @@ class DesktopCollectionTests(unittest.TestCase):
         title: str,
         *,
         role: str = "Analista",
-        variant: str | None = None,
+        variant: str | None = "Tipo 1",
     ) -> DesktopImportMetadata:
         return DesktopImportMetadata(
             document_type=document_type,
@@ -119,6 +119,8 @@ class DesktopCollectionTests(unittest.TestCase):
             concurso="Concurso Semantico",
             year=2026,
             role=role,
+            stage="Prova objetiva",
+            turn="Manha",
             variant=variant,
         )
 
@@ -441,6 +443,8 @@ class DesktopCollectionTests(unittest.TestCase):
             year=2026,
             role="Vestibular",
             organization="Universidade de Sao Paulo",
+            stage="Primeira fase",
+            turn="Manha",
         )
         metadata_by_path: dict[str, DesktopImportMetadata] = {}
         for index, path in enumerate(paths[:4], start=1):
@@ -518,7 +522,8 @@ Enunciado completo da segunda questao.
         exam_path.write_bytes(b"%PDF-1.4\nexam\n%%EOF")
         answer_path.write_bytes(b"%PDF-1.4\nanswer\n%%EOF")
         base = DesktopImportMetadata(
-            provider="banca", board="Banca", concurso="Concurso", year=2026
+            provider="banca", board="Banca", concurso="Concurso", year=2026,
+            role="Analista", stage="Prova objetiva", turn="Manha", variant="Tipo 1",
         )
         job_id = self.store.create_job(
             [exam_path, answer_path],
@@ -585,6 +590,9 @@ Enunciado completo da segunda questao.
             concurso="Selecao Nacional",
             year=2026,
             role="Analista",
+            stage="Prova objetiva",
+            turn="Manha",
+            variant="Tipo 1",
             organization="Instituto Ficticio",
             document_type="exam",
         )
@@ -728,6 +736,9 @@ Enunciado completo da segunda questao.
             concurso="Concurso 2026",
             year=2026,
             role="Analista",
+            stage="Prova objetiva",
+            turn="Manha",
+            variant="Tipo 1",
         )
         key_metadata = base.model_copy(
             update={
@@ -956,7 +967,7 @@ Enunciado completo da segunda questao.
         )])
         question_id = self.approve_stored_question(str(exam["id"]), 1)
         definitive = self.process_text_documents([(
-            "key-annulment.pdf", "Gabarito definitivo\n1 - ANULADA",
+            "key-annulment.pdf", "Gabarito definitivo\n1 - ANULADA\n2 - B",
             self.semantic_metadata("answer_key", "Gabarito definitivo com anulacao"),
         )])[0]
 
@@ -1086,6 +1097,7 @@ Enunciado completo da segunda questao.
             for key, answer in zip(keys, ("A", "B"), strict=True)
         }
         with closing(self.store._connect()) as connection:
+            connection.execute("UPDATE questions SET answer_key_link_id = NULL")
             connection.execute("DELETE FROM document_links")
             connection.commit()
 
@@ -1339,7 +1351,12 @@ C D""",
         documents = self.process_text_documents([
             (
                 "exam-inherited-tipo-1.pdf",
-                "{01}\nEnunciado completo.\n(A) Alternativa A.\n(B) Alternativa B.\n#####",
+                (
+                    "{01}\nEnunciado completo um.\n(A) A.\n(B) B.\n#####\n"
+                    "{02}\nEnunciado completo dois.\n(A) A.\n(B) B.\n#####\n"
+                    "{03}\nEnunciado completo tres.\n(A) A.\n(B) B.\n#####\n"
+                    "{04}\nEnunciado completo quatro.\n(A) A.\n(B) B.\n#####"
+                ),
                 self.semantic_metadata(
                     "exam", "Prova Analista Tipo 1", variant="Tipo 1"
                 ),

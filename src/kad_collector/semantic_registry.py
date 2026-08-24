@@ -25,6 +25,9 @@ SEMANTIC_TABLES = frozenset(
         "document_observations",
         "document_observation_origins",
         "document_links",
+        "association_revalidation_runs",
+        "association_revalidation_audit",
+        "association_review_queue",
         "question_lineage",
         "document_identity_events",
     }
@@ -641,6 +644,42 @@ def initialize_semantic_schema(connection: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS association_revalidation_runs (
+            id TEXT PRIMARY KEY,
+            algorithm_version TEXT NOT NULL,
+            mode TEXT NOT NULL,
+            status TEXT NOT NULL,
+            cursor_exam_version_id TEXT,
+            totals_json TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            finished_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS association_revalidation_audit (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL REFERENCES association_revalidation_runs(id),
+            exam_version_id TEXT NOT NULL REFERENCES document_versions(id),
+            old_link_id TEXT REFERENCES document_links(id),
+            old_answer_key_version_id TEXT REFERENCES document_versions(id),
+            new_link_id TEXT REFERENCES document_links(id),
+            new_answer_key_version_id TEXT REFERENCES document_versions(id),
+            result_status TEXT NOT NULL,
+            old_status TEXT NOT NULL,
+            new_status TEXT NOT NULL,
+            comparison_json TEXT NOT NULL,
+            decision_json TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(run_id, exam_version_id)
+        );
+        CREATE TABLE IF NOT EXISTS association_review_queue (
+            exam_version_id TEXT PRIMARY KEY REFERENCES document_versions(id),
+            run_id TEXT REFERENCES association_revalidation_runs(id),
+            status TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            candidates_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS question_lineage (
             id TEXT PRIMARY KEY,
             predecessor_version_id TEXT REFERENCES document_versions(id),
@@ -683,6 +722,14 @@ def initialize_semantic_schema(connection: sqlite3.Connection) -> None:
         );
         CREATE UNIQUE INDEX IF NOT EXISTS document_links_one_active_exam_idx
             ON document_links(exam_version_id) WHERE status = 'active';
+        CREATE INDEX IF NOT EXISTS association_revalidation_audit_run_idx
+            ON association_revalidation_audit(run_id, exam_version_id);
+        CREATE TRIGGER IF NOT EXISTS association_revalidation_audit_no_update
+            BEFORE UPDATE ON association_revalidation_audit
+            BEGIN SELECT RAISE(ABORT, 'association revalidation audit is append-only'); END;
+        CREATE TRIGGER IF NOT EXISTS association_revalidation_audit_no_delete
+            BEFORE DELETE ON association_revalidation_audit
+            BEGIN SELECT RAISE(ABORT, 'association revalidation audit is append-only'); END;
         CREATE UNIQUE INDEX IF NOT EXISTS question_lineage_successor_question_idx
             ON question_lineage(successor_question_id) WHERE successor_question_id IS NOT NULL;
         CREATE UNIQUE INDEX IF NOT EXISTS question_lineage_version_question_idx
@@ -703,6 +750,14 @@ def initialize_semantic_schema(connection: sqlite3.Connection) -> None:
     }
     if "decision_fingerprint" not in question_columns:
         connection.execute("ALTER TABLE questions ADD COLUMN decision_fingerprint TEXT")
+    if "answer_key_link_id" not in question_columns:
+        connection.execute(
+            "ALTER TABLE questions ADD COLUMN answer_key_link_id TEXT REFERENCES document_links(id)"
+        )
+    if "answer_invalidated_at" not in question_columns:
+        connection.execute("ALTER TABLE questions ADD COLUMN answer_invalidated_at TEXT")
+    if "answer_invalidation_reason" not in question_columns:
+        connection.execute("ALTER TABLE questions ADD COLUMN answer_invalidation_reason TEXT")
 
 
 def semantic_document_view(
@@ -793,7 +848,10 @@ def identity_events(connection: sqlite3.Connection, document_id: str) -> list[di
 
 
 def active_answer_key_candidates(
-    connection: sqlite3.Connection, exam_version_id: str | None = None
+    connection: sqlite3.Connection,
+    exam_version_id: str | None = None,
+    *,
+    include_scope_conflicts: bool = False,
 ) -> list[dict[str, Any]]:
     """Return active keys in stable order, optionally scoped to one exam version."""
     exam_profile: dict[str, Any] | None = None
@@ -828,11 +886,13 @@ def active_answer_key_candidates(
     candidates: list[dict[str, Any]] = []
     for row in rows:
         profile = json.loads(cast(str, row["profile_json"]))
-        if exam_profile is not None and not (
-            _profiles_share_core(exam_profile, profile)
-            and _profiles_match_scope(exam_profile, profile)
-        ):
-            continue
+        if exam_profile is not None:
+            if not _profiles_share_core(exam_profile, profile):
+                continue
+            if not include_scope_conflicts and not _profiles_match_scope(
+                exam_profile, profile
+            ):
+                continue
         candidates.append({
             "link_id": row["link_id"], "exam_version_id": row["exam_version_id"],
             "answer_key_version_id": row["answer_key_version_id"],
@@ -866,11 +926,16 @@ def record_document_link(
         connection.execute("BEGIN IMMEDIATE")
     try:
         current = connection.execute(
-            "SELECT id, answer_key_version_id, decision_json FROM document_links "
+            "SELECT id, answer_key_version_id, decision_json, algorithm_version "
+            "FROM document_links "
             "WHERE exam_version_id = ? AND status = 'active'",
             (exam_version_id,),
         ).fetchone()
-        if current is not None and current["answer_key_version_id"] == answer_key_version_id:
+        if (
+            current is not None
+            and current["answer_key_version_id"] == answer_key_version_id
+            and current["algorithm_version"] == decision.algorithm_version
+        ):
             if own_transaction:
                 connection.commit()
             return cast(str, current["id"])

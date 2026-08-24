@@ -2,17 +2,20 @@ from __future__ import annotations
 
 import argparse
 import sys
+from contextlib import closing
 from pathlib import Path
 
 from .ai_processor import process_extraction_manifest
+from .answer_association import revalidate_answer_key_associations
 from .answer_key import match_answer_key
 from .automation import run_automatic
 from .collector import collect_documents
 from .config import load_config
 from .database import stage_batch
+from .desktop_store import DesktopStore
 from .editorial_export import export_admin_package
 from .guided_test import run_guided_test
-from .json_utils import read_json
+from .json_utils import read_json, write_json
 from .models import CollectionFilters, QuestionBatch
 from .pdf_extractor import extract_manifest
 from .promotion import build_promotion_package, dry_run_promotion
@@ -185,6 +188,18 @@ def build_parser() -> argparse.ArgumentParser:
         type=_path,
         default=Path("tests/regression/report.json"),
     )
+
+    revalidate_answers = subparsers.add_parser(
+        "revalidate-answer-keys",
+        help="simula ou aplica a revalidação semantic-association-v2 no banco local",
+    )
+    revalidate_answers.add_argument("--database", type=_path, required=True)
+    revalidate_answers.add_argument("--apply", action="store_true")
+    revalidate_answers.add_argument("--run-id")
+    revalidate_answers.add_argument("--limit", type=int)
+    revalidate_answers.add_argument(
+        "--report", type=_path, default=Path("data/reports/answer-key-revalidation.json")
+    )
     return parser
 
 
@@ -327,6 +342,26 @@ def _run(args: argparse.Namespace) -> int:
         for row in coverage:
             if isinstance(row, dict) and row.get("state") == "planned":
                 print(f"PLANNED: {row['topic']}")
+        return 0
+    if args.command == "revalidate-answer-keys":
+        if args.limit is not None and args.limit < 1:
+            raise ValueError("--limit deve ser positivo")
+        store = DesktopStore(args.database)
+        with closing(store._connect()) as connection:
+            revalidation_report = revalidate_answer_key_associations(
+                connection,
+                apply=args.apply,
+                run_id=args.run_id,
+                limit=args.limit,
+            )
+        payload = revalidation_report.as_dict()
+        write_json(args.report, payload)
+        print(
+            f"Revalidação {payload['mode']}: {payload['associationsExamined']} examinadas; "
+            f"{payload['maintained']} mantidas; {payload['changed']} alteradas; "
+            f"{payload['invalidated']} invalidadas; {payload['ambiguous']} ambíguas; "
+            f"{payload['incomplete']} incompletas. Relatório: {args.report}"
+        )
         return 0
     if args.command == "approve":
         batch, path = approve_batch(

@@ -827,6 +827,14 @@ Prepare e execute o pacote com:
 O inventario, as contagens oficiais, as fontes e a politica de manutencao estao descritos em
 `tests/regression/rfb22/README.md`.
 
+### Revalidação obrigatória de gabaritos
+
+O banco local pode simular e aplicar a migração de vínculos antigos para
+`semantic-association-v2`. A rotina exige cargo, etapa, turno, tipo e intervalo
+compatíveis, desativa empates e invalida respostas sem vínculo válido. Consulte
+[`docs/answer-key-revalidation-v2.md`](docs/answer-key-revalidation-v2.md) para o
+comando, retomada, formato do relatório e limitações.
+
 O pipeline usa um [adaptador FGV orientado por secoes](docs/fgv-section-parser.md). O adaptador
 separa as partes objetiva e discursiva antes de interpretar numeros isolados e compara o
 resultado com `src/kad_collector/fgv_section_profiles.v1.toml`. Uma lacuna, duplicidade, quebra
