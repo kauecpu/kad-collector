@@ -63,9 +63,10 @@ kad-collector preflight-ollama-ai `
   --report data\benchmarks\local\ollama-ai\preflight.json
 ```
 
-Esse comando consulta versão e modelos, verifica espaço livre e escreve os comandos de pull no
-relatório. Ele não baixa modelos e não envia prompt. Se faltarem tags, revise os tamanhos e,
-somente depois de autorizar o download, execute manualmente os comandos informados, por exemplo:
+Esse comando consulta versão e modelos e verifica espaço livre. Os comandos de pull só aparecem
+no relatório quando há pelo menos 35 GiB livres. Ele não baixa modelos e não envia prompt. Se
+faltarem tags, revise os tamanhos e, somente depois de autorizar o download, execute manualmente
+os comandos informados, por exemplo:
 
 ```powershell
 ollama pull qwen3.5:9b-q4_K_M

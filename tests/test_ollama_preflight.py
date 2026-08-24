@@ -90,14 +90,21 @@ class OllamaPreflightTests(unittest.TestCase):
         self.assertEqual(client.unloaded, [])
         self.assertEqual(report["networkScope"], "loopback")
         self.assertEqual(report["missingModels"], self.tags[1:])
-        self.assertEqual(
-            report["pullCommands"],
-            [f"ollama pull {tag}" for tag in self.tags[1:]],
-        )
+        self.assertEqual(report["pullCommands"], [])
+        self.assertEqual(report["downloadBlockedReason"], "insufficient_free_space")
         self.assertEqual(report["disk"]["minimumFreeBytes"], MINIMUM_FREE_BYTES)
         self.assertFalse(report["disk"]["sufficient"])
         self.assertFalse(report["readyForProbe"])
         self.assertTrue(report["probeId"].startswith("ollama-probe-"))
+
+        enough_space = inspect_ollama_environment(
+            client=FakeAdminClient(self.models[:1]), free_bytes=40 * GIB
+        )
+        self.assertEqual(
+            enough_space["pullCommands"],
+            [f"ollama pull {tag}" for tag in self.tags[1:]],
+        )
+        self.assertIsNone(enough_space["downloadBlockedReason"])
 
     def test_probe_requires_matching_approval_before_any_generation(self) -> None:
         client = FakeAdminClient(self.models)

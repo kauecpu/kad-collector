@@ -229,7 +229,12 @@ def inspect_ollama_environment(
         "targets": target_rows,
         "missingModels": missing,
         "invalidModels": invalid,
-        "pullCommands": [f"ollama pull {tag}" for tag in missing],
+        "pullCommands": (
+            [f"ollama pull {tag}" for tag in missing] if disk_sufficient else []
+        ),
+        "downloadBlockedReason": (
+            None if disk_sufficient else "insufficient_free_space"
+        ),
         "disk": {
             "freeBytes": available,
             "minimumFreeBytes": MINIMUM_FREE_BYTES,
