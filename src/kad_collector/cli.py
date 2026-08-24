@@ -31,6 +31,11 @@ from .editorial_export import export_admin_package
 from .guided_test import run_guided_test
 from .json_utils import read_json, write_json
 from .models import CollectionFilters, QuestionBatch
+from .ollama_preflight import (
+    HttpOllamaAdminClient,
+    inspect_ollama_environment,
+    probe_ollama_models,
+)
 from .pdf_extractor import extract_manifest
 from .promotion import build_promotion_package, dry_run_promotion
 from .question_equivalence import run_question_equivalence_migration
@@ -330,6 +335,13 @@ def build_parser() -> argparse.ArgumentParser:
     report_ai_benchmark.add_argument("--local-bundle", type=_path, required=True)
     report_ai_benchmark.add_argument("--checkpoint", type=_path, required=True)
     report_ai_benchmark.add_argument("--report", type=_path, required=True)
+    ollama_preflight = subparsers.add_parser(
+        "preflight-ollama-ai",
+        help="inspeciona o Ollama local e executa probes somente com aprovação explícita",
+    )
+    ollama_preflight.add_argument("--report", type=_path, required=True)
+    ollama_preflight.add_argument("--probe-models", action="store_true")
+    ollama_preflight.add_argument("--approved-probe-id")
     return parser
 
 
@@ -628,6 +640,28 @@ def _run(args: argparse.Namespace) -> int:
         print(
             f"Relatório do benchmark {benchmark_report['benchmarkId']}: "
             f"{benchmark_report['records']} registros agregados. Relatório: {args.report}"
+        )
+        return 0
+    if args.command == "preflight-ollama-ai":
+        if args.probe_models and not args.approved_probe_id:
+            raise ValueError("--approved-probe-id é obrigatório com --probe-models")
+        if args.approved_probe_id and not args.probe_models:
+            raise ValueError("--approved-probe-id só pode ser usado com --probe-models")
+        client = HttpOllamaAdminClient()
+        inspection = inspect_ollama_environment(client=client)
+        preflight_report = (
+            probe_ollama_models(
+                preflight=inspection,
+                approved_probe_id=args.approved_probe_id,
+                client=client,
+            )
+            if args.probe_models
+            else inspection
+        )
+        write_json(args.report, preflight_report)
+        print(
+            f"Preflight Ollama {preflight_report['kind']}: "
+            f"relatório {args.report}; nenhuma instalação automática foi executada."
         )
         return 0
     if args.command == "approve":
