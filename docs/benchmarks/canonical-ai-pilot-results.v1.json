@@ -1,0 +1,232 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "canonical-ai-1642c8aeef150352",
+  "sampleFingerprint": "1642c8aeef15035248a4c50a0a79ac6de3b59c41104f3a9b1d8a0987ffdcadf9",
+  "taxonomyVersion": "2.0.1",
+  "generatedAt": "2026-08-24T05:50:02.395906+00:00",
+  "records": 30,
+  "providers": {
+    "gemini": {
+      "model": "gemini-3.7-flash",
+      "calls": 10,
+      "successful": 5,
+      "failures": 5,
+      "apiFailures": 4,
+      "invalidResponses": 1,
+      "prohibitedFieldAttempts": 0,
+      "fieldAccuracy": {
+        "discipline": {
+          "correct": 1,
+          "total": 1,
+          "percent": 100.0,
+          "confidence95": {
+            "lowPercent": 20.655,
+            "highPercent": 100.0
+          }
+        },
+        "matter": {
+          "correct": 2,
+          "total": 5,
+          "percent": 40.0,
+          "confidence95": {
+            "lowPercent": 11.762,
+            "highPercent": 76.928
+          }
+        },
+        "subject": {
+          "correct": 2,
+          "total": 5,
+          "percent": 40.0,
+          "confidence95": {
+            "lowPercent": 11.762,
+            "highPercent": 76.928
+          }
+        },
+        "level": {
+          "correct": 0,
+          "total": 1,
+          "percent": 0.0,
+          "confidence95": {
+            "lowPercent": 0.0,
+            "highPercent": 79.345
+          }
+        }
+      },
+      "allRequestedFieldsAccuracy": {
+        "correct": 2,
+        "total": 5,
+        "percent": 40.0,
+        "confidence95": {
+          "lowPercent": 11.762,
+          "highPercent": 76.928
+        }
+      },
+      "acceptedPrecisionPercent": 55.556,
+      "coverageAboveConfidencePercent": 75.0,
+      "reviewPercent": 25.0,
+      "validPathPercent": 50.0,
+      "inputTokens": 4815,
+      "outputTokens": 868,
+      "costUsd": 0.01447,
+      "costPerQuestionUsd": 0.00144698,
+      "costPerCorrectAcceptedFieldUsd": 0.00289395,
+      "latencyMedianMs": 1357.202,
+      "latencyP95Ms": 14703.347
+    },
+    "qwen": {
+      "model": "qwen3.7-plus",
+      "calls": 10,
+      "successful": 0,
+      "failures": 10,
+      "apiFailures": 10,
+      "invalidResponses": 0,
+      "prohibitedFieldAttempts": 0,
+      "fieldAccuracy": {
+        "discipline": {
+          "correct": 0,
+          "total": 0,
+          "percent": 0.0,
+          "confidence95": {
+            "lowPercent": 0.0,
+            "highPercent": 0.0
+          }
+        },
+        "matter": {
+          "correct": 0,
+          "total": 0,
+          "percent": 0.0,
+          "confidence95": {
+            "lowPercent": 0.0,
+            "highPercent": 0.0
+          }
+        },
+        "subject": {
+          "correct": 0,
+          "total": 0,
+          "percent": 0.0,
+          "confidence95": {
+            "lowPercent": 0.0,
+            "highPercent": 0.0
+          }
+        },
+        "level": {
+          "correct": 0,
+          "total": 0,
+          "percent": 0.0,
+          "confidence95": {
+            "lowPercent": 0.0,
+            "highPercent": 0.0
+          }
+        }
+      },
+      "allRequestedFieldsAccuracy": {
+        "correct": 0,
+        "total": 0,
+        "percent": 0.0,
+        "confidence95": {
+          "lowPercent": 0.0,
+          "highPercent": 0.0
+        }
+      },
+      "acceptedPrecisionPercent": 0.0,
+      "coverageAboveConfidencePercent": 0.0,
+      "reviewPercent": 0.0,
+      "validPathPercent": 0.0,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "costUsd": 0.007455,
+      "costPerQuestionUsd": 0.00074548,
+      "costPerCorrectAcceptedFieldUsd": 0.0,
+      "latencyMedianMs": 359.465,
+      "latencyP95Ms": 12105.023
+    },
+    "deepseek": {
+      "model": "deepseek-v4-pro",
+      "calls": 10,
+      "successful": 0,
+      "failures": 10,
+      "apiFailures": 10,
+      "invalidResponses": 0,
+      "prohibitedFieldAttempts": 0,
+      "fieldAccuracy": {
+        "discipline": {
+          "correct": 0,
+          "total": 0,
+          "percent": 0.0,
+          "confidence95": {
+            "lowPercent": 0.0,
+            "highPercent": 0.0
+          }
+        },
+        "matter": {
+          "correct": 0,
+          "total": 0,
+          "percent": 0.0,
+          "confidence95": {
+            "lowPercent": 0.0,
+            "highPercent": 0.0
+          }
+        },
+        "subject": {
+          "correct": 0,
+          "total": 0,
+          "percent": 0.0,
+          "confidence95": {
+            "lowPercent": 0.0,
+            "highPercent": 0.0
+          }
+        },
+        "level": {
+          "correct": 0,
+          "total": 0,
+          "percent": 0.0,
+          "confidence95": {
+            "lowPercent": 0.0,
+            "highPercent": 0.0
+          }
+        }
+      },
+      "allRequestedFieldsAccuracy": {
+        "correct": 0,
+        "total": 0,
+        "percent": 0.0,
+        "confidence95": {
+          "lowPercent": 0.0,
+          "highPercent": 0.0
+        }
+      },
+      "acceptedPrecisionPercent": 0.0,
+      "coverageAboveConfidencePercent": 0.0,
+      "reviewPercent": 0.0,
+      "validPathPercent": 0.0,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "costUsd": 0.006962,
+      "costPerQuestionUsd": 0.00069622,
+      "costPerCorrectAcceptedFieldUsd": 0.0,
+      "latencyMedianMs": 811.061,
+      "latencyP95Ms": 847.033
+    }
+  },
+  "pairedComparison": {
+    "gemini_vs_qwen": {
+      "pairedQuestions": 10,
+      "geminiWins": 2,
+      "qwenWins": 0,
+      "ties": 8
+    },
+    "gemini_vs_deepseek": {
+      "pairedQuestions": 10,
+      "geminiWins": 2,
+      "deepseekWins": 0,
+      "ties": 8
+    },
+    "qwen_vs_deepseek": {
+      "pairedQuestions": 10,
+      "qwenWins": 0,
+      "deepseekWins": 0,
+      "ties": 10
+    }
+  },
+  "recommendation": "Benchmark incompleto; não selecionar provedor."
+}
