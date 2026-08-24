@@ -150,7 +150,11 @@ def _evaluate_filtered_questions(
             reason_counts.update(issues)
             continue
         try:
-            record = build_editorial_record(_batch_for(view, question), question)
+            record = build_editorial_record(
+                _batch_for(view, question),
+                question,
+                canonical_identity=cast(dict[str, Any] | None, view.get("canonical_identity")),
+            )
         except ValueError as exc:
             issues = [str(exc)]
             exceptions.append(_question_exception(view, issues))
@@ -168,7 +172,7 @@ def _evaluate_filtered_questions(
             continue
         seen_ids.add(record.data.id)
         seen_fingerprints.add(record.source.fingerprint)
-        records.append(record.model_dump(mode="json", by_alias=True))
+        records.append(record.model_dump(mode="json", by_alias=True, exclude_none=True))
         included_views.append(view)
         exported_ids.append(cast(str, view["id"]))
         evidence[expected_sha] = source_path

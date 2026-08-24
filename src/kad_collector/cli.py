@@ -9,6 +9,7 @@ from .ai_processor import process_extraction_manifest
 from .answer_association import revalidate_answer_key_associations
 from .answer_key import match_answer_key
 from .automation import run_automatic
+from .canonical_identity import run_canonical_identity_migration
 from .collector import collect_documents
 from .config import load_config
 from .database import stage_batch
@@ -200,6 +201,23 @@ def build_parser() -> argparse.ArgumentParser:
     revalidate_answers.add_argument(
         "--report", type=_path, default=Path("data/reports/answer-key-revalidation.json")
     )
+    canonical_identities = subparsers.add_parser(
+        "migrate-canonical-identities",
+        help="simula ou aplica a migração do catálogo canônico no banco local",
+    )
+    canonical_identities.add_argument("--database", type=_path, required=True)
+    canonical_identities.add_argument(
+        "--manifest", type=_path, action="append", required=True
+    )
+    canonical_identities.add_argument(
+        "--contest",
+        help="alias exato que deve resolver após a migração, por exemplo RFB22",
+    )
+    canonical_identities.add_argument("--apply", action="store_true")
+    canonical_identities.add_argument("--run-id")
+    canonical_identities.add_argument(
+        "--report", type=_path, default=Path("data/reports/canonical-identity-migration.json")
+    )
     return parser
 
 
@@ -361,6 +379,27 @@ def _run(args: argparse.Namespace) -> int:
             f"{payload['maintained']} mantidas; {payload['changed']} alteradas; "
             f"{payload['invalidated']} invalidadas; {payload['ambiguous']} ambíguas; "
             f"{payload['incomplete']} incompletas. Relatório: {args.report}"
+        )
+        return 0
+    if args.command == "migrate-canonical-identities":
+        store = DesktopStore(args.database)
+        with closing(store._connect()) as connection:
+            canonical_report = run_canonical_identity_migration(
+                connection,
+                manifest_paths=args.manifest,
+                contest_alias=args.contest,
+                apply=args.apply,
+                run_id=args.run_id,
+            )
+        payload = canonical_report.as_dict()
+        write_json(args.report, payload)
+        print(
+            f"Identidade canônica {payload['mode']}: "
+            f"{payload['entityCounts'].get('canonical_contests', 0)} concursos; "
+            f"{payload['entityCounts'].get('exam_applications', 0)} aplicações; "
+            f"{payload['mappedDocuments']} documentos migrados; "
+            f"{payload['unresolvedDocuments']} incompletos; "
+            f"{payload['ambiguousDocuments']} ambíguos. Relatório: {args.report}"
         )
         return 0
     if args.command == "approve":
