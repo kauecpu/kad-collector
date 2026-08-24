@@ -31,6 +31,17 @@ from .editorial_export import export_admin_package
 from .guided_test import run_guided_test
 from .json_utils import read_json, write_json
 from .models import CollectionFilters, QuestionBatch
+from .ollama_ai_benchmark import (
+    execute_ollama_ai_benchmark,
+    prepare_ollama_ai_benchmark,
+    summarize_ollama_ai_benchmark,
+)
+from .ollama_local_paths import validate_local_artifact_path
+from .ollama_preflight import (
+    HttpOllamaAdminClient,
+    inspect_ollama_environment,
+    probe_ollama_models,
+)
 from .pdf_extractor import extract_manifest
 from .promotion import build_promotion_package, dry_run_promotion
 from .question_equivalence import run_question_equivalence_migration
@@ -258,7 +269,7 @@ def build_parser() -> argparse.ArgumentParser:
     classify_canonical.add_argument("--enable-ai", action="store_true")
     classify_canonical.add_argument(
         "--provider",
-        choices=["gemini", "qwen", "deepseek"],
+        choices=["gemini", "qwen", "deepseek", "ollama"],
     )
     classify_canonical.add_argument("--model")
     classify_canonical.add_argument("--run-id")
@@ -330,6 +341,50 @@ def build_parser() -> argparse.ArgumentParser:
     report_ai_benchmark.add_argument("--local-bundle", type=_path, required=True)
     report_ai_benchmark.add_argument("--checkpoint", type=_path, required=True)
     report_ai_benchmark.add_argument("--report", type=_path, required=True)
+    ollama_preflight = subparsers.add_parser(
+        "preflight-ollama-ai",
+        help="inspeciona o Ollama local e executa probes somente com aprovação explícita",
+    )
+    ollama_preflight.add_argument("--report", type=_path, required=True)
+    ollama_preflight.add_argument("--probe-models", action="store_true")
+    ollama_preflight.add_argument("--approved-probe-id")
+    prepare_ollama_benchmark = subparsers.add_parser(
+        "prepare-ollama-ai-benchmark",
+        help="fixa a amostra canônica e os modelos aprovados para o benchmark local",
+    )
+    prepare_ollama_benchmark.add_argument("--canonical-bundle", type=_path, required=True)
+    prepare_ollama_benchmark.add_argument("--preflight", type=_path, required=True)
+    prepare_ollama_benchmark.add_argument(
+        "--local-bundle",
+        type=_path,
+        default=Path("data/benchmarks/local/ollama-ai/bundle.json"),
+    )
+    prepare_ollama_benchmark.add_argument(
+        "--manifest",
+        type=_path,
+        default=Path("docs/benchmarks/ollama-ai-manifest.v1.json"),
+    )
+    run_ollama_benchmark = subparsers.add_parser(
+        "run-ollama-ai-benchmark",
+        help="executa uma fase aprovada do benchmark Ollama com checkpoint",
+    )
+    run_ollama_benchmark.add_argument("--local-bundle", type=_path, required=True)
+    run_ollama_benchmark.add_argument("--manifest", type=_path, required=True)
+    run_ollama_benchmark.add_argument("--preflight", type=_path, required=True)
+    run_ollama_benchmark.add_argument("--checkpoint", type=_path, required=True)
+    run_ollama_benchmark.add_argument(
+        "--phase", choices=["smoke", "full"], required=True
+    )
+    run_ollama_benchmark.add_argument("--approved-benchmark-id", required=True)
+    run_ollama_benchmark.add_argument("--max-new-calls", type=int, required=True)
+    report_ollama_benchmark = subparsers.add_parser(
+        "report-ollama-ai-benchmark",
+        help="gera métricas agregadas do benchmark Ollama sem conteúdo bruto",
+    )
+    report_ollama_benchmark.add_argument("--local-bundle", type=_path, required=True)
+    report_ollama_benchmark.add_argument("--manifest", type=_path, required=True)
+    report_ollama_benchmark.add_argument("--checkpoint", type=_path, required=True)
+    report_ollama_benchmark.add_argument("--report", type=_path, required=True)
     return parser
 
 
@@ -559,8 +614,10 @@ def _run(args: argparse.Namespace) -> int:
             f"Classificação canônica {payload['mode']}: {payload['processed']} processadas; "
             f"{payload['deterministicClassified']} campos determinísticos; "
             f"{payload['aiSent']} chamadas de IA; "
+            f"{payload['providerFailures']} falhas do provedor; "
             f"{payload['reviewRequired']} para revisão; "
-            f"{payload['remaining']} pendentes. Relatório: {args.report}"
+            f"{payload['remaining']} pendentes; estado {payload['status']}. "
+            f"Relatório: {args.report}"
         )
         return 0
     if args.command == "list-canonical-classification-review":
@@ -628,6 +685,68 @@ def _run(args: argparse.Namespace) -> int:
         print(
             f"Relatório do benchmark {benchmark_report['benchmarkId']}: "
             f"{benchmark_report['records']} registros agregados. Relatório: {args.report}"
+        )
+        return 0
+    if args.command == "preflight-ollama-ai":
+        if args.probe_models and not args.approved_probe_id:
+            raise ValueError("--approved-probe-id é obrigatório com --probe-models")
+        if args.approved_probe_id and not args.probe_models:
+            raise ValueError("--approved-probe-id só pode ser usado com --probe-models")
+        validate_local_artifact_path(args.report, label="relatório de preflight")
+        client = HttpOllamaAdminClient()
+        inspection = inspect_ollama_environment(client=client)
+        preflight_report = (
+            probe_ollama_models(
+                preflight=inspection,
+                approved_probe_id=args.approved_probe_id,
+                client=client,
+            )
+            if args.probe_models
+            else inspection
+        )
+        write_json(args.report, preflight_report)
+        print(
+            f"Preflight Ollama {preflight_report['kind']}: "
+            f"relatório {args.report}; nenhuma instalação automática foi executada."
+        )
+        return 0
+    if args.command == "prepare-ollama-ai-benchmark":
+        ollama_manifest = prepare_ollama_ai_benchmark(
+            args.canonical_bundle,
+            preflight_path=args.preflight,
+            local_bundle_path=args.local_bundle,
+            manifest_path=args.manifest,
+        )
+        print(
+            f"Benchmark Ollama preparado: {ollama_manifest['benchmarkId']}; "
+            f"{ollama_manifest['sampleSize']} questões; nenhuma inferência executada."
+        )
+        return 0
+    if args.command == "run-ollama-ai-benchmark":
+        ollama_result = execute_ollama_ai_benchmark(
+            args.local_bundle,
+            manifest_path=args.manifest,
+            preflight_path=args.preflight,
+            checkpoint_path=args.checkpoint,
+            phase=args.phase,
+            approved_benchmark_id=args.approved_benchmark_id,
+            max_new_calls=args.max_new_calls,
+        )
+        print(
+            f"Benchmark Ollama {ollama_result['phase']}: {ollama_result['newCalls']} "
+            f"novas chamadas medidas; estado {ollama_result['status']}."
+        )
+        return 0
+    if args.command == "report-ollama-ai-benchmark":
+        ollama_report = summarize_ollama_ai_benchmark(
+            args.local_bundle,
+            manifest_path=args.manifest,
+            checkpoint_path=args.checkpoint,
+            report_path=args.report,
+        )
+        print(
+            f"Relatório Ollama {ollama_report['benchmarkId']}: "
+            f"{ollama_report['records']} chamadas agregadas. Relatório: {args.report}"
         )
         return 0
     if args.command == "approve":

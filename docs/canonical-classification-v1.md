@@ -93,8 +93,9 @@ Antes de aplicar, o coletor exige:
 - campo solicitado e ainda ausente;
 - ausência de propriedade extra ou proibida.
 
-Baixa confiança, schema inválido, conflito taxonômico e falha permanente
-do provedor entram na fila. A fila expõe questão, campos pendentes, sugestão, confiança,
+Baixa confiança, schema inválido, conflito taxonômico e falha permanente do provedor entram na
+fila. Indisponibilidade temporária do Ollama pausa a execução e não cria revisão. A fila expõe
+questão, campos pendentes, sugestão, confiança,
 evidência e motivo. O revisor pode `accept`, `correct` ou `reject`; ator, data, justificativa e
 valor decidido ficam auditados.
 
@@ -134,6 +135,11 @@ IDs derivados incluem questão, hash do conteúdo, taxonomia, modelo e prompt. R
 entrada não cria outro resultado ativo. `run-id` e `limit` permitem retomar lotes sem refazer os
 itens concluídos.
 
+Em `apply`, cada questão concluída é confirmada separadamente. Se um provedor local ficar
+indisponível, a questão atual é desfeita, a execução passa a `paused` e nenhuma revisão é criada
+por causa da indisponibilidade. `Ctrl+C` também preserva o último cursor confirmado. O modo
+`dry-run` continua revertendo toda a simulação.
+
 ## CLI
 
 Simulação determinística, sem persistir resultados, filas ou eventos:
@@ -172,8 +178,8 @@ kad-collector classify-canonical-questions `
   --report data/reports/canonical-classification-rfb22.json
 ```
 
-Os valores aceitos em `--provider` são `gemini`, `qwen` e `deepseek`. O provedor é obrigatório
-quando `--enable-ai` é usado e não existe fallback automático. Seus modelos
+Os valores aceitos em `--provider` são `gemini`, `qwen`, `deepseek` e `ollama`. O provedor é
+obrigatório quando `--enable-ai` é usado e não existe fallback automático. Seus modelos
 padrão, variáveis de ambiente, endpoints e parâmetros de raciocínio estão documentados em
 `docs/canonical-ai-providers.md`. Todos permanecem inativos sem `--enable-ai`.
 
@@ -182,9 +188,9 @@ elegíveis, campos determinísticos, completas, candidatas e chamadas de IA, cam
 sugestões aceitas/rejeitadas, baixa confiança, revisão, falhas, tokens, custo, restantes e
 contagens por concurso selecionado, cargo, turno e disciplina.
 
-O benchmark planejado executará Gemini, Qwen e DeepSeek separadamente sobre o mesmo conjunto e
-avaliará apenas disciplina, matéria, assunto e nível. O benchmark de 200 questões não faz parte
-desta alteração.
+O benchmark pago de Gemini, Qwen e DeepSeek continua separado. O benchmark local do Ollama usa
+as mesmas 200 referências e está documentado em `docs/ollama-local-ai.md`; preparar o código não
+autoriza download ou inferência.
 
 Operação da fila:
 

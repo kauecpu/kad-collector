@@ -143,9 +143,10 @@ uma disciplina. Somente uma linha compativel com cabecalho controlado e o catalo
 correspondente aos metadados do concurso pode acionar essa etapa da cascata. Essa restricao
 evita que termos comuns de um concurso recebam silenciosamente a classificacao de outro.
 
-A classificacao canonica aceita `gemini`, `qwen` e `deepseek` e permanece desligada por
-padrao. Uma chamada externa exige `--apply`, `--enable-ai` e a escolha explicita de um desses
-tres provedores. Nao existe fallback automatico entre eles. Consulte
+A classificacao canonica aceita `gemini`, `qwen`, `deepseek` e `ollama` e permanece desligada
+por padrao. Uma chamada exige `--apply`, `--enable-ai` e um provedor explicito. O Ollama usa
+somente o computador local e nao requer chave; os outros tres usam APIs externas. Nao existe
+fallback automatico entre eles. Consulte
 `docs/canonical-ai-providers.md` antes de configurar chaves e endpoints regionais.
 
 O motor local sempre roda primeiro. A IA recebe, em uma chamada por questao, somente os campos
@@ -162,6 +163,12 @@ assunto e nivel. A preparacao e offline; piloto e lote final exigem aprovacoes s
 identificador exato da amostra e teto de custo. Consulte
 [`docs/canonical-ai-benchmark.md`](docs/canonical-ai-benchmark.md). A configuracao das chaves
 nao dispara nenhuma chamada automaticamente.
+
+O benchmark local compara tres tags fixas do Ollama sobre as mesmas 200 referencias. A
+inspecao inicial nao baixa modelos nem gera respostas. O smoke local exige aprovacao explicita,
+mede 30 chamadas e grava cada resultado antes de seguir. A fase completa permanece bloqueada
+ate outro comando autorizado. Consulte
+[`docs/ollama-local-ai.md`](docs/ollama-local-ai.md).
 
 Os filtros usam OR dentro da mesma categoria e AND entre categorias. Origem, conteudo,
 qualidade e situacao possuem contagens facetadas, busca, chips ativos e filtros salvos. Uma

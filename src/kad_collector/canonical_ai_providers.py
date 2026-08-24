@@ -213,6 +213,14 @@ def create_canonical_ai_provider(
     *,
     max_retries: int = 2,
 ) -> CanonicalAIProvider:
+    if provider == "ollama":
+        from .ollama_ai_provider import OllamaCanonicalEnrichmentProvider
+
+        return cast(
+            CanonicalAIProvider,
+            OllamaCanonicalEnrichmentProvider(model, max_retries=max_retries),
+        )
+
     providers: dict[str, type[Any]] = {
         "gemini": GeminiCanonicalEnrichmentProvider,
         "qwen": QwenCanonicalEnrichmentProvider,
