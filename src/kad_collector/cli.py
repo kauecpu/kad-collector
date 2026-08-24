@@ -9,6 +9,13 @@ from .ai_processor import process_extraction_manifest
 from .answer_association import revalidate_answer_key_associations
 from .answer_key import match_answer_key
 from .automation import run_automatic
+from .canonical_ai_benchmark import (
+    DEFAULT_SAMPLE_SIZE,
+    DEFAULT_SEED,
+    execute_canonical_ai_benchmark,
+    prepare_canonical_ai_benchmark,
+    summarize_canonical_ai_benchmark,
+)
 from .canonical_ai_providers import create_canonical_ai_provider
 from .canonical_classification import (
     classification_review_items,
@@ -285,6 +292,44 @@ def build_parser() -> argparse.ArgumentParser:
     decide_classification_review.add_argument("--actor", required=True)
     decide_classification_review.add_argument("--value")
     decide_classification_review.add_argument("--evidence")
+    prepare_ai_benchmark = subparsers.add_parser(
+        "prepare-canonical-ai-benchmark",
+        help="prepara offline a amostra controlada de provedores canônicos",
+    )
+    prepare_ai_benchmark.add_argument("--database", type=_path, required=True)
+    prepare_ai_benchmark.add_argument(
+        "--local-bundle",
+        type=_path,
+        default=Path("data/benchmarks/local/canonical-ai/bundle.json"),
+    )
+    prepare_ai_benchmark.add_argument(
+        "--manifest",
+        type=_path,
+        default=Path("docs/benchmarks/canonical-ai-manifest.v1.json"),
+    )
+    prepare_ai_benchmark.add_argument(
+        "--report",
+        type=_path,
+        default=Path("docs/benchmarks/canonical-ai-preflight.v1.json"),
+    )
+    prepare_ai_benchmark.add_argument("--sample-size", type=int, default=DEFAULT_SAMPLE_SIZE)
+    prepare_ai_benchmark.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    run_ai_benchmark = subparsers.add_parser(
+        "run-canonical-ai-benchmark",
+        help="executa uma fase paga previamente aprovada do benchmark canônico",
+    )
+    run_ai_benchmark.add_argument("--local-bundle", type=_path, required=True)
+    run_ai_benchmark.add_argument("--checkpoint", type=_path, required=True)
+    run_ai_benchmark.add_argument("--phase", choices=["pilot", "full"], required=True)
+    run_ai_benchmark.add_argument("--approved-benchmark-id", required=True)
+    run_ai_benchmark.add_argument("--max-cost-usd", type=float, required=True)
+    report_ai_benchmark = subparsers.add_parser(
+        "report-canonical-ai-benchmark",
+        help="gera métricas agregadas do benchmark sem expor respostas brutas",
+    )
+    report_ai_benchmark.add_argument("--local-bundle", type=_path, required=True)
+    report_ai_benchmark.add_argument("--checkpoint", type=_path, required=True)
+    report_ai_benchmark.add_argument("--report", type=_path, required=True)
     return parser
 
 
@@ -542,6 +587,47 @@ def _run(args: argparse.Namespace) -> int:
             )
         print(
             f"Revisão canônica {result['decision']}: {result['itemId']} (estado {result['state']})"
+        )
+        return 0
+    if args.command == "prepare-canonical-ai-benchmark":
+        preflight_report = prepare_canonical_ai_benchmark(
+            args.database,
+            local_bundle_path=args.local_bundle,
+            manifest_path=args.manifest,
+            report_path=args.report,
+            sample_size=args.sample_size,
+            seed=args.seed,
+        )
+        print(
+            f"Benchmark offline {preflight_report['benchmarkId']}: "
+            f"{preflight_report['sample']['selected']} questões; "
+            f"{preflight_report['plannedCalls']['maximum']} chamadas planejadas; "
+            f"nenhuma chamada externa realizada. Relatório: {args.report}"
+        )
+        return 0
+    if args.command == "run-canonical-ai-benchmark":
+        result = execute_canonical_ai_benchmark(
+            args.local_bundle,
+            checkpoint_path=args.checkpoint,
+            phase=args.phase,
+            approved_benchmark_id=args.approved_benchmark_id,
+            max_cost_usd=args.max_cost_usd,
+        )
+        print(
+            f"Benchmark {result['benchmarkId']} ({result['phase']}): "
+            f"{result['newCalls']} novas chamadas; custo contabilizado "
+            f"US$ {result['costUsd']:.6f}. Checkpoint: {result['checkpoint']}"
+        )
+        return 0
+    if args.command == "report-canonical-ai-benchmark":
+        benchmark_report = summarize_canonical_ai_benchmark(
+            args.local_bundle,
+            checkpoint_path=args.checkpoint,
+            report_path=args.report,
+        )
+        print(
+            f"Relatório do benchmark {benchmark_report['benchmarkId']}: "
+            f"{benchmark_report['records']} registros agregados. Relatório: {args.report}"
         )
         return 0
     if args.command == "approve":

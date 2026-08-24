@@ -72,6 +72,10 @@ no máximo duas vezes; o coletor não alterna silenciosamente de provedor.
 Os testes automatizados usam clientes falsos e não fazem chamadas de rede. A ativação real deve
 começar com limite pequeno, banco de avaliação e revisão humana dos resultados.
 
+O executor e as travas de custo do benchmark estão descritos em
+[`canonical-ai-benchmark.md`](canonical-ai-benchmark.md). O benchmark desativa retentativas
+automáticas sem alterar as duas retentativas usadas pelo fluxo normal.
+
 ## Campos avaliados
 
 O benchmark compara Gemini, Qwen e DeepSeek somente nos quatro campos taxonômicos:
