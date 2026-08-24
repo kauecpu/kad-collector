@@ -10,6 +10,7 @@ from typing import Any
 from test_question_equivalence import SyntheticCatalog, _question
 
 from kad_collector.canonical_classification import (
+    CanonicalAIProviderUnavailableError,
     CanonicalAIRequest,
     CanonicalAIResult,
     classification_review_items,
@@ -89,6 +90,22 @@ class FakeProvider:
             output_tokens=11,
             estimated_cost=0.002,
         )
+
+
+class FailsAfterOneProvider(FakeProvider):
+    def enrich(self, request: CanonicalAIRequest) -> CanonicalAIResult:
+        if self.requests:
+            self.requests.append(request)
+            raise CanonicalAIProviderUnavailableError("Ollama local foi encerrado")
+        return super().enrich(request)
+
+
+class InterruptsAfterOneProvider(FakeProvider):
+    def enrich(self, request: CanonicalAIRequest) -> CanonicalAIResult:
+        if self.requests:
+            self.requests.append(request)
+            raise KeyboardInterrupt
+        return super().enrich(request)
 
 
 def _suggestion(field: str, value: str, *, confidence: float = 0.91) -> dict[str, object]:
@@ -698,6 +715,108 @@ class CanonicalClassificationTests(unittest.TestCase):
         self.assertEqual(second.remaining, 0)
         self.assertEqual(repeated.processed, 0)
         self.assertEqual(item_count, 2)
+
+    def test_provider_unavailable_pauses_after_checkpoint_and_resume_skips_completed(self) -> None:
+        fixture, rows = _seed_canonical(self.root, second_number=True)
+        for _, question_id in rows:
+            _clear_fields(fixture, question_id, {"level"})
+        first_provider = FailsAfterOneProvider(
+            {"suggestions": [_suggestion("level", "Superior")]}
+        )
+
+        with closing(fixture.store._connect()) as connection:
+            paused = run_canonical_classification(
+                connection,
+                apply=True,
+                enable_ai=True,
+                provider=first_provider,
+                run_id="provider-paused",
+                taxonomy=self.taxonomy,
+            )
+            paused_item_count = connection.execute(
+                "SELECT COUNT(*) FROM canonical_classification_run_items "
+                "WHERE run_id = 'provider-paused'"
+            ).fetchone()[0]
+            pending_reviews = connection.execute(
+                "SELECT COUNT(*) FROM canonical_classification_review_queue "
+                "WHERE run_id = 'provider-paused' AND status = 'pending'"
+            ).fetchone()[0]
+            running_requests = connection.execute(
+                "SELECT COUNT(*) FROM canonical_ai_requests "
+                "WHERE run_id = 'provider-paused' AND status = 'running'"
+            ).fetchone()[0]
+
+            resumed_provider = FakeProvider(
+                {"suggestions": [_suggestion("level", "Superior")]}
+            )
+            resumed = run_canonical_classification(
+                connection,
+                apply=True,
+                enable_ai=True,
+                provider=resumed_provider,
+                run_id="provider-paused",
+                taxonomy=self.taxonomy,
+            )
+            final_item_count = connection.execute(
+                "SELECT COUNT(*) FROM canonical_classification_run_items "
+                "WHERE run_id = 'provider-paused'"
+            ).fetchone()[0]
+
+        self.assertEqual(len(first_provider.requests), 2)
+        self.assertEqual(paused.status, "paused")
+        self.assertEqual(paused.processed, 1)
+        self.assertEqual(paused.remaining, 1)
+        self.assertEqual(paused_item_count, 1)
+        self.assertEqual(pending_reviews, 0)
+        self.assertEqual(running_requests, 0)
+        self.assertEqual(len(resumed_provider.requests), 1)
+        self.assertEqual(resumed.status, "completed")
+        self.assertEqual(resumed.processed, 1)
+        self.assertEqual(resumed.remaining, 0)
+        self.assertEqual(final_item_count, 2)
+
+    def test_keyboard_interrupt_preserves_checkpoint_for_resume(self) -> None:
+        fixture, rows = _seed_canonical(self.root, second_number=True)
+        for _, question_id in rows:
+            _clear_fields(fixture, question_id, {"level"})
+        interrupted_provider = InterruptsAfterOneProvider(
+            {"suggestions": [_suggestion("level", "Superior")]}
+        )
+
+        with closing(fixture.store._connect()) as connection:
+            with self.assertRaises(KeyboardInterrupt):
+                run_canonical_classification(
+                    connection,
+                    apply=True,
+                    enable_ai=True,
+                    provider=interrupted_provider,
+                    run_id="operator-interrupted",
+                    taxonomy=self.taxonomy,
+                )
+            saved_run = connection.execute(
+                "SELECT status,cursor_canonical_question_id "
+                "FROM canonical_classification_runs WHERE id = 'operator-interrupted'"
+            ).fetchone()
+            saved_items = connection.execute(
+                "SELECT COUNT(*) FROM canonical_classification_run_items "
+                "WHERE run_id = 'operator-interrupted'"
+            ).fetchone()[0]
+            resumed = run_canonical_classification(
+                connection,
+                apply=True,
+                enable_ai=True,
+                provider=FakeProvider(
+                    {"suggestions": [_suggestion("level", "Superior")]}
+                ),
+                run_id="operator-interrupted",
+                taxonomy=self.taxonomy,
+            )
+
+        self.assertEqual(saved_run["status"], "paused")
+        self.assertIsNotNone(saved_run["cursor_canonical_question_id"])
+        self.assertEqual(saved_items, 1)
+        self.assertEqual(resumed.status, "completed")
+        self.assertEqual(resumed.processed, 1)
 
     def test_taxonomy_update_keeps_identity_but_content_change_invalidates_it(self) -> None:
         fixture, rows = _seed_canonical(self.root)

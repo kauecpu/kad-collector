@@ -5,6 +5,7 @@ import sqlite3
 import uuid
 from collections import Counter
 from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Literal, Protocol, cast
@@ -1334,6 +1335,8 @@ def _process_row(
                 request_id,
             ),
         )
+    except CanonicalAIProviderUnavailableError:
+        raise
     except Exception as exc:
         reason = str(exc)
         report.ai_rejected += 1
@@ -1521,6 +1524,7 @@ def run_canonical_classification(
         ai_enabled=enable_ai,
     )
     changed_at = _now()
+    run_config_validated = False
     connection.execute("BEGIN IMMEDIATE")
     try:
         connection.execute(
@@ -1544,7 +1548,7 @@ def run_canonical_classification(
         )
         existing = connection.execute(
             "SELECT mode,contest_id,ai_enabled,provider,model,taxonomy_version,"
-            "algorithm_version,prompt_version "
+            "algorithm_version,prompt_version,cursor_canonical_question_id "
             "FROM canonical_classification_runs WHERE id = ?",
             (effective_run_id,),
         ).fetchone()
@@ -1573,6 +1577,8 @@ def run_canonical_classification(
         )
         if actual != expected:
             raise CanonicalClassificationError("run_id pertence a outra configuração")
+        resume_cursor = cast(str | None, existing["cursor_canonical_question_id"])
+        run_config_validated = True
         rows = _canonical_rows(connection, contest_id)
         _queue_ineligible(
             connection,
@@ -1596,41 +1602,111 @@ def run_canonical_classification(
             ]
         report.eligible = len([row for row in rows if _eligible(row)])
         selected = eligible[:limit] if limit is not None else eligible
+        if not apply:
+            for row in selected:
+                _process_row(
+                    connection,
+                    row,
+                    taxonomy=active_taxonomy,
+                    run_id=effective_run_id,
+                    apply=False,
+                    enable_ai=enable_ai,
+                    provider=provider,
+                    report=report,
+                    changed_at=changed_at,
+                )
+            report.processed = len(selected)
+            report.remaining = len(eligible) - len(selected)
+            report.status = "paused" if report.remaining else "completed"
+            report.by_context = _context_report(connection, contest_id)
+            connection.rollback()
+            return report
+
+        connection.commit()
+        processed = 0
+        cursor = resume_cursor
         for row in selected:
-            _process_row(
-                connection,
-                row,
-                taxonomy=active_taxonomy,
-                run_id=effective_run_id,
-                apply=apply,
-                enable_ai=enable_ai,
-                provider=provider,
-                report=report,
-                changed_at=changed_at,
-            )
-        report.processed = len(selected)
-        report.remaining = len(eligible) - len(selected)
+            report_checkpoint = deepcopy(report)
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                _process_row(
+                    connection,
+                    row,
+                    taxonomy=active_taxonomy,
+                    run_id=effective_run_id,
+                    apply=True,
+                    enable_ai=enable_ai,
+                    provider=provider,
+                    report=report,
+                    changed_at=changed_at,
+                )
+                processed += 1
+                cursor = cast(str, row["id"])
+                connection.execute(
+                    "UPDATE canonical_classification_runs "
+                    "SET cursor_canonical_question_id = ? WHERE id = ?",
+                    (cursor, effective_run_id),
+                )
+                connection.commit()
+            except CanonicalAIProviderUnavailableError:
+                connection.rollback()
+                report = report_checkpoint
+                report.provider_failures += 1
+                report.processed = processed
+                report.remaining = len(eligible) - processed
+                report.status = "paused"
+                report.by_context = _context_report(connection, contest_id)
+                connection.execute(
+                    "UPDATE canonical_classification_runs SET status = 'paused',"
+                    "cursor_canonical_question_id = ?,report_json = ?,finished_at = NULL "
+                    "WHERE id = ?",
+                    (cursor, canonical_json(report.as_dict()), effective_run_id),
+                )
+                connection.commit()
+                return report
+            except KeyboardInterrupt:
+                connection.rollback()
+                report = report_checkpoint
+                report.processed = processed
+                report.remaining = len(eligible) - processed
+                report.status = "paused"
+                report.by_context = _context_report(connection, contest_id)
+                connection.execute(
+                    "UPDATE canonical_classification_runs SET status = 'paused',"
+                    "cursor_canonical_question_id = ?,report_json = ?,finished_at = NULL "
+                    "WHERE id = ?",
+                    (cursor, canonical_json(report.as_dict()), effective_run_id),
+                )
+                connection.commit()
+                raise
+
+        report.processed = processed
+        report.remaining = len(eligible) - processed
         report.status = "paused" if report.remaining else "completed"
         report.by_context = _context_report(connection, contest_id)
-        if apply:
-            connection.execute(
-                "UPDATE canonical_classification_runs SET status = ?,"
-                "cursor_canonical_question_id = ?,report_json = ?,finished_at = ? WHERE id = ?",
-                (
-                    report.status,
-                    selected[-1]["id"] if selected else None,
-                    canonical_json(report.as_dict()),
-                    _now() if report.status == "completed" else None,
-                    effective_run_id,
-                ),
-            )
-            connection.commit()
-        else:
-            connection.rollback()
+        connection.execute(
+            "UPDATE canonical_classification_runs SET status = ?,"
+            "cursor_canonical_question_id = ?,report_json = ?,finished_at = ? WHERE id = ?",
+            (
+                report.status,
+                cursor,
+                canonical_json(report.as_dict()),
+                _now() if report.status == "completed" else None,
+                effective_run_id,
+            ),
+        )
+        connection.commit()
         return report
     except Exception:
         connection.rollback()
         report.status = "failed"
+        if apply and run_config_validated:
+            connection.execute(
+                "UPDATE canonical_classification_runs SET status = 'failed',"
+                "report_json = ?,finished_at = ? WHERE id = ?",
+                (canonical_json(report.as_dict()), _now(), effective_run_id),
+            )
+            connection.commit()
         raise
 
 
