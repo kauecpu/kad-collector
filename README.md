@@ -240,6 +240,13 @@ com escopo e resposta oficial compatíveis e direciona classificação e exporta
 representante. O algoritmo, o modelo de auditoria, a CLI e os limites da regressão sintética
 RFB22 estão em [`docs/question-equivalence-v1.md`](docs/question-equivalence-v1.md).
 
+### Classificação e enriquecimento canônico
+
+`canonical-classification-v1` executa a taxonomia local sobre representantes elegíveis, envia
+à IA somente os campos que continuarem ausentes e encaminha incertezas para revisão humana. O
+contrato restrito, a política de confiança, a auditoria, a privacidade e os comandos estão em
+[`docs/canonical-classification-v1.md`](docs/canonical-classification-v1.md).
+
 Para consulta pela interface local, `GET /api/bootstrap` inclui `semanticSummary` e
 `GET /api/documents/{id}/identity` devolve o read model de identidade. Ambos usam o token
 efêmero da sessão; o segundo endpoint não devolve `canonicalText` nem texto integral do PDF.

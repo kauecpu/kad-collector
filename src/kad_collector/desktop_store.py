@@ -14,6 +14,10 @@ from typing import Any, Literal, cast
 
 from .answer_association import decide_runtime_association, invalidate_answer_association
 from .answer_key import parse_answer_key
+from .canonical_classification import (
+    initialize_canonical_classification_schema,
+    invalidate_canonical_classification,
+)
 from .canonical_identity import (
     canonical_identity_for_version,
     canonical_summary,
@@ -475,6 +479,7 @@ class DesktopStore:
             initialize_semantic_schema(connection)
             initialize_canonical_identity_schema(connection)
             initialize_question_equivalence_schema(connection)
+            initialize_canonical_classification_schema(connection)
             connection.commit()
 
     def create_job(
@@ -2170,6 +2175,13 @@ class DesktopStore:
                     changed_at=created_at,
                 )
             if existing is not None and existing["fingerprint"] != fingerprint:
+                invalidate_canonical_classification(
+                    connection,
+                    question_id,
+                    actor="system",
+                    reason="reprocessamento alterou o conteúdo da questão canônica",
+                    changed_at=created_at,
+                )
                 invalidate_question_equivalence(
                     connection,
                     question_id,
@@ -2315,6 +2327,14 @@ class DesktopStore:
                     question_id,
                 ),
             )
+            if before["fingerprint"] != fingerprint:
+                invalidate_canonical_classification(
+                    connection,
+                    question_id,
+                    actor=actor,
+                    reason="conteúdo da questão canônica alterado; classificação exige revisão",
+                    changed_at=changed_at,
+                )
             invalidate_question_equivalence(
                 connection,
                 question_id,
