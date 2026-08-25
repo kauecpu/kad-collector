@@ -11,6 +11,7 @@ from kad_collector.canonical_classification import (
     _validate_ai_response,
     canonical_ai_error_code,
     canonical_ai_response_schema,
+    parse_canonical_ai_json,
 )
 from kad_collector.editorial_taxonomy import EditorialTaxonomy
 
@@ -108,6 +109,17 @@ class CanonicalAIContractTests(unittest.TestCase):
             ["Fundamental", "Médio", "Superior"],
         )
         self.assertFalse(schema["additionalProperties"])
+        self.assertEqual(schema["required"], ["taxonomy", "level"])
+
+    def test_response_must_include_each_requested_decision(self) -> None:
+        with self.assertRaises(CanonicalAIValidationError) as raised:
+            _validate_ai_response(
+                {},
+                request=_request(requested_fields=("subject",)),
+                taxonomy=self.taxonomy,
+            )
+
+        self.assertEqual(raised.exception.code, "invalid_response_schema")
 
     def test_valid_path_populates_only_requested_taxonomy_fields(self) -> None:
         request = _request(requested_fields=("subject",))
@@ -192,9 +204,7 @@ class CanonicalAIContractTests(unittest.TestCase):
 
     def test_error_codes_use_exception_types_instead_of_message_words(self) -> None:
         self.assertEqual(
-            canonical_ai_error_code(
-                CanonicalAIProviderUnavailableError("qualquer mensagem")
-            ),
+            canonical_ai_error_code(CanonicalAIProviderUnavailableError("qualquer mensagem")),
             "provider_transport_failure",
         )
         self.assertEqual(
@@ -211,6 +221,14 @@ class CanonicalAIContractTests(unittest.TestCase):
             ),
             "invalid_level",
         )
+
+    def test_duplicate_response_key_has_an_explicit_code(self) -> None:
+        with self.assertRaises(CanonicalAIValidationError) as raised:
+            parse_canonical_ai_json(
+                '{"level":{"value":"Superior","value":"Médio","confidence":0.9,"evidence":"cargo"}}'
+            )
+
+        self.assertEqual(raised.exception.code, "duplicate_field")
 
 
 if __name__ == "__main__":

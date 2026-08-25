@@ -149,9 +149,10 @@ somente o computador local e nao requer chave; os outros tres usam APIs externas
 fallback automatico entre eles. Consulte
 `docs/canonical-ai-providers.md` antes de configurar chaves e endpoints regionais.
 
-O motor local sempre roda primeiro. A IA recebe, em uma chamada por questao, somente os campos
-ausentes entre disciplina, materia, assunto e nivel, alem do texto da questao, das opcoes
-fechadas da taxonomia e dos valores editoriais conhecidos. Dificuldade e explicacao permanecem
+O motor local sempre roda primeiro. A IA recebe o conteúdo derivado limpo e escolhe um único
+caminho taxonômico fechado; disciplina, matéria e assunto são extraídos desse caminho. Nível
+aceita somente Fundamental, Médio ou Superior. Um único caminho compatível é resolvido sem IA.
+Dificuldade e explicacao permanecem
 opcionais: nao acionam IA, nao entram na metrica de completude e nao enviam a questao para
 revisao. A IA nao pode criar nomes, escolher gabarito, resolver identidade ou substituir
 classificacoes locais ou humanas. Sem chave, sem internet ou com resposta invalida, o
@@ -164,7 +165,8 @@ identificador exato da amostra e teto de custo. Consulte
 [`docs/canonical-ai-benchmark.md`](docs/canonical-ai-benchmark.md). A configuracao das chaves
 nao dispara nenhuma chamada automaticamente.
 
-O benchmark local compara tres tags fixas do Ollama sobre as mesmas 200 referencias. A
+O benchmark local comparará três tags fixas do Ollama quando houver 200 referências revisadas.
+A auditoria v2 possui 175 utilizáveis; portanto, nenhum novo smoke está liberado. A
 inspecao inicial nao baixa modelos nem gera respostas. O smoke local exige aprovacao explicita,
 mede 30 chamadas e grava cada resultado antes de seguir. A fase completa permanece bloqueada
 ate outro comando autorizado. Consulte

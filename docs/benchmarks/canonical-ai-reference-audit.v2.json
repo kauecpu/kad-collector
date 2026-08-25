@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 2,
+  "kind": "canonical-ai-reference-review-audit",
+  "sourceBenchmarkId": "canonical-ai-1642c8aeef150352",
+  "taxonomyVersion": "2.0.1",
+  "examined": 200,
+  "statuses": {
+    "agent_reviewed_reference": 175,
+    "ambiguous_reference": 1,
+    "rejected_reference": 6,
+    "structural_only_reference": 18
+  },
+  "usableReferences": 175,
+  "requiredReferences": 200,
+  "readyForPreparation": false,
+  "networkCallsPerformed": 0,
+  "modelInferencesPerformed": 0,
+  "humanReview": false,
+  "sanitization": {
+    "examined": 200,
+    "cleaned": 56,
+    "removedArtifacts": {
+      "calendar": 1,
+      "exam_header": 54,
+      "fgv_footer": 39,
+      "page_footer": 39,
+      "section_heading_bleed": 3
+    },
+    "residuesAfterCleaning": 0,
+    "rejected": 6
+  },
+  "blockedReason": "candidate_database_unavailable_for_replacement_references"
+}

@@ -34,6 +34,7 @@ from .semantic_identity import canonical_json, stable_sha256
 CANONICAL_CLASSIFICATION_SCHEMA_VERSION = 2
 CANONICAL_CLASSIFICATION_ALGORITHM_VERSION = "canonical-classification-v3"
 CANONICAL_ENRICHMENT_PROMPT_VERSION = "canonical-taxonomy-v3"
+CANONICAL_AI_RESPONSE_CONTRACT_VERSION = "canonical-ai-response-v2"
 MINIMUM_AI_CONFIDENCE = 0.78
 
 CANONICAL_AI_INSTRUCTIONS = (
@@ -52,9 +53,7 @@ CLASSIFICATION_FIELDS = ("discipline", "matter", "subject", "level")
 OPTIONAL_EDITORIAL_FIELDS = ("difficulty", "explanation")
 ALLOWED_AI_FIELDS = CLASSIFICATION_FIELDS
 REVIEWABLE_FIELDS = (*CLASSIFICATION_FIELDS, *OPTIONAL_EDITORIAL_FIELDS)
-SUPPORTED_CANONICAL_AI_PROVIDERS = frozenset(
-    {"gemini", "qwen", "deepseek", "ollama"}
-)
+SUPPORTED_CANONICAL_AI_PROVIDERS = frozenset({"gemini", "qwen", "deepseek", "ollama"})
 FORBIDDEN_AI_FIELDS = frozenset(
     {
         "difficulty",
@@ -143,6 +142,28 @@ class CanonicalAIValidationError(CanonicalClassificationError):
         self.code = code
 
 
+def parse_canonical_ai_json(content: str) -> dict[str, Any]:
+    def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        parsed: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in parsed:
+                raise CanonicalAIValidationError(
+                    "duplicate_field", f"campo repetido na resposta: {key}"
+                )
+            parsed[key] = value
+        return parsed
+
+    try:
+        payload = json.loads(content, object_pairs_hook=reject_duplicate_keys)
+    except CanonicalAIValidationError:
+        raise
+    except json.JSONDecodeError as exc:
+        raise CanonicalAIInvalidJSONError("provedor retornou JSON inválido") from exc
+    if not isinstance(payload, dict):
+        raise CanonicalAIResponseSchemaError("resposta da IA deve ser um objeto JSON")
+    return cast(dict[str, Any], payload)
+
+
 def canonical_ai_error_code(exc: Exception) -> AIValidationCode:
     if isinstance(exc, CanonicalAIValidationError):
         return exc.code
@@ -195,6 +216,7 @@ class CanonicalAIRequest:
 
     def safe_payload(self) -> dict[str, Any]:
         payload = {
+            "responseContractVersion": CANONICAL_AI_RESPONSE_CONTRACT_VERSION,
             "requestedFields": list(self.requested_fields),
             "question": {
                 "statement": self.statement,
@@ -221,9 +243,7 @@ class CanonicalAIResult:
     input_tokens: int | None = None
     output_tokens: int | None = None
     estimated_cost: float | None = None
-    provider_metrics: dict[str, int | float | str | bool | None] = field(
-        default_factory=dict
-    )
+    provider_metrics: dict[str, int | float | str | bool | None] = field(default_factory=dict)
 
 
 class CanonicalAIProvider(Protocol):
@@ -240,9 +260,7 @@ def canonical_taxonomy_path_id(path: TaxonomyPath) -> str:
         str(path.matter),
         str(path.subject),
     )
-    return ":".join(
-        normalize_taxonomy_text(value).replace(" ", "-") for value in values
-    )
+    return ":".join(normalize_taxonomy_text(value).replace(" ", "-") for value in values)
 
 
 def canonical_taxonomy_options(
@@ -286,10 +304,7 @@ def canonical_ai_response_schema(request: CanonicalAIRequest) -> dict[str, Any]:
             "properties": {
                 "pathId": {
                     "type": "string",
-                    "enum": [
-                        str(option["pathId"])
-                        for option in request.taxonomy_options
-                    ],
+                    "enum": [str(option["pathId"]) for option in request.taxonomy_options],
                 },
                 "confidence": {
                     "type": "number",
@@ -320,6 +335,7 @@ def canonical_ai_response_schema(request: CanonicalAIRequest) -> dict[str, Any]:
     return {
         "type": "object",
         "additionalProperties": False,
+        "required": list(properties),
         "properties": properties,
     }
 
@@ -1022,7 +1038,7 @@ def _validate_ai_response(
     if forbidden:
         raise CanonicalAIValidationError(
             "prohibited_field",
-            "resposta tentou alterar campos proibidos: " + ", ".join(sorted(forbidden))
+            "resposta tentou alterar campos proibidos: " + ", ".join(sorted(forbidden)),
         )
     try:
         parsed = CanonicalAIResponse.model_validate(response)
@@ -1036,6 +1052,14 @@ def _validate_ai_response(
     requested_taxonomy = tuple(
         field for field in CLASSIFICATION_FIELDS[:3] if field in request.requested_fields
     )
+    if requested_taxonomy and parsed.taxonomy is None:
+        raise CanonicalAIValidationError(
+            "invalid_response_schema", "resposta omitiu a decisão taxonômica solicitada"
+        )
+    if "level" in request.requested_fields and parsed.level is None:
+        raise CanonicalAIValidationError(
+            "invalid_response_schema", "resposta omitiu a decisão de nível solicitada"
+        )
     if parsed.taxonomy is not None:
         if not requested_taxonomy:
             raise CanonicalAIValidationError(
@@ -1054,8 +1078,7 @@ def _validate_ai_response(
                 "unknown_taxonomy_path", "resposta escolheu caminho desconhecido"
             )
         if any(
-            request.known_fields.get(field)
-            and option.get(field) != request.known_fields[field]
+            request.known_fields.get(field) and option.get(field) != request.known_fields[field]
             for field in CLASSIFICATION_FIELDS[:3]
         ):
             raise CanonicalAIValidationError(
@@ -1086,9 +1109,7 @@ def _validate_ai_response(
                 "invalid_response_schema", "resposta incluiu nível não solicitado"
             )
         if parsed.level.value not in _LEVELS:
-            raise CanonicalAIValidationError(
-                "invalid_level", "nível fora do contrato editorial"
-            )
+            raise CanonicalAIValidationError("invalid_level", "nível fora do contrato editorial")
         suggestion = AISuggestion(
             field="level",
             value=parsed.level.value,
@@ -1287,9 +1308,7 @@ def _process_row(
         )
     prospective = _current_fields(question.model_dump(mode="json"), classification)
     prospective.update({name: value[0] for name, value in deterministic_fields.items()})
-    missing_before_apply = _missing_fields(
-        question.model_dump(mode="json"), classification
-    )
+    missing_before_apply = _missing_fields(question.model_dump(mode="json"), classification)
     compatible_paths = canonical_taxonomy_options(
         taxonomy,
         catalog_ids=taxonomy.relevant_catalog_ids(_metadata(row)),

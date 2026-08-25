@@ -9,13 +9,21 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, cast
 
+from .canonical_ai_benchmark import (
+    BENCHMARK_ALGORITHM_VERSION,
+    BENCHMARK_SCHEMA_VERSION,
+    canonical_benchmark_sample_fingerprint,
+)
+from .canonical_ai_input import CANONICAL_AI_INPUT_SANITIZER_VERSION
 from .canonical_classification import (
+    CANONICAL_AI_RESPONSE_CONTRACT_VERSION,
     CANONICAL_ENRICHMENT_PROMPT_VERSION,
     CLASSIFICATION_FIELDS,
     CanonicalAIProvider,
     CanonicalAIRequest,
     CanonicalClassificationError,
     _validate_ai_response,
+    canonical_ai_error_code,
 )
 from .editorial_taxonomy import EditorialTaxonomy
 from .json_utils import read_json, write_json
@@ -37,14 +45,12 @@ from .ollama_preflight import (
 )
 from .semantic_identity import stable_sha256
 
-LOCAL_BENCHMARK_SCHEMA_VERSION = 1
-LOCAL_BENCHMARK_ALGORITHM_VERSION = "ollama-local-ai-benchmark-v1"
+LOCAL_BENCHMARK_SCHEMA_VERSION = 2
+LOCAL_BENCHMARK_ALGORITHM_VERSION = "ollama-local-ai-benchmark-v2"
 LOCAL_BENCHMARK_SAMPLE_SIZE = 200
 SMOKE_SIZE = 10
 SMOKE_MAX_CALLS = SMOKE_SIZE * len(OLLAMA_BENCHMARK_TARGETS)
-FULL_MAX_CALLS = (LOCAL_BENCHMARK_SAMPLE_SIZE - SMOKE_SIZE) * len(
-    OLLAMA_BENCHMARK_TARGETS
-)
+FULL_MAX_CALLS = (LOCAL_BENCHMARK_SAMPLE_SIZE - SMOKE_SIZE) * len(OLLAMA_BENCHMARK_TARGETS)
 
 LocalBenchmarkPhase = Literal["smoke", "full"]
 LocalProviderFactory = Callable[[str], CanonicalAIProvider]
@@ -61,9 +67,15 @@ def _safe_item(item: Mapping[str, Any]) -> dict[str, Any]:
         "contentFingerprint",
         "hiddenFields",
         "expected",
+        "structuralExpected",
+        "reviewedExpected",
+        "referenceStatus",
+        "reasonCode",
         "contest",
         "taxonomyVersion",
         "referenceKind",
+        "promptContentFingerprint",
+        "removedArtifacts",
     )
     try:
         return {name: item[name] for name in names}
@@ -86,9 +98,7 @@ def _validate_request_alignment(item: Mapping[str, Any]) -> None:
 def _validated_preflight(
     path: Path, *, artifact_root: Path = LOCAL_ARTIFACT_ROOT
 ) -> dict[str, Any]:
-    validate_local_artifact_path(
-        path, label="relatório de probe", artifact_root=artifact_root
-    )
+    validate_local_artifact_path(path, label="relatório de probe", artifact_root=artifact_root)
     preflight = cast(dict[str, Any], read_json(path))
     if preflight.get("kind") != "ollama-local-preflight-probe":
         raise CanonicalClassificationError("relatório informado não é um probe Ollama")
@@ -112,9 +122,7 @@ def _validated_preflight(
         if model.get("processor") != "100% GPU":
             raise CanonicalClassificationError(f"{target.tag} não foi validado em 100% GPU")
         if model.get("structuredOutput") is not True:
-            raise CanonicalClassificationError(
-                f"{target.tag} não validou saída estruturada"
-            )
+            raise CanonicalClassificationError(f"{target.tag} não validou saída estruturada")
         if model.get("contextLength") != DEFAULT_CONTEXT_LENGTH:
             raise CanonicalClassificationError(
                 f"{target.tag} não foi validado com contexto {DEFAULT_CONTEXT_LENGTH}"
@@ -176,19 +184,26 @@ def prepare_ollama_ai_benchmark(
     manifest_items = cast(list[Mapping[str, Any]], source_manifest.get("items") or [])
     if safe_items != manifest_items:
         raise CanonicalClassificationError("bundle local divergiu do manifesto canônico")
-    source_fingerprint = stable_sha256(safe_items)
+    source_fingerprint = canonical_benchmark_sample_fingerprint(
+        safe_items, taxonomy_version=str(source_manifest.get("taxonomyVersion"))
+    )
     local_bundle_fingerprint = stable_sha256(source_items)
     if source_manifest.get("sampleFingerprint") != source_fingerprint:
         raise CanonicalClassificationError("fingerprint da amostra canônica não confere")
     if source_manifest.get("promptVersion") != CANONICAL_ENRICHMENT_PROMPT_VERSION:
         raise CanonicalClassificationError("prompt canônico mudou desde a preparação")
+    if source_manifest.get("schemaVersion") != BENCHMARK_SCHEMA_VERSION:
+        raise CanonicalClassificationError("schema canônico mudou desde a preparação")
+    if source_manifest.get("algorithmVersion") != BENCHMARK_ALGORITHM_VERSION:
+        raise CanonicalClassificationError("algoritmo canônico mudou desde a preparação")
+    if source_manifest.get("sanitizerVersion") != CANONICAL_AI_INPUT_SANITIZER_VERSION:
+        raise CanonicalClassificationError("sanitizador mudou desde a preparação")
+    if source_manifest.get("responseContractVersion") != CANONICAL_AI_RESPONSE_CONTRACT_VERSION:
+        raise CanonicalClassificationError("contrato de resposta canônico mudou desde a preparação")
 
-    preflight = _validated_preflight(
-        preflight_path, artifact_root=local_artifact_root
-    )
+    preflight = _validated_preflight(preflight_path, artifact_root=local_artifact_root)
     probe_models = {
-        str(item["tag"]): item
-        for item in cast(list[Mapping[str, Any]], preflight["models"])
+        str(item["tag"]): item for item in cast(list[Mapping[str, Any]], preflight["models"])
     }
     models = [
         {
@@ -210,6 +225,7 @@ def prepare_ollama_ai_benchmark(
         "sampleSize": len(safe_items),
         "taxonomyVersion": source_manifest.get("taxonomyVersion"),
         "promptVersion": source_manifest.get("promptVersion"),
+        "responseContractVersion": source_manifest.get("responseContractVersion"),
         "ollamaVersion": ollama.get("version"),
         "preflightProbeId": preflight.get("probeId"),
         "preflightReportId": preflight.get("probeReportId"),
@@ -225,8 +241,7 @@ def prepare_ollama_ai_benchmark(
         "phases": {
             "smokeMeasuredCalls": SMOKE_MAX_CALLS,
             "fullRemainderMeasuredCalls": FULL_MAX_CALLS,
-            "maximumMeasuredCalls": LOCAL_BENCHMARK_SAMPLE_SIZE
-            * len(OLLAMA_BENCHMARK_TARGETS),
+            "maximumMeasuredCalls": LOCAL_BENCHMARK_SAMPLE_SIZE * len(OLLAMA_BENCHMARK_TARGETS),
         },
         "smokeReferenceQuestionIds": [
             item["referenceQuestionId"] for item in safe_items[:SMOKE_SIZE]
@@ -271,9 +286,7 @@ def _validate_local_bundle(
     if [_safe_item(item) for item in items] != public.get("items"):
         raise CanonicalClassificationError("questões locais divergiram do manifesto")
     if stable_sha256(items) != public.get("localBundleFingerprint"):
-        raise CanonicalClassificationError(
-            "conteúdo bruto do bundle local divergiu do manifesto"
-        )
+        raise CanonicalClassificationError("conteúdo bruto do bundle local divergiu do manifesto")
     for item in items:
         _validate_request_alignment(item)
     return bundle, public, items
@@ -290,15 +303,14 @@ def _request_from_item(item: Mapping[str, Any]) -> CanonicalAIRequest:
         alternatives=tuple(cast(list[str], question["alternatives"])),
         known_fields={
             str(key): str(value)
-            for key, value in cast(
-                Mapping[str, Any], payload["knownEditorialFields"]
-            ).items()
+            for key, value in cast(Mapping[str, Any], payload["knownEditorialFields"]).items()
         },
         taxonomy_version=str(payload["taxonomyVersion"]),
         taxonomy_options=tuple(
-            {str(key): str(value) for key, value in option.items()}
+            {str(key): value for key, value in option.items()}
             for option in cast(list[Mapping[str, Any]], payload["taxonomyOptions"])
         ),
+        prompt_content_fingerprint=str(payload["promptContentFingerprint"]),
     )
 
 
@@ -325,9 +337,7 @@ def _load_checkpoint(
     *,
     artifact_root: Path = LOCAL_ARTIFACT_ROOT,
 ) -> dict[str, Any]:
-    validate_local_artifact_path(
-        path, label="checkpoint local", artifact_root=artifact_root
-    )
+    validate_local_artifact_path(path, label="checkpoint local", artifact_root=artifact_root)
     if path.exists():
         checkpoint = cast(dict[str, Any], read_json(path))
         if checkpoint.get("schemaVersion") != LOCAL_BENCHMARK_SCHEMA_VERSION:
@@ -341,9 +351,7 @@ def _load_checkpoint(
             "localBundleFingerprint",
         ):
             if checkpoint.get(name) != manifest.get(name):
-                raise CanonicalClassificationError(
-                    f"checkpoint divergiu do manifesto em {name}"
-                )
+                raise CanonicalClassificationError(f"checkpoint divergiu do manifesto em {name}")
         checkpoint.setdefault("cleanupFailures", [])
         for collection_name in (
             "records",
@@ -357,8 +365,7 @@ def _load_checkpoint(
                 )
         records = cast(list[Any], checkpoint["records"])
         models = {
-            str(model["tag"]): model
-            for model in cast(list[Mapping[str, Any]], manifest["models"])
+            str(model["tag"]): model for model in cast(list[Mapping[str, Any]], manifest["models"])
         }
         items = {
             str(item["referenceQuestionId"]): item
@@ -374,14 +381,10 @@ def _load_checkpoint(
                 raise CanonicalClassificationError(
                     "checkpoint referencia modelo ou questão desconhecidos"
                 )
-            expected_key = _checkpoint_key(
-                str(manifest["benchmarkId"]), model, item
-            )
+            expected_key = _checkpoint_key(str(manifest["benchmarkId"]), model, item)
             key = record.get("key")
             if key != expected_key or key in seen:
-                raise CanonicalClassificationError(
-                    "checkpoint contém chave inválida ou duplicada"
-                )
+                raise CanonicalClassificationError("checkpoint contém chave inválida ou duplicada")
             seen.add(str(key))
             expected_phase = (
                 "smoke"
@@ -392,13 +395,10 @@ def _load_checkpoint(
             if (
                 record.get("phase") != expected_phase
                 or record.get("digest") != model["digest"]
-                or record.get("contentFingerprint")
-                != item["contentFingerprint"]
+                or record.get("contentFingerprint") != item["contentFingerprint"]
                 or record.get("requestedFields") != item["hiddenFields"]
             ):
-                raise CanonicalClassificationError(
-                    "registro do checkpoint divergiu do manifesto"
-                )
+                raise CanonicalClassificationError("registro do checkpoint divergiu do manifesto")
             status = record.get("status")
             if status == "completed":
                 if (
@@ -433,18 +433,10 @@ def _load_checkpoint(
                 or warmup.get("status") not in {"completed", "failed"}
             ):
                 raise CanonicalClassificationError("warm-up divergiu do manifesto")
-            if warmup.get("status") == "completed" and warmup.get(
-                "processor"
-            ) != "100% GPU":
-                raise CanonicalClassificationError(
-                    "warm-up concluído sem comprovação de 100% GPU"
-                )
-            if warmup.get("status") == "failed" and not isinstance(
-                warmup.get("errorType"), str
-            ):
-                raise CanonicalClassificationError(
-                    "falha de warm-up sem tipo de erro"
-                )
+            if warmup.get("status") == "completed" and warmup.get("processor") != "100% GPU":
+                raise CanonicalClassificationError("warm-up concluído sem comprovação de 100% GPU")
+            if warmup.get("status") == "failed" and not isinstance(warmup.get("errorType"), str):
+                raise CanonicalClassificationError("falha de warm-up sem tipo de erro")
 
         for interruption in cast(list[Any], checkpoint["interruptions"]):
             if (
@@ -454,9 +446,7 @@ def _load_checkpoint(
                 or interruption.get("stage") not in {"warmup", "measured"}
                 or not isinstance(interruption.get("interruptionType"), str)
             ):
-                raise CanonicalClassificationError(
-                    "interrupção inválida no checkpoint"
-                )
+                raise CanonicalClassificationError("interrupção inválida no checkpoint")
 
         for cleanup in cast(list[Any], checkpoint["cleanupFailures"]):
             if (
@@ -466,15 +456,11 @@ def _load_checkpoint(
                 or cleanup.get("status") not in {"unresolved", "resolved"}
                 or not isinstance(cleanup.get("errorType"), str)
             ):
-                raise CanonicalClassificationError(
-                    "falha de limpeza inválida no checkpoint"
-                )
+                raise CanonicalClassificationError("falha de limpeza inválida no checkpoint")
             if cleanup.get("status") == "resolved" and not isinstance(
                 cleanup.get("resolvedAt"), str
             ):
-                raise CanonicalClassificationError(
-                    "falha de limpeza resolvida sem auditoria"
-                )
+                raise CanonicalClassificationError("falha de limpeza resolvida sem auditoria")
         return checkpoint
     return {
         "schemaVersion": LOCAL_BENCHMARK_SCHEMA_VERSION,
@@ -527,13 +513,9 @@ def _require_full_gpu(
             command_runner=command_runner,
         )
     except CanonicalClassificationError as exc:
-        raise OllamaHardwareGateError(
-            f"não foi possível confirmar 100% GPU para {model}"
-        ) from exc
+        raise OllamaHardwareGateError(f"não foi possível confirmar 100% GPU para {model}") from exc
     if processor != "100% GPU":
-        raise OllamaHardwareGateError(
-            f"{model} não está executando com PROCESSOR 100% GPU"
-        )
+        raise OllamaHardwareGateError(f"{model} não está executando com PROCESSOR 100% GPU")
     return processor
 
 
@@ -553,39 +535,23 @@ def _telemetry(result: Any, admin: OllamaAdminClient, model: str) -> dict[str, A
         "loadDurationNs": _integer(metrics, "loadDurationNs"),
         "promptEvalDurationNs": _integer(metrics, "promptEvalDurationNs"),
         "evalDurationNs": eval_duration,
-        "tokensPerSecond": round(tokens_per_second, 3)
-        if tokens_per_second is not None
-        else None,
+        "tokensPerSecond": round(tokens_per_second, 3) if tokens_per_second is not None else None,
         "peakVramBytes": _peak_vram(admin, model),
     }
 
 
 def _error_category(exc: Exception) -> str:
-    message = str(exc).casefold()
-    if "proibid" in message:
-        return "prohibited_field"
-    if "taxon" in message:
-        return "outside_taxonomy"
-    if any(value in message for value in ("json", "schema", "campo", "resposta")):
-        return "invalid_schema"
-    return "provider_failure"
+    return canonical_ai_error_code(exc)
 
 
-def _preflight_matches_manifest(
-    preflight: Mapping[str, Any], manifest: Mapping[str, Any]
-) -> None:
+def _preflight_matches_manifest(preflight: Mapping[str, Any], manifest: Mapping[str, Any]) -> None:
     if preflight.get("probeReportId") != manifest.get("preflightReportId"):
         raise CanonicalClassificationError("probe mudou desde a preparação do benchmark")
-    probed = {
-        str(item["tag"]): item
-        for item in cast(list[Mapping[str, Any]], preflight["models"])
-    }
+    probed = {str(item["tag"]): item for item in cast(list[Mapping[str, Any]], preflight["models"])}
     for model in cast(list[Mapping[str, Any]], manifest["models"]):
         current = probed.get(str(model["tag"]))
         if current is None or current.get("digest") != model.get("digest"):
-            raise CanonicalClassificationError(
-                f"digest de {model['tag']} mudou desde a preparação"
-            )
+            raise CanonicalClassificationError(f"digest de {model['tag']} mudou desde a preparação")
 
 
 def _live_ollama_matches_manifest(
@@ -600,14 +566,10 @@ def _live_ollama_matches_manifest(
         str(cast(Mapping[str, Any], preflight["ollama"])["baseUrl"])
     )
     if live_base_url != approved_base_url:
-        raise CanonicalClassificationError(
-            "endpoint vivo do Ollama divergiu do probe aprovado"
-        )
+        raise CanonicalClassificationError("endpoint vivo do Ollama divergiu do probe aprovado")
     live_version = admin.version()
     if live_version != manifest.get("ollamaVersion"):
-        raise CanonicalClassificationError(
-            "versão viva do Ollama divergiu da versão preparada"
-        )
+        raise CanonicalClassificationError("versão viva do Ollama divergiu da versão preparada")
     installed = {
         str(item.get("name", item.get("model", ""))): item
         for item in admin.tags()
@@ -622,24 +584,16 @@ def _live_ollama_matches_manifest(
                 f"execute 'ollama pull {tag}' somente após autorização"
             )
         if current.get("digest") != model.get("digest"):
-            raise CanonicalClassificationError(
-                f"digest vivo de {tag} divergiu do manifesto"
-            )
+            raise CanonicalClassificationError(f"digest vivo de {tag} divergiu do manifesto")
         details = current.get("details")
-        quantization = (
-            details.get("quantization_level")
-            if isinstance(details, Mapping)
-            else None
-        )
+        quantization = details.get("quantization_level") if isinstance(details, Mapping) else None
         expected_quantization = model.get("quantization")
         if (
             not isinstance(quantization, str)
             or not isinstance(expected_quantization, str)
             or quantization.casefold() != expected_quantization.casefold()
         ):
-            raise CanonicalClassificationError(
-                f"quantização viva de {tag} divergiu do manifesto"
-            )
+            raise CanonicalClassificationError(f"quantização viva de {tag} divergiu do manifesto")
 
 
 def _unresolved_cleanup_failures(
@@ -711,16 +665,12 @@ def execute_ollama_ai_benchmark(
     )
     if approved_benchmark_id != manifest["benchmarkId"]:
         raise CanonicalClassificationError("aprovação não corresponde ao benchmark local")
-    preflight = _validated_preflight(
-        preflight_path, artifact_root=local_artifact_root
-    )
+    preflight = _validated_preflight(preflight_path, artifact_root=local_artifact_root)
     _preflight_matches_manifest(preflight, manifest)
     taxonomy = EditorialTaxonomy.load_default()
     if taxonomy.version != manifest["taxonomyVersion"]:
         raise CanonicalClassificationError("taxonomia mudou desde a preparação")
-    checkpoint = _load_checkpoint(
-        checkpoint_path, manifest, artifact_root=local_artifact_root
-    )
+    checkpoint = _load_checkpoint(checkpoint_path, manifest, artifact_root=local_artifact_root)
     records = cast(list[dict[str, Any]], checkpoint["records"])
     warmups = cast(list[dict[str, Any]], checkpoint["warmups"])
     interruptions = cast(list[dict[str, Any]], checkpoint["interruptions"])
@@ -757,9 +707,8 @@ def execute_ollama_ai_benchmark(
             for record in records
             if record.get("phase") == "smoke" and record.get("status") == "completed"
         }
-        if (
-            not smoke_keys.issubset(successful_smoke)
-            or _unresolved_cleanup_failures(cleanup_failures)
+        if not smoke_keys.issubset(successful_smoke) or _unresolved_cleanup_failures(
+            cleanup_failures
         ):
             raise CanonicalClassificationError(
                 "smoke válido e sem limpeza pendente é obrigatório antes da fase full"
@@ -821,9 +770,7 @@ def execute_ollama_ai_benchmark(
                         "status": "completed",
                         "processor": processor,
                         "completedAt": _now(),
-                        "wallLatencyMs": round(
-                            (time.perf_counter() - warmup_started) * 1000, 3
-                        ),
+                        "wallLatencyMs": round((time.perf_counter() - warmup_started) * 1000, 3),
                         **_telemetry(warmup_result, admin, tag),
                     }
                 )
@@ -851,11 +798,10 @@ def execute_ollama_ai_benchmark(
                         "digest": model["digest"],
                         "status": "failed",
                         "errorType": type(exc).__name__,
+                        "validationCode": _error_category(exc),
                         "errorCategory": _error_category(exc),
                         "completedAt": _now(),
-                        "wallLatencyMs": round(
-                            (time.perf_counter() - warmup_started) * 1000, 3
-                        ),
+                        "wallLatencyMs": round((time.perf_counter() - warmup_started) * 1000, 3),
                     }
                 )
                 write_json(checkpoint_path, checkpoint)
@@ -912,13 +858,11 @@ def execute_ollama_ai_benchmark(
                             "schemaValid": True,
                             "suggestions": suggestions,
                             "fieldCorrect": {
-                                field: suggestions.get(field, {}).get("value")
-                                == expected[field]
+                                field: suggestions.get(field, {}).get("value") == expected[field]
                                 for field in request.requested_fields
                             },
                             "allFieldsCorrect": all(
-                                suggestions.get(field, {}).get("value")
-                                == expected[field]
+                                suggestions.get(field, {}).get("value") == expected[field]
                                 for field in request.requested_fields
                             ),
                         }
@@ -940,19 +884,20 @@ def execute_ollama_ai_benchmark(
                     break
                 except Exception as exc:
                     category = _error_category(exc)
+                    provider_failure = category in {
+                        "provider_transport_failure",
+                        "provider_http_failure",
+                    }
                     record.update(
                         {
                             "status": "failed",
-                            "schemaValid": (
-                                None if category == "provider_failure" else False
-                            ),
+                            "schemaValid": (None if provider_failure else False),
                             "errorType": type(exc).__name__,
+                            "validationCode": category,
                             "errorCategory": category,
                         }
                     )
-                record["wallLatencyMs"] = round(
-                    (time.perf_counter() - started) * 1000, 3
-                )
+                record["wallLatencyMs"] = round((time.perf_counter() - started) * 1000, 3)
                 records.append(record)
                 completed.add(key)
                 new_calls += 1
@@ -1015,11 +960,7 @@ def _wilson_95(successes: int, total: int) -> dict[str, float]:
     rate = successes / total
     denominator = 1 + z * z / total
     center = (rate + z * z / (2 * total)) / denominator
-    margin = (
-        z
-        * math.sqrt(rate * (1 - rate) / total + z * z / (4 * total * total))
-        / denominator
-    )
+    margin = z * math.sqrt(rate * (1 - rate) / total + z * z / (4 * total * total)) / denominator
     return {
         "lowPercent": round(max(0.0, center - margin) * 100, 3),
         "highPercent": round(min(1.0, center + margin) * 100, 3),
@@ -1037,9 +978,7 @@ def summarize_ollama_ai_benchmark(
     _, manifest, items = _validate_local_bundle(
         local_bundle_path, manifest_path, artifact_root=local_artifact_root
     )
-    checkpoint = _load_checkpoint(
-        checkpoint_path, manifest, artifact_root=local_artifact_root
-    )
+    checkpoint = _load_checkpoint(checkpoint_path, manifest, artifact_root=local_artifact_root)
     records = cast(list[dict[str, Any]], checkpoint["records"])
     warmups = cast(list[dict[str, Any]], checkpoint["warmups"])
     interruptions = cast(list[dict[str, Any]], checkpoint["interruptions"])
@@ -1053,9 +992,7 @@ def summarize_ollama_ai_benchmark(
     for model in models:
         tag = str(model["tag"])
         model_records = [record for record in records if record.get("model") == tag]
-        successful = [
-            record for record in model_records if record.get("status") == "completed"
-        ]
+        successful = [record for record in model_records if record.get("status") == "completed"]
         failed = [record for record in model_records if record.get("status") == "failed"]
         field_totals: Counter[str] = Counter()
         field_correct: Counter[str] = Counter()
@@ -1068,9 +1005,7 @@ def summarize_ollama_ai_benchmark(
             if record.get("status") != "completed":
                 continue
             correctness = cast(Mapping[str, bool], record.get("fieldCorrect") or {})
-            suggestions = cast(
-                Mapping[str, Mapping[str, Any]], record.get("suggestions") or {}
-            )
+            suggestions = cast(Mapping[str, Mapping[str, Any]], record.get("suggestions") or {})
             all_correct += int(bool(record.get("allFieldsCorrect")))
             for field in requested:
                 field_correct[field] += int(bool(correctness.get(field)))
@@ -1096,21 +1031,16 @@ def summarize_ollama_ai_benchmark(
             default=0,
         )
         prohibited = [
-            record
-            for record in failed
-            if record.get("errorCategory") == "prohibited_field"
+            record for record in failed if record.get("errorCategory") == "prohibited_field"
         ]
         outside_taxonomy = [
             record
             for record in failed
-            if record.get("errorCategory") == "outside_taxonomy"
+            if record.get("validationCode")
+            in {"unknown_taxonomy_path", "incompatible_taxonomy_path"}
         ]
-        schema_failures = [
-            record for record in failed if record.get("schemaValid") is False
-        ]
-        model_interruptions = [
-            item for item in interruptions if item.get("model") == tag
-        ]
+        schema_failures = [record for record in failed if record.get("schemaValid") is False]
+        model_interruptions = [item for item in interruptions if item.get("model") == tag]
         by_model[tag] = {
             "digest": model["digest"],
             "quantization": model["quantization"],
@@ -1125,14 +1055,21 @@ def summarize_ollama_ai_benchmark(
             "schemaFailures": len(schema_failures),
             "prohibitedFieldAttempts": len(prohibited),
             "outsideTaxonomy": len(outside_taxonomy),
+            "validationCodes": dict(
+                sorted(
+                    Counter(
+                        str(record["validationCode"])
+                        for record in failed
+                        if record.get("validationCode")
+                    ).items()
+                )
+            ),
             "fieldAccuracy": {
                 field: {
                     "correct": field_correct[field],
                     "total": field_totals[field],
                     "percent": _percent(field_correct[field], field_totals[field]),
-                    "confidence95": _wilson_95(
-                        field_correct[field], field_totals[field]
-                    ),
+                    "confidence95": _wilson_95(field_correct[field], field_totals[field]),
                 }
                 for field in CLASSIFICATION_FIELDS
             },
@@ -1143,27 +1080,17 @@ def summarize_ollama_ai_benchmark(
                 "confidence95": _wilson_95(all_correct, len(model_records)),
             },
             "acceptedPrecisionPercent": _percent(accepted_correct, accepted_total),
-            "coverageAboveConfidencePercent": _percent(
-                accepted_total, requested_total
-            ),
-            "reviewPercent": _percent(
-                requested_total - accepted_total, requested_total
-            ),
-            "latencyMedianMs": round(statistics.median(latencies), 3)
-            if latencies
-            else 0.0,
+            "coverageAboveConfidencePercent": _percent(accepted_total, requested_total),
+            "reviewPercent": _percent(requested_total - accepted_total, requested_total),
+            "latencyMedianMs": round(statistics.median(latencies), 3) if latencies else 0.0,
             "latencyP95Ms": _percentile(latencies, 0.95),
             "inputTokens": sum(int(item.get("inputTokens") or 0) for item in model_records),
-            "outputTokens": sum(
-                int(item.get("outputTokens") or 0) for item in model_records
-            ),
+            "outputTokens": sum(int(item.get("outputTokens") or 0) for item in model_records),
             "tokensPerSecondMedian": round(statistics.median(token_rates), 3)
             if token_rates
             else 0.0,
             "tokensPerSecondP95": _percentile(token_rates, 0.95),
-            "warmupLoadDurationMedianMs": round(
-                statistics.median(warmup_load_ms), 3
-            )
+            "warmupLoadDurationMedianMs": round(statistics.median(warmup_load_ms), 3)
             if warmup_load_ms
             else 0.0,
             "peakVramBytes": peak_vram,
@@ -1204,8 +1131,7 @@ def summarize_ollama_ai_benchmark(
     }
     unresolved_cleanup_count = len(_unresolved_cleanup_failures(cleanup_failures))
     smoke_complete = (
-        expected_smoke_keys.issubset(successful_smoke_keys)
-        and unresolved_cleanup_count == 0
+        expected_smoke_keys.issubset(successful_smoke_keys) and unresolved_cleanup_count == 0
     )
     report = {
         "schemaVersion": LOCAL_BENCHMARK_SCHEMA_VERSION,

@@ -15,17 +15,27 @@ from pathlib import Path
 from typing import Any, Literal, cast
 from urllib.parse import urlparse
 
+from .canonical_ai_input import (
+    CANONICAL_AI_INPUT_SANITIZER_VERSION,
+    CanonicalAIInputError,
+    find_canonical_ai_artifacts,
+    sanitize_canonical_ai_content,
+)
 from .canonical_ai_providers import (
     canonical_ai_messages,
     create_canonical_ai_provider,
 )
+from .canonical_ai_reference_review import load_reference_reviews
 from .canonical_classification import (
+    CANONICAL_AI_RESPONSE_CONTRACT_VERSION,
     CANONICAL_ENRICHMENT_PROMPT_VERSION,
     CLASSIFICATION_FIELDS,
     CanonicalAIProvider,
     CanonicalAIRequest,
     CanonicalClassificationError,
     _validate_ai_response,
+    canonical_ai_error_code,
+    canonical_taxonomy_options,
 )
 from .editorial_taxonomy import (
     EditorialTaxonomy,
@@ -36,16 +46,33 @@ from .models import QuestionRecord
 from .question_equivalence import question_fingerprints
 from .semantic_identity import stable_sha256
 
-BENCHMARK_SCHEMA_VERSION = 1
-BENCHMARK_ALGORITHM_VERSION = "canonical-ai-benchmark-v1"
+BENCHMARK_SCHEMA_VERSION = 2
+BENCHMARK_ALGORITHM_VERSION = "canonical-ai-benchmark-v2"
 DEFAULT_SAMPLE_SIZE = 200
 DEFAULT_SEED = 20260824
 PILOT_SIZE = 10
 PROVIDERS = ("gemini", "qwen", "deepseek")
-REFERENCE_KIND = "official_structure_reference"
+REFERENCE_KIND = "agent_reviewed_reference"
 
 BenchmarkPhase = Literal["pilot", "full"]
 ProviderFactory = Callable[[str, str], CanonicalAIProvider]
+
+
+def canonical_benchmark_sample_fingerprint(
+    items: Sequence[Mapping[str, Any]], *, taxonomy_version: str
+) -> str:
+    return stable_sha256(
+        {
+            "schemaVersion": BENCHMARK_SCHEMA_VERSION,
+            "algorithmVersion": BENCHMARK_ALGORITHM_VERSION,
+            "promptVersion": CANONICAL_ENRICHMENT_PROMPT_VERSION,
+            "responseContractVersion": CANONICAL_AI_RESPONSE_CONTRACT_VERSION,
+            "sanitizerVersion": CANONICAL_AI_INPUT_SANITIZER_VERSION,
+            "taxonomyVersion": taxonomy_version,
+            "items": list(items),
+        }
+    )
+
 
 # These are exact headings observed in the official RFB22 documents. A loose token
 # match is deliberately insufficient because answer text can contain the same words.
@@ -139,9 +166,7 @@ def _classification_value(
         str(raw["value"]) if raw.get("value") is not None else None,
         str(raw["source"]) if raw.get("source") is not None else None,
         str(raw["evidence"]) if raw.get("evidence") is not None else None,
-        tuple(str(item) for item in provenance)
-        if isinstance(provenance, list)
-        else (),
+        tuple(str(item) for item in provenance) if isinstance(provenance, list) else (),
     )
 
 
@@ -332,15 +357,12 @@ def select_reference_sample(
 def benchmark_masks(sample_size: int, *, seed: int) -> list[tuple[str, ...]]:
     primary = ("matter", "subject")
     diagnostics = (
-        ("subject",),
         ("discipline", "matter", "subject"),
         ("level",),
         tuple(CLASSIFICATION_FIELDS),
     )
     diagnostic_count = sample_size // 20
-    masks: list[tuple[str, ...]] = [primary] * (
-        sample_size - diagnostic_count * len(diagnostics)
-    )
+    masks: list[tuple[str, ...]] = [primary] * (sample_size - diagnostic_count * len(diagnostics))
     for pattern in diagnostics:
         masks.extend([pattern] * diagnostic_count)
     random.Random(f"{seed}:missing-fields").shuffle(masks)
@@ -365,9 +387,7 @@ def assign_benchmark_masks(
         compatible = []
         for candidate_index in available:
             expected = sample[candidate_index].expected
-            known_values = {
-                value for field, value in expected.items() if field not in mask
-            }
+            known_values = {value for field, value in expected.items() if field not in mask}
             if any(expected[field] in known_values for field in mask):
                 continue
             compatible.append(candidate_index)
@@ -390,29 +410,55 @@ def assign_benchmark_masks(
     return [assignments[index] for index in range(len(sample))]
 
 
-def _taxonomy_options(
-    taxonomy: EditorialTaxonomy,
+def select_nontrivial_benchmark_cases(
+    candidates: Sequence[ReferenceCandidate],
+    masks: Sequence[tuple[str, ...]],
     *,
-    catalog_id: str,
-    known: Mapping[str, str],
-) -> tuple[dict[str, str], ...]:
-    paths = taxonomy.candidate_paths(
-        catalog_ids=(catalog_id,), discipline=known.get("discipline")
-    )
-    options: list[dict[str, str]] = []
-    for path in paths:
-        if known.get("matter") and path.matter != known["matter"]:
-            continue
-        if known.get("subject") and path.subject != known["subject"]:
-            continue
-        options.append(
-            {
-                "discipline": path.discipline,
-                "matter": str(path.matter),
-                "subject": str(path.subject),
+    taxonomy: EditorialTaxonomy,
+    seed: int,
+) -> tuple[list[ReferenceCandidate], list[tuple[str, ...]]]:
+    available = set(range(len(candidates)))
+    selected: list[ReferenceCandidate] = []
+    selected_masks: list[tuple[str, ...]] = []
+    for mask_index, mask in enumerate(masks):
+        compatible: list[int] = []
+        for candidate_index in available:
+            candidate = candidates[candidate_index]
+            known = {
+                field: value for field, value in candidate.expected.items() if field not in mask
             }
+            known_values = set(known.values())
+            if any(candidate.expected[field] in known_values for field in mask):
+                continue
+            taxonomy_requested = any(field in mask for field in CLASSIFICATION_FIELDS[:3])
+            if taxonomy_requested:
+                options = canonical_taxonomy_options(
+                    taxonomy,
+                    catalog_ids=(candidate.catalog_id,),
+                    known_fields=known,
+                )
+                if len(options) <= 1:
+                    continue
+            compatible.append(candidate_index)
+        if not compatible:
+            raise CanonicalClassificationError(
+                f"apenas {len(selected)} referências não triviais puderam ser "
+                f"selecionadas; {len(masks)} são necessárias"
+            )
+        compatible.sort(
+            key=lambda index: stable_sha256(
+                {
+                    "seed": seed,
+                    "maskIndex": mask_index,
+                    "fingerprint": candidates[index].content_fingerprint,
+                }
+            )
         )
-    return tuple(options)
+        chosen = compatible[0]
+        selected.append(candidates[chosen])
+        selected_masks.append(mask)
+        available.remove(chosen)
+    return selected, selected_masks
 
 
 def _request_for(
@@ -422,21 +468,35 @@ def _request_for(
     taxonomy: EditorialTaxonomy,
 ) -> CanonicalAIRequest:
     known = {
-        field: value
-        for field, value in candidate.expected.items()
-        if field not in hidden_fields
+        field: value for field, value in candidate.expected.items() if field not in hidden_fields
     }
+    headings = taxonomy.official_headings(catalog_ids=(candidate.catalog_id,))
+    sanitized = sanitize_canonical_ai_content(
+        candidate.question.statement,
+        tuple(item.text for item in candidate.question.alternatives),
+        official_headings=headings,
+    )
+    residues = find_canonical_ai_artifacts(
+        sanitized.statement,
+        sanitized.alternatives,
+        official_headings=headings,
+    )
+    if residues:
+        raise CanonicalClassificationError(
+            "conteúdo derivado manteve artefatos conhecidos: " + ", ".join(residues)
+        )
     request = CanonicalAIRequest(
         canonical_question_id=candidate.source_question_id,
         content_fingerprint=candidate.content_fingerprint,
         requested_fields=hidden_fields,
-        statement=candidate.question.statement,
-        alternatives=tuple(item.text for item in candidate.question.alternatives),
+        statement=sanitized.statement,
+        alternatives=sanitized.alternatives,
         known_fields=known,
         taxonomy_version=taxonomy.version,
-        taxonomy_options=_taxonomy_options(
-            taxonomy, catalog_id=candidate.catalog_id, known=known
+        taxonomy_options=canonical_taxonomy_options(
+            taxonomy, catalog_ids=(candidate.catalog_id,), known_fields=known
         ),
+        prompt_content_fingerprint=sanitized.prompt_content_fingerprint,
     )
     leaked = {
         field
@@ -446,8 +506,7 @@ def _request_for(
     }
     if leaked:
         raise CanonicalClassificationError(
-            "campos ocultados vazaram para metadados conhecidos: "
-            + ", ".join(sorted(leaked))
+            "campos ocultados vazaram para metadados conhecidos: " + ", ".join(sorted(leaked))
         )
     return request
 
@@ -463,25 +522,31 @@ def _request_estimates(
 ) -> tuple[int, int, int]:
     messages = canonical_ai_messages(request)
     serialized = json.dumps(messages, ensure_ascii=False, separators=(",", ":"))
-    simulated_response = {
-        "suggestions": [
-            {
-                "field": field,
-                "value": expected[field],
-                "confidence": 0.90,
-                "evidence": "evidência textual suficiente para justificar a classificação",
-            }
-            for field in request.requested_fields
-        ]
-    }
+    simulated_response: dict[str, Any] = {}
+    if any(field in request.requested_fields for field in CLASSIFICATION_FIELDS[:3]):
+        path = next(
+            option
+            for option in request.taxonomy_options
+            if all(option[field] == expected[field] for field in CLASSIFICATION_FIELDS[:3])
+        )
+        simulated_response["taxonomy"] = {
+            "pathId": path["pathId"],
+            "confidence": 0.90,
+            "evidence": "evidência textual suficiente para justificar a classificação",
+        }
+    if "level" in request.requested_fields:
+        simulated_response["level"] = {
+            "value": expected["level"],
+            "confidence": 0.90,
+            "evidence": "nível editorial sustentado pelo conteúdo disponível",
+        }
     output = json.dumps(simulated_response, ensure_ascii=False, separators=(",", ":"))
     return len(serialized.encode("utf-8")), _estimated_tokens(serialized), _estimated_tokens(output)
 
 
 def _price_for_tokens(price: Mapping[str, Any], input_tokens: int, output_tokens: int) -> float:
     return (
-        input_tokens * float(price["inputUsd"])
-        + output_tokens * float(price["outputUsd"])
+        input_tokens * float(price["inputUsd"]) + output_tokens * float(price["outputUsd"])
     ) / 1_000_000
 
 
@@ -499,6 +564,7 @@ def _distribution(items: Iterable[Mapping[str, Any]], field: str) -> dict[str, i
 def prepare_canonical_ai_benchmark(
     database_path: Path,
     *,
+    reference_review_path: Path,
     local_bundle_path: Path,
     manifest_path: Path,
     report_path: Path,
@@ -509,15 +575,106 @@ def prepare_canonical_ai_benchmark(
     if sample_size < PILOT_SIZE:
         raise ValueError(f"sample_size deve ser pelo menos {PILOT_SIZE}")
     taxonomy = EditorialTaxonomy.load_default()
+    reviews = load_reference_reviews(reference_review_path, taxonomy=taxonomy)
     with closing(sqlite3.connect(database_path)) as connection:
-        candidates, audit = load_official_structure_references(
-            connection, taxonomy=taxonomy
-        )
+        candidates, audit = load_official_structure_references(connection, taxonomy=taxonomy)
         missing_patterns = observed_missing_patterns(connection)
-    sample = select_reference_sample(candidates, sample_size=sample_size, seed=seed)
-    masks = assign_benchmark_masks(
-        sample,
+    review_statuses: Counter[str] = Counter(review.status for review in reviews.values())
+    reviewed_candidates: list[ReferenceCandidate] = []
+    review_by_source: dict[str, Any] = {}
+    for candidate in candidates:
+        review = reviews.get(candidate.source_question_id)
+        if review is None or review.status != REFERENCE_KIND:
+            continue
+        if review.content_fingerprint != candidate.content_fingerprint:
+            raise CanonicalClassificationError(
+                "fingerprint da referência revisada divergiu do conteúdo bruto: "
+                + candidate.source_question_id
+            )
+        if review.structural_expected != candidate.expected:
+            raise CanonicalClassificationError(
+                "referência estrutural mudou desde a revisão: " + candidate.source_question_id
+            )
+        assert review.reviewed_expected is not None
+        reviewed_candidates.append(
+            ReferenceCandidate(
+                source_question_id=candidate.source_question_id,
+                content_fingerprint=candidate.content_fingerprint,
+                question=candidate.question,
+                expected=dict(review.reviewed_expected),
+                contest=candidate.contest,
+                catalog_id=candidate.catalog_id,
+                heading=candidate.heading,
+                document_sha256=candidate.document_sha256,
+            )
+        )
+        review_by_source[candidate.source_question_id] = review
+    artifact_counts: Counter[str] = Counter()
+    cleaned_questions = 0
+    sanitization_rejected = 0
+    residue_questions = 0
+    sanitized_candidates: list[ReferenceCandidate] = []
+    sanitized_by_source: dict[str, Any] = {}
+    for candidate in reviewed_candidates:
+        headings = taxonomy.official_headings(catalog_ids=(candidate.catalog_id,))
+        try:
+            sanitized = sanitize_canonical_ai_content(
+                candidate.question.statement,
+                tuple(item.text for item in candidate.question.alternatives),
+                official_headings=headings,
+            )
+        except CanonicalAIInputError:
+            sanitization_rejected += 1
+            continue
+        residues = find_canonical_ai_artifacts(
+            sanitized.statement,
+            sanitized.alternatives,
+            official_headings=headings,
+        )
+        if residues:
+            residue_questions += 1
+            sanitization_rejected += 1
+            continue
+        if sanitized.removed_artifacts:
+            cleaned_questions += 1
+            artifact_counts.update(sanitized.removed_artifacts)
+        sanitized_candidates.append(candidate)
+        sanitized_by_source[candidate.source_question_id] = sanitized
+    if len(sanitized_candidates) < sample_size:
+        write_json(
+            report_path,
+            {
+                "schemaVersion": BENCHMARK_SCHEMA_VERSION,
+                "phase": "offline-preflight",
+                "status": "blocked-insufficient-agent-reviewed-references",
+                "taxonomyVersion": taxonomy.version,
+                "sample": {
+                    "requested": sample_size,
+                    "availableAgentReviewedReferences": len(sanitized_candidates),
+                    "reviewStatuses": dict(sorted(review_statuses.items())),
+                    "sanitization": {
+                        "examined": len(reviewed_candidates),
+                        "cleaned": cleaned_questions,
+                        "removedArtifacts": dict(sorted(artifact_counts.items())),
+                        "rejected": sanitization_rejected,
+                        "residuesAfterCleaning": residue_questions,
+                    },
+                },
+                "networkCallsPerformed": 0,
+                "modelInferencesPerformed": 0,
+            },
+        )
+        raise CanonicalClassificationError(
+            f"apenas {len(sanitized_candidates)} referências agent_reviewed_reference "
+            f"estão disponíveis; {sample_size} são necessárias"
+        )
+    ordered_candidates = select_reference_sample(
+        sanitized_candidates, sample_size=len(sanitized_candidates), seed=seed
+    )
+    sample, masks = select_nontrivial_benchmark_cases(
+        ordered_candidates,
         benchmark_masks(sample_size, seed=seed),
+        taxonomy=taxonomy,
         seed=seed,
     )
 
@@ -525,9 +682,9 @@ def prepare_canonical_ai_benchmark(
     manifest_items: list[dict[str, Any]] = []
     for candidate, hidden_fields in zip(sample, masks, strict=True):
         request = _request_for(candidate, hidden_fields, taxonomy=taxonomy)
-        payload_bytes, input_tokens, output_tokens = _request_estimates(
-            request, candidate.expected
-        )
+        sanitized = sanitized_by_source[candidate.source_question_id]
+        payload_bytes, input_tokens, output_tokens = _request_estimates(request, candidate.expected)
+        review = review_by_source[candidate.source_question_id]
         reference_id = stable_sha256(
             {
                 "kind": REFERENCE_KIND,
@@ -541,9 +698,15 @@ def prepare_canonical_ai_benchmark(
             "contentFingerprint": candidate.content_fingerprint,
             "hiddenFields": list(hidden_fields),
             "expected": candidate.expected,
+            "structuralExpected": review.structural_expected,
+            "reviewedExpected": candidate.expected,
+            "referenceStatus": review.status,
+            "reasonCode": review.reason_code,
             "contest": candidate.contest,
             "taxonomyVersion": taxonomy.version,
             "referenceKind": REFERENCE_KIND,
+            "promptContentFingerprint": request.prompt_content_fingerprint,
+            "removedArtifacts": list(sanitized.removed_artifacts),
         }
         manifest_items.append(safe_item)
         local_items.append(
@@ -556,7 +719,9 @@ def prepare_canonical_ai_benchmark(
             }
         )
 
-    sample_fingerprint = stable_sha256(manifest_items)
+    sample_fingerprint = canonical_benchmark_sample_fingerprint(
+        manifest_items, taxonomy_version=taxonomy.version
+    )
     benchmark_id = f"canonical-ai-{sample_fingerprint[:16]}"
     created_at = _now()
     manifest = {
@@ -566,10 +731,13 @@ def prepare_canonical_ai_benchmark(
         "sampleFingerprint": sample_fingerprint,
         "referenceKind": REFERENCE_KIND,
         "referenceLimitation": (
-            "Referência estrutural oficial validada automaticamente; não equivale a revisão humana."
+            "Referência revisada pelo agente com taxonomia editorial; "
+            "não equivale a revisão humana."
         ),
+        "sanitizerVersion": CANONICAL_AI_INPUT_SANITIZER_VERSION,
         "taxonomyVersion": taxonomy.version,
         "promptVersion": CANONICAL_ENRICHMENT_PROMPT_VERSION,
+        "responseContractVersion": CANONICAL_AI_RESPONSE_CONTRACT_VERSION,
         "seed": seed,
         "createdAt": created_at,
         "items": manifest_items,
@@ -598,14 +766,8 @@ def prepare_canonical_ai_benchmark(
             "pilotEstimatedCostUsd": round(
                 _price_for_tokens(
                     price,
-                    sum(
-                        int(item["estimatedInputTokens"])
-                        for item in local_items[:PILOT_SIZE]
-                    ),
-                    sum(
-                        int(item["estimatedOutputTokens"])
-                        for item in local_items[:PILOT_SIZE]
-                    ),
+                    sum(int(item["estimatedInputTokens"]) for item in local_items[:PILOT_SIZE]),
+                    sum(int(item["estimatedOutputTokens"]) for item in local_items[:PILOT_SIZE]),
                 ),
                 6,
             ),
@@ -624,16 +786,31 @@ def prepare_canonical_ai_benchmark(
             "selected": len(local_items),
             "referenceAudit": audit,
             "referenceKind": REFERENCE_KIND,
+            "referenceReview": {
+                "reviewedRecords": len(reviews),
+                "statuses": dict(sorted(review_statuses.items())),
+                "usable": len(sanitized_candidates),
+                "notHumanReview": True,
+            },
+            "sanitization": {
+                "examined": len(reviewed_candidates),
+                "cleaned": cleaned_questions,
+                "removedArtifacts": dict(sorted(artifact_counts.items())),
+                "rejected": sanitization_rejected
+                + sum(
+                    count for status, count in review_statuses.items() if status != REFERENCE_KIND
+                ),
+                "residuesAfterCleaning": residue_questions,
+            },
+            "deterministicTrivialCases": 0,
             "distributions": {
-                field: _distribution(local_items, field)
-                for field in CLASSIFICATION_FIELDS
+                field: _distribution(local_items, field) for field in CLASSIFICATION_FIELDS
             },
             "contests": _distribution(local_items, "contest"),
             "hiddenFields": dict(
                 sorted(
                     Counter(
-                        "+".join(cast(list[str], item["hiddenFields"]))
-                        for item in local_items
+                        "+".join(cast(list[str], item["hiddenFields"])) for item in local_items
                     ).items()
                 )
             ),
@@ -656,9 +833,7 @@ def prepare_canonical_ai_benchmark(
             "estimatedTotalUsd": round(total_cost_usd, 6),
             "estimatedTotalBrl": round(total_cost_usd * usd_brl, 4),
             "suggestedMaximumUsdWith25PercentMargin": round(total_cost_usd * 1.25, 6),
-            "suggestedMaximumBrlWith25PercentMargin": round(
-                total_cost_usd * usd_brl * 1.25, 4
-            ),
+            "suggestedMaximumBrlWith25PercentMargin": round(total_cost_usd * usd_brl * 1.25, 4),
         },
         "plannedCalls": {
             "pilot": PILOT_SIZE * len(PROVIDERS),
@@ -688,9 +863,10 @@ def _request_from_local_item(item: Mapping[str, Any]) -> CanonicalAIRequest:
         },
         taxonomy_version=str(payload["taxonomyVersion"]),
         taxonomy_options=tuple(
-            {str(key): str(value) for key, value in option.items()}
+            {str(key): value for key, value in option.items()}
             for option in cast(list[Mapping[str, Any]], payload["taxonomyOptions"])
         ),
+        prompt_content_fingerprint=str(payload["promptContentFingerprint"]),
     )
 
 
@@ -718,9 +894,23 @@ def _checkpoint_key(
 
 def _load_checkpoint(path: Path, bundle: Mapping[str, Any]) -> dict[str, Any]:
     manifest = cast(Mapping[str, Any], bundle["manifest"])
+    expected_versions = {
+        "schemaVersion": BENCHMARK_SCHEMA_VERSION,
+        "algorithmVersion": BENCHMARK_ALGORITHM_VERSION,
+        "promptVersion": CANONICAL_ENRICHMENT_PROMPT_VERSION,
+        "responseContractVersion": CANONICAL_AI_RESPONSE_CONTRACT_VERSION,
+        "sanitizerVersion": CANONICAL_AI_INPUT_SANITIZER_VERSION,
+    }
+    for field, expected in expected_versions.items():
+        if manifest.get(field) != expected:
+            raise CanonicalClassificationError(
+                f"{field} do benchmark é incompatível com a versão atual"
+            )
     manifest_items = cast(list[Mapping[str, Any]], manifest.get("items") or [])
     if manifest_items:
-        calculated_fingerprint = stable_sha256(manifest_items)
+        calculated_fingerprint = canonical_benchmark_sample_fingerprint(
+            manifest_items, taxonomy_version=str(manifest["taxonomyVersion"])
+        )
         if calculated_fingerprint != manifest["sampleFingerprint"]:
             raise CanonicalClassificationError("fingerprint do manifesto não confere")
         local_items = cast(list[Mapping[str, Any]], bundle.get("items") or [])
@@ -731,9 +921,15 @@ def _load_checkpoint(path: Path, bundle: Mapping[str, Any]) -> dict[str, Any]:
                 "contentFingerprint": item["contentFingerprint"],
                 "hiddenFields": item["hiddenFields"],
                 "expected": item["expected"],
+                "structuralExpected": item["structuralExpected"],
+                "reviewedExpected": item["reviewedExpected"],
+                "referenceStatus": item["referenceStatus"],
+                "reasonCode": item["reasonCode"],
                 "contest": item["contest"],
                 "taxonomyVersion": item["taxonomyVersion"],
                 "referenceKind": item["referenceKind"],
+                "promptContentFingerprint": item["promptContentFingerprint"],
+                "removedArtifacts": item["removedArtifacts"],
             }
             for item in local_items
         ]
@@ -812,9 +1008,7 @@ def execute_canonical_ai_benchmark(
         attempted = 0
         failures = 0
         for item in phase_items:
-            key = _checkpoint_key(
-                str(manifest["benchmarkId"]), provider_name, model, item
-            )
+            key = _checkpoint_key(str(manifest["benchmarkId"]), provider_name, model, item)
             if key in completed_keys:
                 continue
             planned_cost = _price_for_tokens(
@@ -895,7 +1089,7 @@ def execute_canonical_ai_benchmark(
                     {
                         "status": "failed",
                         "errorType": type(exc).__name__,
-                        "error": str(exc),
+                        "validationCode": canonical_ai_error_code(exc),
                         "inputTokens": 0,
                         "outputTokens": 0,
                         "costUsd": planned_cost,
@@ -933,11 +1127,7 @@ def _wilson_95(successes: int, total: int) -> dict[str, float]:
     rate = successes / total
     denominator = 1 + z * z / total
     center = (rate + z * z / (2 * total)) / denominator
-    margin = (
-        z
-        * math.sqrt(rate * (1 - rate) / total + z * z / (4 * total * total))
-        / denominator
-    )
+    margin = z * math.sqrt(rate * (1 - rate) / total + z * z / (4 * total * total)) / denominator
     return {
         "lowPercent": round(max(0.0, center - margin) * 100, 3),
         "highPercent": round(min(1.0, center + margin) * 100, 3),
@@ -968,12 +1158,8 @@ def summarize_canonical_ai_benchmark(
         indexed[str(record["provider"])][str(record["referenceQuestionId"])] = record
 
     for provider in PROVIDERS:
-        provider_records = [
-            record for record in records if record.get("provider") == provider
-        ]
-        successful = [
-            record for record in provider_records if record.get("status") == "completed"
-        ]
+        provider_records = [record for record in records if record.get("provider") == provider]
+        successful = [record for record in provider_records if record.get("status") == "completed"]
         failed = [record for record in provider_records if record.get("status") == "failed"]
         field_totals: Counter[str] = Counter()
         field_correct: Counter[str] = Counter()
@@ -1000,26 +1186,32 @@ def summarize_canonical_ai_benchmark(
         output_tokens = sum(int(record.get("outputTokens") or 0) for record in provider_records)
         cost_usd = sum(float(record.get("costUsd") or 0) for record in provider_records)
         latencies = [float(record.get("latencyMs") or 0) for record in provider_records]
+        provider_failure_codes = {
+            "provider_transport_failure",
+            "provider_http_failure",
+        }
         invalid = [
             record
             for record in failed
-            if record.get("errorType") == "CanonicalClassificationError"
+            if record.get("validationCode") not in provider_failure_codes
         ]
         prohibited = [
-            record for record in invalid if "proibid" in str(record.get("error") or "")
+            record for record in invalid if record.get("validationCode") == "prohibited_field"
         ]
         by_provider[provider] = {
             "model": (
                 provider_records[0].get("model")
                 if provider_records
-                else cast(Mapping[str, Any], bundle["priceSnapshot"])["providers"][
-                    provider
-                ]["model"]
+                else cast(Mapping[str, Any], bundle["priceSnapshot"])["providers"][provider][
+                    "model"
+                ]
             ),
             "calls": len(provider_records),
             "successful": len(successful),
             "failures": len(failed),
-            "apiFailures": len(failed) - len(invalid),
+            "apiFailures": sum(
+                record.get("validationCode") in provider_failure_codes for record in failed
+            ),
             "invalidResponses": len(invalid),
             "prohibitedFieldAttempts": len(prohibited),
             "fieldAccuracy": {
@@ -1050,9 +1242,7 @@ def summarize_canonical_ai_benchmark(
             "costPerCorrectAcceptedFieldUsd": round(cost_usd / accepted_correct, 8)
             if accepted_correct
             else 0.0,
-            "latencyMedianMs": round(statistics.median(latencies), 3)
-            if latencies
-            else 0.0,
+            "latencyMedianMs": round(statistics.median(latencies), 3) if latencies else 0.0,
             "latencyP95Ms": _percentile(latencies, 0.95),
         }
 
@@ -1085,6 +1275,10 @@ def summarize_canonical_ai_benchmark(
         "generatedAt": _now(),
         "records": len(records),
         "providers": by_provider,
+        "deterministicTrivialCases": {
+            "count": 0,
+            "includedInPrimaryMetrics": False,
+        },
         "pairedComparison": paired,
         "recommendation": (
             "Benchmark incompleto; não selecionar provedor."

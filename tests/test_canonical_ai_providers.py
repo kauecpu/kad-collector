@@ -145,8 +145,7 @@ class CanonicalAIProvidersTests(unittest.TestCase):
         self.assertIn("JSON", call["messages"][0]["content"])
         sent = json.loads(call["messages"][1]["content"])
         self.assertEqual(
-            sent["outputSchema"]["properties"]["taxonomy"]["properties"]
-            ["pathId"]["enum"],
+            sent["outputSchema"]["properties"]["taxonomy"]["properties"]["pathId"]["enum"],
             [PATH_ID],
         )
         self.assertNotIn("correct_answer", json.dumps(sent))

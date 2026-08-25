@@ -6,6 +6,11 @@ Qwen Cloud ou DeepSeek e não troca para um provedor pago quando o serviço loca
 A integração está desligada por padrão. Adicionar as variáveis do `.env.example`, preparar um
 manifesto ou gerar um relatório não inicia inferência.
 
+O benchmark v2 ainda não está liberado: a auditoria offline possui 175 das 200 referências
+semânticas exigidas. O smoke v1 de 30 chamadas permanece preservado como histórico, mas seus
+manifestos e checkpoints são incompatíveis com o contrato atual. Não execute outro smoke antes
+de substituir as 25 referências excluídas e gerar um novo bundle canônico v2.
+
 ## Modelos fixados
 
 O benchmark aceita estas tags exatas:
@@ -116,7 +121,7 @@ concluídos não são reenviados. `Ctrl+C` preserva o último checkpoint.
 
 ## Preparação do benchmark
 
-O bundle canônico de 200 questões continua sendo a fonte dos textos e referências. Depois de
+Um novo bundle canônico de 200 questões revisadas será a fonte dos textos e referências. Depois de
 um probe válido, fixe os modelos, digests, parâmetros e amostra:
 
 ```powershell
@@ -124,7 +129,7 @@ kad-collector prepare-ollama-ai-benchmark `
   --canonical-bundle data\benchmarks\local\canonical-ai\bundle.json `
   --preflight data\benchmarks\local\ollama-ai\preflight.json `
   --local-bundle data\benchmarks\local\ollama-ai\bundle.json `
-  --manifest docs\benchmarks\ollama-ai-manifest.v1.json
+  --manifest docs\benchmarks\ollama-ai-manifest.v2.json
 ```
 
 Essa etapa não cria provedores. O manifesto versionável contém IDs, fingerprints da amostra e
@@ -139,7 +144,7 @@ modelos:
 ```powershell
 kad-collector run-ollama-ai-benchmark `
   --local-bundle data\benchmarks\local\ollama-ai\bundle.json `
-  --manifest docs\benchmarks\ollama-ai-manifest.v1.json `
+  --manifest docs\benchmarks\ollama-ai-manifest.v2.json `
   --preflight data\benchmarks\local\ollama-ai\preflight.json `
   --checkpoint data\benchmarks\local\ollama-ai\checkpoint.json `
   --phase smoke `
@@ -161,12 +166,13 @@ Gere o relatório agregado:
 ```powershell
 kad-collector report-ollama-ai-benchmark `
   --local-bundle data\benchmarks\local\ollama-ai\bundle.json `
-  --manifest docs\benchmarks\ollama-ai-manifest.v1.json `
+  --manifest docs\benchmarks\ollama-ai-manifest.v2.json `
   --checkpoint data\benchmarks\local\ollama-ai\checkpoint.json `
-  --report docs\benchmarks\ollama-ai-smoke-results.v1.json
+  --report docs\benchmarks\ollama-ai-smoke-results.v2.json
 ```
 
-O relatório contém precisão por campo e conjunta, validade de JSON e schema, campos proibidos,
+O relatório contém precisão por campo e conjunta, validade de JSON e schema, códigos explícitos
+de validação, campos proibidos,
 valores fora da taxonomia, cobertura, revisão, latência, tokens, tokens por segundo, carga,
 VRAM, falhas, interrupções e comparações pareadas. Ele não contém enunciados, alternativas,
 respostas brutas, erros textuais ou caminhos locais.
@@ -179,7 +185,7 @@ revisar o relatório e autorizar outra execução, o limite máximo é 570 chama
 ```powershell
 kad-collector run-ollama-ai-benchmark `
   --local-bundle data\benchmarks\local\ollama-ai\bundle.json `
-  --manifest docs\benchmarks\ollama-ai-manifest.v1.json `
+  --manifest docs\benchmarks\ollama-ai-manifest.v2.json `
   --preflight data\benchmarks\local\ollama-ai\preflight.json `
   --checkpoint data\benchmarks\local\ollama-ai\checkpoint.json `
   --phase full `

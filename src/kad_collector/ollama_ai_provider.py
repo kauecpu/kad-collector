@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import json
 import os
-from typing import Any, cast
 from urllib.parse import urlsplit
 
 import httpx
@@ -17,6 +15,7 @@ from .canonical_classification import (
     CanonicalAIResult,
     CanonicalClassificationError,
     canonical_ai_response_schema,
+    parse_canonical_ai_json,
 )
 
 DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
@@ -64,17 +63,13 @@ class _OllamaChatResponse(BaseModel):
 def validate_ollama_base_url(value: str) -> str:
     parsed = urlsplit(value)
     if parsed.scheme != "http":
-        raise CanonicalClassificationError(
-            "OLLAMA_BASE_URL deve usar HTTP em uma interface local"
-        )
+        raise CanonicalClassificationError("OLLAMA_BASE_URL deve usar HTTP em uma interface local")
     if parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
         raise CanonicalClassificationError(
             "OLLAMA_BASE_URL deve apontar somente para loopback local"
         )
     if parsed.username is not None or parsed.password is not None:
-        raise CanonicalClassificationError(
-            "OLLAMA_BASE_URL não aceita credenciais na URL"
-        )
+        raise CanonicalClassificationError("OLLAMA_BASE_URL não aceita credenciais na URL")
     if parsed.query or parsed.fragment or parsed.path not in {"", "/"}:
         raise CanonicalClassificationError(
             "OLLAMA_BASE_URL não aceita caminho, consulta ou fragmento"
@@ -99,9 +94,7 @@ class OllamaCanonicalEnrichmentProvider:
         )
         if client is not None:
             try:
-                injected_base_url = validate_ollama_base_url(
-                    str(client.base_url).rstrip("/")
-                )
+                injected_base_url = validate_ollama_base_url(str(client.base_url).rstrip("/"))
             except CanonicalClassificationError as exc:
                 raise CanonicalClassificationError(
                     "cliente Ollama injetado deve usar loopback local"
@@ -147,9 +140,7 @@ class OllamaCanonicalEnrichmentProvider:
             ) from exc
 
         if response.status_code >= 500:
-            raise CanonicalAIHTTPError(
-                f"Ollama local indisponível (HTTP {response.status_code})"
-            )
+            raise CanonicalAIHTTPError(f"Ollama local indisponível (HTTP {response.status_code})")
         if response.status_code == 404:
             raise OllamaModelMissingError(
                 f"modelo Ollama {self.model!r} não está instalado; "
@@ -162,18 +153,12 @@ class OllamaCanonicalEnrichmentProvider:
 
         try:
             chat = _OllamaChatResponse.model_validate(response.json())
-            response_payload = json.loads(chat.message.content)
-        except (ValueError, json.JSONDecodeError) as exc:
-            raise CanonicalAIInvalidJSONError(
-                "Ollama retornou uma resposta inválida"
-            ) from exc
-        if not isinstance(response_payload, dict):
-            raise CanonicalClassificationError(
-                "Ollama retornou JSON que não é um objeto"
-            )
+        except ValueError as exc:
+            raise CanonicalAIInvalidJSONError("Ollama retornou uma resposta inválida") from exc
+        response_payload = parse_canonical_ai_json(chat.message.content)
 
         return CanonicalAIResult(
-            response=cast(dict[str, Any], response_payload),
+            response=response_payload,
             input_tokens=chat.prompt_eval_count,
             output_tokens=chat.eval_count,
             estimated_cost=0.0,

@@ -6,7 +6,6 @@ from typing import Any, cast
 
 from .canonical_classification import (
     CANONICAL_AI_INSTRUCTIONS,
-    CanonicalAIInvalidJSONError,
     CanonicalAIProvider,
     CanonicalAIRequest,
     CanonicalAIResponse,
@@ -14,6 +13,7 @@ from .canonical_classification import (
     CanonicalAIResult,
     CanonicalClassificationError,
     canonical_ai_response_schema,
+    parse_canonical_ai_json,
 )
 
 
@@ -48,9 +48,7 @@ def _token_usage(completion: Any) -> tuple[int | None, int | None]:
 def _completion_payload(completion: Any, *, accept_parsed: bool = False) -> dict[str, Any]:
     choices = getattr(completion, "choices", None)
     if not isinstance(choices, list) or not choices:
-        raise CanonicalAIResponseSchemaError(
-            "provedor retornou resposta sem alternativas"
-        )
+        raise CanonicalAIResponseSchemaError("provedor retornou resposta sem alternativas")
     message = getattr(choices[0], "message", None)
     if message is None:
         raise CanonicalAIResponseSchemaError("provedor retornou resposta sem mensagem")
@@ -65,15 +63,7 @@ def _completion_payload(completion: Any, *, accept_parsed: bool = False) -> dict
     content = getattr(message, "content", None)
     if not isinstance(content, str) or not content.strip():
         raise CanonicalAIResponseSchemaError("provedor retornou resposta vazia")
-    try:
-        payload = json.loads(content)
-    except json.JSONDecodeError as exc:
-        raise CanonicalAIInvalidJSONError("provedor retornou JSON inválido") from exc
-    if not isinstance(payload, dict):
-        raise CanonicalAIResponseSchemaError(
-            "provedor retornou JSON que não é um objeto"
-        )
-    return cast(dict[str, Any], payload)
+    return parse_canonical_ai_json(content)
 
 
 class _OpenAICompatibleCanonicalProvider:
@@ -108,17 +98,13 @@ class _OpenAICompatibleCanonicalProvider:
         if missing:
             self._client = None
             names = " ou ".join(missing)
-            self._configuration_error = (
-                f"provedor {self.name} indisponível; configure {names}"
-            )
+            self._configuration_error = f"provedor {self.name} indisponível; configure {names}"
             return
         try:
             from openai import OpenAI
         except ImportError:
             self._client = None
-            self._configuration_error = (
-                "dependência openai ausente; execute pip install -e ."
-            )
+            self._configuration_error = "dependência openai ausente; execute pip install -e ."
             return
         self._client = OpenAI(
             api_key=api_key,

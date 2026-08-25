@@ -120,15 +120,9 @@ def build_parser() -> argparse.ArgumentParser:
         aliases=["testar"],
         help="executa um teste reduzido e abre a fila de revisao automaticamente",
     )
-    guided_test.add_argument(
-        "--config", type=_path, default=Path("config/sources.test.toml")
-    )
-    guided_test.add_argument(
-        "--state", type=_path, default=Path("data/state/teste-guiado.json")
-    )
-    guided_test.add_argument(
-        "--output", type=_path, default=Path("data/results/teste-guiado.json")
-    )
+    guided_test.add_argument("--config", type=_path, default=Path("config/sources.test.toml"))
+    guided_test.add_argument("--state", type=_path, default=Path("data/state/teste-guiado.json"))
+    guided_test.add_argument("--output", type=_path, default=Path("data/results/teste-guiado.json"))
     guided_test.add_argument("--model")
     guided_test.add_argument("--port", type=int, default=8765)
 
@@ -153,9 +147,7 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument("batch", type=_path)
     validate.add_argument("--require-answers", action="store_true")
 
-    review = subparsers.add_parser(
-        "review", help="abre a revisao editorial local por questao"
-    )
+    review = subparsers.add_parser("review", help="abre a revisao editorial local por questao")
     review.add_argument("batch", type=_path)
     review.add_argument("--session", type=_path)
     review.add_argument("--output", type=_path)
@@ -177,9 +169,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="gera a pasta local com questoes.jsonl para o painel administrativo",
     )
     export_admin.add_argument("batch", type=_path)
-    export_admin.add_argument(
-        "--output-dir", type=_path, default=Path("data/exports")
-    )
+    export_admin.add_argument("--output-dir", type=_path, default=Path("data/exports"))
 
     stage = subparsers.add_parser("stage", help="envia lote aprovado para staging")
     stage.add_argument("batch", type=_path)
@@ -231,9 +221,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="simula ou aplica a migração do catálogo canônico no banco local",
     )
     canonical_identities.add_argument("--database", type=_path, required=True)
-    canonical_identities.add_argument(
-        "--manifest", type=_path, action="append", required=True
-    )
+    canonical_identities.add_argument("--manifest", type=_path, action="append", required=True)
     canonical_identities.add_argument(
         "--contest",
         help="alias exato que deve resolver após a migração, por exemplo RFB22",
@@ -248,9 +236,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="simula ou aplica a consolidação question-equivalence-v1",
     )
     equivalence.add_argument("--database", type=_path, required=True)
-    equivalence.add_argument(
-        "--contest", help="alias canônico opcional, por exemplo RFB22"
-    )
+    equivalence.add_argument("--contest", help="alias canônico opcional, por exemplo RFB22")
     equivalence.add_argument("--apply", action="store_true")
     equivalence.add_argument("--run-id")
     equivalence.add_argument("--limit", type=int)
@@ -309,6 +295,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     prepare_ai_benchmark.add_argument("--database", type=_path, required=True)
     prepare_ai_benchmark.add_argument(
+        "--reference-review",
+        type=_path,
+        required=True,
+        help="artefato offline com referências revisadas pelo agente",
+    )
+    prepare_ai_benchmark.add_argument(
         "--local-bundle",
         type=_path,
         default=Path("data/benchmarks/local/canonical-ai/bundle.json"),
@@ -316,12 +308,12 @@ def build_parser() -> argparse.ArgumentParser:
     prepare_ai_benchmark.add_argument(
         "--manifest",
         type=_path,
-        default=Path("docs/benchmarks/canonical-ai-manifest.v1.json"),
+        default=Path("docs/benchmarks/canonical-ai-manifest.v2.json"),
     )
     prepare_ai_benchmark.add_argument(
         "--report",
         type=_path,
-        default=Path("docs/benchmarks/canonical-ai-preflight.v1.json"),
+        default=Path("docs/benchmarks/canonical-ai-preflight.v2.json"),
     )
     prepare_ai_benchmark.add_argument("--sample-size", type=int, default=DEFAULT_SAMPLE_SIZE)
     prepare_ai_benchmark.add_argument("--seed", type=int, default=DEFAULT_SEED)
@@ -362,7 +354,7 @@ def build_parser() -> argparse.ArgumentParser:
     prepare_ollama_benchmark.add_argument(
         "--manifest",
         type=_path,
-        default=Path("docs/benchmarks/ollama-ai-manifest.v1.json"),
+        default=Path("docs/benchmarks/ollama-ai-manifest.v2.json"),
     )
     run_ollama_benchmark = subparsers.add_parser(
         "run-ollama-ai-benchmark",
@@ -372,9 +364,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_ollama_benchmark.add_argument("--manifest", type=_path, required=True)
     run_ollama_benchmark.add_argument("--preflight", type=_path, required=True)
     run_ollama_benchmark.add_argument("--checkpoint", type=_path, required=True)
-    run_ollama_benchmark.add_argument(
-        "--phase", choices=["smoke", "full"], required=True
-    )
+    run_ollama_benchmark.add_argument("--phase", choices=["smoke", "full"], required=True)
     run_ollama_benchmark.add_argument("--approved-benchmark-id", required=True)
     run_ollama_benchmark.add_argument("--max-new-calls", type=int, required=True)
     report_ollama_benchmark = subparsers.add_parser(
@@ -593,9 +583,7 @@ def _run(args: argparse.Namespace) -> int:
         if args.enable_ai and args.provider is None:
             raise ValueError("--provider é obrigatório quando --enable-ai é usado")
         provider = (
-            create_canonical_ai_provider(args.provider, args.model)
-            if args.enable_ai
-            else None
+            create_canonical_ai_provider(args.provider, args.model) if args.enable_ai else None
         )
         store = DesktopStore(args.database)
         with closing(store._connect()) as connection:
@@ -649,6 +637,7 @@ def _run(args: argparse.Namespace) -> int:
     if args.command == "prepare-canonical-ai-benchmark":
         preflight_report = prepare_canonical_ai_benchmark(
             args.database,
+            reference_review_path=args.reference_review,
             local_bundle_path=args.local_bundle,
             manifest_path=args.manifest,
             report_path=args.report,

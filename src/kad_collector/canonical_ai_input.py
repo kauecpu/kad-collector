@@ -56,9 +56,7 @@ def find_canonical_ai_artifacts(
         for line in text.splitlines():
             codes.extend(_line_artifacts(line))
     if alternatives and official_headings:
-        normalized_headings = {
-            normalize_taxonomy_text(value) for value in official_headings
-        }
+        normalized_headings = {normalize_taxonomy_text(value) for value in official_headings}
         last_lines = alternatives[-1].splitlines()
         if len(last_lines) > 1 and normalize_taxonomy_text(last_lines[-1]) in normalized_headings:
             codes.append("section_heading_bleed")
@@ -75,9 +73,7 @@ def _strip_artifact_suffix(text: str) -> tuple[str, tuple[str, ...]]:
     if cut_at is None:
         return text.strip(), ()
     removed = tuple(
-        dict.fromkeys(
-            code for line in lines[cut_at:] for code in _line_artifacts(line)
-        )
+        dict.fromkeys(code for line in lines[cut_at:] for code in _line_artifacts(line))
     )
     return "\n".join(lines[:cut_at]).strip(), removed
 
@@ -97,14 +93,9 @@ def sanitize_canonical_ai_content(
         removed.extend(codes)
 
     if sanitized_alternatives and official_headings:
-        normalized_headings = {
-            normalize_taxonomy_text(value) for value in official_headings
-        }
+        normalized_headings = {normalize_taxonomy_text(value) for value in official_headings}
         last_lines = sanitized_alternatives[-1].splitlines()
-        if (
-            len(last_lines) > 1
-            and normalize_taxonomy_text(last_lines[-1]) in normalized_headings
-        ):
+        if len(last_lines) > 1 and normalize_taxonomy_text(last_lines[-1]) in normalized_headings:
             sanitized_alternatives[-1] = "\n".join(last_lines[:-1]).strip()
             removed.append("section_heading_bleed")
 
