@@ -48,16 +48,28 @@ Os campos determinísticos são `discipline`, `matter`, `subject` e `level` quan
 evidência oficial suficiente. Um valor existente não é sobrescrito. Valores com origem
 `human_review` sempre têm precedência.
 
+Antes de qualquer chamada, o texto derivado passa por limpeza determinística de rodapés,
+cabeçalhos, páginas, calendários e títulos de seção anexados. O conteúdo bruto, seu hash e a
+proveniência são preservados. Se restar um artefato conhecido, a chamada é bloqueada.
+
 ## Contrato restrito da IA
 
-A IA pode sugerir somente campos que continuaram ausentes depois da taxonomia:
+A IA pode decidir somente o caminho taxonômico ou o nível que continuaram ausentes depois da
+taxonomia:
 
 - `discipline`;
 - `matter`;
 - `subject`;
 - `level`;
 
-O schema rejeita propriedades extras. Uma segunda lista local proíbe, entre outros, resposta,
+Disciplina, matéria e assunto não são valores livres. O pedido contém caminhos compatíveis, cada
+um com ID estável, os três rótulos e as palavras-chave editoriais. A resposta escolhe no máximo
+um `pathId`; o coletor extrai dele apenas os campos solicitados. Quando existe um único caminho,
+o código o aplica sem chamar IA. Para `level`, o schema aceita somente `Fundamental`, `Médio` ou
+`Superior`, depois de edital e cargo falharem em resolver o campo.
+
+O schema rejeita propriedades extras e chaves JSON repetidas. Uma segunda lista local proíbe,
+entre outros, resposta,
 letra correta, `answer_status`, vínculo de gabarito, intervalo, concurso, aplicação, cargo,
 etapa, turno, caderno, documento, proveniência, representante, grupo e decisão humana. Uma
 tentativa de alterar qualquer campo proibido rejeita a resposta inteira e abre revisão.
@@ -68,6 +80,7 @@ O provedor recebe somente:
 - enunciado e textos das alternativas;
 - valores editoriais já conhecidos;
 - versão e opções fechadas da taxonomia;
+- opções fechadas de nível, quando necessário;
 - aviso de que o texto da questão é dado não confiável.
 
 Não são enviados caminhos locais, PDFs, vínculos de gabarito, hashes, respostas corretas ou
@@ -93,7 +106,7 @@ Antes de aplicar, o coletor exige:
 - campo solicitado e ainda ausente;
 - ausência de propriedade extra ou proibida.
 
-Baixa confiança, schema inválido, conflito taxonômico e falha permanente do provedor entram na
+Baixa confiança, schema inválido, caminho desconhecido ou incompatível e falha permanente do provedor entram na
 fila. Indisponibilidade temporária do Ollama pausa a execução e não cria revisão. A fila expõe
 questão, campos pendentes, sugestão, confiança,
 evidência e motivo. O revisor pode `accept`, `correct` ou `reject`; ator, data, justificativa e

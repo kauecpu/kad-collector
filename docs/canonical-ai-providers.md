@@ -6,10 +6,11 @@ As integrações existem, mas nenhuma chamada externa ocorre por padrão. O oper
 combinar `--apply`, `--enable-ai` e `--provider`. Sem `--enable-ai`, escolher um provedor na
 linha de comando não instancia um cliente nem consome tokens.
 
-O classificador determinístico sempre roda antes da IA. O provedor recebe somente os campos
-editoriais ainda ausentes, o enunciado, as alternativas, os campos editoriais conhecidos e as
-opções fechadas da taxonomia. Gabarito, identidade oficial, intervalos e dados administrativos
-não fazem parte do payload.
+O classificador determinístico sempre roda antes da IA. O provedor recebe o conteúdo derivado
+sanitizado, os campos conhecidos e os caminhos taxonômicos compatíveis, com ID e palavras-chave.
+Ele escolhe no máximo um caminho e, quando necessário, um dos três níveis editoriais. Um único
+caminho é aplicado localmente sem chamada. Gabarito, identidade oficial, intervalos e dados
+administrativos não fazem parte do payload.
 
 ## Configuração
 
@@ -58,8 +59,8 @@ Troque apenas o provedor e o `run-id` para preparar avaliações separadas. Não
 - Ollama usa `POST /api/chat`, JSON Schema nativo, `think=false`, contexto 4096 e temperatura
   zero. O endpoint aceita somente `127.0.0.1`, `localhost` ou `::1` por HTTP.
 
-Qwen e DeepSeek garantem JSON válido no modo configurado, mas a validação local continua sendo
-a autoridade. Propriedades extras, campos não solicitados, taxonomia inválida, baixa confiança
+Qwen e DeepSeek solicitam JSON válido no modo configurado, mas a validação local continua sendo
+a autoridade. Propriedades extras, chaves repetidas, campos não solicitados, caminho inválido, baixa confiança
 ou resposta vazia são rejeitados e encaminhados para revisão. O SDK repete falhas transitórias
 no máximo duas vezes; o coletor não alterna silenciosamente de provedor.
 

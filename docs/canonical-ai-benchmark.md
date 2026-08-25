@@ -10,20 +10,24 @@ gabarito e dados de identidade não entram no payload.
 
 ## Referência e limite da amostra
 
-O banco avaliado não possui 200 questões canônicas com revisão humana confirmada. Para evitar
-uma revisão manual criada apenas para o teste, a preparação usa
-`official_structure_reference`: rótulos obtidos de títulos exatos das seções oficiais e do
-nível exigido no edital, compatíveis com o caminho versionado da taxonomia.
+A referência estrutural deixou de ser tratada como verdade semântica. Cada candidata precisa
+constar no artefato de revisão como `agent_reviewed_reference`. A revisão preserva o rótulo
+estrutural, o rótulo revisado, o motivo, o ID, o fingerprint bruto e a versão da taxonomia.
+`ambiguous_reference`, `structural_only_reference` e `rejected_reference` não entram na
+precisão. Revisão pelo agente não equivale a `human_review`.
 
-Essa referência não é registrada como `human_review`. Um candidato é rejeitado quando o título
-é apenas uma correspondência parcial, contém texto de alternativa, não resolve um único caminho
-da taxonomia, não possui documento oficial com SHA-256 ou não possui proveniência compatível.
-Na preparação de 24 de agosto de 2026, 1.005 registros foram examinados, 314 passaram por essas
-regras e 200 foram selecionados com seed `20260824`.
+A auditoria v2 examinou offline as 200 questões preservadas do benchmark anterior: 175 são
+utilizáveis, uma é ambígua, 18 dependem apenas da estrutura e seis foram rejeitadas pela
+sanitização porque perderiam conteúdo obrigatório. A taxonomia não possui um
+caminho semântico suficientemente específico. O banco que continha os 314 candidatos não está
+disponível neste ambiente para substituir as 25 referências. Por isso
+[`canonical-ai-reference-audit.v2.json`](benchmarks/canonical-ai-reference-audit.v2.json)
+mantém `readyForPreparation: false`. A preparação encerra sem reduzir os critérios enquanto não
+existirem 200 referências utilizáveis.
 
-A amostra é estratificada pelos caminhos disponíveis. Ela cobre um concurso (`RFB22`) e um
-nível (`Superior`), portanto não mede generalização entre concursos ou níveis. O relatório deve
-ser interpretado dentro desse limite.
+Na mesma auditoria, 56 questões foram limpas e nenhum padrão conhecido permaneceu depois da
+limpeza. Seis foram rejeitadas porque a remoção do bloco contaminado também eliminaria uma
+alternativa obrigatória; elas não são enviadas ao classificador.
 
 ## Fases e aprovação
 
@@ -34,14 +38,19 @@ Trabalhe sempre com uma cópia do SQLite operacional:
 ```powershell
 kad-collector prepare-canonical-ai-benchmark `
   --database C:\caminho\para\copia\collector.sqlite3 `
+  --reference-review docs\benchmarks\canonical-ai-reference-review.v2.json `
   --local-bundle data\benchmarks\local\canonical-ai\bundle.json `
-  --manifest docs\benchmarks\canonical-ai-manifest.v1.json `
-  --report docs\benchmarks\canonical-ai-preflight.v1.json
+  --manifest docs\benchmarks\canonical-ai-manifest.v2.json `
+  --report docs\benchmarks\canonical-ai-preflight.v2.json
 ```
 
 Esse comando não cria clientes de API e informa `networkCallsPerformed: 0`. O bundle local
 contém o texto necessário para as chamadas e fica ignorado pelo Git. O manifesto versionado não
 contém enunciados nem alternativas.
+
+Antes de montar o pedido, o sanitizador remove rodapé FGV, cabeçalho repetido, página,
+calendário e título da seção seguinte. O bruto e sua proveniência não mudam. O conteúdo derivado
+recebe fingerprint próprio; alteração no sanitizador invalida manifesto e checkpoint.
 
 ### 2. Piloto pago
 
@@ -87,13 +96,20 @@ agregado pode ser produzido sem expor texto ou respostas:
 kad-collector report-canonical-ai-benchmark `
   --local-bundle data\benchmarks\local\canonical-ai\bundle.json `
   --checkpoint data\benchmarks\local\canonical-ai\checkpoint.json `
-  --report docs\benchmarks\canonical-ai-results.v1.json
+  --report docs\benchmarks\canonical-ai-results.v2.json
 ```
 
 O relatório calcula acerto por campo, acerto conjunto, intervalos de confiança de 95%, precisão
 das sugestões aceitas, cobertura, revisão, falhas, respostas inválidas, campos proibidos, tokens,
 custo, latência mediana e p95. A comparação usa pares da mesma questão. Nenhum vencedor é
 declarado enquanto o benchmark estiver incompleto.
+
+Casos com um único caminho compatível são resolvidos pelo código. Eles aparecem apenas em
+`deterministicTrivialCases` e não aumentam a precisão dos modelos. Falhas usam códigos estáveis
+(`provider_transport_failure`, `provider_http_failure`, `invalid_json`,
+`invalid_response_schema`, `duplicate_field`, `invalid_level`, `unknown_taxonomy_path`,
+`incompatible_taxonomy_path`, `prohibited_field` e `low_confidence`), sem inferência baseada no
+texto da mensagem.
 
 ## Preços do preflight atual
 
@@ -116,6 +132,10 @@ R$ 5,1625, publicada pelo [Banco Central do Brasil](https://www.bcb.gov.br/) em 
 - As chaves são lidas apenas das variáveis de ambiente já documentadas.
 - O identificador aprovado precisa coincidir com o bundle local.
 - Alteração na amostra ou na taxonomia invalida o checkpoint.
+- Alteração no conteúdo sanitizado, schema, prompt ou algoritmo também invalida o checkpoint.
 - Cada provedor usa o modelo exato registrado no snapshot; não há substituição ou fallback.
 - O teto é verificado antes de cada chamada.
 - Os testes usam provedores falsos e não acessam a internet.
+
+O smoke v1 e seu checkpoint local permanecem como histórico. Eles são incompatíveis com o
+schema v2, o prompt `canonical-taxonomy-v3` e os algoritmos v2 e não podem ser retomados.

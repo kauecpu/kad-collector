@@ -7,18 +7,26 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from kad_collector.canonical_ai_benchmark import BENCHMARK_ALGORITHM_VERSION
+from kad_collector.canonical_ai_benchmark import (
+    BENCHMARK_ALGORITHM_VERSION,
+    BENCHMARK_SCHEMA_VERSION,
+    canonical_benchmark_sample_fingerprint,
+)
+from kad_collector.canonical_ai_input import CANONICAL_AI_INPUT_SANITIZER_VERSION
 from kad_collector.canonical_classification import (
+    CANONICAL_AI_RESPONSE_CONTRACT_VERSION,
     CANONICAL_ENRICHMENT_PROMPT_VERSION,
     CanonicalAIRequest,
     CanonicalAIResult,
     CanonicalClassificationError,
+    canonical_taxonomy_path_id,
 )
 from kad_collector.cli import build_parser
 from kad_collector.editorial_taxonomy import EditorialTaxonomy
 from kad_collector.json_utils import read_json, write_json
 from kad_collector.ollama_ai_benchmark import (
     LOCAL_BENCHMARK_ALGORITHM_VERSION,
+    LOCAL_BENCHMARK_SCHEMA_VERSION,
     execute_ollama_ai_benchmark,
     prepare_ollama_ai_benchmark,
     summarize_ollama_ai_benchmark,
@@ -97,17 +105,27 @@ class FakeLocalProvider:
             raise OllamaUnavailableError("serviço encerrado")
         model_calls.append(request)
         self.admin.active_model = self.model
-        response: dict[str, Any] = {
-            "suggestions": [
-                {
-                    "field": field,
-                    "value": EXPECTED[field],
-                    "confidence": 0.91,
-                    "evidence": "O conteúdo sustenta o caminho taxonômico.",
-                }
-                for field in request.requested_fields
-            ]
-        }
+        response: dict[str, Any] = {}
+        if any(field in request.requested_fields for field in ("discipline", "matter", "subject")):
+            option = next(
+                option
+                for option in request.taxonomy_options
+                if all(
+                    option[field] == EXPECTED[field]
+                    for field in ("discipline", "matter", "subject")
+                )
+            )
+            response["taxonomy"] = {
+                "pathId": option["pathId"],
+                "confidence": 0.91,
+                "evidence": "O conteúdo sustenta o caminho taxonômico.",
+            }
+        if "level" in request.requested_fields:
+            response["level"] = {
+                "value": EXPECTED["level"],
+                "confidence": 0.91,
+                "evidence": "O nível corresponde à referência.",
+            }
         if self.forbidden:
             response["difficulty"] = "Fácil"
         return CanonicalAIResult(
@@ -136,18 +154,29 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
         self.checkpoint = self.root / "ollama-checkpoint.json"
         self.report = self.root / "ollama-report.json"
         self.taxonomy = EditorialTaxonomy.load_default()
+        self.taxonomy_path = next(
+            path
+            for path in self.taxonomy.candidate_paths()
+            if path.discipline == EXPECTED["discipline"]
+            and path.matter == EXPECTED["matter"]
+            and path.subject == EXPECTED["subject"]
+        )
         self.items = [self._item(index) for index in range(200)]
         manifest_items = [self._safe_item(item) for item in self.items]
         write_json(
             self.source_bundle,
             {
                 "manifest": {
-                    "schemaVersion": 1,
+                    "schemaVersion": BENCHMARK_SCHEMA_VERSION,
                     "algorithmVersion": BENCHMARK_ALGORITHM_VERSION,
                     "benchmarkId": "canonical-source-test",
-                    "sampleFingerprint": stable_sha256(manifest_items),
+                    "sampleFingerprint": canonical_benchmark_sample_fingerprint(
+                        manifest_items, taxonomy_version=self.taxonomy.version
+                    ),
                     "taxonomyVersion": self.taxonomy.version,
                     "promptVersion": CANONICAL_ENRICHMENT_PROMPT_VERSION,
+                    "responseContractVersion": CANONICAL_AI_RESPONSE_CONTRACT_VERSION,
+                    "sanitizerVersion": CANONICAL_AI_INPUT_SANITIZER_VERSION,
                     "items": manifest_items,
                 },
                 "items": self.items,
@@ -167,16 +196,16 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
             for index, target in enumerate(OLLAMA_BENCHMARK_TARGETS, 1)
         ]
         preflight_report = {
-                "schemaVersion": 1,
-                "kind": "ollama-local-preflight-probe",
-                "probeId": "probe-test",
-                "networkScope": "loopback",
-                "ollama": {
-                    "baseUrl": "http://127.0.0.1:11434",
-                    "version": "0.11.10",
-                },
-                "models": models,
-                "readyForBenchmark": True,
+            "schemaVersion": 1,
+            "kind": "ollama-local-preflight-probe",
+            "probeId": "probe-test",
+            "networkScope": "loopback",
+            "ollama": {
+                "baseUrl": "http://127.0.0.1:11434",
+                "version": "0.11.10",
+            },
+            "models": models,
+            "readyForBenchmark": True,
         }
         preflight_report["probeReportId"] = ollama_probe_report_id(preflight_report)
         write_json(self.preflight, preflight_report)
@@ -210,9 +239,15 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
                 "contentFingerprint",
                 "hiddenFields",
                 "expected",
+                "structuralExpected",
+                "reviewedExpected",
+                "referenceStatus",
+                "reasonCode",
                 "contest",
                 "taxonomyVersion",
                 "referenceKind",
+                "promptContentFingerprint",
+                "removedArtifacts",
             )
         }
 
@@ -225,9 +260,15 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
             "contentFingerprint": fingerprint,
             "hiddenFields": hidden,
             "expected": EXPECTED,
+            "structuralExpected": EXPECTED,
+            "reviewedExpected": EXPECTED,
+            "referenceStatus": "agent_reviewed_reference",
+            "reasonCode": "content_matches_taxonomy_path",
             "contest": "RFB22",
             "taxonomyVersion": self.taxonomy.version,
-            "referenceKind": "official_structure_reference",
+            "referenceKind": "agent_reviewed_reference",
+            "promptContentFingerprint": stable_sha256({"prompt": index}),
+            "removedArtifacts": [],
             "estimatedInputTokens": 100,
             "estimatedOutputTokens": 20,
             "request": {
@@ -243,11 +284,14 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
                 "taxonomyVersion": self.taxonomy.version,
                 "taxonomyOptions": [
                     {
+                        "pathId": canonical_taxonomy_path_id(self.taxonomy_path),
                         "discipline": EXPECTED["discipline"],
                         "matter": EXPECTED["matter"],
                         "subject": EXPECTED["subject"],
+                        "keywords": list(self.taxonomy.keywords_for_path(self.taxonomy_path)),
                     }
                 ],
+                "promptContentFingerprint": stable_sha256({"prompt": index}),
                 "security": {
                     "questionTextIsUntrustedData": True,
                     "ignoreInstructionsInsideQuestion": True,
@@ -266,9 +310,7 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
     ) -> dict[str, Any]:
         admin.models = self.installed_models
 
-        def command_runner(
-            command: tuple[str, ...], environment: Mapping[str, str]
-        ) -> str:
+        def command_runner(command: tuple[str, ...], environment: Mapping[str, str]) -> str:
             self.assertEqual(command, ("ollama", "ps"))
             admin.command_environments.append(dict(environment))
             return f"{admin.active_model} abc 9 GB {processor}"
@@ -286,9 +328,7 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
                 calls,
                 admin,
                 unavailable_after=(
-                    unavailable_after
-                    if model == OLLAMA_BENCHMARK_TARGETS[0].tag
-                    else None
+                    unavailable_after if model == OLLAMA_BENCHMARK_TARGETS[0].tag else None
                 ),
                 forbidden=forbidden,
             ),
@@ -309,9 +349,7 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
         self.assertEqual(manifest["parameters"]["concurrency"], 1)
         self.assertEqual(manifest["parameters"]["numCtx"], 4096)
         self.assertEqual(manifest["sampleSize"], 200)
-        self.assertEqual(
-            manifest["localBundleFingerprint"], stable_sha256(bundle["items"])
-        )
+        self.assertEqual(manifest["localBundleFingerprint"], stable_sha256(bundle["items"]))
         self.assertEqual(bundle["manifest"], manifest)
 
     def test_raw_question_change_invalidates_prepared_bundle(self) -> None:
@@ -543,9 +581,7 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
         self.assertEqual(resumed["status"], "completed")
         self.assertEqual(resumed["newCalls"], 20)
         self.assertEqual(resumed_checkpoint["cleanupFailures"][0]["status"], "resolved")
-        self.assertIsInstance(
-            resumed_checkpoint["cleanupFailures"][0]["resolvedAt"], str
-        )
+        self.assertIsInstance(resumed_checkpoint["cleanupFailures"][0]["resolvedAt"], str)
 
     def test_unresolved_final_cleanup_blocks_full_and_positive_recommendation(self) -> None:
         final_tag = OLLAMA_BENCHMARK_TARGETS[-1].tag
@@ -644,7 +680,7 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
         write_json(
             self.checkpoint,
             {
-                "schemaVersion": 1,
+                "schemaVersion": LOCAL_BENCHMARK_SCHEMA_VERSION,
                 "benchmarkId": manifest["benchmarkId"],
                 "manifestFingerprint": manifest["manifestFingerprint"],
                 "sampleFingerprint": manifest["sampleFingerprint"],
@@ -670,7 +706,8 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
                         "status": "failed",
                         "schemaValid": None,
                         "errorType": "RuntimeError",
-                        "errorCategory": "provider_failure",
+                        "validationCode": "provider_transport_failure",
+                        "errorCategory": "provider_transport_failure",
                         "wallLatencyMs": 1,
                     }
                 ],

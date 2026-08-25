@@ -367,6 +367,38 @@ class EditorialTaxonomy:
             )
         )
 
+    def keywords_for_path(self, path: TaxonomyPath) -> tuple[str, ...]:
+        keywords: list[str] = []
+        for discipline_name, topics in self._disciplines.items():
+            if discipline_name != path.discipline:
+                continue
+            for topic in topics:
+                if (
+                    str(topic["matter"]) != path.matter
+                    or str(topic["subject"]) != path.subject
+                    or (
+                        path.catalog_id is not None
+                        and str(topic["_catalog_id"]) != path.catalog_id
+                    )
+                ):
+                    continue
+                keywords.extend(str(value) for value in topic.get("keywords", []))
+        return tuple(dict.fromkeys(keywords))
+
+    def official_headings(
+        self, *, catalog_ids: Iterable[str] | None = None
+    ) -> tuple[str, ...]:
+        allowed_catalogs = (
+            frozenset(catalog_ids) if catalog_ids is not None else None
+        )
+        return tuple(
+            dict.fromkeys(
+                heading
+                for heading, path in self._heading_paths
+                if self._catalog_allowed(path, allowed_catalogs)
+            )
+        )
+
     @staticmethod
     def _path_specificity(path: TaxonomyPath) -> int:
         return 1 + int(path.matter is not None) + int(path.subject is not None)

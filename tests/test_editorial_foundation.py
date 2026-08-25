@@ -67,6 +67,24 @@ class ExtensibleTaxonomyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "fora da taxonomia"):
             taxonomy.canonical_name("discipline", "Disciplina inventada")
 
+    def test_path_keywords_come_from_the_matching_catalog_topic(self) -> None:
+        taxonomy = EditorialTaxonomy.load_default()
+        path = next(
+            item
+            for item in taxonomy.candidate_paths(catalog_ids=("fgv-rfb22",))
+            if item.discipline == "Legislação Aduaneira"
+            and item.matter == "Controle de Cargas"
+        )
+
+        self.assertEqual(
+            taxonomy.keywords_for_path(path),
+            (
+                "controle de carga",
+                "carga e trânsito",
+                "gestão coordenada de fronteiras",
+            ),
+        )
+
     def test_operator_alias_is_canonicalized_before_it_is_saved(self) -> None:
         item = LocalRuleClassifier().classify_many(
             [

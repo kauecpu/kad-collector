@@ -9,6 +9,8 @@ from unittest.mock import patch
 import httpx
 
 from kad_collector.canonical_classification import (
+    CanonicalAIHTTPError,
+    CanonicalAIInvalidJSONError,
     CanonicalAIRequest,
     CanonicalClassificationError,
 )
@@ -19,6 +21,7 @@ from kad_collector.ollama_ai_provider import (
 )
 
 MODEL = "qwen3:14b-q4_K_M"
+PATH_ID = "generic-public-exam:direito:normas:aplicacao-da-lei"
 
 
 def _request() -> CanonicalAIRequest:
@@ -32,30 +35,23 @@ def _request() -> CanonicalAIRequest:
         taxonomy_version="2.0.1",
         taxonomy_options=(
             {
+                "pathId": PATH_ID,
                 "discipline": "Direito",
                 "matter": "Normas",
                 "subject": "Aplicação da lei",
+                "keywords": ["norma apresentada"],
             },
         ),
     )
 
 
-def _suggestions() -> dict[str, Any]:
+def _decision() -> dict[str, Any]:
     return {
-        "suggestions": [
-            {
-                "field": "matter",
-                "value": "Normas",
-                "confidence": 0.91,
-                "evidence": "A questão cobra a norma aplicável.",
-            },
-            {
-                "field": "subject",
-                "value": "Aplicação da lei",
-                "confidence": 0.89,
-                "evidence": "O caso exige aplicar a lei descrita.",
-            },
-        ]
+        "taxonomy": {
+            "pathId": PATH_ID,
+            "confidence": 0.91,
+            "evidence": "A questão cobra a norma aplicável.",
+        }
     }
 
 
@@ -65,7 +61,7 @@ def _ollama_response() -> dict[str, Any]:
         "created_at": "2026-08-24T12:00:00Z",
         "message": {
             "role": "assistant",
-            "content": json.dumps(_suggestions(), ensure_ascii=False),
+            "content": json.dumps(_decision(), ensure_ascii=False),
             "thinking": "",
         },
         "done": True,
@@ -110,7 +106,7 @@ class OllamaAIProviderTests(unittest.TestCase):
 
         result = provider.enrich(_request())
 
-        self.assertEqual(result.response, _suggestions())
+        self.assertEqual(result.response, _decision())
         self.assertEqual((result.input_tokens, result.output_tokens), (321, 24))
         self.assertEqual(
             result.provider_metrics,
@@ -134,10 +130,10 @@ class OllamaAIProviderTests(unittest.TestCase):
             {"temperature": 0, "num_ctx": 4096, "num_predict": 512, "seed": 0},
         )
         self.assertFalse(sent["format"]["additionalProperties"])
-        field_schema = sent["format"]["properties"]["suggestions"]["items"][
-            "properties"
-        ]["field"]
-        self.assertEqual(field_schema["enum"], ["matter", "subject"])
+        path_schema = sent["format"]["properties"]["taxonomy"]["properties"][
+            "pathId"
+        ]
+        self.assertEqual(path_schema["enum"], [PATH_ID])
         serialized = json.dumps(sent, ensure_ascii=False)
         self.assertNotIn("difficulty", serialized)
         self.assertNotIn("explanation", serialized)
@@ -187,6 +183,32 @@ class OllamaAIProviderTests(unittest.TestCase):
 
         with self.assertRaisesRegex(OllamaUnavailableError, "indisponível"):
             provider.enrich(_request())
+
+    def test_http_and_invalid_json_failures_keep_distinct_types(self) -> None:
+        for response, expected in (
+            (httpx.Response(500, json={"error": "offline"}), CanonicalAIHTTPError),
+            (
+                httpx.Response(
+                    200,
+                    json={
+                        **_ollama_response(),
+                        "message": {"role": "assistant", "content": "not-json"},
+                    },
+                ),
+                CanonicalAIInvalidJSONError,
+            ),
+        ):
+            with self.subTest(expected=expected.__name__):
+                client = httpx.Client(
+                    transport=httpx.MockTransport(
+                        lambda _, current=response: current
+                    ),
+                    base_url="http://127.0.0.1:11434",
+                )
+                provider = OllamaCanonicalEnrichmentProvider(MODEL, client=client)
+
+                with self.assertRaises(expected):
+                    provider.enrich(_request())
 
     def test_missing_model_is_a_configuration_error_without_retry(self) -> None:
         calls = 0

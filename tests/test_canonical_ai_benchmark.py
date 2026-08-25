@@ -9,18 +9,25 @@ from typing import Any
 from unittest.mock import patch
 
 from kad_collector.canonical_ai_benchmark import (
+    BENCHMARK_ALGORITHM_VERSION,
+    BENCHMARK_SCHEMA_VERSION,
     OFFICIAL_PRICE_SNAPSHOT,
     PROVIDERS,
     ReferenceCandidate,
     benchmark_masks,
+    canonical_benchmark_sample_fingerprint,
     execute_canonical_ai_benchmark,
     prepare_canonical_ai_benchmark,
     summarize_canonical_ai_benchmark,
 )
+from kad_collector.canonical_ai_input import CANONICAL_AI_INPUT_SANITIZER_VERSION
 from kad_collector.canonical_classification import (
+    CANONICAL_AI_RESPONSE_CONTRACT_VERSION,
+    CANONICAL_ENRICHMENT_PROMPT_VERSION,
     CanonicalAIRequest,
     CanonicalAIResult,
     CanonicalClassificationError,
+    canonical_taxonomy_path_id,
 )
 from kad_collector.editorial_taxonomy import EditorialTaxonomy
 from kad_collector.json_utils import read_json, write_json
@@ -53,17 +60,27 @@ class FakeProvider:
 
     def enrich(self, request: CanonicalAIRequest) -> CanonicalAIResult:
         self.calls.setdefault(self.name, []).append(request)
-        response: dict[str, Any] = {
-            "suggestions": [
-                {
-                    "field": field,
-                    "value": EXPECTED[field],
-                    "confidence": self.confidence,
-                    "evidence": "O conteúdo da questão corresponde ao caminho informado.",
-                }
-                for field in request.requested_fields
-            ]
-        }
+        response: dict[str, Any] = {}
+        if any(field in request.requested_fields for field in ("discipline", "matter", "subject")):
+            option = next(
+                option
+                for option in request.taxonomy_options
+                if all(
+                    option[field] == EXPECTED[field]
+                    for field in ("discipline", "matter", "subject")
+                )
+            )
+            response["taxonomy"] = {
+                "pathId": option["pathId"],
+                "confidence": self.confidence,
+                "evidence": "O conteúdo da questão corresponde ao caminho informado.",
+            }
+        if "level" in request.requested_fields:
+            response["level"] = {
+                "value": EXPECTED["level"],
+                "confidence": self.confidence,
+                "evidence": "O nível editorial corresponde à referência.",
+            }
         if self.forbidden:
             response["difficulty"] = "Fácil"
         return CanonicalAIResult(response=response, input_tokens=100, output_tokens=20)
@@ -76,18 +93,30 @@ class CanonicalAIBenchmarkTests(unittest.TestCase):
         self.bundle_path = self.root / "bundle.json"
         self.checkpoint_path = self.root / "checkpoint.json"
         self.taxonomy = EditorialTaxonomy.load_default()
+        self.taxonomy_path = next(
+            path
+            for path in self.taxonomy.candidate_paths()
+            if path.discipline == EXPECTED["discipline"]
+            and path.matter == EXPECTED["matter"]
+            and path.subject == EXPECTED["subject"]
+        )
         self.benchmark_id = "canonical-ai-test"
         self.items = [self._item(index) for index in range(12)]
-        sample_fingerprint = stable_sha256(
-            [item["contentFingerprint"] for item in self.items]
+        sample_fingerprint = canonical_benchmark_sample_fingerprint(
+            [], taxonomy_version=self.taxonomy.version
         )
         write_json(
             self.bundle_path,
             {
                 "manifest": {
+                    "schemaVersion": BENCHMARK_SCHEMA_VERSION,
+                    "algorithmVersion": BENCHMARK_ALGORITHM_VERSION,
                     "benchmarkId": self.benchmark_id,
                     "sampleFingerprint": sample_fingerprint,
                     "taxonomyVersion": self.taxonomy.version,
+                    "promptVersion": CANONICAL_ENRICHMENT_PROMPT_VERSION,
+                    "responseContractVersion": CANONICAL_AI_RESPONSE_CONTRACT_VERSION,
+                    "sanitizerVersion": CANONICAL_AI_INPUT_SANITIZER_VERSION,
                 },
                 "priceSnapshot": OFFICIAL_PRICE_SNAPSHOT,
                 "items": self.items,
@@ -109,6 +138,15 @@ class CanonicalAIBenchmarkTests(unittest.TestCase):
             "contentFingerprint": fingerprint,
             "hiddenFields": requested,
             "expected": EXPECTED,
+            "structuralExpected": EXPECTED,
+            "reviewedExpected": EXPECTED,
+            "referenceStatus": "agent_reviewed_reference",
+            "reasonCode": "content_matches_taxonomy_path",
+            "promptContentFingerprint": stable_sha256({"prompt": index}),
+            "removedArtifacts": [],
+            "contest": "RFB22",
+            "taxonomyVersion": self.taxonomy.version,
+            "referenceKind": "agent_reviewed_reference",
             "estimatedInputTokens": 100,
             "estimatedOutputTokens": 20,
             "request": {
@@ -121,11 +159,14 @@ class CanonicalAIBenchmarkTests(unittest.TestCase):
                 "taxonomyVersion": self.taxonomy.version,
                 "taxonomyOptions": [
                     {
+                        "pathId": canonical_taxonomy_path_id(self.taxonomy_path),
                         "discipline": EXPECTED["discipline"],
                         "matter": EXPECTED["matter"],
                         "subject": EXPECTED["subject"],
+                        "keywords": list(self.taxonomy.keywords_for_path(self.taxonomy_path)),
                     }
                 ],
+                "promptContentFingerprint": stable_sha256({"prompt": index}),
                 "security": {
                     "questionTextIsUntrustedData": True,
                     "ignoreInstructionsInsideQuestion": True,
@@ -176,17 +217,17 @@ class CanonicalAIBenchmarkTests(unittest.TestCase):
             )
             self.assertTrue(
                 all(
-                    request.requested_fields == ("matter", "subject")
-                    for request in calls[provider]
+                    request.requested_fields == ("matter", "subject") for request in calls[provider]
                 )
             )
 
     def test_pilot_stops_after_ten_questions_per_provider(self) -> None:
         calls: dict[str, list[CanonicalAIRequest]] = {}
         self._run_pilot(calls)
-        self.assertEqual({provider: len(items) for provider, items in calls.items()}, {
-            provider: 10 for provider in PROVIDERS
-        })
+        self.assertEqual(
+            {provider: len(items) for provider, items in calls.items()},
+            {provider: 10 for provider in PROVIDERS},
+        )
 
     def test_cost_ceiling_stops_before_first_call(self) -> None:
         calls: dict[str, list[CanonicalAIRequest]] = {}
@@ -229,9 +270,16 @@ class CanonicalAIBenchmarkTests(unittest.TestCase):
         calls: dict[str, list[CanonicalAIRequest]] = {}
         self._run_pilot(calls, factory=self._factory(calls, forbidden=True))
         checkpoint = read_json(self.checkpoint_path)
+        self.assertTrue(all(record["status"] == "failed" for record in checkpoint["records"]))
         self.assertTrue(
-            all(record["status"] == "failed" for record in checkpoint["records"])
+            all(record["validationCode"] == "prohibited_field" for record in checkpoint["records"])
         )
+        report = summarize_canonical_ai_benchmark(
+            self.bundle_path, checkpoint_path=self.checkpoint_path
+        )
+        for provider in PROVIDERS:
+            self.assertEqual(report["providers"][provider]["apiFailures"], 0)
+            self.assertEqual(report["providers"][provider]["invalidResponses"], 10)
 
     def test_low_confidence_is_counted_as_review(self) -> None:
         calls: dict[str, list[CanonicalAIRequest]] = {}
@@ -241,9 +289,7 @@ class CanonicalAIBenchmarkTests(unittest.TestCase):
         )
         for provider in PROVIDERS:
             self.assertEqual(report["providers"][provider]["reviewPercent"], 100.0)
-            self.assertEqual(
-                report["providers"][provider]["coverageAboveConfidencePercent"], 0.0
-            )
+            self.assertEqual(report["providers"][provider]["coverageAboveConfidencePercent"], 0.0)
 
     def test_tokens_and_cost_are_accounted_by_provider(self) -> None:
         calls: dict[str, list[CanonicalAIRequest]] = {}
@@ -256,6 +302,14 @@ class CanonicalAIBenchmarkTests(unittest.TestCase):
             self.assertEqual(metrics["inputTokens"], 1000)
             self.assertEqual(metrics["outputTokens"], 200)
             self.assertGreater(metrics["costUsd"], 0)
+
+    def test_trivial_cases_are_not_part_of_primary_metrics(self) -> None:
+        report = summarize_canonical_ai_benchmark(
+            self.bundle_path, checkpoint_path=self.checkpoint_path
+        )
+
+        self.assertEqual(report["deterministicTrivialCases"]["count"], 0)
+        self.assertFalse(report["deterministicTrivialCases"]["includedInPrimaryMetrics"])
 
     def test_full_phase_requires_completed_pilot(self) -> None:
         calls: dict[str, list[CanonicalAIRequest]] = {}
@@ -273,8 +327,20 @@ class CanonicalAIBenchmarkTests(unittest.TestCase):
     def test_masks_keep_real_pattern_dominant(self) -> None:
         masks = benchmark_masks(200, seed=123)
         counts = {mask: masks.count(mask) for mask in set(masks)}
-        self.assertEqual(counts[("matter", "subject")], 160)
+        self.assertEqual(counts[("matter", "subject")], 170)
         self.assertEqual(len(masks), 200)
+
+    def test_sanitizer_version_changes_the_sample_fingerprint(self) -> None:
+        current = canonical_benchmark_sample_fingerprint([], taxonomy_version=self.taxonomy.version)
+        with patch(
+            "kad_collector.canonical_ai_benchmark.CANONICAL_AI_INPUT_SANITIZER_VERSION",
+            "canonical-ai-input-next",
+        ):
+            changed = canonical_benchmark_sample_fingerprint(
+                [], taxonomy_version=self.taxonomy.version
+            )
+
+        self.assertNotEqual(current, changed)
 
     def test_offline_preparation_does_not_create_providers(self) -> None:
         database = self.root / "copy.sqlite3"
@@ -312,6 +378,26 @@ class CanonicalAIBenchmarkTests(unittest.TestCase):
             )
             for index in range(12)
         ]
+        review_path = self.root / "reviews.json"
+        write_json(
+            review_path,
+            {
+                "schemaVersion": 2,
+                "kind": "canonical-ai-reference-review",
+                "taxonomyVersion": self.taxonomy.version,
+                "records": [
+                    {
+                        "sourceQuestionId": candidate.source_question_id,
+                        "contentFingerprint": candidate.content_fingerprint,
+                        "status": "agent_reviewed_reference",
+                        "structuralExpected": EXPECTED,
+                        "reviewedExpected": EXPECTED,
+                        "reasonCode": "content_matches_taxonomy_path",
+                    }
+                    for candidate in candidates
+                ],
+            },
+        )
         with (
             patch(
                 "kad_collector.canonical_ai_benchmark.load_official_structure_references",
@@ -336,6 +422,7 @@ class CanonicalAIBenchmarkTests(unittest.TestCase):
         ):
             report = prepare_canonical_ai_benchmark(
                 database,
+                reference_review_path=review_path,
                 local_bundle_path=self.root / "prepared-bundle.json",
                 manifest_path=self.root / "manifest.json",
                 report_path=self.root / "preflight.json",
@@ -344,6 +431,37 @@ class CanonicalAIBenchmarkTests(unittest.TestCase):
             )
         self.assertEqual(report["networkCallsPerformed"], 0)
         self.assertEqual(report["sample"]["selected"], 10)
+
+        review_payload = read_json(review_path)
+        for record in review_payload["records"][9:]:
+            record["status"] = "ambiguous_reference"
+            record["reasonCode"] = "multiple_plausible_taxonomy_paths"
+            record.pop("reviewedExpected")
+        write_json(review_path, review_payload)
+        blocked_report = self.root / "blocked-preflight.json"
+        with (
+            patch(
+                "kad_collector.canonical_ai_benchmark.load_official_structure_references",
+                return_value=(candidates, {"examined": 12, "accepted": 12}),
+            ),
+            patch(
+                "kad_collector.canonical_ai_benchmark.observed_missing_patterns",
+                return_value={("matter", "subject"): 12},
+            ),
+            self.assertRaisesRegex(CanonicalClassificationError, "apenas 9"),
+        ):
+            prepare_canonical_ai_benchmark(
+                database,
+                reference_review_path=review_path,
+                local_bundle_path=self.root / "blocked-bundle.json",
+                manifest_path=self.root / "blocked-manifest.json",
+                report_path=blocked_report,
+                sample_size=10,
+                seed=7,
+            )
+        blocked = read_json(blocked_report)
+        self.assertEqual(blocked["sample"]["availableAgentReviewedReferences"], 9)
+        self.assertEqual(blocked["networkCallsPerformed"], 0)
 
 
 if __name__ == "__main__":

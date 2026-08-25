@@ -14,12 +14,14 @@ from kad_collector.canonical_ai_providers import (
     create_canonical_ai_provider,
 )
 from kad_collector.canonical_classification import (
-    AISuggestion,
     CanonicalAIRequest,
     CanonicalAIResponse,
+    CanonicalAITaxonomyDecision,
     CanonicalClassificationError,
 )
 from kad_collector.cli import build_parser, main
+
+PATH_ID = "generic-public-exam:direito:normas:aplicacao-da-lei"
 
 
 def _request() -> CanonicalAIRequest:
@@ -33,9 +35,11 @@ def _request() -> CanonicalAIRequest:
         taxonomy_version="1.0.0",
         taxonomy_options=(
             {
+                "pathId": PATH_ID,
                 "discipline": "Direito",
                 "matter": "Normas",
                 "subject": "Aplicação da lei",
+                "keywords": ["norma apresentada"],
             },
         ),
     )
@@ -43,14 +47,11 @@ def _request() -> CanonicalAIRequest:
 
 def _response_payload() -> dict[str, object]:
     return {
-        "suggestions": [
-            {
-                "field": "subject",
-                "value": "Aplicação da lei",
-                "confidence": 0.91,
-                "evidence": "O enunciado exige interpretação da regra apresentada.",
-            }
-        ]
+        "taxonomy": {
+            "pathId": PATH_ID,
+            "confidence": 0.91,
+            "evidence": "O enunciado exige interpretação da regra apresentada.",
+        }
     }
 
 
@@ -143,8 +144,10 @@ class CanonicalAIProvidersTests(unittest.TestCase):
         self.assertEqual(call["extra_body"], {"enable_thinking": False})
         self.assertIn("JSON", call["messages"][0]["content"])
         sent = json.loads(call["messages"][1]["content"])
-        self.assertEqual(sent["outputSchema"]["properties"]["suggestions"]["items"]
-                         ["properties"]["field"]["enum"], ["subject"])
+        self.assertEqual(
+            sent["outputSchema"]["properties"]["taxonomy"]["properties"]["pathId"]["enum"],
+            [PATH_ID],
+        )
         self.assertNotIn("correct_answer", json.dumps(sent))
 
     def test_deepseek_uses_json_mode_and_disables_thinking(self) -> None:
@@ -161,14 +164,11 @@ class CanonicalAIProvidersTests(unittest.TestCase):
 
     def test_gemini_uses_structured_parse_with_low_reasoning(self) -> None:
         parsed = CanonicalAIResponse(
-            suggestions=[
-                AISuggestion(
-                    field="subject",
-                    value="Aplicação da lei",
-                    confidence=0.91,
-                    evidence="O enunciado exige interpretação da regra apresentada.",
-                )
-            ]
+            taxonomy=CanonicalAITaxonomyDecision(
+                pathId=PATH_ID,
+                confidence=0.91,
+                evidence="O enunciado exige interpretação da regra apresentada.",
+            )
         )
         client, _, recorder = _client(_completion(parsed=parsed))
         provider = GeminiCanonicalEnrichmentProvider(client=client)
