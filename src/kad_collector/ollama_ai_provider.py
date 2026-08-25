@@ -10,6 +10,8 @@ from pydantic import BaseModel, ConfigDict
 
 from .canonical_ai_providers import canonical_ai_messages
 from .canonical_classification import (
+    CanonicalAIHTTPError,
+    CanonicalAIInvalidJSONError,
     CanonicalAIProviderUnavailableError,
     CanonicalAIRequest,
     CanonicalAIResult,
@@ -127,7 +129,7 @@ class OllamaCanonicalEnrichmentProvider:
             "model": self.model,
             "messages": canonical_ai_messages(request),
             "stream": False,
-            "format": canonical_ai_response_schema(request.requested_fields),
+            "format": canonical_ai_response_schema(request),
             "think": False,
             "keep_alive": "5m",
             "options": {
@@ -145,7 +147,7 @@ class OllamaCanonicalEnrichmentProvider:
             ) from exc
 
         if response.status_code >= 500:
-            raise OllamaUnavailableError(
+            raise CanonicalAIHTTPError(
                 f"Ollama local indisponível (HTTP {response.status_code})"
             )
         if response.status_code == 404:
@@ -154,7 +156,7 @@ class OllamaCanonicalEnrichmentProvider:
                 f"execute 'ollama pull {self.model}' somente após autorização"
             )
         if response.status_code >= 400:
-            raise CanonicalClassificationError(
+            raise CanonicalAIHTTPError(
                 f"Ollama recusou a solicitação (HTTP {response.status_code})"
             )
 
@@ -162,7 +164,7 @@ class OllamaCanonicalEnrichmentProvider:
             chat = _OllamaChatResponse.model_validate(response.json())
             response_payload = json.loads(chat.message.content)
         except (ValueError, json.JSONDecodeError) as exc:
-            raise CanonicalClassificationError(
+            raise CanonicalAIInvalidJSONError(
                 "Ollama retornou uma resposta inválida"
             ) from exc
         if not isinstance(response_payload, dict):

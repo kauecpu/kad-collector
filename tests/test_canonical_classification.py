@@ -13,19 +13,22 @@ from kad_collector.canonical_classification import (
     CanonicalAIProviderUnavailableError,
     CanonicalAIRequest,
     CanonicalAIResult,
+    canonical_taxonomy_options,
+    canonical_taxonomy_path_id,
     classification_review_items,
     review_canonical_classification,
     run_canonical_classification,
 )
 from kad_collector.desktop_models import ClassificationValue, QuestionClassification
 from kad_collector.editorial_taxonomy import EditorialTaxonomy
-from kad_collector.models import QuestionRecord
+from kad_collector.models import Alternative, QuestionRecord
 from kad_collector.question_equivalence import (
     run_question_equivalence_migration,
     sync_canonical_editorial_from_question,
 )
 
 UPDATED = "2026-08-24T12:00:00+00:00"
+NORMS_PATH_ID = "generic-public-exam:direito:normas:aplicacao-da-lei"
 
 
 def _json(value: object) -> str:
@@ -76,7 +79,7 @@ class FakeProvider:
         *,
         error: Exception | None = None,
     ) -> None:
-        self.response = response or {"suggestions": []}
+        self.response = response or {}
         self.error = error
         self.requests: list[CanonicalAIRequest] = []
 
@@ -108,12 +111,23 @@ class InterruptsAfterOneProvider(FakeProvider):
         return super().enrich(request)
 
 
-def _suggestion(field: str, value: str, *, confidence: float = 0.91) -> dict[str, object]:
+def _level_decision(*, confidence: float = 0.91) -> dict[str, object]:
     return {
-        "field": field,
-        "value": value,
-        "confidence": confidence,
-        "evidence": "O enunciado e as alternativas sustentam esta sugestão.",
+        "level": {
+            "value": "Superior",
+            "confidence": confidence,
+            "evidence": "O cargo exige nível superior.",
+        }
+    }
+
+
+def _taxonomy_decision(*, confidence: float = 0.91) -> dict[str, object]:
+    return {
+        "taxonomy": {
+            "pathId": NORMS_PATH_ID,
+            "confidence": confidence,
+            "evidence": "A questão exige a aplicação da norma apresentada.",
+        }
     }
 
 
@@ -210,6 +224,40 @@ class CanonicalClassificationTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.directory.cleanup()
 
+    def test_taxonomy_options_have_stable_ids_and_editorial_keywords(self) -> None:
+        paths = self.taxonomy.candidate_paths(
+            catalog_ids=("generic-public-exam",),
+            discipline="Direito",
+        )
+
+        self.assertEqual(
+            canonical_taxonomy_path_id(paths[0]),
+            "generic-public-exam:direito:contratos:formacao-dos-contratos",
+        )
+        self.assertEqual(
+            canonical_taxonomy_options(
+                self.taxonomy,
+                catalog_ids=("generic-public-exam",),
+                known_fields={"discipline": "Direito"},
+            ),
+            (
+                {
+                    "pathId": "generic-public-exam:direito:contratos:formacao-dos-contratos",
+                    "discipline": "Direito",
+                    "matter": "Contratos",
+                    "subject": "Formação dos contratos",
+                    "keywords": ["formação do contrato"],
+                },
+                {
+                    "pathId": "generic-public-exam:direito:normas:aplicacao-da-lei",
+                    "discipline": "Direito",
+                    "matter": "Normas",
+                    "subject": "Aplicação da lei",
+                    "keywords": ["norma apresentada"],
+                },
+            ),
+        )
+
     def test_deterministic_runs_first_and_ai_receives_only_remaining_fields(self) -> None:
         fixture, rows = _seed_canonical(self.root)
         canonical_id, question_id = rows[0]
@@ -219,11 +267,7 @@ class CanonicalClassificationTests(unittest.TestCase):
             {"discipline", "matter", "subject", "level", "difficulty", "explanation"},
         )
         provider = FakeProvider(
-            {
-                "suggestions": [
-                    _suggestion("level", "Superior"),
-                ]
-            }
+            _level_decision()
         )
 
         with closing(fixture.store._connect()) as connection:
@@ -258,6 +302,45 @@ class CanonicalClassificationTests(unittest.TestCase):
         self.assertIsNone(payload["difficulty"])
         self.assertIsNone(payload["explanation"])
 
+    def test_ai_request_uses_sanitized_copy_and_keeps_raw_question_unchanged(self) -> None:
+        raw_footer = (
+            "Certa\nFGV CONHECIMENTO\nANALISTA TRIBUTÁRIO TIPO BRANCA – PÁGINA 13"
+        )
+        question = _question().model_copy(
+            update={
+                "alternatives": [
+                    Alternative(letter="A", text="Errada"),
+                    Alternative(letter="B", text=raw_footer),
+                ]
+            }
+        )
+        fixture, rows = _seed_canonical(self.root, question=question)
+        _, question_id = rows[0]
+        _clear_fields(fixture, question_id, {"level"})
+        provider = FakeProvider(_level_decision())
+
+        with closing(fixture.store._connect()) as connection:
+            run_canonical_classification(
+                connection,
+                apply=True,
+                enable_ai=True,
+                provider=provider,
+                run_id="sanitized-ai-input",
+                taxonomy=self.taxonomy,
+            )
+            stored = json.loads(
+                str(
+                    connection.execute(
+                        "SELECT payload_json FROM questions WHERE id = ?",
+                        (question_id,),
+                    ).fetchone()["payload_json"]
+                )
+            )
+
+        self.assertEqual(provider.requests[0].alternatives, ("Errada", "Certa"))
+        self.assertEqual(len(provider.requests[0].prompt_content_fingerprint), 64)
+        self.assertEqual(stored["alternatives"][1]["text"], raw_footer)
+
     def test_complete_question_and_non_representative_occurrence_never_call_ai(self) -> None:
         fixture, _ = _seed_canonical(self.root)
         provider = FakeProvider()
@@ -283,7 +366,7 @@ class CanonicalClassificationTests(unittest.TestCase):
         fixture, rows = _seed_canonical(self.root)
         _, question_id = rows[0]
         _clear_fields(fixture, question_id, {"level"}, human_missing="level")
-        provider = FakeProvider({"suggestions": [_suggestion("level", "Superior")]})
+        provider = FakeProvider(_level_decision())
         with closing(fixture.store._connect()) as connection:
             report = run_canonical_classification(
                 connection,
@@ -331,14 +414,12 @@ class CanonicalClassificationTests(unittest.TestCase):
         self.assertEqual(state["status"], "complete")
         self.assertEqual(json.loads(str(state["missing_fields_json"])), [])
 
-    def test_ai_requests_only_subject_when_it_is_the_only_missing_field(self) -> None:
+    def test_single_compatible_path_is_deterministic(self) -> None:
         question = _question(statement="Assinale a alternativa adequada ao caso descrito.")
         fixture, rows = _seed_canonical(self.root, question=question)
         _, question_id = rows[0]
         _clear_fields(fixture, question_id, {"subject"})
-        provider = FakeProvider(
-            {"suggestions": [_suggestion("subject", "Aplicação da lei")]}
-        )
+        provider = FakeProvider(_taxonomy_decision())
         with closing(fixture.store._connect()) as connection:
             report = run_canonical_classification(
                 connection,
@@ -349,23 +430,17 @@ class CanonicalClassificationTests(unittest.TestCase):
                 taxonomy=self.taxonomy,
             )
 
-        self.assertEqual(len(provider.requests), 1)
-        self.assertEqual(provider.requests[0].requested_fields, ("subject",))
-        self.assertEqual(report.requested_fields, {"subject": 1})
+        self.assertEqual(provider.requests, [])
+        self.assertEqual(report.ai_candidates, 0)
+        self.assertEqual(report.deterministic_classified, 1)
+        self.assertEqual(report.requested_fields, {})
 
     def test_ai_groups_missing_matter_and_subject_in_one_request(self) -> None:
         question = _question(statement="Assinale a alternativa adequada ao caso descrito.")
         fixture, rows = _seed_canonical(self.root, question=question)
         _, question_id = rows[0]
         _clear_fields(fixture, question_id, {"matter", "subject"})
-        provider = FakeProvider(
-            {
-                "suggestions": [
-                    _suggestion("matter", "Normas"),
-                    _suggestion("subject", "Aplicação da lei"),
-                ]
-            }
-        )
+        provider = FakeProvider(_taxonomy_decision())
         with closing(fixture.store._connect()) as connection:
             report = run_canonical_classification(
                 connection,
@@ -385,9 +460,7 @@ class CanonicalClassificationTests(unittest.TestCase):
         fixture, rows = _seed_canonical(self.root)
         canonical_id, question_id = rows[0]
         _clear_fields(fixture, question_id, {"level"})
-        provider = FakeProvider(
-            {"suggestions": [_suggestion("level", "Superior", confidence=0.55)]}
-        )
+        provider = FakeProvider(_level_decision(confidence=0.55))
         with closing(fixture.store._connect()) as connection:
             report = run_canonical_classification(
                 connection,
@@ -422,7 +495,7 @@ class CanonicalClassificationTests(unittest.TestCase):
         _, question_id = rows[0]
         _clear_fields(fixture, question_id, {"level"})
         low_confidence = FakeProvider(
-            {"suggestions": [_suggestion("level", "Superior", confidence=0.4)]}
+            _level_decision(confidence=0.4)
         )
         with closing(fixture.store._connect()) as connection:
             run_canonical_classification(
@@ -442,7 +515,7 @@ class CanonicalClassificationTests(unittest.TestCase):
                 evidence="A evidência não sustenta o nível.",
                 taxonomy=self.taxonomy,
             )
-            retry = FakeProvider({"suggestions": [_suggestion("level", "Superior")]})
+            retry = FakeProvider(_level_decision())
             report = run_canonical_classification(
                 connection,
                 apply=True,
@@ -458,28 +531,28 @@ class CanonicalClassificationTests(unittest.TestCase):
     def test_invalid_ai_outputs_are_rejected_without_mutating_editorial_data(self) -> None:
         cases = {
             "forbidden": {
-                "suggestions": [_suggestion("level", "Superior")],
+                **_level_decision(),
                 "answer": "A",
             },
             "extra": {
-                "suggestions": [
-                    {**_suggestion("level", "Superior"), "unexpected": True}
-                ]
+                "level": {
+                    **_level_decision()["level"],
+                    "unexpected": True,
+                }
             },
             "identity": {
-                "suggestions": [_suggestion("level", "Superior")],
+                **_level_decision(),
                 "contest": "Outro concurso",
             },
-            "taxonomy": {"suggestions": [_suggestion("matter", "Matéria inexistente")]},
-            "difficulty": {"suggestions": [_suggestion("difficulty", "Média")]},
-            "explanation": {
-                "suggestions": [
-                    _suggestion(
-                        "explanation",
-                        "A alternativa segue a norma apresentada no enunciado.",
-                    )
-                ]
+            "taxonomy": {
+                "taxonomy": {
+                    "pathId": "generic-public-exam:direito:inventada:inventada",
+                    "confidence": 0.91,
+                    "evidence": "A questão parece tratar do tema.",
+                }
             },
+            "difficulty": {"difficulty": "Média"},
+            "explanation": {"explanation": "Explicação criada pelo modelo."},
         }
         for index, (name, response) in enumerate(cases.items()):
             with self.subTest(name=name):
@@ -491,7 +564,9 @@ class CanonicalClassificationTests(unittest.TestCase):
                 )
                 fixture, rows = _seed_canonical(root, question=question)
                 _, question_id = rows[0]
-                missing = {"matter"} if name == "taxonomy" else {"level"}
+                missing = (
+                    {"matter", "subject"} if name == "taxonomy" else {"level"}
+                )
                 _clear_fields(fixture, question_id, missing)
                 provider = FakeProvider(response)
                 with closing(fixture.store._connect()) as connection:
@@ -512,7 +587,8 @@ class CanonicalClassificationTests(unittest.TestCase):
                         )
                     )
                 self.assertEqual(report.ai_rejected, 1)
-                self.assertIsNone(payload[next(iter(missing))])
+                for field_name in missing:
+                    self.assertIsNone(payload[field_name])
 
     def test_provider_failure_is_reported_and_prompt_injection_stays_untrusted_data(self) -> None:
         injected = _question(
@@ -625,9 +701,7 @@ class CanonicalClassificationTests(unittest.TestCase):
             connection.commit()
         _clear_fields(fixture, question_id, {"level"})
         provider = FakeProvider(
-            {
-                "suggestions": [_suggestion("level", "Superior")]
-            }
+            _level_decision()
         )
         with closing(fixture.store._connect()) as connection:
             run_canonical_classification(
@@ -655,7 +729,7 @@ class CanonicalClassificationTests(unittest.TestCase):
         fixture, rows = _seed_canonical(self.root)
         _, question_id = rows[0]
         _clear_fields(fixture, question_id, {"level"})
-        provider = FakeProvider({"suggestions": [_suggestion("level", "Superior")]})
+        provider = FakeProvider(_level_decision())
         with closing(fixture.store._connect()) as connection:
             report = run_canonical_classification(
                 connection,
@@ -721,7 +795,7 @@ class CanonicalClassificationTests(unittest.TestCase):
         for _, question_id in rows:
             _clear_fields(fixture, question_id, {"level"})
         first_provider = FailsAfterOneProvider(
-            {"suggestions": [_suggestion("level", "Superior")]}
+            _level_decision()
         )
 
         with closing(fixture.store._connect()) as connection:
@@ -747,7 +821,7 @@ class CanonicalClassificationTests(unittest.TestCase):
             ).fetchone()[0]
 
             resumed_provider = FakeProvider(
-                {"suggestions": [_suggestion("level", "Superior")]}
+                _level_decision()
             )
             resumed = run_canonical_classification(
                 connection,
@@ -780,7 +854,7 @@ class CanonicalClassificationTests(unittest.TestCase):
         for _, question_id in rows:
             _clear_fields(fixture, question_id, {"level"})
         interrupted_provider = InterruptsAfterOneProvider(
-            {"suggestions": [_suggestion("level", "Superior")]}
+            _level_decision()
         )
 
         with closing(fixture.store._connect()) as connection:
@@ -806,7 +880,7 @@ class CanonicalClassificationTests(unittest.TestCase):
                 apply=True,
                 enable_ai=True,
                 provider=FakeProvider(
-                    {"suggestions": [_suggestion("level", "Superior")]}
+                    _level_decision()
                 ),
                 run_id="operator-interrupted",
                 taxonomy=self.taxonomy,
@@ -823,7 +897,7 @@ class CanonicalClassificationTests(unittest.TestCase):
         canonical_id, question_id = rows[0]
         _clear_fields(fixture, question_id, {"level"})
         provider = FakeProvider(
-            {"suggestions": [_suggestion("level", "Superior")]}
+            _level_decision()
         )
         with closing(fixture.store._connect()) as connection:
             before = connection.execute(

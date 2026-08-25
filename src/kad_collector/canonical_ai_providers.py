@@ -6,9 +6,11 @@ from typing import Any, cast
 
 from .canonical_classification import (
     CANONICAL_AI_INSTRUCTIONS,
+    CanonicalAIInvalidJSONError,
     CanonicalAIProvider,
     CanonicalAIRequest,
     CanonicalAIResponse,
+    CanonicalAIResponseSchemaError,
     CanonicalAIResult,
     CanonicalClassificationError,
     canonical_ai_response_schema,
@@ -18,7 +20,7 @@ from .canonical_classification import (
 def canonical_ai_messages(request: CanonicalAIRequest) -> list[dict[str, str]]:
     """Build the production prompt used by providers and controlled benchmarks."""
     payload = {
-        "outputSchema": canonical_ai_response_schema(request.requested_fields),
+        "outputSchema": canonical_ai_response_schema(request),
         "request": request.safe_payload(),
     }
     return [
@@ -46,27 +48,31 @@ def _token_usage(completion: Any) -> tuple[int | None, int | None]:
 def _completion_payload(completion: Any, *, accept_parsed: bool = False) -> dict[str, Any]:
     choices = getattr(completion, "choices", None)
     if not isinstance(choices, list) or not choices:
-        raise CanonicalClassificationError("provedor retornou resposta sem alternativas")
+        raise CanonicalAIResponseSchemaError(
+            "provedor retornou resposta sem alternativas"
+        )
     message = getattr(choices[0], "message", None)
     if message is None:
-        raise CanonicalClassificationError("provedor retornou resposta sem mensagem")
+        raise CanonicalAIResponseSchemaError("provedor retornou resposta sem mensagem")
 
     if accept_parsed:
         parsed = getattr(message, "parsed", None)
         if isinstance(parsed, CanonicalAIResponse):
-            return parsed.model_dump(mode="json")
+            return parsed.model_dump(mode="json", by_alias=True, exclude_none=True)
         if isinstance(parsed, dict):
             return cast(dict[str, Any], parsed)
 
     content = getattr(message, "content", None)
     if not isinstance(content, str) or not content.strip():
-        raise CanonicalClassificationError("provedor retornou resposta vazia")
+        raise CanonicalAIResponseSchemaError("provedor retornou resposta vazia")
     try:
         payload = json.loads(content)
     except json.JSONDecodeError as exc:
-        raise CanonicalClassificationError("provedor retornou JSON inválido") from exc
+        raise CanonicalAIInvalidJSONError("provedor retornou JSON inválido") from exc
     if not isinstance(payload, dict):
-        raise CanonicalClassificationError("provedor retornou JSON que não é um objeto")
+        raise CanonicalAIResponseSchemaError(
+            "provedor retornou JSON que não é um objeto"
+        )
     return cast(dict[str, Any], payload)
 
 
