@@ -14,6 +14,7 @@ from typing import Any, Literal, cast
 
 from .answer_association import decide_runtime_association, invalidate_answer_association
 from .answer_key import parse_answer_key
+from .answer_key_diagnostics import AnswerKeyEvidence, diagnose_answer_key
 from .canonical_classification import (
     initialize_canonical_classification_schema,
     invalidate_canonical_classification,
@@ -2285,48 +2286,10 @@ class DesktopStore:
                 connection.commit()
 
     def question(self, question_id: str) -> dict[str, Any]:
-        with closing(self._connect()) as connection:
-            row = connection.execute(
-                """
-                SELECT q.*, d.filename, d.local_path, d.sha256 AS document_sha256,
-                       d.metadata_json, d.warnings_json, d.job_id,
-                       qo.id AS equivalence_occurrence_id,
-                       qeg.id AS equivalence_group_id,
-                       qeg.status AS equivalence_group_status,
-                       qeg.reason AS equivalence_reason,
-                       qeg.expected_occurrences AS equivalence_expected_occurrences,
-                       qeg.occurrence_count AS equivalence_occurrence_count,
-                       cq.id AS canonical_question_id,
-                       COALESCE(cq.representative_occurrence_id,
-                                qeg.representative_occurrence_id)
-                           AS representative_occurrence_id,
-                       cq.editorial_status AS canonical_editorial_status,
-                       NOT EXISTS (
-                           SELECT 1 FROM question_group_occurrences fresh_go
-                           JOIN question_occurrences fresh_o
-                             ON fresh_o.id = fresh_go.occurrence_id
-                           JOIN questions fresh_q ON fresh_q.id = fresh_o.question_id
-                           WHERE fresh_go.group_id = qeg.id AND fresh_go.status = 'active'
-                             AND (fresh_o.source_updated_at != fresh_q.updated_at
-                               OR fresh_o.answer_key_link_id IS NOT fresh_q.answer_key_link_id
-                               OR NOT EXISTS (
-                                   SELECT 1 FROM document_links fresh_link
-                                   WHERE fresh_link.id = fresh_q.answer_key_link_id
-                                     AND fresh_link.status = 'active'
-                                     AND fresh_link.algorithm_version =
-                                         'semantic-association-v2'
-                               ))
-                       ) AS equivalence_group_fresh
-                FROM questions q JOIN documents d ON d.id = q.document_id
-                LEFT JOIN question_occurrences qo ON qo.question_id = q.id
-                LEFT JOIN question_group_occurrences qgo
-                  ON qgo.occurrence_id = qo.id AND qgo.status = 'active'
-                LEFT JOIN question_equivalence_groups qeg ON qeg.id = qgo.group_id
-                LEFT JOIN canonical_questions cq ON cq.group_id = qeg.id
-                WHERE q.id = ?
-                """,
-                (question_id,),
-            ).fetchone()
+        row = next(
+            iter(self._all_question_rows(question_id)),
+            None,
+        )
         if row is None:
             raise ValueError("questao nao encontrada")
         return self._question_view(row)
@@ -2891,14 +2854,17 @@ class DesktopStore:
                 result.append(candidate)
         return result
 
-    def _all_question_rows(self) -> list[sqlite3.Row]:
+    def _all_question_rows(self, question_id: str | None = None) -> list[dict[str, Any]]:
         with closing(self._connect()) as connection:
-            return list(
+            where_clause = "WHERE q.id = ?" if question_id is not None else ""
+            parameters = (question_id,) if question_id is not None else ()
+            rows = list(
                 connection.execute(
                     """
                     SELECT q.*, d.filename, d.local_path, d.sha256 AS document_sha256,
                            d.metadata_json, d.warnings_json, d.job_id,
                            d.size_bytes, d.created_at AS document_created_at,
+                           d.document_version_id AS exam_version_id,
                            d.semantic_resolution,
                            d.canonical_contest_id, d.canonical_application_id,
                            d.canonical_document_id,
@@ -2920,6 +2886,20 @@ class DesktopStore:
                                  AND l.status = 'active'
                                  AND l.algorithm_version = 'semantic-association-v2'
                            )) AS valid_answer_association,
+                           review.status AS answer_review_status,
+                           review.reason AS answer_review_reason,
+                           review.candidates_json AS answer_review_candidates_json,
+                           (SELECT COALESCE(
+                                json_extract(answer_document.metadata_json,
+                                             '$.document_title'),
+                                answer_document.filename)
+                            FROM document_links answer_link
+                            JOIN documents answer_document
+                              ON answer_document.document_version_id =
+                                 answer_link.answer_key_version_id
+                            WHERE answer_link.id = q.answer_key_link_id
+                            ORDER BY answer_document.created_at DESC LIMIT 1)
+                               AS linked_answer_key_document,
                            qo.id AS equivalence_occurrence_id,
                            qeg.id AS equivalence_group_id,
                            qeg.status AS equivalence_group_status,
@@ -2950,18 +2930,54 @@ class DesktopStore:
                     FROM questions q JOIN documents d ON d.id = q.document_id
                     LEFT JOIN canonical_contests cc ON cc.id = d.canonical_contest_id
                     LEFT JOIN exam_applications ea ON ea.id = d.canonical_application_id
+                    LEFT JOIN association_review_queue review
+                      ON review.exam_version_id = d.document_version_id
                     LEFT JOIN question_occurrences qo ON qo.question_id = q.id
                     LEFT JOIN question_group_occurrences qgo
                       ON qgo.occurrence_id = qo.id AND qgo.status = 'active'
                     LEFT JOIN question_equivalence_groups qeg ON qeg.id = qgo.group_id
                     LEFT JOIN canonical_questions cq ON cq.group_id = qeg.id
-                    ORDER BY d.filename, q.question_number
                     """
+                    + where_clause
+                    + " ORDER BY d.filename, q.question_number",
+                    parameters,
                 ).fetchall()
             )
 
+            candidates_by_exam: dict[str, tuple[int, list[str]]] = {}
+            enriched: list[dict[str, Any]] = []
+            for row in rows:
+                item = dict(row)
+                exam_version_id = cast(str | None, item.get("exam_version_id"))
+                if exam_version_id and exam_version_id not in candidates_by_exam:
+                    candidates = active_answer_key_candidates(
+                        connection,
+                        exam_version_id,
+                        include_scope_conflicts=True,
+                    )
+                    latest_by_identity: dict[str, dict[str, Any]] = {}
+                    for candidate in candidates:
+                        identity_key = cast(str, candidate["identity_key"])
+                        current = latest_by_identity.get(identity_key)
+                        if current is None or int(candidate["version_number"]) > int(
+                            current["version_number"]
+                        ):
+                            latest_by_identity[identity_key] = candidate
+                    candidates_by_exam[exam_version_id] = (
+                        len(latest_by_identity),
+                        sorted(
+                            cast(str, candidate["answer_key_version_id"])
+                            for candidate in latest_by_identity.values()
+                        ),
+                    )
+                count, version_ids = candidates_by_exam.get(exam_version_id or "", (0, []))
+                item["compatible_answer_key_count"] = count
+                item["compatible_answer_key_version_ids"] = version_ids
+                enriched.append(item)
+            return enriched
+
     @staticmethod
-    def _question_view(row: sqlite3.Row) -> dict[str, Any]:
+    def _question_view(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
         payload = dict(row)
         question = json.loads(cast(str, payload.pop("payload_json")))
         classification = json.loads(cast(str, payload.pop("classification_json")))
@@ -2998,6 +3014,22 @@ class DesktopStore:
             else None
         )
         question_record = QuestionRecord.model_validate(question)
+        answer_key_diagnosis = diagnose_answer_key(
+            AnswerKeyEvidence(
+                answer_status=str(question.get("answer_status") or "missing"),
+                answer_key_link_id=cast(str | None, payload.get("answer_key_link_id")),
+                valid_answer_association=bool(payload.get("valid_answer_association")),
+                exam_version_id=cast(str | None, payload.get("exam_version_id")),
+                compatible_candidate_count=int(
+                    payload.get("compatible_answer_key_count") or 0
+                ),
+                review_status=cast(str | None, payload.get("answer_review_status")),
+                review_reason=cast(str | None, payload.get("answer_review_reason")),
+                linked_answer_key_document=cast(
+                    str | None, payload.get("linked_answer_key_document")
+                ),
+            )
+        )
         source_document = str(metadata.get("document_title") or payload["filename"])
         import_diagnosis = diagnose_import_readiness(
             question_record,
@@ -3061,6 +3093,22 @@ class DesktopStore:
                 "publication_ready": not publication_issues,
                 "publication_issues": list(dict.fromkeys(publication_issues)),
                 "question_equivalence": equivalence,
+                "answer_key_state": answer_key_diagnosis["state"],
+                "answer_key_diagnosis": answer_key_diagnosis,
+                "answer_key_evidence": {
+                    "examDocument": source_document,
+                    "examVersionId": payload.get("exam_version_id"),
+                    "answerKeyLinkId": payload.get("answer_key_link_id"),
+                    "linkedAnswerKeyDocument": payload.get("linked_answer_key_document"),
+                    "compatibleCandidateCount": payload.get(
+                        "compatible_answer_key_count", 0
+                    ),
+                    "compatibleAnswerKeyVersionIds": payload.get(
+                        "compatible_answer_key_version_ids", []
+                    ),
+                    "reviewStatus": payload.get("answer_review_status"),
+                    "reviewReason": payload.get("answer_review_reason"),
+                },
                 "exportable": payload["status"] == "approved"
                 and bool(payload.get("valid_answer_association"))
                 and equivalence_ready
@@ -3090,15 +3138,24 @@ class DesktopStore:
         counts = Counter(cast(str, view["status"]) for view in views)
         for status in ("pending", "approved", "rejected", "exception", "exported"):
             counts.setdefault(status, 0)
-        answer_statuses = Counter(
-            cast(str, view["question"]["answer_status"]) for view in views
+        answer_states = Counter(
+            cast(
+                str,
+                view.get("answer_key_state")
+                or {
+                    "matched": "official",
+                    "annulled": "annulled",
+                    "missing": "missing",
+                }.get(cast(str, view["question"]["answer_status"]), "missing"),
+            )
+            for view in views
         )
-        counts["answer_matched"] = answer_statuses["matched"]
-        counts["answer_annulled"] = answer_statuses["annulled"]
+        counts["answer_matched"] = answer_states["official"]
+        counts["answer_annulled"] = answer_states["annulled"]
         counts["answer_official"] = (
-            answer_statuses["matched"] + answer_statuses["annulled"]
+            answer_states["official"] + answer_states["annulled"]
         )
-        counts["answer_missing"] = answer_statuses["missing"]
+        counts["answer_missing"] = answer_states["missing"]
         counts["exportable"] = sum(bool(view["exportable"]) for view in views)
         counts["importable"] = sum(bool(view["importable"]) for view in views)
         counts["publication_ready"] = sum(
@@ -3115,6 +3172,14 @@ class DesktopStore:
                 reason
                 for view in views
                 for reason in cast(list[str], view["block_reasons"])
+            ).most_common()
+        )
+        summary["answer_key_states"] = dict(answer_states)
+        summary["answer_key_diagnostics"] = dict(
+            Counter(
+                cast(str, view.get("answer_key_diagnosis", {}).get("diagnosticCode"))
+                for view in views
+                if view.get("answer_key_diagnosis", {}).get("diagnosticCode")
             ).most_common()
         )
         return summary
@@ -3167,6 +3232,19 @@ class DesktopStore:
                 actual_statuses.add("publication_ready")
             if not actual_statuses.intersection(filters.statuses):
                 return False
+        if (
+            skip != "answer_states"
+            and filters.answer_states
+            and view["answer_key_state"] not in filters.answer_states
+        ):
+            return False
+        if (
+            skip != "answer_diagnostics"
+            and filters.answer_diagnostics
+            and view["answer_key_diagnosis"].get("diagnosticCode")
+            not in filters.answer_diagnostics
+        ):
+            return False
         if (
             skip != "readiness_states"
             and filters.readiness_states
@@ -3238,6 +3316,10 @@ class DesktopStore:
                     *(["publication_ready"] if view["publication_ready"] else []),
                     *(["exportable"] if view["exportable"] else []),
                 ]
+            ),
+            "answer_states": lambda view: view["answer_key_state"],
+            "answer_diagnostics": lambda view: view["answer_key_diagnosis"].get(
+                "diagnosticCode"
             ),
             "readiness_states": lambda view: view["readiness_states"],
             "block_reasons": lambda view: view["block_reasons"],

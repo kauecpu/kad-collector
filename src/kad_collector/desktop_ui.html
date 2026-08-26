@@ -77,9 +77,9 @@
             <strong id="metric-total">0</strong>
             <small id="metric-answer-summary">0 com resposta oficial · 0 sem gabarito associado</small>
           </article>
-          <article class="metric-card"><span class="metric-label">COM RESPOSTA OFICIAL</span><strong id="overview-official">0</strong><small>vinculadas ao gabarito</small></article>
-          <article class="metric-card"><span class="metric-label">ANULADAS</span><strong id="overview-annulled">0</strong><small>conforme gabarito oficial</small></article>
-          <article class="metric-card attention"><span class="metric-label">SEM GABARITO ASSOCIADO</span><strong id="overview-unmatched">0</strong><small>exigem associação ou fonte oficial</small></article>
+          <button id="metric-card-answer-official" class="metric-card metric-action" type="button"><span class="metric-label">COM RESPOSTA OFICIAL</span><strong id="overview-official">0</strong><small>vinculadas ao gabarito</small><span class="metric-cue">Ver questões →</span></button>
+          <button id="metric-card-answer-annulled" class="metric-card metric-action" type="button"><span class="metric-label">ANULADAS</span><strong id="overview-annulled">0</strong><small>conforme gabarito oficial</small><span class="metric-cue">Ver questões →</span></button>
+          <button id="metric-card-answer-missing" class="metric-card metric-action attention" type="button"><span class="metric-label">SEM RESPOSTA ASSOCIADA</span><strong id="overview-unmatched">0</strong><small>separadas pelo motivo comprovado</small><span class="metric-cue">Ver questões →</span></button>
           <article class="metric-card attention"><span class="metric-label">SEM CLASSIFICAÇÃO</span><strong id="overview-unclassified">0</strong><small>campos editoriais ausentes</small></article>
           <button id="metric-card-pending" class="metric-card metric-action" type="button" aria-label="Abrir fila de revisão editorial">
             <span class="metric-label">REVISÃO EDITORIAL</span>
@@ -100,6 +100,8 @@
             <span class="metric-cue">Ver importáveis →</span>
           </button>
         </section>
+
+        <section id="answer-diagnostic-summary" class="answer-diagnostic-summary" aria-label="Motivos das questões sem resposta"></section>
 
         <section id="job-strip" class="job-strip" aria-label="Processamentos recentes"></section>
         <section id="qwen-job-strip" class="qwen-job-strip" aria-live="polite" hidden>
@@ -179,7 +181,7 @@
               </div>
             </div>
             <div class="table-head" aria-hidden="true">
-              <span></span><span>Questão</span><span>Classificação</span><span>Confiança</span><span>Situação</span>
+              <span></span><span>Questão</span><span>Gabarito</span><span>Classificação</span><span>Confiança</span><span>Situação</span>
             </div>
             <div id="question-list" class="question-list" aria-live="polite"></div>
           </section>

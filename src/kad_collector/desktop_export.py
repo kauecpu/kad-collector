@@ -33,6 +33,8 @@ class DesktopExportPreview:
     exception_count: int
     questions: list[dict[str, Any]]
     exclusion_reasons: dict[str, int]
+    answer_key_summary: dict[str, int]
+    answer_key_diagnostics: dict[str, int]
 
 
 @dataclass(frozen=True)
@@ -44,6 +46,8 @@ class _DesktopExportEvaluation:
     exported_ids: list[str]
     evidence: dict[str, Path]
     reason_counts: Counter[str]
+    answer_key_summary: Counter[str]
+    answer_key_diagnostics: Counter[str]
 
 
 def _sha256(path: Path) -> str:
@@ -221,6 +225,14 @@ def _evaluate_filtered_questions(
         exported_ids=exported_ids,
         evidence=evidence,
         reason_counts=reason_counts,
+        answer_key_summary=Counter(
+            cast(str, view["answer_key_state"]) for view in candidates
+        ),
+        answer_key_diagnostics=Counter(
+            cast(str, view["answer_key_diagnosis"]["diagnosticCode"])
+            for view in candidates
+            if view["answer_key_diagnosis"].get("diagnosticCode")
+        ),
     )
 
 
@@ -247,6 +259,8 @@ def preview_filtered_questions(
             for view in evaluation.included_views
         ],
         exclusion_reasons=dict(evaluation.reason_counts.most_common()),
+        answer_key_summary=dict(evaluation.answer_key_summary),
+        answer_key_diagnostics=dict(evaluation.answer_key_diagnostics.most_common()),
     )
 
 
@@ -282,6 +296,10 @@ def export_filtered_questions(
             "exported": len(evaluation.records),
             "exceptions": len(evaluation.exceptions),
             "exclusionReasons": dict(evaluation.reason_counts.most_common()),
+            "answerKeySummary": dict(evaluation.answer_key_summary),
+            "answerKeyDiagnostics": dict(
+                evaluation.answer_key_diagnostics.most_common()
+            ),
             "notes": [
                 "Somente questões aprovadas, válidas e com origem HTTPS foram exportadas.",
                 "PDFs são evidência; questoes.jsonl é o arquivo aceito pelo painel KAD.",

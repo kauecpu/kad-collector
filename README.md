@@ -99,6 +99,15 @@ Cada questão separa os estados de gabarito, preparação canônica, classifica�
 Todo bloqueio visível informa uma causa e uma próxima ação. IDs, fingerprints e evidências
 técnicas continuam disponíveis apenas nos detalhes de diagnóstico.
 
+Os cards **Com resposta oficial**, **Anuladas** e **Sem resposta associada** abrem o recorte
+correspondente. Questões sem resposta são divididas, sem sobreposição, entre gabarito não
+coletado, gabarito coletado mas não associado, questão ausente no gabarito ligado, associação
+ambígua e diagnóstico pendente. A classificação é passiva: usa somente vínculos, versões e
+evidências já registradas no SQLite e nunca presume um motivo que o banco não consiga provar.
+Os mesmos estados aparecem na lista, na revisão e na prévia de exportação.
+O Qwen pode sugerir somente a classificação editorial; ele não cria, completa nem confirma
+respostas oficiais e por isso nunca aparece como ação para uma pendência de gabarito.
+
 A aba **Coletar links** permite escolher uma fonte cadastrada e informar a pagina especifica
 de um concurso, exame ou ano. A coleta roda em segundo plano, valida o host, respeita
 `robots.txt`, aplica o intervalo e os limites da configuracao, grava o manifesto e cria lotes

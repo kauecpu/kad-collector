@@ -155,7 +155,7 @@ console.log(JSON.stringify(output));
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
         states = {item["label"]: item for item in json.loads(completed.stdout)}
-        self.assertEqual(states["Gabarito"]["state"], "Ausente")
+        self.assertEqual(states["Gabarito"]["state"], "Diagnóstico pendente")
         self.assertEqual(states["Preparação"]["state"], "Bruta")
         self.assertEqual(states["Classificação"]["state"], "Incompleta")
         self.assertEqual(states["Classificação"]["action"], "Concluir preparação primeiro")
