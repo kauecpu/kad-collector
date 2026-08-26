@@ -122,14 +122,20 @@
         </section>
 
         <section id="preparation-overview" class="flow-section">
-          <header><div><p class="eyebrow">ETAPA 2 · PREPARAR</p><h2>Da extração à questão canônica</h2></div><p>Uma <abbr title="Versão editorial única escolhida para representar ocorrências equivalentes da mesma questão.">questão canônica</abbr> só existe depois que a prova é identificada e o <abbr title="Conjunto de ocorrências da mesma questão em cadernos ou versões diferentes.">grupo equivalente</abbr> é confirmado.</p></header>
+          <header><div><p class="eyebrow">ETAPA 2 · PREPARAR</p><h2>Da extração à questão canônica</h2></div><div class="preparation-heading-action"><p>Uma <abbr title="Versão editorial única escolhida para representar ocorrências equivalentes da mesma questão.">questão canônica</abbr> só existe depois que a prova é identificada e o <abbr title="Conjunto de ocorrências da mesma questão em cadernos ou versões diferentes.">grupo equivalente</abbr> é confirmado.</p><button id="prepare-questions-open" class="button primary" type="button">Preparar questões para classificação</button></div></header>
           <div class="preparation-steps">
             <article><strong id="prep-raw">0</strong><span>Questões brutas</span><small>extraídas dos PDFs</small></article>
             <i>→</i><article><strong id="prep-occurrences">0</strong><span>Ocorrências preparadas</span><small>ligadas à prova</small></article>
             <i>→</i><article><strong id="prep-groups">0</strong><span>Grupos confirmados</span><small>equivalências revisadas</small></article>
             <i>→</i><article><strong id="prep-canonical">0</strong><span>Questões canônicas</span><small>aptas à classificação</small></article>
           </div>
+          <div class="preparation-result-grid" aria-label="Resultado da preparação">
+            <article><span>Prontas para o Qwen</span><strong id="prep-ready">0</strong></article>
+            <article><span>Cópias repetidas</span><strong id="prep-duplicates">0</strong></article>
+            <article><span>Pendentes de revisão</span><strong id="prep-pending">0</strong></article>
+          </div>
           <p id="canonical-empty-message" class="plain-warning" hidden>As questões foram coletadas, mas ainda precisam da preparação canônica antes da classificação com Qwen.</p>
+          <div id="preparation-review-list" class="preparation-review-list" aria-live="polite"></div>
         </section>
 
         <section id="completion-overview" class="flow-section qwen-explainer">
@@ -404,6 +410,8 @@
               <label>Ano<input id="edit-year" type="number" min="1900" max="2100"></label>
               <label>Cargo<input id="edit-role"></label>
               <label>Variante<input id="edit-variant"></label>
+              <label>Etapa<input id="edit-stage"></label>
+              <label>Turno<input id="edit-turn"></label>
               <label>Instituição<input id="edit-organization"></label>
               <label>Nível<select id="edit-level"><option value="">—</option><option>Fundamental</option><option>Médio</option><option>Superior</option></select></label>
               <label>Dificuldade<select id="edit-difficulty"><option value="">—</option><option>Fácil</option><option>Média</option><option>Difícil</option></select></label>
@@ -455,6 +463,22 @@
         <footer class="modal-footer">
           <button class="button ghost modal-close" type="button">Cancelar</button>
           <button id="batch-classification-submit" class="button success" type="submit">Confirmar alterações</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <dialog id="preparation-dialog" class="modal compact-modal">
+      <form id="preparation-form">
+        <header class="modal-header">
+          <div><p class="eyebrow">ETAPA 2 · PRÉVIA</p><h2>Preparar questões para classificação</h2></div>
+          <button class="icon-button modal-close" type="button" aria-label="Fechar">×</button>
+        </header>
+        <p class="modal-copy">O Collector relacionará provas e gabaritos já reconhecidos, reunirá cópias da mesma questão e escolherá uma cópia principal. Nenhum PDF será baixado e o Qwen não será executado.</p>
+        <div id="preparation-preview" class="preview-summary" aria-live="polite"></div>
+        <p class="batch-warning">Casos sem evidência suficiente continuarão pendentes para revisão.</p>
+        <footer class="modal-footer">
+          <button class="button ghost modal-close" type="button">Cancelar</button>
+          <button id="preparation-submit" class="button success" type="submit">Confirmar preparação</button>
         </footer>
       </form>
     </dialog>

@@ -108,6 +108,18 @@ Os mesmos estados aparecem na lista, na revisão e na prévia de exportação.
 O Qwen pode sugerir somente a classificação editorial; ele não cria, completa nem confirma
 respostas oficiais e por isso nunca aparece como ação para uma pendência de gabarito.
 
+O botão **Preparar questões para classificação** usa apenas evidências já salvas no banco.
+Ele identifica as provas com vínculo ativo de gabarito, separa os cadernos por cargo, etapa,
+turno e tipo, reúne cópias comprovadas e escolhe uma ocorrência principal. O painel mostra
+quantas questões principais podem seguir para o Qwen, quantas são cópias e quantas continuam
+pendentes. A prévia não grava dados e a confirmação não executa o modelo.
+
+O Collector aceita uma equivalência automática quando o conteúdo normalizado coincide. Ele
+também tolera um cabeçalho capturado no fim de uma alternativa quando o contexto, os cadernos,
+o enunciado e o texto da resposta oficial confirmam a mesma questão. Qualquer conflito fica na
+revisão. Nos casos de associação duvidosa, o usuário pode abrir uma questão da prova, corrigir
+cargo, etapa, turno ou tipo e executar a preparação outra vez.
+
 A aba **Coletar links** permite escolher uma fonte cadastrada e informar a pagina especifica
 de um concurso, exame ou ano. A coleta roda em segundo plano, valida o host, respeita
 `robots.txt`, aplica o intervalo e os limites da configuracao, grava o manifesto e cria lotes

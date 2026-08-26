@@ -170,6 +170,10 @@ console.log(JSON.stringify(output));
             "Página consultada",
             "Gabaritos associados",
             "Preparação canônica",
+            "Preparar questões para classificação",
+            'id="prep-duplicates"',
+            'id="edit-stage"',
+            'id="edit-turn"',
             'id="question-state-groups"',
             "Ele não altera gabaritos, respostas oficiais",
         ):
