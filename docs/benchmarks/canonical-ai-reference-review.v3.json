@@ -1,0 +1,3947 @@
+{
+  "schemaVersion": 2,
+  "kind": "canonical-ai-reference-review",
+  "taxonomyVersion": "2.0.1",
+  "sourceBenchmarkId": "canonical-ai-1642c8aeef150352",
+  "reviewMethod": "agent_content_taxonomy_review_with_fingerprint_replacements",
+  "humanReview": false,
+  "supersedes": "canonical-ai-reference-review.v2.json",
+  "records": [
+    {
+      "sourceQuestionId": "fc9e067e-666e-53a6-b23e-b5088fe98e31",
+      "contentFingerprint": "b97ae148f0279e93bbe38db9480b4807cdee86ec4bb52cc34dead710973b612e",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "e552c7ed-63d0-5106-9dd5-8faef269a5f1",
+      "contentFingerprint": "6c8fa5881488ba0f14cafb578630c1f64e70703255805de9c0e0714057fe1890",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "ambiguous_reference",
+      "reasonCode": "multiple_plausible_taxonomy_paths"
+    },
+    {
+      "sourceQuestionId": "6f2dd8ac-07bf-57bd-85c8-2e72431581cf",
+      "contentFingerprint": "b02fa14fe525f9598dc9c05189eb901013d95a56ad901e8f361eceb304eb399f",
+      "structuralExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "e196ade1-670d-5b9d-97c0-08d46823a4c6",
+      "contentFingerprint": "dae523271e1649b3a701eef7bab5bcc2c5defd9d4ebddb05aed16a65f1438071",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "b2dee6d9-71d1-5f38-9fb5-dae04d54febc",
+      "contentFingerprint": "7be043ed36de267ee6a9b0c2323dbdebae2e60e0abb71d022bc785212097fe79",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "04d8994e-e490-57e1-9d55-8e062705874a",
+      "contentFingerprint": "2a640b3704e167fbbdfb29d1f081e967d2061a12a2636e13eba67da4a04b1fd6",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "dd818ff4-b224-5a72-a577-b10f3d9c16d5",
+      "contentFingerprint": "da97c4f7022e6977d6d29ae0a5360abc3d4f82f2762ceb8d26d3d68ea195fa47",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "structural_only_reference",
+      "reasonCode": "taxonomy_lacks_specific_semantic_path"
+    },
+    {
+      "sourceQuestionId": "dd1147d1-bc17-5278-90fc-2cee2b4c7835",
+      "contentFingerprint": "1b368833bccf0503158ca2f7ae03aff12246886f13fb297ea30073162de84d0c",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "structural_only_reference",
+      "reasonCode": "taxonomy_lacks_specific_semantic_path"
+    },
+    {
+      "sourceQuestionId": "c1d3e2d9-39d3-52a9-9261-12972af9dd8f",
+      "contentFingerprint": "b413d5eb66cc1ba87b452c87db7d136a971a454946e11a499d95fa9f42f8c704",
+      "structuralExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "aa221b7b-4193-5bcb-83eb-3a38649d8e22",
+      "contentFingerprint": "630435ffd1e8ec1b63f16aec66a795af673f418cba51acef6fa57615ad931448",
+      "structuralExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "342d5f55-5abc-534a-890d-4d72f1559b71",
+      "contentFingerprint": "086d50cdcc152fe8e7f9eecbcf6f6e9228db0cd41a0e84b900bf8aa1bd0a3dee",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "aeebf818-b054-5c8a-91a2-91519a1b44b9",
+      "contentFingerprint": "bb0b55055e5d607c11cd8fa817f61623fbc71df7a853603fc86f6cf655e5ab76",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "c7e79427-0532-5d82-a3ad-d298c9f4fe0f",
+      "contentFingerprint": "659fa9ef449560bee3a66cb90d1fd855200fbaf8d4764114c46f1b316a55b840",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "3b9c4f19-91f7-5837-8f73-564e50efa04f",
+      "contentFingerprint": "658af1af87948b83f84234a946232d0ddebaeccede9a7dc5151095af76cb67a2",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "a9f4fb4a-7457-5167-9fb4-b42c5399f07b",
+      "contentFingerprint": "bc319d1ee034b9cea242165edb1a0bd56ee766e848dc1f03ea5202e23ce3d777",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "structural_only_reference",
+      "reasonCode": "taxonomy_lacks_specific_semantic_path"
+    },
+    {
+      "sourceQuestionId": "a2905881-4773-53ec-bf5a-2c7d7937285d",
+      "contentFingerprint": "2daa5c3e0615b3468a792be5db74e11f99a9a6cc7be0303d7540feb019f1d0f9",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "5d4655b3-d94d-5bd2-ae0e-1beba0c88c41",
+      "contentFingerprint": "418fcac97885f921d49c0b87a41f9a77c6daa7237a2e96cdb2296e6d106d0cb2",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "f9914b04-fe95-5037-9a31-2407dd39aca1",
+      "contentFingerprint": "d297301aed139b34f2663e0c94734914ca0028146235a9ea9edc0f788ac809f5",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "ad2b6ea1-6bc9-56b9-b10f-7b00cc13c462",
+      "contentFingerprint": "4fafc34bb5219d33c9deb91be40d3ae6559371369de0651afa6f6a8d9bb98f9c",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "edbdecc4-1b33-57a8-9c79-e7f6fcfb3115",
+      "contentFingerprint": "5079d152ade3b2b9f68aca2986737c33a16c402cdfc62f4c69b05a0e8ad54af7",
+      "structuralExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "a8e6e0e0-15eb-5b72-a5e6-dc5faa1b501f",
+      "contentFingerprint": "32d429ffa86356459c1b5ccf924e276fef5cc06a56482bbf7699ed9b461e5510",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "46f0e580-c75f-5da8-945c-61fc80ef219a",
+      "contentFingerprint": "2a6c954510e94295d83ede02f7590513ce09c444a8f9fa32d70e958299454f7f",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "343bd551-1bb2-5dc0-9055-1da99eb1d10b",
+      "contentFingerprint": "af47eb2a7a1f13e1b74959f14e76ee72c3a171d6a4c949bc1562b9970356bbc0",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "0460e89d-3fde-5b87-9ee8-77da3f51238f",
+      "contentFingerprint": "fc2630f6f0ff2f86778d67f1ecd15b92e6d01b9045a450cff022269105ee27c5",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "3b1b8c2b-bcb7-56df-9073-d73cf254ec23",
+      "contentFingerprint": "6407c4f12e80a95f16753335046911821fd81df9e5888d752789c14c9719d751",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Tributária",
+        "matter": "Tributos Federais",
+        "subject": "IPI",
+        "level": "Superior"
+      },
+      "reasonCode": "content_supports_different_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "8f11270f-458f-5299-a49d-0480e28d14d7",
+      "contentFingerprint": "406b656029b1c846e82f059ff39bdfb8122e239a5dfe4208ac761617aa75b288",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "083095c7-7056-5f5f-be24-8fdee9066475",
+      "contentFingerprint": "ad9ef87f13fa76c2f2a9c63e68ae0fb0ff602623af9b523a17301e773255b829",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "082654ac-def3-5944-9cd1-ca63f8aad1ec",
+      "contentFingerprint": "29a0f66767272a23d8373bf5973e331077fc98324c243ac203a3cec88099f2e7",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "695989bc-bc84-599d-8cab-719e08d1580c",
+      "contentFingerprint": "4543c0f9cd081b1fd15246d9d0e872949d37edda53059f5a9d15ae8a6102bd7c",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "86c89b36-4e82-5531-a873-047d6569e63d",
+      "contentFingerprint": "645a16c962ba9b702d64ed3acb29882b4b61f20b2c577aa327b37b0b9ace4c75",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "eacc965e-788d-52bf-8443-838290a72181",
+      "contentFingerprint": "81395d41190adc80891a9b885d5ab038a110963c6b155064993182f27655737d",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "2a4e93d0-f7a1-54ee-aeee-8b0346c16a75",
+      "contentFingerprint": "f872f610c7b66e393beaa9d7bdc33522e2561bc12334ae2aa61342f3ecbfcd39",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "b98f3ea0-355b-5491-be11-312e3da0f62f",
+      "contentFingerprint": "0c6cee5d6ff7966c3ed2156b5ecd87b36cf29f6b0d6efea0cb13c7fe83ef5e2e",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "093669c4-f5d4-5ff3-95d7-74e847553b28",
+      "contentFingerprint": "4340ea098d6afb741d0571765531337d23cf6ca65376cbae3e17052a40b27dfa",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "b0033619-6ac3-589e-8d9e-98fbe11a5883",
+      "contentFingerprint": "c91d0776d6cbc32c2cee1822d501f945bebf4b6dbc6c687b879a4a965a149c46",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "structural_only_reference",
+      "reasonCode": "taxonomy_lacks_specific_semantic_path"
+    },
+    {
+      "sourceQuestionId": "e2951b30-cac4-5ecb-826f-a28a39713534",
+      "contentFingerprint": "7ead8ad02031e082d1cfe73f6261b33521e41d50226d8c13694caba5381bdb37",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Sigilo Fiscal",
+        "subject": "Sigilo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Sigilo Fiscal",
+        "subject": "Sigilo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "14653f40-2a35-535d-b2e9-c4fe55a9f333",
+      "contentFingerprint": "2b8860b2dbba37c1ea9dee04224a1e02323e610d99e95a9d5e8ad864ef2f3275",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "c1d76f30-2f1b-5deb-979c-2f0c31533b50",
+      "contentFingerprint": "51fac3eb7e6d9b2c8a5f5e652da55b5f702eae9a5299365f8331444a8db8852c",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Sigilo Fiscal",
+        "subject": "Sigilo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Sigilo Fiscal",
+        "subject": "Sigilo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "b5c1cc96-a9fe-59dd-9281-cc676cc3bcf8",
+      "contentFingerprint": "8f925d7b8e871a44fd70958859e66ba88b2ae5929507aab48800a4f6af9a18fd",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "rejected_reference",
+      "reasonCode": "sanitization_removed_required_content"
+    },
+    {
+      "sourceQuestionId": "fa228e17-3088-5a41-a5ea-df1425065abe",
+      "contentFingerprint": "50955a6063285fe9d2e64c14a11f5252c821b6da30b74b51bd9588042144267b",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "structural_only_reference",
+      "reasonCode": "taxonomy_lacks_specific_semantic_path"
+    },
+    {
+      "sourceQuestionId": "82997a0d-c652-565b-a0b9-a4feccfc2fe9",
+      "contentFingerprint": "5c0ee04b72be3d4154dde84e515769798d80c1d0dec1e7915fff0c2b1c87d541",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "structural_only_reference",
+      "reasonCode": "taxonomy_lacks_specific_semantic_path"
+    },
+    {
+      "sourceQuestionId": "727ab75c-5385-56e8-9bd8-2d7906ed1e70",
+      "contentFingerprint": "fcf5ecfd40317932027bdb0e08e9b312ffa3066384c7d74def1ab0e555f982c8",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "01d18c5c-4e05-518e-9a94-50e5f652ad83",
+      "contentFingerprint": "364155d2f05b6831f4e268b2b66f0e5e285e56230608e9fef7c94b2005f3062a",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "1f8691a5-efac-5fcf-ac24-1f637c3eff8b",
+      "contentFingerprint": "ded881901b8195eb15aac140e5e91dfa2730416000e4dc90e7597c216915e7bf",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "be2d50fd-a340-5bf2-938f-746ff905e61f",
+      "contentFingerprint": "eb1c187055541b35914c3461e8b4fe3f826652aa80ba4d95a605d3aa0596cc32",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "af8e1424-1120-550c-9b2c-d7187ed10a76",
+      "contentFingerprint": "7057c6ba214a72b9aa3a07d94b5f858d2695cfc6d590f5b42f27c726a9424504",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "a09dcd79-ad9f-5d42-a129-d35c040568a6",
+      "contentFingerprint": "a8fdc0bf9b66681a40ab11a3c92ce6cd9dcd4a982a03a59ad9d6960300479aa9",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "b54309fa-ec52-5913-a4e7-57dc8ccb93c2",
+      "contentFingerprint": "2fd95e54a55f4b56575813d833f492467dffffaecffeb15b08e8e855775688f7",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "d881a500-1a10-5cda-bdfb-4de518af45a6",
+      "contentFingerprint": "87737027a84946c3f411aa66baaa3f97d6a4b0ce3a6ca1c353b1d000d3487363",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "056a5b68-8b08-5fe2-a269-c4e4060034fa",
+      "contentFingerprint": "96d409af4324e6c4484e0396b8c80c4fa3210c4dc8031deb6d8ce8676978b824",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "1e7a40d1-6376-5425-8c4e-afe076053a69",
+      "contentFingerprint": "79ba730c57752b380cd62494d039789fdea4f239e562af8768d80ae205b4415f",
+      "structuralExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "bfd9056d-81b3-5d44-8114-85eef78a9f95",
+      "contentFingerprint": "528e344ea0f279d75329e7657670cf82fe6df130d6be7727eee77e623e1000d7",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "72a6232a-9e4a-56d3-ac67-6d62c161bba4",
+      "contentFingerprint": "0c8c324c945c72fb40ea580aad603e02073b948e64fed2dca8ea651f71d5a3c8",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "structural_only_reference",
+      "reasonCode": "taxonomy_lacks_specific_semantic_path"
+    },
+    {
+      "sourceQuestionId": "899b54d0-7f92-52e9-b0a8-18376cbede63",
+      "contentFingerprint": "2b872cc762de014a246d0491a93f028a3dde8c3ef470bc4ec10c41030fa73165",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "278026dd-2f01-5755-82c3-6d5d9b8165be",
+      "contentFingerprint": "1f41cbb2f5f0b06acb55aae29b69adea9d2032404c713fb241ea17fec8af5b60",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "66f26ebd-38f5-5603-a433-99ca160287e3",
+      "contentFingerprint": "3f12188d8a598437864d50f8f044fb4a2fbb7e5380c0d0f9274c40eda8cd2430",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "structural_only_reference",
+      "reasonCode": "taxonomy_lacks_specific_semantic_path"
+    },
+    {
+      "sourceQuestionId": "c031f650-7687-5813-b57e-c322002cdf18",
+      "contentFingerprint": "c9e769d4862e54d917a3f1e4bd63773f134ec8a5767c06f723acb819a1dce331",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "2d892ca7-94e0-5ad7-a627-d34096cf3de2",
+      "contentFingerprint": "a4d5069fdd54de66be85c4809a0b6866c2c6dbbe7e3c56cc198e4bc17d62fc5c",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "546bcdd3-0433-590c-aa0e-950510e12f1a",
+      "contentFingerprint": "d6e60db36bb329ba05242a2333d2ba15710b3f9819be3d38176e89975c8e7a00",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "f5a913ac-31d6-59b6-a778-2bfd403a73e2",
+      "contentFingerprint": "7152e0fea062a5fca3fbdfe03a892fc6cf8f1f29ee09cbdd39beab5e47727077",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "e8a464b5-eaf3-5e53-a1c3-6f31a9bcae2d",
+      "contentFingerprint": "04be4b52c6a46b5b0ffe9b208d260910d02dca636e65c74cae6403815cfca2d7",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "structural_only_reference",
+      "reasonCode": "taxonomy_lacks_specific_semantic_path"
+    },
+    {
+      "sourceQuestionId": "09a2ff70-c82c-5047-958a-5acb0d3a730e",
+      "contentFingerprint": "f2bc0d191fb8d399057505432403b6dae873817a8e3f728fc1c0b39a61076073",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "da3b85b5-dc46-512b-b488-e9847ce46fc0",
+      "contentFingerprint": "2cc8c4fd92afb442607cc4c9cf903886d7190bfa4c46f380eb7d417dbe108cf4",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "def0df91-b434-5806-af7f-9867075d1c4d",
+      "contentFingerprint": "32974521a76b0408e2a7bf2a6a6c4936ecabbc177ca2572bc54a4f6a252ed9b0",
+      "structuralExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "ad5196c7-9f7f-5996-949f-ee34e53a3554",
+      "contentFingerprint": "6fe4491d1373426461e45a2b71b8fa3a746c707527ab249ed3cd1aaba08b42b1",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "4e13b7c9-53bf-5377-9e1c-9589d77c9536",
+      "contentFingerprint": "3448afd464384934ff461a5baab0fdf6bf040a51a4f04d9da6f4af194478a519",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigações Acessórias",
+        "subject": "SPED",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigações Acessórias",
+        "subject": "SPED",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "c5975458-afff-5b64-bd78-2134fbeda2b3",
+      "contentFingerprint": "c26f0fb16df09534e1cded378f632823e4ddc55f14dd9980ab7216b577372cf0",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "e56d1ec2-0d65-5e87-a292-7764daca38e2",
+      "contentFingerprint": "2b7ae6ba9637a59f575a09e3703f058efc334c5c87a9cef429798c42c51ed609",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "7db21ded-0209-5fc8-ace0-d022c033104f",
+      "contentFingerprint": "24fdd1dad3e0818c90d3256c3c6503a2d41479d86f9cf2a32c2f01fcf1457ad3",
+      "structuralExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "e63cb817-a692-504c-ba7e-85bf0f4c23fb",
+      "contentFingerprint": "15283fce871fd8baaa68ee868aade2e9592ba303b76081a199e5cc5fd58d134c",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "9c87a535-ee2f-5a63-95d2-c4e468753a5f",
+      "contentFingerprint": "267188679804f2cdfc422748c2b29e4f6bb36cf0b7bf800d2ba1574e75e442d8",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "a8efbb98-a3d2-5dfd-9b5a-d4b9d256bb82",
+      "contentFingerprint": "4bf19567164feb0644398d6d578915a8f011130756e9f9696d1ad59eb89efb98",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "3b61079c-505d-5497-a7b0-a89401bee787",
+      "contentFingerprint": "0f4fcade73652c4165c7fea8e8b05da5775900eec00ae9b574d0f92274c0101a",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "structural_only_reference",
+      "reasonCode": "taxonomy_lacks_specific_semantic_path"
+    },
+    {
+      "sourceQuestionId": "7596fe12-f690-517a-9bba-cf6916e60ef4",
+      "contentFingerprint": "c9b56e40daedbff9407322ba6ef7ba1abde7963f91e794e9546293b3acdc359a",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "4d42efdc-ac02-51b5-9073-bed25d772d6f",
+      "contentFingerprint": "360c7edbbface4d58b9e7e0970ca08241cff0de8609b22f4833eec741b299761",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "0309f82a-716b-5784-89f2-e858be6b4528",
+      "contentFingerprint": "18049c55ead8f83ee2920bbcbbffd604e8565b8b3d4c190842517d10e4520848",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "5bcaeaec-83e1-5771-87cf-9f6579583dd5",
+      "contentFingerprint": "086f1064d46b16bc2efddb8c6077e795e23ff7e9abf1cfabe305c0294b014134",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigações Acessórias",
+        "subject": "SPED",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigações Acessórias",
+        "subject": "SPED",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "27918507-e3d4-5a7a-a628-734c122eae15",
+      "contentFingerprint": "6c66b7fb4bdf72e6bcf051b3d664bd7ed01eaacff3a8c2efb6340daa71db75c3",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "structural_only_reference",
+      "reasonCode": "taxonomy_lacks_specific_semantic_path"
+    },
+    {
+      "sourceQuestionId": "44139e77-3858-5813-a4c8-9f1e096f06cc",
+      "contentFingerprint": "074ef74cb831404e4ffb9c28adf25bc5d998b46d03e614652877ea154ea5c6f5",
+      "structuralExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "3d940579-2389-5306-8a7c-87a60f4056ff",
+      "contentFingerprint": "3e10ff3898ac5290b0b843d5676a058a6f96b2dd5b35815eaaaf53e2dc9a8c9c",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_supports_different_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "593c91c0-bfa0-56e8-a9c5-ae9e39c4eff0",
+      "contentFingerprint": "69821af421579ac03572702e00979db7f2d362725b1fc1e44098837024682e14",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "68825277-41db-53df-aaba-dcbed5f04b80",
+      "contentFingerprint": "ce993de7419cc3c220bd6b61e11bd18a257a18836d24248fe10034a84adcf571",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "ba75decc-2d2b-5480-82db-52047bce6189",
+      "contentFingerprint": "9f3e7075eef59dd4e11ee96efa510087b3dcf3485cb25c22e836fc01691c73e1",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Atendimento Tributário",
+        "subject": "Atendimento ao Contribuinte",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Atendimento Tributário",
+        "subject": "Atendimento ao Contribuinte",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "49184266-b948-5c1e-b098-2a5518876e46",
+      "contentFingerprint": "5bfa5b8a5fddd3eb9876109e32fd642fed1c33d369a2644e105923a5393590ed",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "9f10d571-3cbb-585a-b61d-c4e547775c23",
+      "contentFingerprint": "c74db2bae4db71b2710f26a427585bf97c8a8186a700f27dc2a4992289ec5c41",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "8d45c04e-f786-586a-8952-973ee9fec3e7",
+      "contentFingerprint": "aeb21a726a0ac2455c1819e994a894bc159b831cd73ebb8ccc8d3a3936640ab8",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "101eaebf-00d6-5acc-86c0-47e3365e820b",
+      "contentFingerprint": "809ff62114d4bdbcdebee8e112fcb27d8f50b4237083ac455c2fc77584209ee3",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "78df5ae0-4ddd-5eee-8af8-532709f5fcac",
+      "contentFingerprint": "4a26832a8b2bee737c653d536f07d7e384de94fcde5dc2c4e0f6bdc06088a69c",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Sigilo Fiscal",
+        "subject": "Sigilo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Sigilo Fiscal",
+        "subject": "Sigilo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "8bd52623-a1ce-5c22-bf37-d225a72f46a4",
+      "contentFingerprint": "fc7bab1b1a52542f92dca1f0d899091df3c4f6c2e28473f1e9e5cef0296a0e90",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "d3feaacb-3a5e-546b-9dc6-54c2737e7243",
+      "contentFingerprint": "6f607e738a131370ad6b76c000cea907780c2affb912887e734d3fd00a548920",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "8f28603b-2bd7-5bb0-a445-72e4c964a7cf",
+      "contentFingerprint": "9af33e2493e7d2acbe0f7cd7e6c3c94bcf67149aedec9e1dee0130b5f23f66b4",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "82d6c630-6257-583c-ba79-05c8d683c395",
+      "contentFingerprint": "f1ad6807820ed0a9ae58380f127118265c252fda9d36515a74c69abc6c6649b4",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "e9f3a84b-6550-5463-9d17-78914aef6868",
+      "contentFingerprint": "10626a8ca808eb56b980bfd3fdae168a185652e93f425e4a030d31d8922e8812",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "1724ff66-7696-5b26-8f2a-a3f4f88ffe77",
+      "contentFingerprint": "58054560cec4399dfc2036ab710ba8fcb770efb5a3d820b2c46f2b5a442ae2c1",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "108c7056-8738-5fe1-b522-b6e7afec4b38",
+      "contentFingerprint": "70a356b6dd9843d1cf6495232e55f998729a91ea0209cb8d318374aabeb7b424",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "45ec474d-15ae-59ab-aeb3-a65fc2c53134",
+      "contentFingerprint": "15b82994669e4d080accc6a9a7a5bc612bfa5547fb3f833a9323fd80873a03d9",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "rejected_reference",
+      "reasonCode": "sanitization_removed_required_content"
+    },
+    {
+      "sourceQuestionId": "c8097005-8514-548e-99fe-2e9787c20fa6",
+      "contentFingerprint": "8b323a01da4c598cf2f9540f8b0cc2a3430b529963e721e2177b4affb458f56c",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "41e21af2-9897-5e2a-9423-da53ffab9cac",
+      "contentFingerprint": "3b7b7900f25ba49f6949042551d035b84dbc863811baccda54508d59cbbb6970",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "90d4c250-bb81-5c25-8628-e46a4a1b3ff6",
+      "contentFingerprint": "3123b4feb93f549e093dc098f7d0ee4b6c381c07b1827aa5d5c9aeec36e6a191",
+      "structuralExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "e0512145-89ed-57fe-8d09-8780beed739e",
+      "contentFingerprint": "e36fbc324960360c4504daaa7a27204b61cac9bdba7c8d27671e387164d9fa2c",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "structural_only_reference",
+      "reasonCode": "taxonomy_lacks_specific_semantic_path"
+    },
+    {
+      "sourceQuestionId": "b7e4d477-fac3-5da9-a161-2a8ff0be424e",
+      "contentFingerprint": "ce72c97f8a56ca50e8cc9e90ef9deafa55842589f500188da79d3372fca560a4",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Atendimento Tributário",
+        "subject": "Atendimento ao Contribuinte",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Atendimento Tributário",
+        "subject": "Atendimento ao Contribuinte",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "2319420e-b838-5105-8215-11650cd377a9",
+      "contentFingerprint": "711ddb1812cbbbf9f75bd3590b89ac4d747a71a2a34aedfa80265adb5f2a7df6",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "33d9072d-2240-57f0-80ff-1d8540eb6ce2",
+      "contentFingerprint": "19f143b45fbfcf892307224a822edebdbe34f65a2f65c686ebad1398c3bd2375",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "09dc5805-a21f-59d9-b6c2-98f6d14f3db1",
+      "contentFingerprint": "1af7c7c5cebbb14b73a7b50cb01b601706cc8f7ba3c78d5a869340b099df3abd",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "status": "rejected_reference",
+      "reasonCode": "sanitization_removed_required_content"
+    },
+    {
+      "sourceQuestionId": "8452b4f8-315b-55d0-872a-ea2fc7d5805e",
+      "contentFingerprint": "474feabe1c0f8e027e873be9e001c21e620df8b8ae7db04262a86e759393dcb3",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "054fd972-d665-51e9-9018-af24e9f58f85",
+      "contentFingerprint": "a0956d884832f31150117cb2196a8651f22ee70e6ecb950369c90641ca45f951",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_supports_different_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "ffb16e56-e286-5b85-b86b-aa0ac8cb74fc",
+      "contentFingerprint": "57116004b8985667f0c2e4b90855748a5619a51af5ecf0164f612d8b02c7ad09",
+      "structuralExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "a53d8dd5-0730-52e2-9a5d-d25dbf4f1dec",
+      "contentFingerprint": "131cdeafb2da0a73f2de0593a4226d6dfc0bb16342f04a894caa6df14d6061ac",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "bd0010f6-a33e-51f9-b8ec-e0e1495b35af",
+      "contentFingerprint": "0bfc4f24d8b34e4b8aeb99fd2526959489bb8c76c349d2639dc0194bcaf63d86",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "8715df5d-d1c1-56c6-ab76-f00cdb8c267f",
+      "contentFingerprint": "93370e8d04fafd0272a580550db5006ec02fd0a5cdbcc364a1973290dbe51330",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "ce16332a-4280-5794-88d1-a0b0d87a1a18",
+      "contentFingerprint": "09d5612394611ffb9bc65e2b43113930d8058c01a699436a2f34843a2802e6cf",
+      "structuralExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "81903652-675f-5062-ad3b-b90d784173e2",
+      "contentFingerprint": "97952b5299f4cb4861f3246c169cbdcca3fc5b811345406efbb773c1588929a1",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "a2492c05-6c45-5e70-b7eb-10e077350405",
+      "contentFingerprint": "62d9956be84446e784ea5940143624d873c550a22325fcd84eea240acff56291",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "status": "rejected_reference",
+      "reasonCode": "sanitization_removed_required_content"
+    },
+    {
+      "sourceQuestionId": "f305ba59-e840-53a9-9487-b93814dd37c3",
+      "contentFingerprint": "2ba16c9005c15deb5ef01316cdfad76e7c8246432f72b7d07780df3005c61973",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "a6a5213f-ca8e-5aba-a34c-36364ccca3aa",
+      "contentFingerprint": "59af4a8f7a43d5076bafd88394fbc520d3dfa7ec37132a14c2d7ff6a097ae81c",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "89f5a20a-1b93-5737-9b36-8d9342c16c6c",
+      "contentFingerprint": "ebd40600428dac091bdf27d049e2fb2347cfbaab70dd29b2da3a5ed7fa942aa1",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "092151b3-19bb-5d86-a955-7db12c625ad1",
+      "contentFingerprint": "56a2586cad67e5d50edf5602d218ff04e3d178eaae9417dab15cea6e2cb5c51b",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "988477e5-a4bc-5029-a1f5-796b7c8db034",
+      "contentFingerprint": "4caad900c9f1b7a67e97313a4c7ab83cab29efd90a9d23268135da68c9663724",
+      "structuralExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "8ea5f672-b2a1-5bd2-9fae-72da1f4be04f",
+      "contentFingerprint": "194ef4408e763feb4cbcfabc5e553916df25953a24eae7e923139a924565538f",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Sigilo Fiscal",
+        "subject": "Sigilo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Sigilo Fiscal",
+        "subject": "Sigilo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "91e8804a-64cc-5ced-bf0f-423c9bd01dea",
+      "contentFingerprint": "bb5e6c741fd30f3247e550a5eaf760004a06f390b1012914e95cd7d093e418b4",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "b3f3f4e3-a305-5496-8d70-be21c69f5a64",
+      "contentFingerprint": "210caaf3700097d2be14bc2420e6b756214ce5c17fb7f5c1c572838f0fa5249d",
+      "structuralExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "0c32c4cb-e700-5e71-8017-f0eb03d0763d",
+      "contentFingerprint": "6d581f28779322a67f257586d6b13fe058c6c6339f6eae7164a0facd09c2d407",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "60bd2324-4561-5877-be2b-b2f1ab320ef1",
+      "contentFingerprint": "02fc0fc57756abd7a6684f7a489c079d88378a96214d4eabdb421a591c0daafe",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "9caaf42d-ed5c-571d-abcb-6cf0f77e3b13",
+      "contentFingerprint": "0d2c88e3bff2d71359e2927d690c357ff7b8f43e15b7d425da85ea5d8ced96c2",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "66f44417-aeca-53ff-bb86-880ed2de4312",
+      "contentFingerprint": "4ed4c565522885142dd9ce73c9b6541d71dfb12c3f484cd0e7624cc8b14dfd5d",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "b9c5dc7e-d715-5f15-8fad-319bc55af93b",
+      "contentFingerprint": "fcc073865d4b60adfc584e633dc2fb6b724cefa55d4b47aeb187dd2be9ee81f2",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "f18b742c-fef0-50c7-ae55-3a2d3cc35472",
+      "contentFingerprint": "81f35a267830778628ba7b465d5d27a0f9f106fd58823804f5c71f35be4b091e",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "83f1a915-bd6f-59b7-aa07-a62a905a7fea",
+      "contentFingerprint": "a7b655f9c96263c5a03f8fe0dc58559e57cfcee6d103443458db9d1ce723918b",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "df346a4d-644a-535b-83d8-268889b21fa2",
+      "contentFingerprint": "b1cd5bf434ebe493d4cb66f82ede32c09bc0091c8852824007cb3719f31e848d",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "079c630f-7148-5628-9f19-ccea6e8652b7",
+      "contentFingerprint": "452cb1502da8bf84f788fefbe2f1efb53a91a2e333a085acbfb646e23c1234ad",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "28ebc689-0406-5e79-8068-df26092ed86b",
+      "contentFingerprint": "f1c352f1b1140c076a3eb74354c2eed9716d1ecfd8e0807c272d6fce80bc14cb",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_supports_different_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "4b4a2af1-4ce8-5f3e-a0ae-574847421267",
+      "contentFingerprint": "3a9538db8b98fa705999638d4370b95f9fcc26fff4d05b70eda422e32f1075c2",
+      "structuralExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "8fd380ce-728c-5e64-bdb1-dee8b08030df",
+      "contentFingerprint": "5181db3e66d2162ee69babe3f8ceefba51ae5d317a9aa53edec1087a7050320a",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "cb37feaf-5128-5d3e-a28b-75cef723c67a",
+      "contentFingerprint": "6254b69af9b055c7c0e626b18b94f05ed2229577ee15310e04ddf362a97ed74d",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "ad5807e2-1673-50b9-85b6-d0752882166e",
+      "contentFingerprint": "159e18adef78dabdb14a0a54ffcf321195151bf184bd38f66bcc64d21928d254",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "structural_only_reference",
+      "reasonCode": "taxonomy_lacks_specific_semantic_path"
+    },
+    {
+      "sourceQuestionId": "adb2ac47-4f49-542c-97b6-ca1abfe1d4b3",
+      "contentFingerprint": "e22c8c35e070598b786625fd3bf7428cc7cfbfc60fa5177f0c5a46e5d0e11dc1",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigações Acessórias",
+        "subject": "SPED",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigações Acessórias",
+        "subject": "SPED",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "d27a3f70-69ae-5a87-8e11-4db888628218",
+      "contentFingerprint": "44688a83bd9f213dd7fcd4b49c90b83be4cd6774f4d880841fdac8edb0195861",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "c8b5666c-6a46-5411-aafd-25a3898874ec",
+      "contentFingerprint": "b6ef062e6c97a2f1319c882ae6e838f01ba2207d8c37973fed2f7d4035f9e0d0",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "3b09b29e-3563-52b6-bff2-ed2857a9f152",
+      "contentFingerprint": "733807c67b999a99fdb43bbc0c2c3cb589bb8f9527f2489af67ad33712196d9c",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "structural_only_reference",
+      "reasonCode": "taxonomy_lacks_specific_semantic_path"
+    },
+    {
+      "sourceQuestionId": "b4fa1bff-d83a-5db3-b7bf-e4c5e91e49fe",
+      "contentFingerprint": "12d7c48ee697bb5f165c59dc3d5fe8faac1d09663d82398b2cc2c31b78950523",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "06fa2ae8-107c-529b-98ea-dece663f1254",
+      "contentFingerprint": "78410987b5fb1fd77cf57c261c8c82f2dfe37c3c44a60b8a8a0d66e5b013c2ea",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "ae626552-ec87-570d-91c0-e8a31f58f396",
+      "contentFingerprint": "bdebcd0ab412ed9ef9e11b5feedc75dd313a0e8093c6318e1f4737088384ea6f",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "6f08c99b-2fab-5011-ae1b-2cb07e7e2668",
+      "contentFingerprint": "3c96c8d9f7cc4318bd7e34bf8ec07e6c0adb7ea91a90f2c038f56f4e6d302737",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "622e73d0-e5f3-5bf9-b74f-8e6433ada47a",
+      "contentFingerprint": "55dc1087339f61458c0064478c3cd8bd87567c3b4d388994146a1b63806c4bdb",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "18f54f1e-f803-5f1e-95a6-2bc96c5c16b8",
+      "contentFingerprint": "36095bcdbbc66b289715c0ea149f46f46b49b6cf14a2f04eb7b78d4931926f4d",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "27b74ada-6aa0-5b86-961b-b1ff2eaae13a",
+      "contentFingerprint": "d3b4757a67f8ac351bec1014a3baa4fca2d4d4d532f5431f4494bafa95d2afeb",
+      "structuralExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "7731028b-090f-576c-8117-f560b1b44e20",
+      "contentFingerprint": "d5048aef8892a99849c1ad49e1f36ec435da014307377fd4b7f9ca13f73f7319",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_supports_different_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "b6d83b65-b5cd-5b75-a116-677dfdb78e6d",
+      "contentFingerprint": "7e4037474d5cccbec3214fad8ec979cafe23e887457edd2d571d684d54ca1398",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "c7e0e45d-b774-5848-908f-6110680b28fe",
+      "contentFingerprint": "ea4146544db5d3b64cb9cc1253d5c9dda8e50225a61d620f695f08dd99cedab6",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "e12afca3-bead-5c0c-b21e-29097cb28e59",
+      "contentFingerprint": "d1ce63370daa5294d31293e1b421377a42a8218aba0a01eb8cc135fb06eeec3d",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "135f76f2-342d-5c27-b66c-930ae5382537",
+      "contentFingerprint": "d6c44fec9df443ef58dd706f5d392baa53fddc9993f274922afdb175f577f621",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "3a37934a-043e-5fe2-be89-3fa4e1925280",
+      "contentFingerprint": "01f3594c1499fc87502f2cfb3f6a0402b0a9b5c2298a58a3af7c2e06d4433d30",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "17180d4e-d078-538d-b0ce-957f23f4cd15",
+      "contentFingerprint": "1dfe38f9d4deb2c1469fea119746dcb5c3e9c8f9b8c091b11e56c468883bf603",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "b6853e4f-7051-58a7-9c4f-a4738948bce8",
+      "contentFingerprint": "fbfa6149a10cf92c8e02ad0f5dcab776d47f45bc647807dc31ba8c71f8304e42",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "553abcaf-e7b5-52c4-b1c9-54e140f382fe",
+      "contentFingerprint": "b4a70e4644417953f3aa363954678fe92b3892f51900b0d65a2b17eec68703c3",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "3bd86edb-49e8-5068-beca-8a7aaa1f0b9e",
+      "contentFingerprint": "0245e43d4e206b9864bb34dc99cd86917820414b0dec053f013ac91ffe1dff1c",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "f49ad51f-9023-512f-bd2f-9c372acd9d19",
+      "contentFingerprint": "7f932d1697069648d1e77a1072a7d6061e0e1d33cb6a8e3ed7f5bb71063a062c",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigações Acessórias",
+        "subject": "SPED",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigações Acessórias",
+        "subject": "SPED",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "d6265f5d-8ad9-5528-b6a0-971cadb85753",
+      "contentFingerprint": "1549c8c8960385730d44d95d818b5b4995731ff77dac30a9fb9cc9ea637b540b",
+      "structuralExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "552f368c-5fdb-5dfc-bcba-516e7a625dbb",
+      "contentFingerprint": "880fe60f01511949a4bb68ae5520684158178aee16b230e850db099bb5b1255f",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "f3fddf2e-952a-5f3e-baad-d1ac2fa929e2",
+      "contentFingerprint": "bf199e7de536378a76f47240fa70d31f4693d63ddb6f6acdf3791f519a5fe4af",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "55b7329a-9c7f-5b64-85aa-b33d49f7317e",
+      "contentFingerprint": "1161ecc9dd55b8b81ab58b70f6805c4ccac71327c0c790cf1da7a7e44906574f",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigações Acessórias",
+        "subject": "SPED",
+        "level": "Superior"
+      },
+      "reasonCode": "content_supports_different_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "1a46d1b4-79b7-54bf-958b-f51b9665d9e7",
+      "contentFingerprint": "24689730d996f5e145232054207df421f0c94bf6035fe7136b34b0d2f4d30460",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigações Acessórias",
+        "subject": "SPED",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigações Acessórias",
+        "subject": "SPED",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "6c711996-09ff-592a-b1dd-b40162931853",
+      "contentFingerprint": "5706a05429c623da69f30473ab7f3266854594f0ec634d4f11f6cd78dfac77a1",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "95518f5d-048d-534e-b565-5c3c2b6e13ce",
+      "contentFingerprint": "db14128f824ced3e8e9b07f67d48954d4c845d16f99a52d7acc4313810f392d4",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "032c1180-36b7-571f-95d7-10d2bf8ad30c",
+      "contentFingerprint": "0924455f166c78b1b0a270855034b5febe8e44b743ae57d5b767a782cc364d5b",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "structural_only_reference",
+      "reasonCode": "taxonomy_lacks_specific_semantic_path"
+    },
+    {
+      "sourceQuestionId": "adb4d3f9-d951-5ab1-a7b9-798667cd0040",
+      "contentFingerprint": "236c69c381171209e7019f7442fd7a1bade9950a891cfb08d7f5a1ee84503958",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "95d1c474-f5f1-5b08-9094-4d2ce12d2b3a",
+      "contentFingerprint": "4a74ae2e38f187b4192aa2cc6c22307d49c3c2c3148c749f5ef1d4dd4fc92ee5",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Atendimento Tributário",
+        "subject": "Atendimento ao Contribuinte",
+        "level": "Superior"
+      },
+      "status": "rejected_reference",
+      "reasonCode": "sanitization_removed_required_content"
+    },
+    {
+      "sourceQuestionId": "1e487940-4755-51f1-bbe7-198b69fb04d7",
+      "contentFingerprint": "b5d6c812c78a1a72042b26b9c3a53ff891c05f45bc84751d42bc167ff5385fd8",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "aff2b6d0-d378-5dc5-bc4c-6a3e76d851f8",
+      "contentFingerprint": "ce1d594ea7c0ba399273e532c8754b379390675bc3b468fa7ea49a437e72bac1",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "5b4a0879-5013-57e8-8c21-2230e4bcf75f",
+      "contentFingerprint": "425bd1544ea87991794a3e245441149279cdfec6af32b07eca1a513ccca6221a",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Atendimento Tributário",
+        "subject": "Atendimento ao Contribuinte",
+        "level": "Superior"
+      },
+      "status": "rejected_reference",
+      "reasonCode": "sanitization_removed_required_content"
+    },
+    {
+      "sourceQuestionId": "a092c17f-bd4e-5b31-a926-e732d9e0e75f",
+      "contentFingerprint": "b9d399a3b52a8398fb91d1922b64239fe3ec6b4020c2091a1eaf967b3c05b49a",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigações Acessórias",
+        "subject": "SPED",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigações Acessórias",
+        "subject": "SPED",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "6aa05af0-5be7-514d-a6f2-7043cfdcc38e",
+      "contentFingerprint": "89a50c058a0f051876393ce38630d25105a4444100be30505821689fa93d77b8",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "structural_only_reference",
+      "reasonCode": "taxonomy_lacks_specific_semantic_path"
+    },
+    {
+      "sourceQuestionId": "ed03cd78-a637-5d70-902b-011ba3073007",
+      "contentFingerprint": "006d5dd0b93c20fe993c168eca6cac2b1cecfc7330d9e550baf50525737941d6",
+      "structuralExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "5e4a0395-320f-5781-8ed3-8c24f7b01b8e",
+      "contentFingerprint": "4f0ccb8a67c83d38a727427eea2c17fd2385383110dc1270b7648910e5968476",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "ed8ca9b4-107b-5557-8995-a1d8cbedb62a",
+      "contentFingerprint": "a5a7346e11b83ffbdd702464fd594fb8dc90b0cd2133d9ed3531855287ba80d1",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "733fb06a-2b10-5ffb-a014-2ab9e63e9326",
+      "contentFingerprint": "e5b5a80ff1ed8ff2feb7985d50c92cd72f8a5c6cb47492002b522e82dae68fdb",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Sigilo Fiscal",
+        "subject": "Sigilo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Sigilo Fiscal",
+        "subject": "Sigilo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "9b4dc755-0d8f-59c8-b052-36a1e2f359f5",
+      "contentFingerprint": "82cc63862e3dd83cc369b455dc0ddee8f9aa712f1cd45e9e23f000888aa051db",
+      "structuralExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "f37a4dff-1f0c-5896-8ad6-ff26958d3b5f",
+      "contentFingerprint": "65a3af91c40a193f8a701a6f7627738f3ec08357959a01c1f5552943a866145a",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "80205595-73d8-50f4-b367-05fd56167502",
+      "contentFingerprint": "9a16bfe3a8f5a3a162bcf77e6809cfcc121edefbb18bab6fe5554797446225cb",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "d591a415-5712-5894-9b5d-4c2e492ab2a2",
+      "contentFingerprint": "e9bcd233f99a88b60fc29c1b30d9d60a974de6bf3dc0899673b15ad826ffbeaa",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_supports_different_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "83adda95-42f2-55eb-bca6-fe33ca48d6e6",
+      "contentFingerprint": "8724673686315c0a0adf2b1747d2e49cb8b52c290ec738c3b2571a0095647851",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "7bd3ef5c-1dd1-5ada-8d72-d5e17e3f2bdd",
+      "contentFingerprint": "33a25f68cae756ef488b534402575829d3bb230d57b7df3baa0ae961601d22b8",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "182930f9-41c7-579b-a0d5-80e5538fd501",
+      "contentFingerprint": "f41670cd0651157da38e716322dfea1519344eec057b38be1930a70088dd5e85",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "e901eccd-71e4-514d-93ea-67f5e684dbab",
+      "contentFingerprint": "a6fe601f824cb78eaeec518606077283057d4b089c6e34048fd45460963b55d1",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "5da5f263-69f6-5bd4-82f4-fd78fdfdec0d",
+      "contentFingerprint": "9c50ac6543899b6e274bab278beb2d90dc5a6615ebf79b911e3269b5c262c451",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Administração Aduaneira",
+        "subject": "Controle Aduaneiro",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "4555e089-af79-5959-b4a4-ab6ad62ba87c",
+      "contentFingerprint": "35ad5f995e85f55d7309ff936c97a0cc6585c09bf215e2d6c56d99cb642393b7",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "d738e472-6f61-5a95-8b73-2cf0a0be8094",
+      "contentFingerprint": "c4af312a473f993eedd01711da1bf8e6b49e3273ffbc96bad226b47dbb9dc34c",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "structural_only_reference",
+      "reasonCode": "taxonomy_lacks_specific_semantic_path"
+    },
+    {
+      "sourceQuestionId": "ed7d6e11-7f27-5455-8dbf-80fde192c15b",
+      "contentFingerprint": "9e13b84f56e97991c557ca58bd1dd9f253f09300b0303ac35681b29c969d97f5",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "9a6216ac-31a4-5e4c-a899-dbf505e3c9a9",
+      "contentFingerprint": "8ab1669f53854201374bb4a0a4fbbd9d6b4824b2ef644e3830d7c566f7ea1ef4",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "00d69762-4197-520f-8188-9fa41d1edf8e",
+      "contentFingerprint": "7b15ee238b56f1c4013368a61b8c0987871f08d1634937928aa7fe953dd1bc04",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "8f88a29e-524e-5cf9-bd43-6899d4bfd79f",
+      "contentFingerprint": "cebc77e398879276d825183b566eb5c7bf88cd3a6294623266e51aafa24e39b4",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "f31ad74e-e1b0-5d5f-a5bc-865e5c70fd41",
+      "contentFingerprint": "3a1ba0b974584524e58de4cef22442f621644dab16106ccddc893a15b268f562",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "31b95b77-ced6-50d6-a5ba-57d9dc9fa362",
+      "contentFingerprint": "913bba78bdc9619a7647c9151aa233fd7e5e690bc24dc20d8dc88cde2267cefe",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "9981ecce-6133-5cd4-bd5a-2f999f44d53b",
+      "contentFingerprint": "73d3088c0caca7c79a0b4bdecc0f6710ec60d5cb80a9f2944833e40cb0bd0d6e",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "417d3f7c-bb7a-5980-b286-61f7d45e51bc",
+      "contentFingerprint": "e21a9be2fa7eebf2f045654e9ae685101a528048b663b281b149843d556f4dea",
+      "structuralExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Transformação Digital",
+        "matter": "Governo Digital",
+        "subject": "Transformação Digital do Estado",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "15783c2e-5db7-5388-b129-5f2fa4762c4d",
+      "contentFingerprint": "4c995aac99ac5f1defe07fc800fb31af434961f44111f6e016dedbe320dfbbb8",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "38b7e5f4-31f5-5309-bcf4-1e08d9aced08",
+      "contentFingerprint": "85f09df6837589b2b3bae07c9376aa3a8f47fbbef7237bf0c6088569cb0b64f5",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "57025c35-7e88-56e0-874e-2752907443b8",
+      "contentFingerprint": "5475d8e2675ab01ff004f6118b09a0025737448c978b125d91f9562fcb6d2690",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "structural_only_reference",
+      "reasonCode": "taxonomy_lacks_specific_semantic_path"
+    },
+    {
+      "sourceQuestionId": "0b7b73ad-230a-59a7-86c0-4ac2222e33b7",
+      "contentFingerprint": "ffd20325a0d43f099d13f726b78faad69103a35a66d53f400786cb28aef4ccf8",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "d5bda394-c305-544e-b034-61e140636e7c",
+      "contentFingerprint": "a824a25f0dd5eb759b782a8e2d7f1428060dd3425b0ff30ff56ade50bda714b5",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Obrigação Tributária",
+        "subject": "Crédito Tributário",
+        "level": "Superior"
+      },
+      "reasonCode": "content_confirms_structural_reference"
+    },
+    {
+      "sourceQuestionId": "3cfa64ae-e8ce-5370-b0d7-ad118471fd4e",
+      "contentFingerprint": "05e77eb69cf7986a24eaa43d1388c98562851c100aafe639d0a488412018be78",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "0302842d-0a5f-56e7-8886-e863189b9666",
+      "contentFingerprint": "4541832c258d71efded13ca066e6d0960c7022b43f89b52377eb684bf919fe72",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "06aae692-6df6-5c60-a12b-edbd43881df0",
+      "contentFingerprint": "da410351a368309012acc36db3949f71534a86c97feab491f43059b5e5287552",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "0ab2bb20-d68e-5215-8d36-c51a2ddc6901",
+      "contentFingerprint": "a37131dcf720b6442b72cb2dc796567a178cea7f16d761ed2041dff78d5034bf",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "2cbd1c9d-6c3f-5df4-ad20-04128d2b8d93",
+      "contentFingerprint": "21fb209e386fc8b6a6e476e92ea3f9e2e6ea43e2524a51aa37f45df2095e84d6",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "3a432d38-0dbb-5de5-8106-cacc02891b94",
+      "contentFingerprint": "62612f5f624d085c10fc151887d8077fc04de6f84f8fb7b23749d42c858b5ad5",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "3ea3748f-6a07-5e27-b677-2d6c498e6668",
+      "contentFingerprint": "e4d2fb6c63f8abed6f23fa65e7c948902f5d8537bd09f3b7cbb56c51a775143d",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "54f01bfa-aee8-5d51-89ae-535c85c7a1d9",
+      "contentFingerprint": "a27ffcc13fa376dfe239ebd048ee0b29c3c54eb6a4a44aabc0a5433f2bb7f1e7",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "6a97055b-e4a0-56ad-a8fe-9ba2a966554a",
+      "contentFingerprint": "cc4318abaefc69424dcb5c023e8b25e5b5f8f99bb0476ac3e82d9276aef6d488",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "e345a648-f493-5877-9062-44d752d45ba4",
+      "contentFingerprint": "20cd242eb1e66ed994de4de3bd7dd73e045e8c735a26ff26b5ec55fb9701faf5",
+      "structuralExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Direito Tributário",
+        "matter": "Contencioso Tributário",
+        "subject": "Processo Administrativo Fiscal",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "40a79c52-0d8d-5d67-bd2b-1f9ecce9401b",
+      "contentFingerprint": "6b13f23a88fbd3c16913954e7a1e3fecfc1843245dffc86c277b54022d595d1e",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "6436838f-f3ae-5d90-b44a-7c9a6dce0a3d",
+      "contentFingerprint": "4be4a7a450a554f12b288832b2d6c6b3e87681e580ef1f1b95966bb34f27519f",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "414bd3cf-3af0-58de-a9c9-3e3d7a85a949",
+      "contentFingerprint": "d69e13459b75498de7907a5016e6da745434cab59b804641d4da6de69fdee47d",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "578b4256-18db-59e7-8d27-de679e6ec3db",
+      "contentFingerprint": "e836edd4b0f89f01d1045b9dd459ffefb0cfb37fd0a0ef285cae1324ded5ad72",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "636a056a-ac85-56a6-898f-1582bcb3c269",
+      "contentFingerprint": "e6910993f4623af883e0040c8f2a2f735369ba3f9430cd553f7eca427ed2cf8a",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "8773d97f-9e66-52e2-bbe4-e6d6bd483f7a",
+      "contentFingerprint": "70e2aeb655b6e710c82d3eb8833474825b531b07b112547b3d8eea66d92d2514",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "9fc4d9b0-5970-5a9d-b34e-20811ab3def2",
+      "contentFingerprint": "7380cf28d9d4c17efb8e0d28089f8b885afc6ef7283268d64708bb113d257c75",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Controle de Cargas",
+        "subject": "Gestão de Fronteiras",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "78563546-87d5-59fe-8bf2-b03213691aab",
+      "contentFingerprint": "efe23394b40775d5ab1c274c5a8a0825c3d869129a466e5041d843f7be002c0f",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "734a85ce-8bfe-5507-a27b-40aab6fce203",
+      "contentFingerprint": "459f5ab46bafca99741c2956c4b28e8cdef171b84459f5f656f19ad361afa044",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "04bb17c2-a0b0-5fd3-b273-1b53be29273a",
+      "contentFingerprint": "35745cd561e9eea545ff493926df0b94bc2386a8befd57fc4f59edee1ede1505",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "ab2017d7-1295-5e5e-9e10-3e221eb26928",
+      "contentFingerprint": "95d0ee788f69e87af3e12878653d57fbc7c81a630db2b9ec93a7d6037120a8b3",
+      "structuralExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Fluência em Dados",
+        "matter": "Ciência de Dados",
+        "subject": "Análise de Dados",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "08bacae9-a6c9-573d-a842-4bc9b89ab2b7",
+      "contentFingerprint": "c0149c4916188451d421677dfe4dd47e3233689c3406d0191ed46e97da5568e2",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "0c7094c9-cc5d-5d7a-80d8-e6434ea77071",
+      "contentFingerprint": "7fe504d13f1d3c03441e02d5f2f6f63204090caea97b8a8661fbb5b5b146d32d",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "17e4a6dc-76f2-52ff-94c9-02f23eee4d27",
+      "contentFingerprint": "9d445e7799ace5d6680e01635c1ac415242571b5674032def52aa9266bd7cf02",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "44c77d6f-a9f3-5c30-9fcd-22db7ee33387",
+      "contentFingerprint": "9ac621145956fe9041cf8919643113371caa2fcd7f0cbb2a0fa820f21f109811",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "524ca136-1d8c-55bd-a694-6ec799a3ecc5",
+      "contentFingerprint": "482bac302c843b922f085d12201292fa28ceb351661a0e40f3db74c23bea70b4",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    },
+    {
+      "sourceQuestionId": "ec0d5d6a-60c5-5432-91a1-3a9699ad7421",
+      "contentFingerprint": "113f11ce21d055f3f95e999fc3708741e6a6d7b5b3dc6841831ff665ce4355f4",
+      "structuralExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "status": "agent_reviewed_reference",
+      "reviewedExpected": {
+        "discipline": "Legislação Aduaneira",
+        "matter": "Despacho Aduaneiro",
+        "subject": "Despacho de Importação e Exportação",
+        "level": "Superior"
+      },
+      "reasonCode": "replacement_content_confirms_taxonomy_path"
+    }
+  ]
+}

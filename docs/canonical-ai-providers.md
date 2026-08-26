@@ -78,7 +78,7 @@ kad-collector classify-canonical-questions `
   --apply `
   --enable-ai `
   --provider ollama `
-  --model qwen3:14b-q4_K_M `
+  --model qwen3:14b `
   --run-id classification-rfb22-ollama `
   --limit 100
 ```

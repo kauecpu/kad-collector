@@ -387,7 +387,7 @@ class CanonicalAIBenchmarkTests(unittest.TestCase):
                 "taxonomyVersion": self.taxonomy.version,
                 "records": [
                     {
-                        "sourceQuestionId": candidate.source_question_id,
+                        "sourceQuestionId": f"legacy-{candidate.source_question_id}",
                         "contentFingerprint": candidate.content_fingerprint,
                         "status": "agent_reviewed_reference",
                         "structuralExpected": EXPECTED,
@@ -431,6 +431,9 @@ class CanonicalAIBenchmarkTests(unittest.TestCase):
             )
         self.assertEqual(report["networkCallsPerformed"], 0)
         self.assertEqual(report["sample"]["selected"], 10)
+        self.assertEqual(
+            report["sample"]["referenceReview"]["matchedByContentFingerprint"], 12
+        )
 
         review_payload = read_json(review_path)
         for record in review_payload["records"][9:]:

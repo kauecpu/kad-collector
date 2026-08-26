@@ -202,7 +202,8 @@ sugestões aceitas/rejeitadas, baixa confiança, revisão, falhas, tokens, custo
 contagens por concurso selecionado, cargo, turno e disciplina.
 
 O benchmark pago de Gemini, Qwen e DeepSeek continua separado. O benchmark local do Ollama usa
-as mesmas 200 referências e está documentado em `docs/ollama-local-ai.md`; preparar o código não
+as 175 referências válidas da auditoria v2 e está documentado em `docs/ollama-local-ai.md`;
+preparar o código não
 autoriza download ou inferência.
 
 Operação da fila:

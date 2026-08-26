@@ -20,7 +20,7 @@ from kad_collector.ollama_ai_provider import (
     validate_ollama_base_url,
 )
 
-MODEL = "qwen3:14b-q4_K_M"
+MODEL = "qwen3:14b"
 PATH_ID = "generic-public-exam:direito:normas:aplicacao-da-lei"
 
 

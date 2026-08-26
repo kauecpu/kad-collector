@@ -6,10 +6,11 @@ Qwen Cloud ou DeepSeek e não troca para um provedor pago quando o serviço loca
 A integração está desligada por padrão. Adicionar as variáveis do `.env.example`, preparar um
 manifesto ou gerar um relatório não inicia inferência.
 
-O benchmark v2 ainda não está liberado: a auditoria offline possui 175 das 200 referências
-semânticas exigidas. O smoke v1 de 30 chamadas permanece preservado como histórico, mas seus
-manifestos e checkpoints são incompatíveis com o contrato atual. Não execute outro smoke antes
-de substituir as 25 referências excluídas e gerar um novo bundle canônico v2.
+O benchmark local v3 usa 175 referências semânticas selecionadas pela auditoria v3. A reconstrução
+do banco encontrou 170 das referências anteriores pelo fingerprint do conteúdo. Cinco referências
+históricas não apareceram na nova coleta. A revisão v3 acrescentou 27 candidatas confirmadas e o
+sanitizador escolheu 175 itens não triviais. O benchmark pago mantém seu contrato separado.
+Manifestos e checkpoints locais anteriores são incompatíveis com esta versão.
 
 ## Modelos fixados
 
@@ -17,11 +18,10 @@ O benchmark aceita estas tags exatas:
 
 | Modelo | Quantização esperada | Download aproximado |
 | --- | --- | ---: |
-| `qwen3.5:9b-q4_K_M` | `Q4_K_M` | 6,6 GB |
-| `qwen3:14b-q4_K_M` | `Q4_K_M` | 9,3 GB |
-| `gemma3:12b-it-qat` | `Q4_0` | 8,9 GB |
+| `qwen3:8b` | `Q4_K_M` | 5,2 GB |
+| `qwen3:14b` | `Q4_K_M` | 9,3 GB |
 
-O total aproximado é 25 GB. O tamanho informado por `/api/tags` é a referência para a
+O total aproximado é 14,5 GB. O tamanho informado por `/api/tags` é a referência para a
 instalação real. O preflight exige 35 GiB livres quando falta algum modelo.
 
 Cada modelo é executado sozinho, com concorrência 1, temperatura 0, contexto 4096, resposta
@@ -55,10 +55,49 @@ Configuração opcional da sessão:
 
 ```powershell
 $env:OLLAMA_BASE_URL = "http://127.0.0.1:11434"
-$env:OLLAMA_MODEL = "qwen3:14b-q4_K_M"
+$env:OLLAMA_MODEL = "qwen3:14b"
 ```
 
 Nenhuma chave de API é necessária.
+
+## Restaurar a cópia local pelo Supabase
+
+O benchmark precisa de um SQLite com o conteúdo e a proveniência das referências. Depois de uma
+formatação do Windows, você pode recriar esse recorte pelo histórico de importações editoriais do
+Supabase. Instale a dependência `database` e defina a conexão PostgreSQL na sessão atual:
+
+```powershell
+python -m pip install -e ".[database,dev]"
+$env:KAD_DATABASE_URL = "postgresql://..."
+```
+
+Use a URL de conexão do banco fornecida pelo Supabase. Não salve essa URL em arquivo versionado,
+log ou relatório. O papel conectado precisa de `SELECT` em
+`private.editorial_import_items`; o comando não precisa de permissão de escrita.
+
+Confira o plano sem abrir conexão:
+
+```powershell
+kad-collector export-supabase-benchmark
+```
+
+A prévia deve informar 175 referências. Execute a exportação depois de configurar a variável:
+
+```powershell
+kad-collector export-supabase-benchmark --execute
+```
+
+O comando consulta os registros `question` importados, seleciona os IDs marcados como
+`agent_reviewed_reference` e cria
+`data\benchmarks\local\canonical-ai\collector-copy.sqlite3`. A transação remota usa modo somente
+leitura. A exportação exige número, páginas, URL oficial e SHA-256 de cada ocorrência. Ela também
+recalcula o fingerprint do enunciado e das alternativas. Falta de registro, mudança de conteúdo,
+URL fora de `conhecimento.fgv.br` ou proveniência incompleta interrompe a execução. O comando só
+substitui a cópia anterior depois que o leitor do benchmark aceita todas as 175 referências.
+
+O arquivo contém enunciados e alternativas. Ele fica sob `data/benchmarks/local/`, que o Git
+ignora. A exportação não recupera as 25 referências excluídas e não inicia o Ollama ou qualquer
+provedor externo.
 
 ## Preflight
 
@@ -75,13 +114,12 @@ faltarem tags, revise os tamanhos e, somente depois de autorizar o download, exe
 os comandos informados, por exemplo:
 
 ```powershell
-ollama pull qwen3.5:9b-q4_K_M
-ollama pull qwen3:14b-q4_K_M
-ollama pull gemma3:12b-it-qat
+ollama pull qwen3:8b
+ollama pull qwen3:14b
 ```
 
 Depois dos downloads, repita a inspeção. Copie o `probeId` do relatório atualizado e autorize
-três gerações curtas, uma por modelo:
+duas gerações curtas, uma por modelo:
 
 ```powershell
 kad-collector preflight-ollama-ai `
@@ -105,7 +143,7 @@ kad-collector classify-canonical-questions `
   --apply `
   --enable-ai `
   --provider ollama `
-  --model qwen3:14b-q4_K_M `
+  --model qwen3:14b `
   --run-id classification-rfb22-ollama `
   --limit 100
 ```
@@ -121,15 +159,27 @@ concluídos não são reenviados. `Ctrl+C` preserva o último checkpoint.
 
 ## Preparação do benchmark
 
-Um novo bundle canônico de 200 questões revisadas será a fonte dos textos e referências. Depois de
-um probe válido, fixe os modelos, digests, parâmetros e amostra:
+O bundle canônico local usa as 175 referências selecionadas pela auditoria v3. Prepare-o com uma cópia
+do SQLite operacional e sem chamar provedores externos:
+
+```powershell
+kad-collector prepare-canonical-ai-benchmark `
+  --database C:\caminho\para\copia\collector.sqlite3 `
+  --reference-review docs\benchmarks\canonical-ai-reference-review.v3.json `
+  --local-bundle data\benchmarks\local\canonical-ai\bundle.json `
+  --manifest docs\benchmarks\canonical-ai-manifest.v3.json `
+  --report docs\benchmarks\canonical-ai-preflight.v3.json `
+  --sample-size 175
+```
+
+Depois de um probe válido, fixe os modelos, digests, parâmetros e amostra:
 
 ```powershell
 kad-collector prepare-ollama-ai-benchmark `
   --canonical-bundle data\benchmarks\local\canonical-ai\bundle.json `
   --preflight data\benchmarks\local\ollama-ai\preflight.json `
   --local-bundle data\benchmarks\local\ollama-ai\bundle.json `
-  --manifest docs\benchmarks\ollama-ai-manifest.v2.json
+  --manifest docs\benchmarks\ollama-ai-manifest.v3.json
 ```
 
 Essa etapa não cria provedores. O manifesto versionável contém IDs, fingerprints da amostra e
@@ -138,23 +188,23 @@ versão do Ollama. Enunciados e alternativas ficam somente no bundle local ignor
 
 ## Smoke test
 
-Revise o manifesto e copie seu `benchmarkId`. O smoke usa as mesmas dez questões para os três
+Revise o manifesto e copie seu `benchmarkId`. O smoke usa as mesmas dez questões para os dois
 modelos:
 
 ```powershell
 kad-collector run-ollama-ai-benchmark `
   --local-bundle data\benchmarks\local\ollama-ai\bundle.json `
-  --manifest docs\benchmarks\ollama-ai-manifest.v2.json `
+  --manifest docs\benchmarks\ollama-ai-manifest.v3.json `
   --preflight data\benchmarks\local\ollama-ai\preflight.json `
   --checkpoint data\benchmarks\local\ollama-ai\checkpoint.json `
   --phase smoke `
   --approved-benchmark-id ollama-local-... `
-  --max-new-calls 30
+  --max-new-calls 20
 ```
 
 Antes da primeira inferência, a execução confere novamente endpoint, versão, tags, digests e
-quantizações no Ollama vivo. Há um aquecimento registrado por modelo antes das 30 chamadas
-medidas. Portanto, um smoke novo faz três aquecimentos e no máximo 30 medições. Não há
+quantizações no Ollama vivo. Há um aquecimento registrado por modelo antes das 20 chamadas
+medidas. Portanto, um smoke novo faz dois aquecimentos e no máximo 20 medições. Não há
 retentativa automática. Resposta inválida é registrada como falha; indisponibilidade, modelo
 ausente ou perda do requisito de GPU pausam antes de gravar a combinação atual. Repetir o
 comando pula todos os pares modelo/questão já gravados. Se um unload falhar, o checkpoint
@@ -166,9 +216,9 @@ Gere o relatório agregado:
 ```powershell
 kad-collector report-ollama-ai-benchmark `
   --local-bundle data\benchmarks\local\ollama-ai\bundle.json `
-  --manifest docs\benchmarks\ollama-ai-manifest.v2.json `
+  --manifest docs\benchmarks\ollama-ai-manifest.v3.json `
   --checkpoint data\benchmarks\local\ollama-ai\checkpoint.json `
-  --report docs\benchmarks\ollama-ai-smoke-results.v2.json
+  --report docs\benchmarks\ollama-ai-smoke-results.v3.json
 ```
 
 O relatório contém precisão por campo e conjunta, validade de JSON e schema, códigos explícitos
@@ -177,20 +227,31 @@ valores fora da taxonomia, cobertura, revisão, latência, tokens, tokens por se
 VRAM, falhas, interrupções e comparações pareadas. Ele não contém enunciados, alternativas,
 respostas brutas, erros textuais ou caminhos locais.
 
+### Smoke v3 executado
+
+O smoke `ollama-local-c39c70edbf6871aa` concluiu 20 chamadas em 25 de agosto de 2026. Cada modelo
+respondeu às mesmas dez questões com JSON válido, sem falhas, campos proibidos ou valores fora
+da taxonomia. Os dois modelos acertaram todos os campos pedidos em 7 de 10 questões. O 8B teve
+latência mediana de 3.064 ms e pico de VRAM de 5.578.204.118 bytes. O 14B teve latência mediana
+de 5.234 ms e pico de VRAM de 9.646.353.939 bytes. O preflight e as medições registraram
+`100% GPU`. Consulte
+[`ollama-ai-smoke-results.v3.json`](benchmarks/ollama-ai-smoke-results.v3.json).
+
 ## Fase completa
 
-A fase `full` permanece bloqueada até existirem 30 registros `completed` no smoke. Depois de
-revisar o relatório e autorizar outra execução, o limite máximo é 570 chamadas medidas:
+A fase `full` permanece bloqueada até existirem 20 registros `completed` no smoke. Depois de
+revisar o relatório e autorizar outra execução, ela acrescenta 330 chamadas medidas. Com o smoke,
+o resultado final contém 350 combinações, 175 por modelo:
 
 ```powershell
 kad-collector run-ollama-ai-benchmark `
   --local-bundle data\benchmarks\local\ollama-ai\bundle.json `
-  --manifest docs\benchmarks\ollama-ai-manifest.v2.json `
+  --manifest docs\benchmarks\ollama-ai-manifest.v3.json `
   --preflight data\benchmarks\local\ollama-ai\preflight.json `
   --checkpoint data\benchmarks\local\ollama-ai\checkpoint.json `
   --phase full `
   --approved-benchmark-id ollama-local-... `
-  --max-new-calls 570
+  --max-new-calls 330
 ```
 
 `--max-new-calls` pode ser menor para dividir o trabalho entre os períodos em que o computador

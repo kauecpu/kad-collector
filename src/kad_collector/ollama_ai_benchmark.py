@@ -46,8 +46,8 @@ from .ollama_preflight import (
 from .semantic_identity import stable_sha256
 
 LOCAL_BENCHMARK_SCHEMA_VERSION = 2
-LOCAL_BENCHMARK_ALGORITHM_VERSION = "ollama-local-ai-benchmark-v2"
-LOCAL_BENCHMARK_SAMPLE_SIZE = 200
+LOCAL_BENCHMARK_ALGORITHM_VERSION = "ollama-local-ai-benchmark-v3"
+LOCAL_BENCHMARK_SAMPLE_SIZE = 175
 SMOKE_SIZE = 10
 SMOKE_MAX_CALLS = SMOKE_SIZE * len(OLLAMA_BENCHMARK_TARGETS)
 FULL_MAX_CALLS = (LOCAL_BENCHMARK_SAMPLE_SIZE - SMOKE_SIZE) * len(OLLAMA_BENCHMARK_TARGETS)
@@ -282,7 +282,9 @@ def _validate_local_bundle(
         raise CanonicalClassificationError("identificador do benchmark local não confere")
     items = cast(list[Mapping[str, Any]], bundle.get("items") or [])
     if len(items) != LOCAL_BENCHMARK_SAMPLE_SIZE:
-        raise CanonicalClassificationError("bundle local não contém 200 questões")
+        raise CanonicalClassificationError(
+            f"bundle local não contém {LOCAL_BENCHMARK_SAMPLE_SIZE} questões"
+        )
     if [_safe_item(item) for item in items] != public.get("items"):
         raise CanonicalClassificationError("questões locais divergiram do manifesto")
     if stable_sha256(items) != public.get("localBundleFingerprint"):

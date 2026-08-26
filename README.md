@@ -165,12 +165,18 @@ identificador exato da amostra e teto de custo. Consulte
 [`docs/canonical-ai-benchmark.md`](docs/canonical-ai-benchmark.md). A configuracao das chaves
 nao dispara nenhuma chamada automaticamente.
 
-O benchmark local comparará três tags fixas do Ollama quando houver 200 referências revisadas.
-A auditoria v2 possui 175 utilizáveis; portanto, nenhum novo smoke está liberado. A
-inspecao inicial nao baixa modelos nem gera respostas. O smoke local exige aprovacao explicita,
-mede 30 chamadas e grava cada resultado antes de seguir. A fase completa permanece bloqueada
+O benchmark local compara `qwen3:8b` e `qwen3:14b` nas mesmas 175 referências selecionadas pela
+auditoria v3. A inspecao inicial nao baixa modelos nem gera respostas. O smoke local exige aprovacao
+explicita, mede dez questões por modelo, totaliza 20 chamadas e grava cada resultado antes de
+seguir. A fase completa acrescenta as 165 questões restantes por modelo, mas permanece bloqueada
 ate outro comando autorizado. Consulte
 [`docs/ollama-local-ai.md`](docs/ollama-local-ai.md).
+
+Se a cópia SQLite local tiver sido perdida, `export-supabase-benchmark` pode recriar somente o
+recorte dessas 175 referências a partir do histórico editorial do Supabase. O comando usa
+`KAD_DATABASE_URL`, abre uma transação PostgreSQL somente leitura, confere os fingerprints da
+auditoria e grava o resultado em `data/benchmarks/local/`, fora do Git. Consulte a seção
+**Restaurar a cópia local pelo Supabase** no guia do Ollama antes de usar `--execute`.
 
 Os filtros usam OR dentro da mesma categoria e AND entre categorias. Origem, conteudo,
 qualidade e situacao possuem contagens facetadas, busca, chips ativos e filtros salvos. Uma

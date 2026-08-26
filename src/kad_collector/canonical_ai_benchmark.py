@@ -47,7 +47,7 @@ from .question_equivalence import question_fingerprints
 from .semantic_identity import stable_sha256
 
 BENCHMARK_SCHEMA_VERSION = 2
-BENCHMARK_ALGORITHM_VERSION = "canonical-ai-benchmark-v2"
+BENCHMARK_ALGORITHM_VERSION = "canonical-ai-benchmark-v3"
 DEFAULT_SAMPLE_SIZE = 200
 DEFAULT_SEED = 20260824
 PILOT_SIZE = 10
@@ -580,10 +580,31 @@ def prepare_canonical_ai_benchmark(
         candidates, audit = load_official_structure_references(connection, taxonomy=taxonomy)
         missing_patterns = observed_missing_patterns(connection)
     review_statuses: Counter[str] = Counter(review.status for review in reviews.values())
+    review_fingerprint_counts = Counter(
+        review.content_fingerprint for review in reviews.values()
+    )
+    duplicated_review_fingerprints = sorted(
+        fingerprint
+        for fingerprint, count in review_fingerprint_counts.items()
+        if count > 1
+    )
+    if duplicated_review_fingerprints:
+        raise CanonicalClassificationError(
+            "fingerprint duplicado na revisão de referências: "
+            + duplicated_review_fingerprints[0]
+        )
+    reviews_by_fingerprint = {
+        review.content_fingerprint: review for review in reviews.values()
+    }
+    reconciliation: Counter[str] = Counter()
     reviewed_candidates: list[ReferenceCandidate] = []
     review_by_source: dict[str, Any] = {}
     for candidate in candidates:
         review = reviews.get(candidate.source_question_id)
+        match_kind = "sourceQuestionId"
+        if review is None:
+            review = reviews_by_fingerprint.get(candidate.content_fingerprint)
+            match_kind = "contentFingerprint"
         if review is None or review.status != REFERENCE_KIND:
             continue
         if review.content_fingerprint != candidate.content_fingerprint:
@@ -609,6 +630,7 @@ def prepare_canonical_ai_benchmark(
             )
         )
         review_by_source[candidate.source_question_id] = review
+        reconciliation[match_kind] += 1
     artifact_counts: Counter[str] = Counter()
     cleaned_questions = 0
     sanitization_rejected = 0
@@ -688,7 +710,6 @@ def prepare_canonical_ai_benchmark(
         reference_id = stable_sha256(
             {
                 "kind": REFERENCE_KIND,
-                "sourceQuestionId": candidate.source_question_id,
                 "contentFingerprint": candidate.content_fingerprint,
             }
         )
@@ -790,6 +811,8 @@ def prepare_canonical_ai_benchmark(
                 "reviewedRecords": len(reviews),
                 "statuses": dict(sorted(review_statuses.items())),
                 "usable": len(sanitized_candidates),
+                "matchedBySourceQuestionId": reconciliation["sourceQuestionId"],
+                "matchedByContentFingerprint": reconciliation["contentFingerprint"],
                 "notHumanReview": True,
             },
             "sanitization": {

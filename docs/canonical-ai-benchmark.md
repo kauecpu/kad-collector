@@ -16,14 +16,17 @@ estrutural, o rótulo revisado, o motivo, o ID, o fingerprint bruto e a versão 
 `ambiguous_reference`, `structural_only_reference` e `rejected_reference` não entram na
 precisão. Revisão pelo agente não equivale a `human_review`.
 
-A auditoria v2 examinou offline as 200 questões preservadas do benchmark anterior: 175 são
-utilizáveis, uma é ambígua, 18 dependem apenas da estrutura e seis foram rejeitadas pela
-sanitização porque perderiam conteúdo obrigatório. A taxonomia não possui um
-caminho semântico suficientemente específico. O banco que continha os 314 candidatos não está
-disponível neste ambiente para substituir as 25 referências. Por isso
+A auditoria v2 examinou as 200 questões preservadas do benchmark pago: 175 são utilizáveis, uma
+é ambígua, 18 dependem apenas da estrutura e seis foram rejeitadas porque perderiam conteúdo
+obrigatório após a sanitização. Por isso
 [`canonical-ai-reference-audit.v2.json`](benchmarks/canonical-ai-reference-audit.v2.json)
 mantém `readyForPreparation: false`. A preparação encerra sem reduzir os critérios enquanto não
 existirem 200 referências utilizáveis.
+
+O benchmark local do Ollama segue uma decisão separada. A auditoria v3 reconciliou 170 referências
+por fingerprint de conteúdo, acrescentou candidatas revisadas e selecionou 175 questões não
+triviais com `--sample-size 175`. Consulte
+[`canonical-ai-reference-audit.v3.json`](benchmarks/canonical-ai-reference-audit.v3.json).
 
 Na mesma auditoria, 56 questões foram limpas e nenhum padrão conhecido permaneceu depois da
 limpeza. Seis foram rejeitadas porque a remoção do bloco contaminado também eliminaria uma
