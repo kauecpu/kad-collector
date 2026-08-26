@@ -41,6 +41,7 @@
             <p class="header-copy">Extração, relação com o gabarito oficial, classificação e auditoria em um fluxo seguro.</p>
           </div>
           <div class="header-actions">
+            <button id="qwen-classify-open" class="button ghost" type="button">Classificar pendentes com Qwen 8B</button>
             <button id="reclassify-open" class="button ghost" type="button">Reclassificar acervo</button>
             <button id="export-open" class="button ghost" type="button">Exportar filtro</button>
             <button id="import-open" class="button primary" type="button"><span>＋</span>Novo lote</button>
@@ -74,6 +75,17 @@
         </section>
 
         <section id="job-strip" class="job-strip" aria-label="Processamentos recentes"></section>
+        <section id="qwen-job-strip" class="qwen-job-strip" aria-live="polite" hidden>
+          <div>
+            <strong id="qwen-job-title">Classificação local com Qwen 8B</strong>
+            <span id="qwen-job-state"></span>
+          </div>
+          <div id="qwen-job-metrics" class="qwen-job-metrics"></div>
+          <div class="qwen-job-actions">
+            <button id="qwen-job-pause" class="button ghost" type="button" hidden>Pausar</button>
+            <button id="qwen-job-resume" class="button ghost" type="button" hidden>Retomar</button>
+          </div>
+        </section>
 
         <section class="workbench">
           <aside class="filter-panel" aria-label="Filtros profissionais">
@@ -378,6 +390,27 @@
         <footer class="modal-footer">
           <button class="button ghost modal-close" type="button">Cancelar</button>
           <button id="batch-classification-submit" class="button success" type="submit">Confirmar alterações</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <dialog id="qwen-classification-dialog" class="modal compact-modal">
+      <form id="qwen-classification-form">
+        <header class="modal-header">
+          <div><p class="eyebrow">IA LOCAL · PRÉVIA PASSIVA</p><h2>Classificar pendentes com Qwen 8B</h2></div>
+          <button class="icon-button modal-close" type="button" aria-label="Fechar">×</button>
+        </header>
+        <p class="modal-copy">A prévia não executa inferência nem altera o banco. Regras determinísticas serão aplicadas antes da IA.</p>
+        <label>Limite deste lote
+          <input id="qwen-classification-limit" type="number" min="1" max="250" value="25" required>
+        </label>
+        <button id="qwen-preview-refresh" class="button ghost" type="button">Atualizar prévia</button>
+        <div id="qwen-classification-preview" class="preview-summary" aria-live="polite"></div>
+        <dl id="qwen-classification-contract" class="qwen-contract"></dl>
+        <p id="qwen-classification-warning" class="batch-warning"></p>
+        <footer class="modal-footer">
+          <button class="button ghost modal-close" type="button">Cancelar</button>
+          <button id="qwen-classification-submit" class="button success" type="submit">Confirmar e iniciar</button>
         </footer>
       </form>
     </dialog>

@@ -95,6 +95,7 @@ def main(argv: list[str] | None = None) -> int:
         webview.start(debug=False)
         return 0
     finally:
+        application.ollama_classification.shutdown()
         server.shutdown()
         server.server_close()
 

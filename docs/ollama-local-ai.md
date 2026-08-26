@@ -134,6 +134,38 @@ aprovação.
 
 ## Classificação comum
 
+### Pelo aplicativo desktop
+
+Na tela principal, use **Classificar pendentes com Qwen 8B**. A primeira tela é uma prévia
+passiva e não chama `/api/chat`: ela mostra a quantidade elegível, já completa, resolvida pelas
+regras locais, dependente do Qwen e a contagem por campo ainda ausente. O lote começa em 25
+questões e aceita limites entre 1 e 250.
+
+O contrato do desktop é fixo e não segue `OLLAMA_MODEL`: endpoint
+`http://127.0.0.1:11434`, modelo `qwen3:8b`, quantização `Q4_K_M` e digest
+`500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41`. Tag, digest,
+quantização ou endpoint divergentes bloqueiam a confirmação. A prévia também recusa outro
+modelo carregado. Ela não baixa, atualiza ou troca modelos.
+
+Somente **Confirmar e iniciar** autoriza o aquecimento local. O Collector verifica
+`/api/ps` e `ollama ps`, exige contexto 4096 e `100% GPU` antes da primeira questão. A interface
+permanece disponível e mostra apenas totais: processadas, restantes, chamadas de IA, sugestões
+aceitas, itens enviados à revisão e falhas. Ela nunca expõe enunciados ou respostas nesse painel.
+
+**Pausar** termina a questão corrente, grava o checkpoint e descarrega o modelo antes de parar.
+**Retomar** usa o mesmo `runId` e pula itens concluídos, inclusive depois de reiniciar o
+aplicativo. Perda do Ollama pausa o lote; digest, quantização, endpoint ou GPU incompatíveis
+bloqueiam a execução. Respostas inválidas ou sugestões abaixo da confiança mínima seguem para a
+fila canônica de revisão. Não existe retentativa automática, carregamento do 14B ou fallback
+para Gemini, Qwen Cloud ou DeepSeek.
+
+O fluxo só considera grupos canônicos confirmados, atuais e não bloqueados/rejeitados. Regras
+determinísticas vêm primeiro. A IA pode preencher somente disciplina, matéria, assunto e nível
+que ainda estejam vazios. Resposta oficial, estado do gabarito, vínculo semântico, dificuldade,
+explicação e qualquer valor existente ou decidido por uma pessoa permanecem intactos.
+
+### Pela linha de comando
+
 O Ollama também pode preencher campos ausentes fora do benchmark:
 
 ```powershell

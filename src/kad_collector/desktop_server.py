@@ -33,6 +33,10 @@ from .desktop_models import (
     DesktopImportMetadata,
     QuestionClassification,
 )
+from .desktop_ollama_classification import (
+    DEFAULT_BATCH_LIMIT,
+    DesktopOllamaClassificationManager,
+)
 from .desktop_processor import DesktopProcessor
 from .desktop_store import DesktopStore
 from .document_pipeline import DocumentPipeline
@@ -63,6 +67,7 @@ class DesktopApplication:
             self.processor,
             self.pipeline,
         )
+        self.ollama_classification = DesktopOllamaClassificationManager(self.store)
         self.token = secrets.token_urlsafe(32)
 
     def bootstrap(self) -> dict[str, Any]:
@@ -123,6 +128,19 @@ class DesktopApplication:
 
     def reclassify_questions(self) -> dict[str, Any]:
         return self.processor.reclassify_existing_questions()
+
+    def preview_ollama_classification(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.ollama_classification.preview(
+            payload.get("limit", DEFAULT_BATCH_LIMIT)
+        )
+
+    def start_ollama_classification(self, payload: dict[str, Any]) -> dict[str, Any]:
+        token = payload.get("confirmationToken")
+        if not isinstance(token, str) or not token:
+            raise ValueError("confirmationToken deve ser informado")
+        return self.ollama_classification.start(
+            token, payload.get("limit", DEFAULT_BATCH_LIMIT)
+        )
 
     def collect_from_link(self, payload: dict[str, Any]) -> str:
         return self.collection_manager.start(payload)
@@ -281,6 +299,9 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
             if path == "/api/bootstrap":
                 self._send_json(application.bootstrap())
                 return
+            if path == "/api/local-ai/classification/status":
+                self._send_json(application.ollama_classification.status())
+                return
             question_match = re.fullmatch(r"/api/questions/([a-f0-9-]+)", path)
             if question_match is not None:
                 try:
@@ -386,6 +407,24 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                     return
                 if path == "/api/questions/reclassify":
                     self._send_json(application.reclassify_questions())
+                    return
+                if path == "/api/local-ai/classification/preview":
+                    self._send_json(application.preview_ollama_classification(payload))
+                    return
+                if path == "/api/local-ai/classification/start":
+                    self._send_json(application.start_ollama_classification(payload))
+                    return
+                ai_action = re.fullmatch(
+                    r"/api/local-ai/classification/([a-f0-9-]+)/(pause|resume)", path
+                )
+                if ai_action is not None:
+                    run_id, action = ai_action.groups()
+                    action_result = (
+                        application.ollama_classification.pause(run_id)
+                        if action == "pause"
+                        else application.ollama_classification.resume(run_id)
+                    )
+                    self._send_json(action_result)
                     return
                 if path == "/api/filters":
                     saved = application.store.save_filter(

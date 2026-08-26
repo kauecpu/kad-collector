@@ -86,11 +86,12 @@ class OllamaCanonicalEnrichmentProvider:
         *,
         client: httpx.Client | None = None,
         max_retries: int = 0,
+        base_url: str | None = None,
     ) -> None:
         del max_retries
         self.model = model or os.environ.get("OLLAMA_MODEL", "")
         base_url = validate_ollama_base_url(
-            os.environ.get("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL)
+            base_url or os.environ.get("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL)
         )
         if client is not None:
             try:
@@ -170,3 +171,7 @@ class OllamaCanonicalEnrichmentProvider:
                 "doneReason": chat.done_reason,
             },
         )
+
+    def close(self) -> None:
+        if self._client is not None:
+            self._client.close()
