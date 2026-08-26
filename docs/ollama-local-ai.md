@@ -255,8 +255,23 @@ kad-collector run-ollama-ai-benchmark `
 ```
 
 `--max-new-calls` pode ser menor para dividir o trabalho entre os períodos em que o computador
-fica ligado. O checkpoint continua sendo escrito após cada medição. O código desta PR prepara
-essa fase, mas não a executa.
+fica ligado. O checkpoint continua sendo escrito após cada medição.
+
+### Resultado completo v3
+
+A fase `full` acrescentou 330 chamadas em 25 de agosto de 2026. O checkpoint terminou com 350
+resultados, 175 por modelo, sem falhas ou interrupções. O 8B acertou todos os campos pedidos em
+137 questões, 78,286%. O 14B acertou 122, 69,714%. Na comparação pareada, o 8B venceu 21
+questões, o 14B venceu seis e 148 empataram. O teste exato de McNemar calculou `p = 0,005925`.
+
+O 8B registrou latência mediana de 3.523 ms e pico de VRAM de 5.578.204.118 bytes. O 14B
+registrou 6.825 ms e 9.646.353.939 bytes. Os dois modelos produziram JSON válido em 100% das
+chamadas e usaram `100% GPU`. O relatório recomenda `qwen3:8b`. Consulte
+[`ollama-ai-results.v3.json`](benchmarks/ollama-ai-results.v3.json).
+
+O gerador só escolhe um vencedor quando o checkpoint contém as 350 combinações e o teste pareado
+atinge `p < 0,05`. Durante o smoke, ou diante de um resultado inconclusivo, ele mantém a decisão
+em aberto.
 
 ## Arquivos locais
 

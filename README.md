@@ -168,8 +168,8 @@ nao dispara nenhuma chamada automaticamente.
 O benchmark local compara `qwen3:8b` e `qwen3:14b` nas mesmas 175 referências selecionadas pela
 auditoria v3. A inspecao inicial nao baixa modelos nem gera respostas. O smoke local exige aprovacao
 explicita, mede dez questões por modelo, totaliza 20 chamadas e grava cada resultado antes de
-seguir. A fase completa acrescenta as 165 questões restantes por modelo, mas permanece bloqueada
-ate outro comando autorizado. Consulte
+seguir. A fase completa de 350 combinações terminou sem falhas e recomenda `qwen3:8b`: 78,286%
+de acerto conjunto contra 69,714% do 14B. Consulte
 [`docs/ollama-local-ai.md`](docs/ollama-local-ai.md).
 
 Se a cópia SQLite local tiver sido perdida, `export-supabase-benchmark` pode recriar somente o
