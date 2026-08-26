@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import unittest
 from collections.abc import Mapping
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
+from unittest.mock import Mock, patch
 
 from kad_collector.canonical_classification import CanonicalClassificationError
 from kad_collector.cli import build_parser
@@ -10,6 +13,7 @@ from kad_collector.ollama_preflight import (
     GIB,
     MINIMUM_FREE_BYTES,
     OLLAMA_BENCHMARK_TARGETS,
+    _default_command_runner,
     inspect_ollama_environment,
     probe_ollama_models,
 )
@@ -88,6 +92,25 @@ class OllamaPreflightTests(unittest.TestCase):
             [target.expected_quantization for target in OLLAMA_BENCHMARK_TARGETS],
             ["Q4_K_M", "Q4_K_M"],
         )
+
+    def test_windows_runner_finds_official_ollama_install_when_path_is_missing(self) -> None:
+        with TemporaryDirectory() as directory:
+            executable = Path(directory) / "Programs" / "Ollama" / "ollama.exe"
+            executable.parent.mkdir(parents=True)
+            executable.touch()
+            completed = Mock(returncode=0, stdout="qwen3:8b 100% GPU")
+            with (
+                patch("kad_collector.ollama_preflight.shutil.which", return_value=None),
+                patch("kad_collector.ollama_preflight.subprocess.run", return_value=completed)
+                as run,
+                patch.dict("os.environ", {"LOCALAPPDATA": directory}),
+            ):
+                output = _default_command_runner(
+                    ("ollama", "ps"), {"OLLAMA_HOST": "http://127.0.0.1:11434"}
+                )
+
+        self.assertEqual(output, "qwen3:8b 100% GPU")
+        self.assertEqual(run.call_args.args[0], (str(executable), "ps"))
 
     def test_inspection_never_pulls_or_generates_and_lists_missing_models(self) -> None:
         client = FakeAdminClient(self.models[:1])

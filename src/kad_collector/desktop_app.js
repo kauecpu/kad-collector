@@ -89,6 +89,9 @@ const state = {
   currentQuestion: null,
   currentAudit: [],
   batchClassificationPreview: null,
+  localAIPreview: null,
+  localAIStatus: null,
+  localAIPolling: null,
   polling: null,
   activeSection: 'workspace',
   selectedSourceId: null,
@@ -1479,6 +1482,169 @@ async function reclassifyCollection() {
   finally { button.disabled = false; }
 }
 
+function localAIStateLabel(value) {
+  return {
+    idle: 'Aguardando', starting: 'Verificando GPU', running: 'Em execução',
+    pause_requested: 'Pausando com segurança', paused: 'Pausada',
+    completed: 'Concluída', blocked: 'Bloqueada',
+  }[value] || value;
+}
+
+function appendContractRow(root, label, value) {
+  const term = document.createElement('dt');
+  term.textContent = label;
+  const detail = document.createElement('dd');
+  detail.textContent = String(value ?? '—');
+  root.append(term, detail);
+}
+
+function renderQwenPreview(preview) {
+  const counts = preview.counts || {};
+  byId('qwen-classification-preview').textContent = [
+    `${counts.eligible || 0} elegíveis`,
+    `${counts.alreadyComplete || 0} já completas`,
+    `${counts.deterministic || 0} resolvidas por regras`,
+    `${counts.qwenRequired || 0} precisam do Qwen`,
+    `campos ainda ausentes: ${Object.entries(counts.missingFields || {}).map(([field, total]) => `${field} ${total}`).join(', ') || 'nenhum'}`,
+  ].join(' · ');
+  const contract = byId('qwen-classification-contract');
+  contract.replaceChildren();
+  appendContractRow(contract, 'Modelo', preview.preflight.model);
+  appendContractRow(contract, 'Digest', preview.preflight.digest);
+  appendContractRow(contract, 'Quantização', preview.preflight.quantization);
+  appendContractRow(contract, 'Endpoint', preview.preflight.endpoint);
+  appendContractRow(contract, 'Ollama', preview.preflight.ollamaVersion);
+  byId('qwen-classification-warning').textContent = preview.warning;
+  byId('qwen-classification-submit').disabled = false;
+}
+
+async function refreshQwenPreview() {
+  const limit = Number(byId('qwen-classification-limit').value);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 250) {
+    throw new Error('Escolha um limite entre 1 e 250.');
+  }
+  const button = byId('qwen-preview-refresh');
+  const submit = byId('qwen-classification-submit');
+  button.disabled = true;
+  submit.disabled = true;
+  try {
+    const preview = await request('/api/local-ai/classification/preview', {
+      method: 'POST', body: JSON.stringify({limit}),
+    });
+    state.localAIPreview = preview;
+    renderQwenPreview(preview);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function openQwenClassification() {
+  const button = byId('qwen-classify-open');
+  button.disabled = true;
+  try {
+    await refreshQwenPreview();
+    byId('qwen-classification-dialog').showModal();
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function startQwenClassification(event) {
+  event.preventDefault();
+  const preview = state.localAIPreview;
+  const limit = Number(byId('qwen-classification-limit').value);
+  if (!preview || preview.limit !== limit) {
+    return toast('Atualize a prévia depois de mudar o limite.', 'error');
+  }
+  const button = byId('qwen-classification-submit');
+  button.disabled = true;
+  try {
+    const status = await request('/api/local-ai/classification/start', {
+      method: 'POST',
+      body: JSON.stringify({confirmationToken: preview.confirmationToken, limit}),
+    });
+    state.localAIStatus = status;
+    state.localAIPreview = null;
+    byId('qwen-classification-dialog').close();
+    renderLocalAIStatus();
+    scheduleLocalAIPoll();
+    toast(status.state === 'completed'
+      ? 'Não havia classificação pendente neste lote.'
+      : 'Classificação local iniciada. O aplicativo pode continuar sendo usado.');
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function renderLocalAIStatus() {
+  const status = state.localAIStatus;
+  const strip = byId('qwen-job-strip');
+  if (!status || status.state === 'idle') {
+    strip.hidden = true;
+    return;
+  }
+  strip.hidden = false;
+  byId('qwen-job-state').textContent = [
+    localAIStateLabel(status.state),
+    status.pauseReason,
+    `${status.model} · ${status.quantization}`,
+  ].filter(Boolean).join(' · ');
+  const metrics = byId('qwen-job-metrics');
+  metrics.replaceChildren();
+  [
+    `Processadas ${status.processed}/${status.target}`,
+    `Restantes ${status.remaining}`,
+    `Chamadas IA ${status.aiCalls}`,
+    `Sugestões aceitas ${status.acceptedSuggestions}`,
+    `Para revisão ${status.reviewRequired}`,
+    `Falhas ${status.failures}`,
+  ].forEach((copy) => {
+    const item = document.createElement('span');
+    item.textContent = copy;
+    metrics.append(item);
+  });
+  byId('qwen-job-pause').hidden = !['starting', 'running'].includes(status.state);
+  byId('qwen-job-resume').hidden = !['paused', 'blocked'].includes(status.state);
+}
+
+async function refreshLocalAIStatus() {
+  const previous = state.localAIStatus?.state;
+  state.localAIStatus = await request('/api/local-ai/classification/status');
+  renderLocalAIStatus();
+  scheduleLocalAIPoll();
+  if (previous && previous !== state.localAIStatus.state && state.localAIStatus.state === 'completed') {
+    await loadBootstrap({preserveQuery: false});
+  }
+}
+
+function scheduleLocalAIPoll() {
+  clearTimeout(state.localAIPolling);
+  if (['starting', 'running', 'pause_requested'].includes(state.localAIStatus?.state)) {
+    state.localAIPolling = setTimeout(() => refreshLocalAIStatus().catch(() => {}), 1000);
+  }
+}
+
+async function localAIAction(action) {
+  const runId = state.localAIStatus?.runId;
+  if (!runId) return;
+  try {
+    state.localAIStatus = await request(`/api/local-ai/classification/${runId}/${action}`, {
+      method: 'POST', body: '{}',
+    });
+    renderLocalAIStatus();
+    scheduleLocalAIPoll();
+    toast(action === 'pause'
+      ? 'Pausa solicitada; a questão atual terminará antes da parada.'
+      : 'Classificação local retomada no mesmo ponto.');
+  } catch (error) {
+    toast(error.message, 'error');
+  }
+}
+
 function debounce(callback, delay = 260) {
   let timer;
   return (...args) => {
@@ -1492,6 +1658,16 @@ document.querySelectorAll('.modal-close').forEach((button) => {
 });
 byId('import-open').addEventListener('click', () => byId('import-dialog').showModal());
 byId('reclassify-open').addEventListener('click', reclassifyCollection);
+byId('qwen-classify-open').addEventListener('click', openQwenClassification);
+byId('qwen-preview-refresh').addEventListener('click', () => refreshQwenPreview().catch((error) => toast(error.message, 'error')));
+byId('qwen-classification-limit').addEventListener('input', () => {
+  state.localAIPreview = null;
+  byId('qwen-classification-submit').disabled = true;
+  byId('qwen-classification-preview').textContent = 'Atualize a prévia para este limite.';
+});
+byId('qwen-classification-form').addEventListener('submit', startQwenClassification);
+byId('qwen-job-pause').addEventListener('click', () => localAIAction('pause'));
+byId('qwen-job-resume').addEventListener('click', () => localAIAction('resume'));
 byId('export-open').addEventListener('click', openExportPreview);
 byId('metric-card-pending').addEventListener('click', () => activateEditorialQueue('pending'));
 byId('metric-card-exceptions').addEventListener('click', () => activateEditorialQueue('exception'));
@@ -1566,5 +1742,5 @@ document.querySelectorAll('.rail-link').forEach((button) => {
 });
 
 applyCapacityProfile();
-loadBootstrap().catch((error) => toast(error.message, 'error'));
+Promise.all([loadBootstrap(), refreshLocalAIStatus()]).catch((error) => toast(error.message, 'error'));
 }

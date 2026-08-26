@@ -4,7 +4,7 @@ import json
 import sqlite3
 import uuid
 from collections import Counter
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -355,6 +355,7 @@ class CanonicalClassificationReport:
     processed: int = 0
     already_complete: int = 0
     deterministic_classified: int = 0
+    deterministic_questions: int = 0
     ai_candidates: int = 0
     ai_sent: int = 0
     ai_accepted: int = 0
@@ -388,6 +389,7 @@ class CanonicalClassificationReport:
             "processed": self.processed,
             "alreadyComplete": self.already_complete,
             "deterministicClassified": self.deterministic_classified,
+            "deterministicQuestions": self.deterministic_questions,
             "aiCandidates": self.ai_candidates,
             "aiSent": self.ai_sent,
             "aiAccepted": self.ai_accepted,
@@ -668,6 +670,26 @@ def _human_blocked(classification: QuestionClassification) -> bool:
             classification.level,
         )
     )
+
+
+def _pending_work(connection: sqlite3.Connection, row: sqlite3.Row) -> bool:
+    payload = QuestionRecord.model_validate_json(
+        cast(str, row["representative_payload_json"])
+    ).model_dump(mode="json")
+    classification = QuestionClassification.model_validate_json(
+        cast(str, row["representative_classification_json"])
+    )
+    if not _missing_fields(payload, classification) or _human_blocked(classification):
+        return False
+    review = connection.execute(
+        "SELECT 1 FROM canonical_classification_review_queue "
+        "WHERE canonical_question_id=? AND content_fingerprint=? "
+        "AND status IN ('pending','rejected') "
+        "AND (field_name='*' OR field_name IN ('discipline','matter','subject','level')) "
+        "LIMIT 1",
+        (row["id"], row["content_fingerprint"]),
+    ).fetchone()
+    return review is None
 
 
 def _metadata(row: sqlite3.Row) -> DesktopImportMetadata:
@@ -1372,9 +1394,12 @@ def _process_row(
         content_fingerprint=content_fingerprint,
         changed_at=changed_at,
     )
+
+
     report.deterministic_classified += len(deterministic_fields)
     missing = _missing_fields(question.model_dump(mode="json"), classification)
     if not missing:
+        report.deterministic_questions += int(bool(deterministic_fields))
         report.already_complete += int(not deterministic_fields)
         _state(
             connection,
@@ -1712,6 +1737,10 @@ def run_canonical_classification(
     run_id: str | None = None,
     limit: int | None = None,
     taxonomy: EditorialTaxonomy | None = None,
+    pending_only: bool = False,
+    should_pause: Callable[[], bool] | None = None,
+    progress_callback: Callable[[CanonicalClassificationReport], None] | None = None,
+    queue_ineligible: bool = True,
 ) -> CanonicalClassificationReport:
     if limit is not None and limit < 1:
         raise CanonicalClassificationError("limit deve ser positivo")
@@ -1801,15 +1830,18 @@ def run_canonical_classification(
         resume_cursor = cast(str | None, existing["cursor_canonical_question_id"])
         run_config_validated = True
         rows = _canonical_rows(connection, contest_id)
-        _queue_ineligible(
-            connection,
-            rows,
-            run_id=effective_run_id,
-            apply=apply,
-            report=report,
-            changed_at=changed_at,
-        )
+        if queue_ineligible:
+            _queue_ineligible(
+                connection,
+                rows,
+                run_id=effective_run_id,
+                apply=apply,
+                report=report,
+                changed_at=changed_at,
+            )
         eligible = [row for row in rows if _eligible(row)]
+        if pending_only:
+            eligible = [row for row in eligible if _pending_work(connection, row)]
         if apply:
             eligible = [
                 row
@@ -1821,7 +1853,7 @@ def run_canonical_classification(
                 ).fetchone()
                 is None
             ]
-        report.eligible = len([row for row in rows if _eligible(row)])
+        report.eligible = len(eligible)
         selected = eligible[:limit] if limit is not None else eligible
         if not apply:
             for row in selected:
@@ -1847,6 +1879,8 @@ def run_canonical_classification(
         processed = 0
         cursor = resume_cursor
         for row in selected:
+            if should_pause is not None and should_pause():
+                break
             report_checkpoint = deepcopy(report)
             connection.execute("BEGIN IMMEDIATE")
             try:
@@ -1869,6 +1903,10 @@ def run_canonical_classification(
                     (cursor, effective_run_id),
                 )
                 connection.commit()
+                report.processed = processed
+                report.remaining = len(eligible) - processed
+                if progress_callback is not None:
+                    progress_callback(deepcopy(report))
             except CanonicalAIProviderUnavailableError:
                 connection.rollback()
                 report = report_checkpoint

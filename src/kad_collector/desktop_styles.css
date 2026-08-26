@@ -345,6 +345,18 @@ label { display: grid; gap: 6px; color: #5f596b; font-size: 10px; font-weight: 7
 .preview-list { display: grid; gap: 6px; max-height: 280px; overflow: auto; }
 .preview-list span { padding: 7px 9px; color: var(--muted); background: #fffdfa; border: 1px solid var(--line); border-radius: 8px; font-size: 9px; }
 
+.qwen-job-strip { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(360px, 1.4fr) auto; gap: 14px; align-items: center; margin: 0 0 16px; padding: 14px 16px; background: #f3eefb; border: 1px solid #d8c9ec; border-radius: 14px; }
+.qwen-job-strip[hidden] { display: none; }
+.qwen-job-strip strong, .qwen-job-strip span { display: block; }
+.qwen-job-strip strong { margin-bottom: 4px; font-size: 11px; }
+.qwen-job-strip span { color: var(--muted); font-size: 9px; }
+.qwen-job-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.qwen-job-metrics span { padding: 7px 8px; color: #4b3a5f; background: rgba(255,255,255,.7); border-radius: 8px; font-weight: 750; }
+.qwen-job-actions { display: flex; gap: 7px; justify-content: flex-end; }
+.qwen-contract { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 10px; margin: 0; padding: 11px 12px; background: #fffdfa; border: 1px solid var(--line); border-radius: 10px; font-size: 9px; }
+.qwen-contract dt { color: var(--muted); font-weight: 800; }
+.qwen-contract dd { margin: 0; overflow-wrap: anywhere; }
+
 .toast { position: fixed; z-index: 200; right: 24px; bottom: 24px; max-width: 440px; padding: 13px 15px; color: white; background: #201631; border: 1px solid rgba(255,255,255,.14); border-radius: 12px; box-shadow: 0 18px 50px rgba(15,8,28,.32); font-size: 12px; }
 .toast.error { background: #6f1f2c; }
 
@@ -394,6 +406,8 @@ label { display: grid; gap: 6px; color: #5f596b; font-size: 10px; font-weight: 7
   .source-grid { grid-template-columns: 1fr; }
   .collection-row { grid-template-columns: 8px minmax(0, 1fr); }
   .collection-result { grid-column: 2; text-align: left; }
+  .qwen-job-strip { grid-template-columns: 1fr; }
+  .qwen-job-actions { justify-content: flex-start; }
 }
 
 @media (prefers-reduced-motion: reduce) {

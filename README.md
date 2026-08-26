@@ -124,6 +124,19 @@ suficiente, o campo permanece vazio e a interface apresenta **Nao classificada**
 da taxonomia nao sao criados. O botao **Reclassificar acervo** reaplica essa classificacao ao
 banco local sem baixar os PDFs e sem alterar gabaritos ou decisoes humanas.
 
+O botão **Classificar pendentes com Qwen 8B** oferece um lote local assistido. Ao abrir,
+o Collector faz somente uma prévia passiva: conta questões elegíveis, completas, resolvíveis
+pelas regras e dependentes de IA; também confere o endpoint loopback, a tag `qwen3:8b`, a
+quantização `Q4_K_M` e o digest aprovado. Nenhuma inferência ou escrita ocorre antes da
+confirmação. O limite padrão é 25 e pode ser ajustado entre 1 e 250.
+
+Depois da confirmação, um aquecimento exige contexto 4096 e `100% GPU` em `/api/ps` e
+`ollama ps`. O motor determinístico continua vindo primeiro, e o Qwen recebe somente os campos
+ausentes entre disciplina, matéria, assunto e nível. O progresso pode ser pausado e retomado
+no mesmo identificador; cada questão é gravada separadamente e o modelo é descarregado ao
+parar ou concluir. Respostas, gabaritos, vínculos, classificações existentes e decisões
+humanas não são alterados. O desktop não carrega o 14B nem usa provedor externo nesse fluxo.
+
 O contexto de vizinhanca so e propagado quando as questoes anterior, atual e seguinte possuem
 o mesmo identificador explicito de bloco. Ausencia de bloco nunca significa bloco compartilhado.
 As regras locais pontuam palavras e expressoes completas; uma palavra isolada so especializa

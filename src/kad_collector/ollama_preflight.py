@@ -114,6 +114,9 @@ class HttpOllamaAdminClient:
             json={"model": model, "prompt": "", "stream": False, "keep_alive": 0},
         )
 
+    def close(self) -> None:
+        self._client.close()
+
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
@@ -263,8 +266,18 @@ def inspect_ollama_environment(
 def _default_command_runner(
     command: tuple[str, ...], environment: Mapping[str, str]
 ) -> str:
+    resolved_command = command
+    if command and command[0].casefold() == "ollama" and shutil.which(command[0]) is None:
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        windows_executable = (
+            Path(local_app_data) / "Programs" / "Ollama" / "ollama.exe"
+            if local_app_data
+            else None
+        )
+        if windows_executable is not None and windows_executable.is_file():
+            resolved_command = (str(windows_executable), *command[1:])
     completed = subprocess.run(
-        command,
+        resolved_command,
         check=False,
         capture_output=True,
         text=True,
