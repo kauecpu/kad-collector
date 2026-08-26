@@ -33,9 +33,8 @@ class OllamaBenchmarkTarget:
 
 
 OLLAMA_BENCHMARK_TARGETS = (
-    OllamaBenchmarkTarget("qwen3.5:9b-q4_K_M", "Q4_K_M"),
-    OllamaBenchmarkTarget("qwen3:14b-q4_K_M", "Q4_K_M"),
-    OllamaBenchmarkTarget("gemma3:12b-it-qat", "Q4_0"),
+    OllamaBenchmarkTarget("qwen3:8b", "Q4_K_M"),
+    OllamaBenchmarkTarget("qwen3:14b", "Q4_K_M"),
 )
 
 OllamaCommandRunner = Callable[[tuple[str, ...], Mapping[str, str]], str]

@@ -1,0 +1,176 @@
+{
+  "schemaVersion": 2,
+  "algorithmVersion": "ollama-local-ai-benchmark-v3",
+  "benchmarkId": "ollama-local-c39c70edbf6871aa",
+  "manifestFingerprint": "c39c70edbf6871aa098b90680999dc4b4164e9bdc00b67bd6f06f879c751b9eb",
+  "sampleFingerprint": "692db1f893db808d858efd20f7bf7fe1ff3e2e24f7c0864f519b454474d20466",
+  "taxonomyVersion": "2.0.1",
+  "ollamaVersion": "0.32.15",
+  "parameters": {
+    "concurrency": 1,
+    "temperature": 0,
+    "numCtx": 4096,
+    "numPredict": 512,
+    "thinking": false
+  },
+  "generatedAt": "2026-08-26T00:52:33.135108+00:00",
+  "records": 20,
+  "maximumRecords": 350,
+  "cleanupFailures": {
+    "total": 0,
+    "unresolved": 0
+  },
+  "models": {
+    "qwen3:8b": {
+      "digest": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41",
+      "quantization": "Q4_K_M",
+      "calls": 10,
+      "successful": 10,
+      "failures": 0,
+      "interruptions": 0,
+      "jsonValidPercent": 100.0,
+      "schemaFailures": 0,
+      "prohibitedFieldAttempts": 0,
+      "outsideTaxonomy": 0,
+      "validationCodes": {},
+      "fieldAccuracy": {
+        "discipline": {
+          "correct": 0,
+          "total": 1,
+          "percent": 0.0,
+          "confidence95": {
+            "lowPercent": 0.0,
+            "highPercent": 79.345
+          }
+        },
+        "matter": {
+          "correct": 6,
+          "total": 9,
+          "percent": 66.667,
+          "confidence95": {
+            "lowPercent": 35.42,
+            "highPercent": 87.942
+          }
+        },
+        "subject": {
+          "correct": 6,
+          "total": 9,
+          "percent": 66.667,
+          "confidence95": {
+            "lowPercent": 35.42,
+            "highPercent": 87.942
+          }
+        },
+        "level": {
+          "correct": 2,
+          "total": 2,
+          "percent": 100.0,
+          "confidence95": {
+            "lowPercent": 34.238,
+            "highPercent": 100.0
+          }
+        }
+      },
+      "allRequestedFieldsAccuracy": {
+        "correct": 7,
+        "total": 10,
+        "percent": 70.0,
+        "confidence95": {
+          "lowPercent": 39.678,
+          "highPercent": 89.221
+        }
+      },
+      "acceptedPrecisionPercent": 66.667,
+      "coverageAboveConfidencePercent": 100.0,
+      "reviewPercent": 0.0,
+      "latencyMedianMs": 3064.251,
+      "latencyP95Ms": 3866.358,
+      "inputTokens": 12110,
+      "outputTokens": 1112,
+      "tokensPerSecondMedian": 46.273,
+      "tokensPerSecondP95": 47.677,
+      "warmupLoadDurationMedianMs": 10575.94,
+      "peakVramBytes": 5578204118
+    },
+    "qwen3:14b": {
+      "digest": "bdbd181c33f2ed1b31c972991882db3cf4d192569092138a7d29e973cd9debe8",
+      "quantization": "Q4_K_M",
+      "calls": 10,
+      "successful": 10,
+      "failures": 0,
+      "interruptions": 0,
+      "jsonValidPercent": 100.0,
+      "schemaFailures": 0,
+      "prohibitedFieldAttempts": 0,
+      "outsideTaxonomy": 0,
+      "validationCodes": {},
+      "fieldAccuracy": {
+        "discipline": {
+          "correct": 0,
+          "total": 1,
+          "percent": 0.0,
+          "confidence95": {
+            "lowPercent": 0.0,
+            "highPercent": 79.345
+          }
+        },
+        "matter": {
+          "correct": 7,
+          "total": 9,
+          "percent": 77.778,
+          "confidence95": {
+            "lowPercent": 45.259,
+            "highPercent": 93.677
+          }
+        },
+        "subject": {
+          "correct": 7,
+          "total": 9,
+          "percent": 77.778,
+          "confidence95": {
+            "lowPercent": 45.259,
+            "highPercent": 93.677
+          }
+        },
+        "level": {
+          "correct": 1,
+          "total": 2,
+          "percent": 50.0,
+          "confidence95": {
+            "lowPercent": 9.453,
+            "highPercent": 90.547
+          }
+        }
+      },
+      "allRequestedFieldsAccuracy": {
+        "correct": 7,
+        "total": 10,
+        "percent": 70.0,
+        "confidence95": {
+          "lowPercent": 39.678,
+          "highPercent": 89.221
+        }
+      },
+      "acceptedPrecisionPercent": 71.429,
+      "coverageAboveConfidencePercent": 100.0,
+      "reviewPercent": 0.0,
+      "latencyMedianMs": 5233.887,
+      "latencyP95Ms": 7518.801,
+      "inputTokens": 12110,
+      "outputTokens": 1222,
+      "tokensPerSecondMedian": 26.259,
+      "tokensPerSecondP95": 26.684,
+      "warmupLoadDurationMedianMs": 17845.967,
+      "peakVramBytes": 9646353939
+    }
+  },
+  "pairedComparison": {
+    "qwen3:8b_vs_qwen3:14b": {
+      "pairedQuestions": 10,
+      "leftWins": 1,
+      "rightWins": 1,
+      "ties": 8
+    }
+  },
+  "recommendation": "Comparar os critérios editoriais antes de autorizar a fase full; nenhum vencedor foi escolhido."
+}

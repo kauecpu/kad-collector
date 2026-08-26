@@ -1,0 +1,179 @@
+{
+  "schemaVersion": 2,
+  "phase": "offline-preflight",
+  "status": "awaiting-paid-pilot-approval",
+  "benchmarkId": "canonical-ai-692db1f893db808d",
+  "sampleFingerprint": "692db1f893db808d858efd20f7bf7fe1ff3e2e24f7c0864f519b454474d20466",
+  "createdAt": "2026-08-26T00:46:55.036281+00:00",
+  "sample": {
+    "requested": 175,
+    "availableOfficialStructureReferences": 384,
+    "selected": 175,
+    "referenceAudit": {
+      "examined": 1540,
+      "accepted": 384,
+      "rejected": 1156,
+      "duplicateOccurrences": 0
+    },
+    "referenceKind": "agent_reviewed_reference",
+    "referenceReview": {
+      "reviewedRecords": 227,
+      "statuses": {
+        "agent_reviewed_reference": 202,
+        "ambiguous_reference": 1,
+        "rejected_reference": 6,
+        "structural_only_reference": 18
+      },
+      "usable": 197,
+      "matchedBySourceQuestionId": 27,
+      "matchedByContentFingerprint": 170,
+      "notHumanReview": true
+    },
+    "sanitization": {
+      "examined": 197,
+      "cleaned": 53,
+      "removedArtifacts": {
+        "calendar": 1,
+        "exam_header": 49,
+        "fgv_footer": 34,
+        "page_footer": 34,
+        "section_heading_bleed": 4
+      },
+      "rejected": 25,
+      "residuesAfterCleaning": 0
+    },
+    "deterministicTrivialCases": 0,
+    "distributions": {
+      "discipline": {
+        "Direito Tributário": 82,
+        "Fluência em Dados": 31,
+        "Legislação Aduaneira": 56,
+        "Legislação Tributária": 1,
+        "Transformação Digital": 5
+      },
+      "matter": {
+        "Administração Aduaneira": 17,
+        "Atendimento Tributário": 2,
+        "Ciência de Dados": 31,
+        "Contencioso Tributário": 48,
+        "Controle de Cargas": 19,
+        "Despacho Aduaneiro": 20,
+        "Governo Digital": 5,
+        "Obrigação Tributária": 21,
+        "Obrigações Acessórias": 6,
+        "Sigilo Fiscal": 5,
+        "Tributos Federais": 1
+      },
+      "subject": {
+        "Análise de Dados": 31,
+        "Atendimento ao Contribuinte": 2,
+        "Controle Aduaneiro": 17,
+        "Crédito Tributário": 21,
+        "Despacho de Importação e Exportação": 20,
+        "Gestão de Fronteiras": 19,
+        "IPI": 1,
+        "Processo Administrativo Fiscal": 48,
+        "SPED": 6,
+        "Sigilo Fiscal": 5,
+        "Transformação Digital do Estado": 5
+      },
+      "level": {
+        "Superior": 175
+      }
+    },
+    "contests": {
+      "RFB22": 175
+    },
+    "hiddenFields": {
+      "discipline+matter+subject": 8,
+      "discipline+matter+subject+level": 8,
+      "level": 8,
+      "matter+subject": 151
+    },
+    "observedMissingPatterns": {
+      "complete": 667,
+      "matter+subject": 873
+    }
+  },
+  "payload": {
+    "estimatedBytesTotalPerProvider": 887386,
+    "estimatedInputTokensPerProvider": 295856,
+    "estimatedOutputTokensPerProvider": 11456,
+    "estimationMethod": "UTF-8 bytes divided by 3, rounded up"
+  },
+  "pricing": {
+    "checkedAt": "2026-08-24",
+    "currency": "USD",
+    "unit": "1M tokens",
+    "providers": {
+      "gemini": {
+        "model": "gemini-3.7-flash",
+        "inputUsd": 0.75,
+        "outputUsd": 3.75,
+        "basis": "paid tier introductory price through 2026-12-31",
+        "sourceUrl": "https://ai.google.dev/gemini-api/docs/pricing"
+      },
+      "qwen": {
+        "model": "qwen3.7-plus",
+        "inputUsd": 0.4,
+        "outputUsd": 1.6,
+        "basis": "international list price, non-thinking, request up to 256K tokens",
+        "sourceUrl": "https://www.alibabacloud.com/help/en/model-studio/model-pricing"
+      },
+      "deepseek": {
+        "model": "deepseek-v4-pro",
+        "inputUsd": 0.435,
+        "outputUsd": 0.87,
+        "basis": "cache-miss input and non-thinking output",
+        "sourceUrl": "https://api-docs.deepseek.com/quick_start/pricing/"
+      }
+    },
+    "usdBrl": {
+      "rate": 5.1625,
+      "rateDate": "2026-08-21",
+      "basis": "PTAX venda do último dia útil disponível",
+      "sourceUrl": "https://www.bcb.gov.br/"
+    }
+  },
+  "providers": {
+    "gemini": {
+      "model": "gemini-3.7-flash",
+      "plannedCalls": 175,
+      "estimatedInputTokens": 295856,
+      "estimatedOutputTokens": 11456,
+      "estimatedCostUsd": 0.264852,
+      "estimatedCostBrl": 1.3673,
+      "pilotEstimatedCostUsd": 0.015022
+    },
+    "qwen": {
+      "model": "qwen3.7-plus",
+      "plannedCalls": 175,
+      "estimatedInputTokens": 295856,
+      "estimatedOutputTokens": 11456,
+      "estimatedCostUsd": 0.136672,
+      "estimatedCostBrl": 0.7056,
+      "pilotEstimatedCostUsd": 0.00775
+    },
+    "deepseek": {
+      "model": "deepseek-v4-pro",
+      "plannedCalls": 175,
+      "estimatedInputTokens": 295856,
+      "estimatedOutputTokens": 11456,
+      "estimatedCostUsd": 0.138664,
+      "estimatedCostBrl": 0.7159,
+      "pilotEstimatedCostUsd": 0.007859
+    }
+  },
+  "cost": {
+    "estimatedTotalUsd": 0.540188,
+    "estimatedTotalBrl": 2.7887,
+    "suggestedMaximumUsdWith25PercentMargin": 0.675235,
+    "suggestedMaximumBrlWith25PercentMargin": 3.4859
+  },
+  "plannedCalls": {
+    "pilot": 30,
+    "fullRemainder": 495,
+    "maximum": 525
+  },
+  "networkCallsPerformed": 0
+}

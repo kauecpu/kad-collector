@@ -48,6 +48,11 @@ from .question_equivalence import run_question_equivalence_migration
 from .regression import RegressionError, run_regression
 from .review import approve_batch
 from .review_server import serve_review_application
+from .supabase_benchmark_export import (
+    DEFAULT_REFERENCE_REVIEW,
+    DEFAULT_SNAPSHOT_PATH,
+    export_supabase_benchmark_snapshot,
+)
 from .validation import validate_questions
 from .workflow import read_requested_urls, run_semiautomatic
 
@@ -289,6 +294,25 @@ def build_parser() -> argparse.ArgumentParser:
     decide_classification_review.add_argument("--actor", required=True)
     decide_classification_review.add_argument("--value")
     decide_classification_review.add_argument("--evidence")
+    export_supabase_benchmark = subparsers.add_parser(
+        "export-supabase-benchmark",
+        help="recria em SQLite a fonte revisada do benchmark a partir do Supabase",
+    )
+    export_supabase_benchmark.add_argument(
+        "--reference-review",
+        type=_path,
+        default=DEFAULT_REFERENCE_REVIEW,
+    )
+    export_supabase_benchmark.add_argument(
+        "--output",
+        type=_path,
+        default=DEFAULT_SNAPSHOT_PATH,
+    )
+    export_supabase_benchmark.add_argument(
+        "--execute",
+        action="store_true",
+        help="abre uma transação somente leitura e cria a cópia SQLite local",
+    )
     prepare_ai_benchmark = subparsers.add_parser(
         "prepare-canonical-ai-benchmark",
         help="prepara offline a amostra controlada de provedores canônicos",
@@ -354,7 +378,7 @@ def build_parser() -> argparse.ArgumentParser:
     prepare_ollama_benchmark.add_argument(
         "--manifest",
         type=_path,
-        default=Path("docs/benchmarks/ollama-ai-manifest.v2.json"),
+        default=Path("docs/benchmarks/ollama-ai-manifest.v3.json"),
     )
     run_ollama_benchmark = subparsers.add_parser(
         "run-ollama-ai-benchmark",
@@ -633,6 +657,25 @@ def _run(args: argparse.Namespace) -> int:
         print(
             f"Revisão canônica {result['decision']}: {result['itemId']} (estado {result['state']})"
         )
+        return 0
+    if args.command == "export-supabase-benchmark":
+        export_result = export_supabase_benchmark_snapshot(
+            reference_review_path=args.reference_review,
+            output_path=args.output,
+            execute=args.execute,
+        )
+        if export_result.executed:
+            print(
+                f"Cópia SQLite criada: {export_result.exported_questions} questões, "
+                f"{export_result.exported_documents} documentos; "
+                f"SHA-256 {export_result.sha256}. Arquivo: {export_result.output_path}"
+            )
+        else:
+            print(
+                f"Prévia válida: {export_result.requested_questions} referências serão "
+                "lidas do Supabase em transação somente leitura. "
+                "Use --execute com KAD_DATABASE_URL configurada."
+            )
         return 0
     if args.command == "prepare-canonical-ai-benchmark":
         preflight_report = prepare_canonical_ai_benchmark(

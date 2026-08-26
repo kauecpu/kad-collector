@@ -25,8 +25,11 @@ from kad_collector.cli import build_parser
 from kad_collector.editorial_taxonomy import EditorialTaxonomy
 from kad_collector.json_utils import read_json, write_json
 from kad_collector.ollama_ai_benchmark import (
+    FULL_MAX_CALLS,
     LOCAL_BENCHMARK_ALGORITHM_VERSION,
+    LOCAL_BENCHMARK_SAMPLE_SIZE,
     LOCAL_BENCHMARK_SCHEMA_VERSION,
+    SMOKE_MAX_CALLS,
     execute_ollama_ai_benchmark,
     prepare_ollama_ai_benchmark,
     summarize_ollama_ai_benchmark,
@@ -161,7 +164,7 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
             and path.matter == EXPECTED["matter"]
             and path.subject == EXPECTED["subject"]
         )
-        self.items = [self._item(index) for index in range(200)]
+        self.items = [self._item(index) for index in range(175)]
         manifest_items = [self._safe_item(item) for item in self.items]
         write_json(
             self.source_bundle,
@@ -322,7 +325,7 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
             checkpoint_path=self.checkpoint,
             phase="smoke",
             approved_benchmark_id=self.benchmark_id,
-            max_new_calls=30,
+            max_new_calls=20,
             provider_factory=lambda model: FakeLocalProvider(
                 model,
                 calls,
@@ -348,7 +351,13 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
         )
         self.assertEqual(manifest["parameters"]["concurrency"], 1)
         self.assertEqual(manifest["parameters"]["numCtx"], 4096)
-        self.assertEqual(manifest["sampleSize"], 200)
+        self.assertEqual(LOCAL_BENCHMARK_SAMPLE_SIZE, 175)
+        self.assertEqual(SMOKE_MAX_CALLS, 20)
+        self.assertEqual(FULL_MAX_CALLS, 330)
+        self.assertEqual(manifest["sampleSize"], LOCAL_BENCHMARK_SAMPLE_SIZE)
+        self.assertEqual(manifest["phases"]["smokeMeasuredCalls"], 20)
+        self.assertEqual(manifest["phases"]["fullRemainderMeasuredCalls"], 330)
+        self.assertEqual(manifest["phases"]["maximumMeasuredCalls"], 350)
         self.assertEqual(manifest["localBundleFingerprint"], stable_sha256(bundle["items"]))
         self.assertEqual(bundle["manifest"], manifest)
 
@@ -396,7 +405,7 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
 
         with self.assertRaisesRegex(
             CanonicalClassificationError,
-            r"não está instalado.*ollama pull gemma3:12b-it-qat",
+            r"não está instalado.*ollama pull qwen3:14b",
         ):
             execute_ollama_ai_benchmark(
                 self.local_bundle,
@@ -405,7 +414,7 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
                 checkpoint_path=self.checkpoint,
                 phase="smoke",
                 approved_benchmark_id=self.benchmark_id,
-                max_new_calls=30,
+                max_new_calls=20,
                 provider_factory=lambda _: (_ for _ in ()).throw(AssertionError()),
                 admin_client=admin,
                 command_runner=lambda _, __: "unused",
@@ -441,7 +450,7 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
                 "--approved-benchmark-id",
                 "benchmark-1",
                 "--max-new-calls",
-                "30",
+                "20",
             ]
         )
         report = parser.parse_args(
@@ -460,17 +469,17 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
 
         self.assertEqual(prepared.command, "prepare-ollama-ai-benchmark")
         self.assertEqual(run.phase, "smoke")
-        self.assertEqual(run.max_new_calls, 30)
+        self.assertEqual(run.max_new_calls, 20)
         self.assertEqual(report.command, "report-ollama-ai-benchmark")
 
-    def test_smoke_uses_same_ten_items_for_each_model_and_stops_at_thirty(self) -> None:
+    def test_smoke_uses_same_ten_items_for_each_model_and_stops_at_twenty(self) -> None:
         calls: dict[str, list[CanonicalAIRequest]] = {}
         admin = FakeBenchmarkAdmin()
 
         result = self._run_smoke(calls, admin)
 
         expected_ids = [f"reference-{index:03d}" for index in range(10)]
-        self.assertEqual(result["newCalls"], 30)
+        self.assertEqual(result["newCalls"], 20)
         self.assertEqual(result["status"], "completed")
         for target in OLLAMA_BENCHMARK_TARGETS:
             self.assertEqual(
@@ -483,7 +492,7 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
             [{"OLLAMA_HOST": admin.base_url}] * len(OLLAMA_BENCHMARK_TARGETS),
         )
 
-        with self.assertRaisesRegex(CanonicalClassificationError, "30"):
+        with self.assertRaisesRegex(CanonicalClassificationError, "20"):
             execute_ollama_ai_benchmark(
                 self.local_bundle,
                 manifest_path=self.manifest,
@@ -491,7 +500,7 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
                 checkpoint_path=self.root / "other-checkpoint.json",
                 phase="smoke",
                 approved_benchmark_id=self.benchmark_id,
-                max_new_calls=31,
+                max_new_calls=21,
                 provider_factory=lambda _: (_ for _ in ()).throw(AssertionError()),
                 admin_client=FakeBenchmarkAdmin(self.installed_models),
                 command_runner=lambda _, __: "unused",
@@ -546,8 +555,8 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
 
         resumed = self._run_smoke({}, FakeBenchmarkAdmin())
         self.assertEqual(resumed["status"], "completed")
-        self.assertEqual(resumed["newCalls"], 29)
-        self.assertEqual(len(read_json(self.checkpoint)["records"]), 30)
+        self.assertEqual(resumed["newCalls"], 19)
+        self.assertEqual(len(read_json(self.checkpoint)["records"]), 20)
 
     def test_hardware_gate_pauses_during_warmup_before_measured_calls(self) -> None:
         admin = FakeBenchmarkAdmin(self.installed_models)
@@ -579,7 +588,7 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
         resumed_checkpoint = read_json(self.checkpoint)
 
         self.assertEqual(resumed["status"], "completed")
-        self.assertEqual(resumed["newCalls"], 20)
+        self.assertEqual(resumed["newCalls"], 10)
         self.assertEqual(resumed_checkpoint["cleanupFailures"][0]["status"], "resolved")
         self.assertIsInstance(resumed_checkpoint["cleanupFailures"][0]["resolvedAt"], str)
 
@@ -601,7 +610,7 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
             local_artifact_root=self.root,
         )
 
-        self.assertEqual(smoke["newCalls"], 30)
+        self.assertEqual(smoke["newCalls"], 20)
         self.assertEqual(smoke["status"], "paused")
         self.assertEqual(report["cleanupFailures"]["unresolved"], 1)
         self.assertIn("Smoke incompleto", report["recommendation"])
@@ -613,7 +622,7 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
             checkpoint_path=self.checkpoint,
             phase="full",
             approved_benchmark_id=self.benchmark_id,
-            max_new_calls=570,
+            max_new_calls=330,
             provider_factory=lambda _: (_ for _ in ()).throw(AssertionError()),
             admin_client=failing_admin,
             command_runner=lambda _, __: "unused",
@@ -644,7 +653,7 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
                 checkpoint_path=self.checkpoint,
                 phase="full",
                 approved_benchmark_id=self.benchmark_id,
-                max_new_calls=570,
+                max_new_calls=330,
                 provider_factory=lambda _: (_ for _ in ()).throw(AssertionError()),
                 admin_client=FakeBenchmarkAdmin(self.installed_models),
                 command_runner=lambda _, __: "unused",
@@ -663,7 +672,7 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
         )
         serialized = json.dumps(report, ensure_ascii=False)
 
-        self.assertEqual(report["records"], 30)
+        self.assertEqual(report["records"], 20)
         self.assertNotIn("Questão sintética", serialized)
         self.assertNotIn("Primeira alternativa", serialized)
         self.assertNotIn("rawResponse", serialized)

@@ -16,7 +16,7 @@ from kad_collector.ollama_preflight import (
 
 
 def _installed_model(tag: str, index: int) -> dict[str, Any]:
-    quantization = "Q4_0" if "qat" in tag else "Q4_K_M"
+    parameter_size = "8.2B" if tag == "qwen3:8b" else "14.8B"
     return {
         "name": tag,
         "model": tag,
@@ -24,9 +24,9 @@ def _installed_model(tag: str, index: int) -> dict[str, Any]:
         "digest": f"sha256:{index:064x}",
         "details": {
             "format": "gguf",
-            "family": "gemma3" if "gemma" in tag else "qwen3",
-            "parameter_size": "12.2B" if "gemma" in tag else "14.8B",
-            "quantization_level": quantization,
+            "family": "qwen3",
+            "parameter_size": parameter_size,
+            "quantization_level": "Q4_K_M",
         },
     }
 
@@ -81,6 +81,13 @@ class OllamaPreflightTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tags = [target.tag for target in OLLAMA_BENCHMARK_TARGETS]
         self.models = [_installed_model(tag, index) for index, tag in enumerate(self.tags, 1)]
+
+    def test_benchmark_targets_are_the_two_installed_qwen_tags(self) -> None:
+        self.assertEqual(self.tags, ["qwen3:8b", "qwen3:14b"])
+        self.assertEqual(
+            [target.expected_quantization for target in OLLAMA_BENCHMARK_TARGETS],
+            ["Q4_K_M", "Q4_K_M"],
+        )
 
     def test_inspection_never_pulls_or_generates_and_lists_missing_models(self) -> None:
         client = FakeAdminClient(self.models[:1])
@@ -159,7 +166,7 @@ class OllamaPreflightTests(unittest.TestCase):
         )
 
         self.assertTrue(report["readyForBenchmark"])
-        self.assertEqual(len(client.chat_requests), 3)
+        self.assertEqual(len(client.chat_requests), 2)
         self.assertEqual(client.unloaded, self.tags)
         self.assertEqual(
             command_environments,
