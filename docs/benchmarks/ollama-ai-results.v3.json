@@ -1,0 +1,176 @@
+{
+  "schemaVersion": 2,
+  "algorithmVersion": "ollama-local-ai-benchmark-v3",
+  "benchmarkId": "ollama-local-c39c70edbf6871aa",
+  "manifestFingerprint": "c39c70edbf6871aa098b90680999dc4b4164e9bdc00b67bd6f06f879c751b9eb",
+  "sampleFingerprint": "692db1f893db808d858efd20f7bf7fe1ff3e2e24f7c0864f519b454474d20466",
+  "taxonomyVersion": "2.0.1",
+  "ollamaVersion": "0.32.15",
+  "parameters": {
+    "concurrency": 1,
+    "temperature": 0,
+    "numCtx": 4096,
+    "numPredict": 512,
+    "thinking": false
+  },
+  "generatedAt": "2026-08-26T01:55:57.402355+00:00",
+  "records": 350,
+  "maximumRecords": 350,
+  "cleanupFailures": {
+    "total": 0,
+    "unresolved": 0
+  },
+  "models": {
+    "qwen3:8b": {
+      "digest": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41",
+      "quantization": "Q4_K_M",
+      "calls": 175,
+      "successful": 175,
+      "failures": 0,
+      "interruptions": 0,
+      "jsonValidPercent": 100.0,
+      "schemaFailures": 0,
+      "prohibitedFieldAttempts": 0,
+      "outsideTaxonomy": 0,
+      "validationCodes": {},
+      "fieldAccuracy": {
+        "discipline": {
+          "correct": 2,
+          "total": 16,
+          "percent": 12.5,
+          "confidence95": {
+            "lowPercent": 3.498,
+            "highPercent": 36.023
+          }
+        },
+        "matter": {
+          "correct": 129,
+          "total": 167,
+          "percent": 77.246,
+          "confidence95": {
+            "lowPercent": 70.316,
+            "highPercent": 82.949
+          }
+        },
+        "subject": {
+          "correct": 129,
+          "total": 167,
+          "percent": 77.246,
+          "confidence95": {
+            "lowPercent": 70.316,
+            "highPercent": 82.949
+          }
+        },
+        "level": {
+          "correct": 16,
+          "total": 16,
+          "percent": 100.0,
+          "confidence95": {
+            "lowPercent": 80.639,
+            "highPercent": 100.0
+          }
+        }
+      },
+      "allRequestedFieldsAccuracy": {
+        "correct": 137,
+        "total": 175,
+        "percent": 78.286,
+        "confidence95": {
+          "lowPercent": 71.605,
+          "highPercent": 83.751
+        }
+      },
+      "acceptedPrecisionPercent": 75.41,
+      "coverageAboveConfidencePercent": 100.0,
+      "reviewPercent": 0.0,
+      "latencyMedianMs": 3523.035,
+      "latencyP95Ms": 6210.19,
+      "inputTokens": 216279,
+      "outputTokens": 19339,
+      "tokensPerSecondMedian": 36.636,
+      "tokensPerSecondP95": 45.872,
+      "warmupLoadDurationMedianMs": 10491.52,
+      "peakVramBytes": 5578204118
+    },
+    "qwen3:14b": {
+      "digest": "bdbd181c33f2ed1b31c972991882db3cf4d192569092138a7d29e973cd9debe8",
+      "quantization": "Q4_K_M",
+      "calls": 175,
+      "successful": 175,
+      "failures": 0,
+      "interruptions": 0,
+      "jsonValidPercent": 100.0,
+      "schemaFailures": 0,
+      "prohibitedFieldAttempts": 0,
+      "outsideTaxonomy": 0,
+      "validationCodes": {},
+      "fieldAccuracy": {
+        "discipline": {
+          "correct": 1,
+          "total": 16,
+          "percent": 6.25,
+          "confidence95": {
+            "lowPercent": 1.112,
+            "highPercent": 28.329
+          }
+        },
+        "matter": {
+          "correct": 119,
+          "total": 167,
+          "percent": 71.257,
+          "confidence95": {
+            "lowPercent": 63.976,
+            "highPercent": 77.583
+          }
+        },
+        "subject": {
+          "correct": 119,
+          "total": 167,
+          "percent": 71.257,
+          "confidence95": {
+            "lowPercent": 63.976,
+            "highPercent": 77.583
+          }
+        },
+        "level": {
+          "correct": 11,
+          "total": 16,
+          "percent": 68.75,
+          "confidence95": {
+            "lowPercent": 44.404,
+            "highPercent": 85.835
+          }
+        }
+      },
+      "allRequestedFieldsAccuracy": {
+        "correct": 122,
+        "total": 175,
+        "percent": 69.714,
+        "confidence95": {
+          "lowPercent": 62.543,
+          "highPercent": 76.038
+        }
+      },
+      "acceptedPrecisionPercent": 67.598,
+      "coverageAboveConfidencePercent": 97.814,
+      "reviewPercent": 2.186,
+      "latencyMedianMs": 6825.457,
+      "latencyP95Ms": 9345.775,
+      "inputTokens": 216279,
+      "outputTokens": 20856,
+      "tokensPerSecondMedian": 20.806,
+      "tokensPerSecondP95": 26.011,
+      "warmupLoadDurationMedianMs": 17396.066,
+      "peakVramBytes": 9646353939
+    }
+  },
+  "pairedComparison": {
+    "qwen3:8b_vs_qwen3:14b": {
+      "pairedQuestions": 175,
+      "leftWins": 21,
+      "rightWins": 6,
+      "ties": 148
+    }
+  },
+  "recommendation": "Benchmark completo; recomendar qwen3:8b: 21 vitórias pareadas contra 6 de qwen3:14b, 78.286% de acerto conjunto e p exato de McNemar 0.005925."
+}

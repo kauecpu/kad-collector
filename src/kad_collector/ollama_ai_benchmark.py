@@ -969,6 +969,57 @@ def _wilson_95(successes: int, total: int) -> dict[str, float]:
     }
 
 
+def _mcnemar_exact_p_value(left_wins: int, right_wins: int) -> float:
+    discordant = left_wins + right_wins
+    if discordant == 0:
+        return 1.0
+    smaller = min(left_wins, right_wins)
+    tail = sum(math.comb(discordant, value) for value in range(smaller + 1))
+    return min(1.0, float(2 * tail) / float(2**discordant))
+
+
+def _benchmark_recommendation(
+    *,
+    smoke_complete: bool,
+    full_complete: bool,
+    tags: list[str],
+    by_model: Mapping[str, Mapping[str, Any]],
+    paired: Mapping[str, Mapping[str, int]],
+) -> str:
+    if not smoke_complete:
+        return "Smoke incompleto; não executar a fase full."
+    if not full_complete:
+        return (
+            "Smoke concluído; comparar os critérios editoriais antes de autorizar "
+            "a fase full; nenhum vencedor foi escolhido."
+        )
+    if len(tags) != 2:
+        return "Benchmark completo; o contrato não possui dois modelos comparáveis."
+
+    left, right = tags
+    comparison = paired.get(f"{left}_vs_{right}")
+    if comparison is None:
+        return "Benchmark completo; a comparação pareada não foi encontrada."
+    left_wins = int(comparison["leftWins"])
+    right_wins = int(comparison["rightWins"])
+    p_value = _mcnemar_exact_p_value(left_wins, right_wins)
+    if left_wins == right_wins or p_value >= 0.05:
+        return (
+            "Benchmark completo; a diferença pareada não atingiu significância "
+            f"estatística (p exato de McNemar {p_value:.6f}); nenhum vencedor foi escolhido."
+        )
+
+    winner, loser = (left, right) if left_wins > right_wins else (right, left)
+    winner_wins = max(left_wins, right_wins)
+    loser_wins = min(left_wins, right_wins)
+    accuracy = float(by_model[winner]["allRequestedFieldsAccuracy"]["percent"])
+    return (
+        f"Benchmark completo; recomendar {winner}: {winner_wins} vitórias pareadas "
+        f"contra {loser_wins} de {loser}, {accuracy:.3f}% de acerto conjunto e "
+        f"p exato de McNemar {p_value:.6f}."
+    )
+
+
 def summarize_ollama_ai_benchmark(
     local_bundle_path: Path,
     *,
@@ -1135,6 +1186,11 @@ def summarize_ollama_ai_benchmark(
     smoke_complete = (
         expected_smoke_keys.issubset(successful_smoke_keys) and unresolved_cleanup_count == 0
     )
+    full_complete = (
+        len(records) == maximum_records
+        and all(metrics["calls"] == len(items) for metrics in by_model.values())
+        and unresolved_cleanup_count == 0
+    )
     report = {
         "schemaVersion": LOCAL_BENCHMARK_SCHEMA_VERSION,
         "algorithmVersion": LOCAL_BENCHMARK_ALGORITHM_VERSION,
@@ -1153,13 +1209,12 @@ def summarize_ollama_ai_benchmark(
         },
         "models": by_model,
         "pairedComparison": paired,
-        "recommendation": (
-            "Smoke incompleto; não executar a fase full."
-            if not smoke_complete
-            else (
-                "Comparar os critérios editoriais antes de autorizar a fase full; "
-                "nenhum vencedor foi escolhido."
-            )
+        "recommendation": _benchmark_recommendation(
+            smoke_complete=smoke_complete,
+            full_complete=full_complete,
+            tags=tags,
+            by_model=by_model,
+            paired=paired,
         ),
     }
     if report_path is not None:

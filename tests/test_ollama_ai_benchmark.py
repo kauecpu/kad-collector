@@ -643,6 +643,55 @@ class OllamaAIBenchmarkTests(unittest.TestCase):
         self.assertEqual(resolved["newCalls"], 0)
         self.assertEqual(resolved_report["cleanupFailures"]["unresolved"], 0)
         self.assertNotIn("Smoke incompleto", resolved_report["recommendation"])
+        self.assertIn("Smoke concluído", resolved_report["recommendation"])
+        self.assertNotIn("Benchmark completo", resolved_report["recommendation"])
+
+    def test_full_report_recommends_a_significant_paired_winner(self) -> None:
+        calls: dict[str, list[CanonicalAIRequest]] = {}
+        admin = FakeBenchmarkAdmin(self.installed_models)
+        smoke = self._run_smoke(calls, admin)
+        losing_tag = OLLAMA_BENCHMARK_TARGETS[1].tag
+
+        def command_runner(
+            command: tuple[str, ...], environment: Mapping[str, str]
+        ) -> str:
+            self.assertEqual(command, ("ollama", "ps"))
+            admin.command_environments.append(dict(environment))
+            return f"{admin.active_model} abc 9 GB 100% GPU"
+
+        full = execute_ollama_ai_benchmark(
+            self.local_bundle,
+            manifest_path=self.manifest,
+            preflight_path=self.preflight,
+            checkpoint_path=self.checkpoint,
+            phase="full",
+            approved_benchmark_id=self.benchmark_id,
+            max_new_calls=330,
+            provider_factory=lambda model: FakeLocalProvider(
+                model,
+                calls,
+                admin,
+                forbidden=model == losing_tag,
+            ),
+            admin_client=admin,
+            command_runner=command_runner,
+            local_artifact_root=self.root,
+        )
+        report = summarize_ollama_ai_benchmark(
+            self.local_bundle,
+            manifest_path=self.manifest,
+            checkpoint_path=self.checkpoint,
+            local_artifact_root=self.root,
+        )
+
+        self.assertEqual(smoke["status"], "completed")
+        self.assertEqual(full["status"], "completed")
+        self.assertEqual(report["records"], 350)
+        self.assertIn(
+            f"recomendar {OLLAMA_BENCHMARK_TARGETS[0].tag}",
+            report["recommendation"],
+        )
+        self.assertIn("p exato de McNemar", report["recommendation"])
 
     def test_full_requires_successful_smoke_and_a_new_phase(self) -> None:
         with self.assertRaisesRegex(CanonicalClassificationError, "smoke"):
