@@ -61,14 +61,74 @@ function renderSemanticIdentityHistory(root, events) {
   root.append(history);
 }
 
+function qwenPreviewPresentation(preview) {
+  const counts = preview?.counts || {};
+  const missing = Object.entries(counts.missingFields || {});
+  const fieldLabels = {
+    discipline: 'Disciplina', matter: 'Matéria', subject: 'Assunto', level: 'Nível',
+  };
+  const zeroReason = (counts.exclusionReasons || [])[0] || null;
+  return {
+    counts: [
+      ['Questões brutas', counts.rawQuestions || 0],
+      ['Questões canônicas', counts.canonicalQuestions || 0],
+      ['Elegíveis', counts.eligible || 0],
+      ['Já completas', counts.alreadyComplete || 0],
+      ['Resolvidas por regras', counts.deterministic || 0],
+      ['Precisam do Qwen', counts.qwenRequired || 0],
+    ],
+    missing: counts.eligible > 0
+      ? missing.map(([field, total]) => `${fieldLabels[field] || field}: ${total}`)
+      : [],
+    zeroReason: counts.eligible === 0 ? zeroReason : null,
+    exclusions: counts.exclusionReasons || [],
+  };
+}
+
+function questionStatePresentation(view) {
+  const question = view?.question || {};
+  const reasons = new Set(view?.block_reasons || []);
+  const equivalence = view?.question_equivalence || {};
+  const fieldLabels = {discipline: 'Disciplina', matter: 'Matéria', subject: 'Assunto', level: 'Nível'};
+  const missingClassification = Object.keys(fieldLabels).filter((field) => !question[field]);
+  const answer = question.answer_status === 'annulled'
+    ? {state: 'Anulada', tone: 'attention', reason: 'O gabarito oficial anulou esta questão.', action: 'Revisar questão'}
+    : question.answer_status === 'matched'
+      ? {state: 'Encontrado', tone: 'success', reason: 'A resposta foi vinculada ao gabarito oficial.', action: 'Nenhuma ação'}
+      : reasons.has('ambiguous_association')
+        ? {state: 'Associação pendente', tone: 'attention', reason: 'A prova e o gabarito existem, mas o Collector ainda não confirmou o mesmo caderno.', action: 'Revisar associação'}
+        : {state: 'Ausente', tone: 'blocked', reason: 'Não existe resposta oficial comprovada para esta questão.', action: 'Localizar ou associar gabarito'};
+  const preparation = equivalence.status === 'confirmed' && equivalence.canonicalQuestionId
+    ? {state: 'Canônica', tone: 'success', reason: 'O grupo equivalente foi confirmado e possui representante canônica.', action: 'Nenhuma ação'}
+    : equivalence.groupId
+      ? {state: 'Equivalência pendente', tone: 'attention', reason: 'A questão foi agrupada, mas o grupo ainda precisa de confirmação.', action: 'Revisar grupo equivalente'}
+      : view?.canonical_identity
+        ? {state: 'Identidade pendente', tone: 'attention', reason: 'O documento foi reconhecido, mas a preparação das ocorrências ainda não terminou.', action: 'Executar preparação'}
+        : {state: 'Bruta', tone: 'attention', reason: 'A questão foi extraída, mas ainda não entrou na preparação canônica.', action: 'Executar preparação'};
+  const classification = missingClassification.length
+    ? {state: 'Incompleta', tone: 'attention', reason: `Faltam ${missingClassification.map((field) => fieldLabels[field]).join(', ')}.`, action: preparation.state === 'Canônica' ? 'Aplicar regras ou usar Qwen' : 'Concluir preparação primeiro'}
+    : {state: 'Completa', tone: 'success', reason: 'Os campos editoriais necessários estão preenchidos.', action: 'Revisar conteúdo'};
+  const importing = view?.importable
+    ? {state: 'Pronta', tone: 'success', reason: 'Os requisitos mínimos de importação foram atendidos.', action: 'Revisar e exportar'}
+    : {state: 'Bloqueada', tone: 'blocked', reason: view?.import_diagnosis?.issues?.[0]?.what || 'Existem requisitos de importação pendentes.', action: view?.import_diagnosis?.issues?.[0]?.how || 'Abra o diagnóstico abaixo'};
+  return [
+    {label: 'Gabarito', ...answer},
+    {label: 'Preparação', ...preparation},
+    {label: 'Classificação', ...classification},
+    {label: 'Importação', ...importing},
+  ];
+}
+
 if (typeof window !== 'undefined') {
   window.KADDesktopRenderers = {
     semanticIdentityBadge, semanticIdentityPresentation, renderSemanticIdentityHistory,
+    qwenPreviewPresentation, questionStatePresentation,
   };
 }
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     semanticIdentityBadge, semanticIdentityPresentation, renderSemanticIdentityHistory,
+    qwenPreviewPresentation, questionStatePresentation,
   };
 }
 
@@ -93,7 +153,7 @@ const state = {
   localAIStatus: null,
   localAIPolling: null,
   polling: null,
-  activeSection: 'workspace',
+  activeSection: 'overview',
   selectedSourceId: null,
 };
 
@@ -212,6 +272,7 @@ async function runQuery() {
 }
 
 function render() {
+  renderOperationalOverview();
   renderMetrics();
   renderJobs();
   renderSavedFilters();
@@ -229,9 +290,34 @@ function render() {
 }
 
 function renderSection() {
-  const collecting = state.activeSection === 'sources';
+  const collecting = state.activeSection === 'collect';
   byId('editorial-view').hidden = collecting;
   byId('source-view').hidden = !collecting;
+}
+
+function renderOperationalOverview() {
+  const summary = state.bootstrap.summary || {};
+  const operational = state.bootstrap.operationalSummary || {};
+  const config = state.bootstrap.config || {};
+  byId('database-environment').textContent = config.environmentLabel || 'Banco operacional';
+  byId('database-environment').className = `environment-badge ${config.environment || 'operational'}`;
+  byId('database-path').textContent = config.databasePath || config.dataDirectory || '—';
+  byId('overview-official').textContent = summary.answer_matched || 0;
+  byId('overview-annulled').textContent = summary.answer_annulled || 0;
+  byId('overview-unmatched').textContent = summary.answer_missing || 0;
+  byId('overview-unclassified').textContent = summary.unclassified || 0;
+  byId('prep-raw').textContent = operational.rawQuestions || 0;
+  byId('prep-occurrences').textContent = operational.occurrences || 0;
+  byId('prep-groups').textContent = operational.confirmedGroups || 0;
+  byId('prep-canonical').textContent = operational.canonicalQuestions || 0;
+  byId('canonical-empty-message').hidden = !(
+    operational.rawQuestions > 0 && operational.canonicalQuestions === 0
+  );
+  const next = operational.nextAction || {};
+  byId('next-action-title').textContent = next.title || 'Banco pronto para começar';
+  byId('next-action-detail').textContent = next.detail || '';
+  byId('next-action-button').textContent = next.action || 'Ver fluxo';
+  byId('next-action-button').dataset.step = next.step || 'collect';
 }
 
 function sourceById(sourceId) {
@@ -495,7 +581,7 @@ function renderMetrics() {
   const summary = state.bootstrap.summary || {};
   byId('metric-total').textContent = summary.total || 0;
   byId('metric-answer-summary').textContent =
-    `${summary.answer_official || 0} vinculadas ao gabarito · ${summary.answer_missing || 0} sem resposta oficial`;
+    `${summary.answer_matched || 0} com resposta oficial · ${summary.answer_annulled || 0} anuladas · ${summary.answer_missing || 0} sem gabarito associado`;
   byId('metric-pending').textContent = summary.pending || 0;
   byId('metric-exceptions').textContent = summary.exception || 0;
   byId('metric-missing-answers').textContent = `${summary.answer_missing || 0} sem resposta oficial`;
@@ -872,13 +958,13 @@ function renderBatchToolbar() {
 }
 
 function activateEditorialQueue(status) {
-  state.activeSection = 'workspace';
+  state.activeSection = 'review';
   state.filters = emptyFilters();
   state.filters.statuses = [status];
   state.selectedQuestionIds.clear();
   byId('question-search').value = '';
   document.querySelectorAll('.rail-link').forEach((item) => item.classList.remove('active'));
-  document.querySelector('.rail-link[data-section="workspace"]')?.classList.add('active');
+  document.querySelector('.rail-link[data-section="review"]')?.classList.add('active');
   renderSection();
   runQuery().then(() => {
     document.querySelector('.workbench')?.scrollIntoView({behavior: 'smooth', block: 'start'});
@@ -1037,6 +1123,7 @@ function fillReviewForm() {
   renderCorrectAnswers(question.correct_answer);
   byId('edit-correct-answer').disabled = question.answer_status !== 'matched';
   renderReviewFlags();
+  renderQuestionStates();
   renderImportDiagnosis();
   renderBatchCorrection();
   renderReviewContext();
@@ -1482,6 +1569,25 @@ async function reclassifyCollection() {
   finally { button.disabled = false; }
 }
 
+function renderQuestionStates() {
+  const root = byId('question-state-groups');
+  root.replaceChildren();
+  questionStatePresentation(state.currentQuestion).forEach((item) => {
+    const card = document.createElement('article');
+    card.className = `question-state ${item.tone}`;
+    const label = document.createElement('span');
+    label.textContent = item.label;
+    const stateLabel = document.createElement('strong');
+    stateLabel.textContent = item.state;
+    const reason = document.createElement('p');
+    reason.textContent = item.reason;
+    const action = document.createElement('small');
+    action.textContent = `Próxima ação: ${item.action}`;
+    card.append(label, stateLabel, reason, action);
+    root.append(card);
+  });
+}
+
 function localAIStateLabel(value) {
   return {
     idle: 'Aguardando', starting: 'Verificando GPU', running: 'Em execução',
@@ -1499,14 +1605,40 @@ function appendContractRow(root, label, value) {
 }
 
 function renderQwenPreview(preview) {
-  const counts = preview.counts || {};
-  byId('qwen-classification-preview').textContent = [
-    `${counts.eligible || 0} elegíveis`,
-    `${counts.alreadyComplete || 0} já completas`,
-    `${counts.deterministic || 0} resolvidas por regras`,
-    `${counts.qwenRequired || 0} precisam do Qwen`,
-    `campos ainda ausentes: ${Object.entries(counts.missingFields || {}).map(([field, total]) => `${field} ${total}`).join(', ') || 'nenhum'}`,
-  ].join(' · ');
+  const presentation = qwenPreviewPresentation(preview);
+  const root = byId('qwen-classification-preview');
+  root.replaceChildren();
+  const grid = document.createElement('div');
+  grid.className = 'qwen-count-grid';
+  presentation.counts.forEach(([label, value]) => {
+    const item = document.createElement('span');
+    item.innerHTML = `<strong>${value}</strong><small>${label}</small>`;
+    grid.append(item);
+  });
+  root.append(grid);
+  if (presentation.zeroReason) {
+    const reason = document.createElement('div');
+    reason.className = 'qwen-zero-reason';
+    reason.innerHTML = `<strong>${presentation.zeroReason.label}</strong><span>${presentation.zeroReason.action}</span>`;
+    root.append(reason);
+  } else if (presentation.missing.length) {
+    const missing = document.createElement('p');
+    missing.textContent = `Campos ausentes: ${presentation.missing.join(' · ')}`;
+    root.append(missing);
+  }
+  if (presentation.exclusions.length) {
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = 'Ver motivos de exclusão';
+    const list = document.createElement('ul');
+    presentation.exclusions.forEach((item) => {
+      const row = document.createElement('li');
+      row.textContent = `${item.label}${item.count ? ` (${item.count})` : ''}: ${item.action}`;
+      list.append(row);
+    });
+    details.append(summary, list);
+    root.append(details);
+  }
   const contract = byId('qwen-classification-contract');
   contract.replaceChildren();
   appendContractRow(contract, 'Modelo', preview.preflight.model);
@@ -1515,7 +1647,7 @@ function renderQwenPreview(preview) {
   appendContractRow(contract, 'Endpoint', preview.preflight.endpoint);
   appendContractRow(contract, 'Ollama', preview.preflight.ollamaVersion);
   byId('qwen-classification-warning').textContent = preview.warning;
-  byId('qwen-classification-submit').disabled = false;
+  byId('qwen-classification-submit').disabled = (preview.counts?.eligible || 0) === 0;
 }
 
 async function refreshQwenPreview() {
@@ -1545,7 +1677,23 @@ async function openQwenClassification() {
     await refreshQwenPreview();
     byId('qwen-classification-dialog').showModal();
   } catch (error) {
-    toast(error.message, 'error');
+    const operational = state.bootstrap.operationalSummary || {};
+    renderQwenPreview({
+      counts: {
+        rawQuestions: operational.rawQuestions || 0,
+        canonicalQuestions: operational.canonicalQuestions || 0,
+        eligible: 0,
+        exclusionReasons: [{
+          code: 'ollama_unavailable',
+          label: 'Ollama ou modelo indisponível',
+          count: 0,
+          action: error.message,
+        }],
+      },
+      preflight: {},
+      warning: 'A classificação não pode começar enquanto o ambiente local não atender ao contrato aprovado.',
+    });
+    byId('qwen-classification-dialog').showModal();
   } finally {
     button.disabled = false;
   }
@@ -1669,6 +1817,7 @@ byId('qwen-classification-form').addEventListener('submit', startQwenClassificat
 byId('qwen-job-pause').addEventListener('click', () => localAIAction('pause'));
 byId('qwen-job-resume').addEventListener('click', () => localAIAction('resume'));
 byId('export-open').addEventListener('click', openExportPreview);
+byId('export-summary-open').addEventListener('click', openExportPreview);
 byId('metric-card-pending').addEventListener('click', () => activateEditorialQueue('pending'));
 byId('metric-card-exceptions').addEventListener('click', () => activateEditorialQueue('exception'));
 byId('metric-card-importable').addEventListener('click', () => activateEditorialQueue('importable'));
@@ -1733,12 +1882,35 @@ document.querySelectorAll('.rail-link').forEach((button) => {
     state.activeSection = section;
     state.selectedQuestionIds.clear();
     renderSection();
-    if (section === 'sources') return;
-    state.filters.statuses = section === 'reviews'
+    if (section === 'collect') return;
+    state.filters.statuses = section === 'review'
       ? ['pending', 'exception']
-      : section === 'exports' ? ['importable', 'exported'] : [];
+      : section === 'export' ? ['importable', 'exported'] : [];
     await runQuery();
+    const target = {
+      prepare: 'preparation-overview', complete: 'completion-overview',
+      review: 'review-workbench', export: 'export-overview', overview: 'main',
+    }[section];
+    byId(target)?.scrollIntoView({behavior: 'smooth', block: 'start'});
   });
+});
+document.querySelectorAll('[data-section-jump]').forEach((button) => {
+  button.addEventListener('click', () => {
+    document.querySelector(`.rail-link[data-section="${button.dataset.sectionJump}"]`)?.click();
+  });
+});
+
+byId('copy-database-path').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(state.bootstrap.config.databasePath);
+    toast('Caminho do banco copiado.');
+  } catch (_) {
+    toast('Não foi possível copiar. Selecione o caminho exibido.', 'error');
+  }
+});
+byId('next-action-button').addEventListener('click', () => {
+  const step = byId('next-action-button').dataset.step || 'collect';
+  document.querySelector(`.rail-link[data-section="${step}"]`)?.click();
 });
 
 applyCapacityProfile();

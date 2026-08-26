@@ -143,7 +143,7 @@ class DesktopCollectionTests(unittest.TestCase):
         package = resources.files("kad_collector")
         html = package.joinpath("desktop_ui.html").read_text(encoding="utf-8")
         javascript = package.joinpath("desktop_app.js").read_text(encoding="utf-8")
-        self.assertIn('data-section="sources"', html)
+        self.assertIn('data-section="collect"', html)
         self.assertIn('id="source-form"', html)
         self.assertIn('id="source-capacity-profile"', html)
         self.assertIn('id="source-browser-enabled"', html)

@@ -89,10 +89,15 @@ kad-collector testar
 
 ## Aplicativo desktop para Windows
 
-O Collector possui uma central editorial local para selecionar PDFs ou pastas, acompanhar
-o processamento pagina a pagina, revisar classificacoes e exportar exatamente o recorte
-filtrado. O estado fica em SQLite dentro de `%LOCALAPPDATA%\KAD Collector`; nenhuma questao
-e enviada ao Supabase pelo aplicativo.
+O Collector possui uma central editorial local organizada em cinco etapas: **Coletar**,
+**Preparar**, **Completar**, **Revisar** e **Exportar**. A tela inicial destaca o banco ativo,
+o tipo de ambiente, as contagens editoriais e a próxima ação necessária. O estado fica em
+SQLite dentro de `%LOCALAPPDATA%\KAD Collector`; nenhuma questão é enviada ao Supabase pelo
+aplicativo.
+
+Cada questão separa os estados de gabarito, preparação canônica, classificação e importação.
+Todo bloqueio visível informa uma causa e uma próxima ação. IDs, fingerprints e evidências
+técnicas continuam disponíveis apenas nos detalhes de diagnóstico.
 
 A aba **Coletar links** permite escolher uma fonte cadastrada e informar a pagina especifica
 de um concurso, exame ou ano. A coleta roda em segundo plano, valida o host, respeita
@@ -125,8 +130,10 @@ da taxonomia nao sao criados. O botao **Reclassificar acervo** reaplica essa cla
 banco local sem baixar os PDFs e sem alterar gabaritos ou decisoes humanas.
 
 O botão **Classificar pendentes com Qwen 8B** oferece um lote local assistido. Ao abrir,
-o Collector faz somente uma prévia passiva: conta questões elegíveis, completas, resolvíveis
-pelas regras e dependentes de IA; também confere o endpoint loopback, a tag `qwen3:8b`, a
+o Collector faz somente uma prévia passiva: conta questões brutas, canônicas, elegíveis,
+completas, resolvíveis pelas regras e dependentes de IA. Quando nada é elegível, a tela mostra
+o motivo real, como preparação canônica pendente ou grupo ainda não confirmado. A prévia
+também confere o endpoint loopback, a tag `qwen3:8b`, a
 quantização `Q4_K_M` e o digest aprovado. Nenhuma inferência ou escrita ocorre antes da
 confirmação. O limite padrão é 25 e pode ser ajustado entre 1 e 250.
 

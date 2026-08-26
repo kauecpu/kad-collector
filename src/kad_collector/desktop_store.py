@@ -763,6 +763,63 @@ class DesktopStore:
             "uncertain": int(row["uncertain"]),
         }
 
+    def operational_presentation_summary(self) -> dict[str, Any]:
+        """Return a read-only overview of the desktop preparation pipeline."""
+        with closing(self._connect()) as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    (SELECT COUNT(*) FROM documents) AS documents,
+                    (SELECT COUNT(*) FROM documents
+                     WHERE status = 'completed') AS documents_completed,
+                    (SELECT COUNT(*) FROM documents
+                     WHERE status IN ('failed', 'exception')) AS documents_blocked,
+                    (SELECT COUNT(*) FROM questions) AS raw_questions,
+                    (SELECT COUNT(*) FROM question_occurrences) AS occurrences,
+                    (SELECT COUNT(*) FROM question_equivalence_groups) AS groups_total,
+                    (SELECT COUNT(*) FROM question_equivalence_groups
+                     WHERE status = 'confirmed') AS groups_confirmed,
+                    (SELECT COUNT(*) FROM question_equivalence_groups
+                     WHERE status != 'confirmed') AS groups_pending,
+                    (SELECT COUNT(*) FROM canonical_questions) AS canonical_questions,
+                    (SELECT COUNT(*) FROM canonical_questions
+                     WHERE editorial_status = 'blocked') AS canonical_blocked,
+                    (SELECT COUNT(*) FROM question_equivalence_review_queue
+                     WHERE status = 'pending') AS equivalence_review_pending
+                """
+            ).fetchone()
+            document_rows = connection.execute(
+                "SELECT metadata_json FROM documents"
+            ).fetchall()
+        assert row is not None
+        exams = 0
+        answer_keys = 0
+        for document in document_rows:
+            try:
+                metadata = json.loads(cast(str, document["metadata_json"]))
+            except (TypeError, json.JSONDecodeError):
+                continue
+            document_type = metadata.get("document_type")
+            if document_type == "exam":
+                exams += 1
+            elif document_type == "answer_key":
+                answer_keys += 1
+        return {
+            "documents": int(row["documents"]),
+            "documentsCompleted": int(row["documents_completed"]),
+            "documentsBlocked": int(row["documents_blocked"]),
+            "exams": exams,
+            "answerKeys": answer_keys,
+            "rawQuestions": int(row["raw_questions"]),
+            "occurrences": int(row["occurrences"]),
+            "equivalenceGroups": int(row["groups_total"]),
+            "confirmedGroups": int(row["groups_confirmed"]),
+            "pendingGroups": int(row["groups_pending"]),
+            "canonicalQuestions": int(row["canonical_questions"]),
+            "canonicalBlocked": int(row["canonical_blocked"]),
+            "equivalenceReviewPending": int(row["equivalence_review_pending"]),
+        }
+
     def identity_events(self, document_id: str) -> list[dict[str, Any]]:
         with closing(self._connect()) as connection:
             return identity_events(connection, document_id)
