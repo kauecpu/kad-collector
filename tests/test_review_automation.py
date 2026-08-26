@@ -170,6 +170,42 @@ A D C B
             [afternoon[number].answer for number in range(1, 5)], ["A", "D", "C", "B"]
         )
 
+    def test_fgv_grid_inherits_standalone_shift_heading(self) -> None:
+        text = """
+MANHÃ
+Auditor Fiscal - TIPO 1
+1 2
+A B
+TARDE
+Auditor Fiscal - TIPO 1
+1 2
+C D
+"""
+
+        morning = parse_answer_key(
+            text, variant="Tipo 1", role="Auditor Fiscal", turn="Manhã"
+        )
+        afternoon = parse_answer_key(
+            text, variant="Tipo 1", role="Auditor Fiscal", turn="Tarde"
+        )
+
+        self.assertEqual([morning[1].answer, morning[2].answer], ["A", "B"])
+        self.assertEqual([afternoon[1].answer, afternoon[2].answer], ["C", "D"])
+
+    def test_fgv_grid_returns_no_entries_when_requested_shift_is_absent(self) -> None:
+        text = """
+MANHÃ
+Auditor Fiscal - TIPO 1
+1 2
+A B
+"""
+
+        entries = parse_answer_key(
+            text, variant="Tipo 1", role="Auditor Fiscal", turn="Tarde"
+        )
+
+        self.assertEqual(entries, {})
+
     def test_fgv_vertical_grid_is_selected_by_role(self) -> None:
         text = """
 Auditor Fiscal - 1 - Turno Manhã

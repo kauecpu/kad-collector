@@ -884,7 +884,10 @@ O inventario, as contagens oficiais, as fontes e a politica de manutencao estao 
 
 O banco local pode simular e aplicar a migração de vínculos antigos para
 `semantic-association-v2`. A rotina exige cargo, etapa, turno, tipo e intervalo
-compatíveis, desativa empates e invalida respostas sem vínculo válido. Consulte
+compatíveis, inclui provas ainda sem vínculo, desativa empates e encaminha toda
+associação não resolvida para revisão. Em documentos FGV, `MANHÃ`, `MANHA` e
+`TARDE` são lidos somente de regiões estruturais do PDF; gabaritos podem cobrir
+mais de um turno sem conflito. Consulte
 [`docs/answer-key-revalidation-v2.md`](docs/answer-key-revalidation-v2.md) para o
 comando, retomada, formato do relatório e limitações.
 

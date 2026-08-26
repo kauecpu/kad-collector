@@ -22,6 +22,7 @@ from kad_collector.desktop_processor import (
     _canonical_exam_documents,
     _document_type,
     _select_answer_key,
+    _turn_from_text,
 )
 from kad_collector.desktop_store import DesktopStore
 from kad_collector.document_pipeline import DocumentPipeline
@@ -1375,6 +1376,13 @@ C D""",
 
         self.assertEqual(question["answer_status"], "matched")
         self.assertEqual(question["correct_answer"], "B")
+
+    def test_explicit_afternoon_shift_is_not_overridden_by_question_body_word(self) -> None:
+        text = "PROVA OBJETIVA\n{01}\nEnunciado completo um pela manhã."
+
+        self.assertIsNone(_turn_from_text(text))
+        self.assertEqual(_turn_from_text(text, fallback="Tarde"), "tarde")
+        self.assertEqual(_turn_from_text("TARDE\nPROVA OBJETIVA\n{01}\nTexto"), "tarde")
 
     def test_large_contest_batches_keep_the_answer_key_with_every_exam_group(self) -> None:
         source = self.manager._source("fgv_conhecimento")

@@ -13,6 +13,15 @@ comparação. Um empate na melhor classificação válida não escolhe vencedor:
 vínculo anterior é desativado, as respostas derivadas são invalidadas e o caso
 entra na fila de revisão.
 
+Para documentos FGV, o turno também pode vir de uma região estrutural do PDF.
+`MANHÃ`, `MANHA` e `TARDE` são normalizados para `manhã` e `tarde`. Uma prova
+precisa ter exatamente um turno; um gabarito pode cobrir os dois. O turno da
+prova seleciona primeiro a grade correspondente e só então o intervalo é
+comparado. Menções a manhã ou tarde depois do início das questões não contam
+como evidência. Cabeçalhos isolados de turno no gabarito valem para as grades
+seguintes; se houver grades identificadas por turno e nenhuma corresponder à
+prova, nenhuma resposta é aproveitada.
+
 Chamadas legadas que ainda não fornecem intervalos continuam legíveis durante a
 transição. O processamento do banco local e a rotina de revalidação sempre
 fornecem intervalos e, portanto, executam as regras estritas da v2.
@@ -24,8 +33,8 @@ A abertura do `DesktopStore` cria, sem apagar registros antigos:
 - `association_revalidation_runs`, com estado e cursor da execução;
 - `association_revalidation_audit`, histórico append-only da decisão anterior e
   da v2;
-- `association_review_queue`, fila operacional para ambiguidades e metadados
-  incompletos;
+- `association_review_queue`, fila operacional para toda prova que continue sem
+  associação, com os campos incompletos ou conflitantes no motivo;
 - proveniência e motivo de invalidação nas questões.
 
 Os vínculos antigos continuam disponíveis no histórico. Uma associação mantida
@@ -35,7 +44,9 @@ vínculo v2 ativo.
 
 ## Execução
 
-Simule primeiro. O modo padrão não escreve no banco:
+Simule primeiro. O modo padrão abre um banco existente em modo imutável e
+somente leitura: não cria banco, tabelas, WAL ou SHM e não altera os arquivos
+existentes. Use uma cópia consistente e fechada do SQLite antes da simulação.
 
 ```powershell
 kad-collector revalidate-answer-keys `
@@ -56,8 +67,13 @@ kad-collector revalidate-answer-keys `
 
 Se a execução for interrompida, repita o segundo comando com o mesmo `run-id`.
 Cada prova é confirmada em uma transação separada. Registros já auditados não são
-reprocessados. Depois que todos os vínculos v1 forem examinados, uma nova
-execução informa zero associações pendentes e não cria histórico adicional.
+reprocessados. Provas FGV que nunca tiveram vínculo também participam da
+primeira reconciliação; documentos sem vínculo inicial de outras bancas ficam
+fora desta migração específica. Vínculos legados de qualquer banca continuam
+elegíveis para migração. Depois que todos os casos forem associados, auditados
+ou enviados à revisão, uma nova execução informa zero associações pendentes e
+não cria histórico adicional. Uma revisão humana concluída não é reaberta
+automaticamente.
 
 `--limit N` permite executar lotes controlados. Um relatório `paused` indica que
 ainda existem vínculos antigos pendentes.
@@ -105,3 +121,23 @@ pontuações, evidências, vínculo anterior e vínculo novo.
 - Os PDFs oficiais do RFB22 continuam fora do Git. A regressão versionada usa o
   manifesto oficial para validar todos os 16 cadernos suportados e seus escopos;
   a execução completa com PDFs exige a preparação local já documentada.
+
+## Validação local do RFB22
+
+O dry-run de 25 de agosto de 2026, executado em uma cópia ignorada do banco,
+examinou 23 provas sem vínculos anteriores:
+
+- 16 provas processadas obtiveram associação segura, cobrindo 1.120 questões;
+- seis provas excepcionadas permaneceram em conflito, cobrindo 360 questões;
+- uma prova excepcionada permaneceu incompleta, cobrindo 60 questões;
+- as 420 questões dos sete documentos de curso de formação continuam
+  bloqueadas e não foram consideradas prontas.
+
+O relatório local e a cópia do SQLite ficam fora do Git. Nenhuma reconciliação
+foi aplicada ao banco original ou enviada ao Supabase.
+
+A aplicação controlada somente nessa cópia criou 16 vínculos com gabaritos
+definitivos, resolveu 1.120 respostas e deixou 420 em `missing`. Os sete casos
+restantes entraram uma única vez na fila de revisão; uma segunda execução
+examinou zero provas. Nenhum vínculo selecionado divergiu em cargo, etapa,
+turno, tipo ou intervalo.

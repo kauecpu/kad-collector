@@ -10,6 +10,9 @@ bancas continuam no parser genérico.
 confere cargo, turno e tipo no texto das primeiras páginas e procura a expectativa oficial em
 `fgv_section_profiles.v1.toml`.
 
+A versão `1.1` usa a mesma regra de turno da identidade semântica e da associação de
+gabaritos. A representação canônica é `manhã` ou `tarde`.
+
 `BankParsingResult` contém:
 
 - identificador e versão do adaptador;
@@ -27,7 +30,8 @@ continuam na tabela `questions`.
 
 O adaptador usa os seguintes sinais textuais:
 
-- turno `MANHÃ` ou `TARDE` nas páginas iniciais;
+- turno estrutural `MANHÃ`, `MANHA` ou `TARDE` nas quatro páginas iniciais,
+  antes do primeiro marcador de questão;
 - `TIPO n` para identificar o caderno;
 - cargo cadastrado no perfil e presente no cabeçalho;
 - título `Prova Discursiva`, `Questões Discursivas`, `Redação` ou `Estudo de Caso` para
@@ -39,6 +43,14 @@ A parte objetiva aceita marcadores numéricos isolados dentro do intervalo ofici
 mantém itens como `1.` e `2.` no enunciado. Depois do título discursivo, o adaptador lê somente
 marcadores explícitos `Questão n`; alíneas e linhas das folhas de resposta não viram questões
 objetivas.
+
+Uma palavra igual a `manhã` ou `tarde` dentro de um enunciado não altera a
+identidade. Duas evidências estruturais diferentes impedem que a prova receba
+um turno único. Em gabaritos, cabeçalhos de grade podem declarar os dois turnos
+como cobertura válida; isso não é conflito. Um cabeçalho isolado `MANHÃ` ou
+`TARDE` também é associado às grades seguintes até o próximo cabeçalho de
+turno. Quando existem grades seccionadas, a ausência do turno solicitado falha
+de forma fechada e não reutiliza a grade de outro turno.
 
 ## Fechamento da numeração
 
@@ -61,7 +73,7 @@ Exemplo de exceção:
   "application_id": "rfb22-main-2023-03-19",
   "document_id": "rfb22-main-2023-auditor-morning-type-1",
   "role": "Auditor-Fiscal da Receita Federal do Brasil",
-  "shift": "Manhã",
+  "shift": "manhã",
   "booklet_type": 1,
   "section": "objective",
   "expected_number": 2,

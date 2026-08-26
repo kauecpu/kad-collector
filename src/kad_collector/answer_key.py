@@ -5,6 +5,7 @@ import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
+from .fgv_turn import normalize_fgv_turn
 from .json_utils import read_json, write_json
 from .models import ExtractionManifest, QuestionBatch, ReviewState
 from .validation import validate_questions
@@ -70,8 +71,18 @@ def _parse_answer_grids(text: str) -> list[_AnswerGrid]:
     active: _AnswerGrid | None = None
     pending_numbers: list[int] = []
     pending_single_number: int | None = None
+    active_turn: str | None = None
     lines = [" ".join(raw_line.split()) for raw_line in text.splitlines()]
     for index, line in enumerate(lines):
+        structural_turn = normalize_fgv_turn(line)
+        if structural_turn is not None:
+            if active is not None and active.entries:
+                grids.append(active)
+            active = None
+            active_turn = structural_turn
+            pending_numbers = []
+            pending_single_number = None
+            continue
         heading = _GRID_HEADING.match(line)
         if heading is not None:
             if active is not None and active.entries:
@@ -79,7 +90,7 @@ def _parse_answer_grids(text: str) -> list[_AnswerGrid]:
             active = _AnswerGrid(
                 label=heading.group("label"),
                 variant=int(heading.group("variant")),
-                section=heading.group("section") or heading.group("turn"),
+                section=heading.group("section") or heading.group("turn") or active_turn,
                 entries={},
             )
             pending_numbers = []
@@ -99,7 +110,9 @@ def _parse_answer_grids(text: str) -> list[_AnswerGrid]:
         if untyped_heading:
             if active is not None and active.entries:
                 grids.append(active)
-            active = _AnswerGrid(label=line, variant=None, section=None, entries={})
+            active = _AnswerGrid(
+                label=line, variant=None, section=active_turn, entries={}
+            )
             pending_numbers = []
             pending_single_number = None
             continue
@@ -160,10 +173,13 @@ def _select_answer_grid(
         return None
     turn_words = _normalized_words(turn or "")
     if turn_words:
+        sectioned = [grid for grid in candidates if _normalized_words(grid.section or "")]
         matching_turn = [
-            grid for grid in candidates if turn_words & _normalized_words(grid.section or "")
+            grid for grid in sectioned if turn_words & _normalized_words(grid.section or "")
         ]
-        if matching_turn:
+        if sectioned:
+            if not matching_turn:
+                return {}
             candidates = matching_turn
     role_words = _normalized_words(role or "")
     if role_words:

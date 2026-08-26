@@ -7,7 +7,11 @@ import unittest
 from contextlib import closing
 from pathlib import Path
 
-from kad_collector.answer_association import revalidate_answer_key_associations
+from kad_collector.answer_association import (
+    decide_runtime_association,
+    revalidate_answer_key_associations,
+)
+from kad_collector.cli import main
 from kad_collector.desktop_models import (
     DesktopFilterSet,
     DesktopImportMetadata,
@@ -160,6 +164,22 @@ class SemanticAssociationV2DecisionTests(unittest.TestCase):
             [item.version_id for item in second.assessments],
         )
 
+    def test_definitive_priority_never_crosses_an_incompatible_shift(self) -> None:
+        decision = self.decide(
+            candidate("preliminary", state="preliminary"),
+            candidate("wrong-definitive", state="definitive", turn="Tarde"),
+        )
+
+        self.assertEqual(decision.selected_version_id, "preliminary")
+
+    def test_definitive_wins_over_preliminary_inside_the_same_scope(self) -> None:
+        decision = self.decide(
+            candidate("preliminary", state="preliminary"),
+            candidate("definitive", state="definitive"),
+        )
+
+        self.assertEqual(decision.selected_version_id, "definitive")
+
 
 class AnswerAssociationRevalidationTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -173,7 +193,13 @@ class AnswerAssociationRevalidationTests(unittest.TestCase):
         self.directory.cleanup()
 
     @staticmethod
-    def metadata(document_type: str, *, role: str = "Analista") -> DesktopImportMetadata:
+    def metadata(
+        document_type: str,
+        *,
+        role: str = "Analista",
+        turn: str | None = "Manha",
+        variant: str | None = "Tipo 1",
+    ) -> DesktopImportMetadata:
         return DesktopImportMetadata(
             document_type=document_type,  # type: ignore[arg-type]
             document_title=f"{document_type} {role}",
@@ -183,8 +209,8 @@ class AnswerAssociationRevalidationTests(unittest.TestCase):
             year=2026,
             role=role,
             stage="Prova objetiva",
-            turn="Manha",
-            variant="Tipo 1",
+            turn=turn,
+            variant=variant,
         )
 
     def add_document(
@@ -273,6 +299,394 @@ class AnswerAssociationRevalidationTests(unittest.TestCase):
             connection.commit()
         return str(link["id"])
 
+    def add_fgv_exam(
+        self,
+        prefix: str,
+        *,
+        role: str,
+        shift: str,
+        variant: int,
+        question_count: int,
+    ) -> dict[str, object]:
+        exam = self.add_document(
+            f"exam-{prefix}.pdf",
+            f"FUNDAÇÃO GETULIO VARGAS\n{shift}\nPROVA OBJETIVA\n"
+            f"Banca: FGV\nConcurso: Concurso teste\nAno: 2026\n"
+            f"Cargo: {role}\nEtapa: Prova objetiva\nTipo: {variant}",
+            self.metadata("exam", role=role, turn=None, variant=f"Tipo {variant}"),
+        )
+        for number in range(1, question_count + 1):
+            self.store.save_question(
+                str(exam["id"]),
+                QuestionRecord(
+                    number=number,
+                    statement=f"Enunciado controlado {prefix} {number}.",
+                    alternatives=[
+                        Alternative(letter="A", text="Alternativa A."),
+                        Alternative(letter="B", text="Alternativa B."),
+                    ],
+                    answer_status="missing",
+                    matter=None,
+                    subject=None,
+                    board="FGV",
+                    concurso="Concurso teste",
+                    organization="Orgao teste",
+                    year=2026,
+                    role=role,
+                    source_pages=[1],
+                ),
+                QuestionClassification(),
+            )
+        return exam
+
+    def add_fgv_multi_grid_key(
+        self,
+        prefix: str,
+        *,
+        role: str,
+        variants: tuple[int, ...],
+        morning_count: int,
+        afternoon_count: int,
+        state: str = "definitivo",
+    ) -> dict[str, object]:
+        blocks: list[str] = []
+        for variant in variants:
+            for shift, count in (("Manhã", morning_count), ("Tarde", afternoon_count)):
+                numbers = " ".join(str(number) for number in range(1, count + 1))
+                answers = " ".join("A" if number % 2 else "B" for number in range(1, count + 1))
+                blocks.append(
+                    f"{role} - TIPO {variant} ({shift})\n{numbers}\n{answers}"
+                )
+        return self.add_document(
+            f"key-{prefix}-{state}.pdf",
+            f"Gabarito {state}\nBanca: FGV\nConcurso: Concurso teste\n"
+            f"Ano: 2026\nCargo: {role}\nEtapa: Prova objetiva\n" + "\n".join(blocks),
+            self.metadata("answer_key", role=role, turn=None, variant=None),
+        )
+
+    def erase_stored_turns(self, *version_ids: object) -> None:
+        unknown = SemanticField.unknown("turno ausente no manifesto").model_dump(mode="json")
+        with closing(self.store._connect()) as connection:
+            for version_id in version_ids:
+                row = connection.execute(
+                    "SELECT profile_json FROM document_versions WHERE id = ?",
+                    (str(version_id),),
+                ).fetchone()
+                payload = json.loads(row["profile_json"])
+                payload["identity"]["turns"] = unknown
+                payload["coverage"]["turns"] = unknown
+                connection.execute(
+                    "UPDATE document_versions SET profile_json = ?, coverage_json = ? WHERE id = ?",
+                    (
+                        json.dumps(payload, ensure_ascii=False),
+                        json.dumps(payload["coverage"], ensure_ascii=False),
+                        str(version_id),
+                    ),
+                )
+            connection.commit()
+
+    def test_runtime_recovers_pdf_turn_from_legacy_profiles_and_selects_morning(self) -> None:
+        exam = self.add_fgv_exam(
+            "morning", role="Auditor", shift="MANHÃ", variant=1, question_count=3
+        )
+        key = self.add_fgv_multi_grid_key(
+            "both", role="Auditor", variants=(1,), morning_count=3, afternoon_count=2
+        )
+        self.erase_stored_turns(exam["document_version_id"], key["document_version_id"])
+
+        with closing(self.store._connect()) as connection:
+            context, decision = decide_runtime_association(
+                connection, str(exam["document_version_id"])
+            )
+
+        self.assertEqual(decision.selected_version_id, key["document_version_id"])
+        self.assertEqual(context.exam_profile.identity.turns.normalized_values, ("manhã",))
+        self.assertEqual(context.candidates[0].question_interval, QuestionInterval(first=1, last=3))
+
+    def test_runtime_selects_afternoon_block_before_interval_comparison(self) -> None:
+        exam = self.add_fgv_exam(
+            "afternoon", role="Auditor", shift="TARDE", variant=1, question_count=2
+        )
+        key = self.add_fgv_multi_grid_key(
+            "both", role="Auditor", variants=(1,), morning_count=3, afternoon_count=2
+        )
+        self.erase_stored_turns(exam["document_version_id"], key["document_version_id"])
+
+        with closing(self.store._connect()) as connection:
+            context, decision = decide_runtime_association(
+                connection, str(exam["document_version_id"])
+            )
+
+        self.assertEqual(decision.selected_version_id, key["document_version_id"])
+        self.assertEqual(context.candidates[0].question_interval, QuestionInterval(first=1, last=2))
+
+    def test_runtime_selects_types_one_through_four(self) -> None:
+        key = self.add_fgv_multi_grid_key(
+            "types", role="Auditor", variants=(1, 2, 3, 4),
+            morning_count=2, afternoon_count=2,
+        )
+        exams = [
+            self.add_fgv_exam(
+                f"type-{variant}", role="Auditor", shift="MANHÃ",
+                variant=variant, question_count=2,
+            )
+            for variant in range(1, 5)
+        ]
+        self.erase_stored_turns(
+            key["document_version_id"],
+            *(exam["document_version_id"] for exam in exams),
+        )
+
+        with closing(self.store._connect()) as connection:
+            for variant, exam in enumerate(exams, start=1):
+                with self.subTest(variant=variant):
+                    _, decision = decide_runtime_association(
+                        connection, str(exam["document_version_id"])
+                    )
+                    self.assertEqual(decision.selected_version_id, key["document_version_id"])
+
+    def test_runtime_respects_official_auditor_morning_and_afternoon_intervals(self) -> None:
+        key = self.add_fgv_multi_grid_key(
+            "auditor", role="Auditor", variants=(1,), morning_count=80, afternoon_count=60
+        )
+        exams = (
+            self.add_fgv_exam(
+                "auditor-morning", role="Auditor", shift="MANHÃ",
+                variant=1, question_count=80,
+            ),
+            self.add_fgv_exam(
+                "auditor-afternoon", role="Auditor", shift="TARDE",
+                variant=1, question_count=60,
+            ),
+        )
+        self.erase_stored_turns(
+            key["document_version_id"],
+            *(exam["document_version_id"] for exam in exams),
+        )
+
+        with closing(self.store._connect()) as connection:
+            intervals = [
+                decide_runtime_association(connection, str(exam["document_version_id"]))[0]
+                .candidates[0]
+                .question_interval
+                for exam in exams
+            ]
+
+        self.assertEqual(
+            intervals,
+            [QuestionInterval(first=1, last=80), QuestionInterval(first=1, last=60)],
+        )
+
+    def test_runtime_respects_official_analyst_interval(self) -> None:
+        exam = self.add_fgv_exam(
+            "analyst", role="Analista", shift="MANHÃ", variant=1, question_count=70
+        )
+        key = self.add_fgv_multi_grid_key(
+            "analyst", role="Analista", variants=(1,), morning_count=70, afternoon_count=70
+        )
+        self.erase_stored_turns(exam["document_version_id"], key["document_version_id"])
+
+        with closing(self.store._connect()) as connection:
+            context, decision = decide_runtime_association(
+                connection, str(exam["document_version_id"])
+            )
+
+        self.assertEqual(decision.selected_version_id, key["document_version_id"])
+        self.assertEqual(
+            context.candidates[0].question_interval,
+            QuestionInterval(first=1, last=70),
+        )
+
+    def test_initial_unresolved_exam_enters_specific_review_queue_once(self) -> None:
+        exam = self.add_document(
+            "exam-no-turn.pdf",
+            "Banca: FGV\nConcurso: Concurso teste\nAno: 2026\nCargo: Analista\n"
+            "Etapa: Prova objetiva\nTipo: 1\nPROVA OBJETIVA",
+            self.metadata("exam", turn=None),
+        )
+        key = self.add_fgv_multi_grid_key(
+            "no-turn", role="Analista", variants=(1,), morning_count=2, afternoon_count=2
+        )
+        self.erase_stored_turns(key["document_version_id"])
+
+        with closing(self.store._connect()) as connection:
+            first = revalidate_answer_key_associations(
+                connection, apply=True, run_id="initial-no-turn"
+            )
+            second = revalidate_answer_key_associations(
+                connection, apply=True, run_id="initial-no-turn-repeat"
+            )
+            review = connection.execute(
+                "SELECT status, reason FROM association_review_queue WHERE exam_version_id = ?",
+                (exam["document_version_id"],),
+            ).fetchone()
+            review_count = connection.execute(
+                "SELECT COUNT(*) FROM association_review_queue WHERE exam_version_id = ?",
+                (exam["document_version_id"],),
+            ).fetchone()[0]
+
+        self.assertEqual(first.incomplete, 1)
+        self.assertEqual(second.examined, 0)
+        self.assertEqual(review_count, 1)
+        self.assertEqual(review["status"], "pending")
+        self.assertIn("turn", review["reason"].casefold())
+
+    def test_initial_unlinked_non_fgv_exam_is_outside_revalidation_scope(self) -> None:
+        exam = self.add_document(
+            "exam-outra-banca.pdf",
+            "Banca: Cebraspe\nConcurso: Concurso teste\nAno: 2026\n"
+            "Cargo: Analista\nEtapa: Prova objetiva\nTurno: Manha\nTipo: 1",
+            DesktopImportMetadata(
+                document_type="exam",
+                document_title="Prova de outra banca",
+                board="Cebraspe",
+                concurso="Concurso teste",
+                organization="Orgao teste",
+                year=2026,
+                role="Analista",
+                stage="Prova objetiva",
+                turn="Manha",
+                variant="Tipo 1",
+            ),
+        )
+
+        with closing(self.store._connect()) as connection:
+            report = revalidate_answer_key_associations(
+                connection, apply=True, run_id="non-fgv-zero-link"
+            )
+            review_count = connection.execute(
+                "SELECT COUNT(*) FROM association_review_queue WHERE exam_version_id = ?",
+                (exam["document_version_id"],),
+            ).fetchone()[0]
+            audit_count = connection.execute(
+                "SELECT COUNT(*) FROM association_revalidation_audit "
+                "WHERE exam_version_id = ?",
+                (exam["document_version_id"],),
+            ).fetchone()[0]
+
+        self.assertEqual(report.examined, 0)
+        self.assertEqual(review_count, 0)
+        self.assertEqual(audit_count, 0)
+
+    def test_non_fgv_exam_with_legacy_link_remains_in_migration_scope(self) -> None:
+        exam, _ = self.add_exam("legacy-other-board")
+        key = self.add_key("legacy-other-board")
+        self.make_old_link(exam, key)
+        cebraspe = known("board", "Cebraspe").model_dump(mode="json")
+
+        with closing(self.store._connect()) as connection:
+            for version_id in (
+                exam["document_version_id"], key["document_version_id"]
+            ):
+                row = connection.execute(
+                    "SELECT profile_json FROM document_versions WHERE id = ?",
+                    (version_id,),
+                ).fetchone()
+                payload = json.loads(row["profile_json"])
+                payload["identity"]["board"] = cebraspe
+                connection.execute(
+                    "UPDATE document_versions SET profile_json = ? WHERE id = ?",
+                    (json.dumps(payload, ensure_ascii=False), version_id),
+                )
+            connection.commit()
+
+            report = revalidate_answer_key_associations(connection)
+
+        self.assertEqual(report.examined, 1)
+        self.assertEqual(report.maintained, 1)
+
+    def test_initial_safe_association_creates_one_link_and_is_idempotent(self) -> None:
+        exam = self.add_fgv_exam(
+            "initial-safe", role="Analista", shift="MANHÃ", variant=1, question_count=2
+        )
+        key = self.add_fgv_multi_grid_key(
+            "initial-safe", role="Analista", variants=(1,),
+            morning_count=2, afternoon_count=2,
+        )
+        self.erase_stored_turns(exam["document_version_id"], key["document_version_id"])
+
+        with closing(self.store._connect()) as connection:
+            first = revalidate_answer_key_associations(
+                connection, apply=True, run_id="initial-safe"
+            )
+            second = revalidate_answer_key_associations(
+                connection, apply=True, run_id="initial-safe-repeat"
+            )
+            active_links = connection.execute(
+                "SELECT COUNT(*) FROM document_links WHERE exam_version_id = ? "
+                "AND status = 'active'",
+                (exam["document_version_id"],),
+            ).fetchone()[0]
+
+        self.assertEqual((first.changed, first.examined), (1, 1))
+        self.assertEqual(second.examined, 0)
+        self.assertEqual(active_links, 1)
+
+    def test_completed_human_review_is_not_reopened_or_rewritten(self) -> None:
+        exam = self.add_document(
+            "exam-reviewed.pdf",
+            "Banca: FGV\nConcurso: Concurso teste\nAno: 2026\nCargo: Analista\n"
+            "Etapa: Prova objetiva\nTipo: 1",
+            self.metadata("exam", turn=None),
+        )
+        with closing(self.store._connect()) as connection:
+            connection.execute(
+                "INSERT INTO association_review_queue "
+                "(exam_version_id, status, reason, candidates_json, created_at, updated_at) "
+                "VALUES (?, 'resolved', 'decisão humana preservada', '[]', ?, ?)",
+                (
+                    exam["document_version_id"],
+                    "2026-08-25T00:00:00+00:00",
+                    "2026-08-25T00:00:00+00:00",
+                ),
+            )
+            connection.commit()
+
+            report = revalidate_answer_key_associations(
+                connection, apply=True, run_id="preserve-human-review"
+            )
+            review = connection.execute(
+                "SELECT status, reason FROM association_review_queue WHERE exam_version_id = ?",
+                (exam["document_version_id"],),
+            ).fetchone()
+
+        self.assertEqual(report.examined, 0)
+        self.assertEqual((review["status"], review["reason"]), (
+            "resolved", "decisão humana preservada"
+        ))
+
+    def test_obsolete_review_is_reactivated_when_case_is_still_unresolved(self) -> None:
+        exam = self.add_document(
+            "exam-obsolete-review.pdf",
+            "Banca: FGV\nConcurso: Concurso teste\nAno: 2026\nCargo: Analista\n"
+            "Etapa: Prova objetiva\nTipo: 1",
+            self.metadata("exam", turn=None),
+        )
+        with closing(self.store._connect()) as connection:
+            connection.execute(
+                "INSERT INTO association_review_queue "
+                "(exam_version_id, status, reason, candidates_json, created_at, updated_at) "
+                "VALUES (?, 'obsolete', 'caso antigo', '[]', ?, ?)",
+                (
+                    exam["document_version_id"],
+                    "2026-08-25T00:00:00+00:00",
+                    "2026-08-25T00:00:00+00:00",
+                ),
+            )
+            connection.commit()
+
+            report = revalidate_answer_key_associations(
+                connection, apply=True, run_id="reactivate-obsolete-review"
+            )
+            review = connection.execute(
+                "SELECT status, reason FROM association_review_queue WHERE exam_version_id = ?",
+                (exam["document_version_id"],),
+            ).fetchone()
+
+        self.assertEqual(report.examined, 1)
+        self.assertEqual(review["status"], "pending")
+        self.assertNotEqual(review["reason"], "caso antigo")
+
     def test_dry_run_does_not_write_and_apply_maintains_with_append_only_audit(self) -> None:
         exam, _ = self.add_exam()
         key = self.add_key()
@@ -307,6 +721,49 @@ class AnswerAssociationRevalidationTests(unittest.TestCase):
             [(row["status"], row["algorithm_version"]) for row in links],
             [("superseded", "semantic-association-v1"), ("active", ASSOCIATION_ALGORITHM_VERSION)],
         )
+
+    def test_cli_dry_run_does_not_change_database_or_sidecars(self) -> None:
+        self.add_fgv_exam(
+            "cli-read-only", role="Analista", shift="MANHÃ",
+            variant=1, question_count=2,
+        )
+        database = self.store.path
+        report = self.root / "dry-run-report.json"
+
+        def snapshot() -> dict[str, bytes]:
+            return {
+                path.name: path.read_bytes()
+                for path in database.parent.glob(database.name + "*")
+                if path.is_file()
+            }
+
+        before = snapshot()
+        exit_code = main(
+            [
+                "revalidate-answer-keys",
+                "--database", str(database),
+                "--report", str(report),
+            ]
+        )
+        after = snapshot()
+
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(report.is_file())
+        self.assertEqual(after, before)
+
+    def test_cli_dry_run_rejects_missing_database_without_creating_it(self) -> None:
+        database = self.root / "missing.sqlite3"
+
+        exit_code = main(
+            [
+                "revalidate-answer-keys",
+                "--database", str(database),
+                "--report", str(self.root / "unused-report.json"),
+            ]
+        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertFalse(database.exists())
 
     def test_changed_link_is_recalculated_and_history_preserves_old_and_new(self) -> None:
         exam, _ = self.add_exam()
@@ -353,7 +810,15 @@ class AnswerAssociationRevalidationTests(unittest.TestCase):
             report = revalidate_answer_key_associations(
                 connection, apply=True, run_id="invalid-run"
             )
+            review = connection.execute(
+                "SELECT status, reason FROM association_review_queue "
+                "WHERE exam_version_id = ?",
+                (exam["document_version_id"],),
+            ).fetchone()
         self.assertEqual(report.invalidated, 1)
+        self.assertEqual(report.sent_to_review, 1)
+        self.assertEqual(review["status"], "pending")
+        self.assertIn("role", review["reason"].casefold())
         self.assertEqual(report.answers_invalidated, 2)
         self.assertEqual(self.store.pages(str(exam["id"])), before_pages)
         for question_id in question_ids:
