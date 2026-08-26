@@ -36,6 +36,7 @@ from .document_matching import (
 )
 from .editorial_taxonomy import EditorialTaxonomy
 from .fgv_parser import BankParsingContext
+from .fgv_turn import extract_fgv_turn_evidence, normalize_fgv_turn
 from .models import QuestionRecord
 from .semantic_identity import (
     AssociationCandidate,
@@ -110,9 +111,11 @@ def _document_group(
     )
 
 
-def _turn_from_text(value: str) -> str | None:
-    match = re.search(r"\b(MANH[AÃ]|TARDE)\b", value[:20_000], re.IGNORECASE)
-    return match.group(1) if match else None
+def _turn_from_text(value: str, *, fallback: str | None = None) -> str | None:
+    evidence = extract_fgv_turn_evidence([(1, value)], document_role="exam")
+    if len(evidence) == 1:
+        return evidence[0].normalized
+    return normalize_fgv_turn(fallback or "") if not evidence else None
 
 
 def _canonical_exam_documents(
@@ -881,7 +884,9 @@ class DesktopProcessor:
             cast(str, answer_key["answer_key_text"]),
             variant=variant,
             role=metadata.role,
-            turn=_turn_from_text(cast(str, exam.get("exam_text", ""))),
+            turn=_turn_from_text(
+                cast(str, exam.get("exam_text", "")), fallback=metadata.turn
+            ),
         )
         updates = {
             number: (

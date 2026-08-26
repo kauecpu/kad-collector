@@ -10,6 +10,8 @@ from typing import Any, Literal, cast
 
 from .answer_key import parse_answer_key
 from .canonical_identity import canonicalize_profile_for_version
+from .document_contract import NormalizedDocument
+from .fgv_turn import is_fgv_source
 from .semantic_identity import (
     AssociationCandidate,
     DocumentAssociationDecision,
@@ -17,6 +19,7 @@ from .semantic_identity import (
     QuestionInterval,
     SemanticField,
     canonical_json,
+    extract_semantic_profile,
     stable_sha256,
 )
 from .semantic_registry import (
@@ -54,6 +57,56 @@ class RuntimeAssociationContext:
     answer_updates: dict[str, dict[int, tuple[str, str | None]]]
 
 
+def _effective_profile_for_version(
+    connection: sqlite3.Connection,
+    version_id: str,
+    stored_profile: DocumentSemanticProfile,
+) -> DocumentSemanticProfile:
+    """Enrich only missing turn evidence from immutable local FGV pages."""
+    row = connection.execute(
+        "SELECT d.id, d.normalized_json FROM documents d "
+        "WHERE d.document_version_id = ? AND d.normalized_json IS NOT NULL "
+        "ORDER BY (SELECT COALESCE(SUM(p.character_count), 0) FROM pages p "
+        "WHERE p.document_id = d.id) DESC, d.created_at, d.id LIMIT 1",
+        (version_id,),
+    ).fetchone()
+    if row is None:
+        return stored_profile
+    pages = [
+        (int(item["page_number"]), cast(str, item["text"]))
+        for item in connection.execute(
+            "SELECT page_number, text FROM pages WHERE document_id = ? ORDER BY page_number",
+            (row["id"],),
+        ).fetchall()
+    ]
+    if not pages:
+        return stored_profile
+    normalized = NormalizedDocument.model_validate_json(cast(str, row["normalized_json"]))
+    extracted = extract_semantic_profile(normalized, pages)
+
+    def enrich(stored: SemanticField, fresh: SemanticField) -> SemanticField:
+        return fresh if stored.status == "unknown" and fresh.status != "unknown" else stored
+
+    identity_turns = enrich(stored_profile.identity.turns, extracted.identity.turns)
+    coverage_turns = enrich(stored_profile.coverage.turns, extracted.coverage.turns)
+    if (
+        identity_turns == stored_profile.identity.turns
+        and coverage_turns == stored_profile.coverage.turns
+    ):
+        return stored_profile
+    identity = stored_profile.identity.model_copy(update={"turns": identity_turns})
+    coverage = stored_profile.coverage.model_copy(update={"turns": coverage_turns})
+    return stored_profile.model_copy(
+        update={
+            "identity": identity,
+            "coverage": coverage,
+            "has_conflict": stored_profile.has_conflict
+            or identity_turns.status == "conflict"
+            or coverage_turns.status == "conflict",
+        }
+    )
+
+
 def build_runtime_context(
     connection: sqlite3.Connection, exam_version_id: str
 ) -> RuntimeAssociationContext:
@@ -67,6 +120,9 @@ def build_runtime_context(
         connection,
         exam_version_id,
         DocumentSemanticProfile.model_validate_json(cast(str, row["profile_json"])),
+    )
+    exam_profile = _effective_profile_for_version(
+        connection, exam_version_id, exam_profile
     )
     question_rows = connection.execute(
         "SELECT q.question_number FROM questions q JOIN documents d ON d.id = q.document_id "
@@ -102,6 +158,9 @@ def build_runtime_context(
             connection,
             version_id,
             DocumentSemanticProfile.model_validate_json(canonical_json(item["profile"])),
+        )
+        candidate_profile = _effective_profile_for_version(
+            connection, version_id, candidate_profile
         )
         candidates.append(
             AssociationCandidate(
@@ -287,7 +346,7 @@ class RevalidationReport:
         self.examined += 1
         setattr(self, result, int(getattr(self, result)) + 1)
         self.answers_invalidated += int(payload.get("answersInvalidated", 0))
-        if result in {"ambiguous", "incomplete"}:
+        if bool(payload.get("sentToReview", result in {"ambiguous", "incomplete"})):
             self.sent_to_review += 1
         contest = str(payload.get("contest") or "[concurso desconhecido]")
         document = str(payload.get("documentId") or payload["examVersionId"])
@@ -333,18 +392,86 @@ def _result_for(
 
 def _pending_exam_versions(connection: sqlite3.Connection) -> list[str]:
     rows = connection.execute(
-        "SELECT l.exam_version_id FROM document_links l "
-        "WHERE l.algorithm_version != ? AND l.id = ("
-        "SELECT latest.id FROM document_links latest "
-        "WHERE latest.exam_version_id = l.exam_version_id "
-        "AND latest.algorithm_version != ? "
-        "ORDER BY latest.updated_at DESC, latest.id DESC LIMIT 1) AND NOT EXISTS ("
+        "SELECT v.id, EXISTS (SELECT 1 FROM document_links legacy "
+        "WHERE legacy.exam_version_id = v.id AND legacy.algorithm_version != ?) "
+        "AS has_legacy_link, EXISTS (SELECT 1 FROM document_links linked "
+        "WHERE linked.exam_version_id = v.id) AS has_any_link "
+        "FROM document_versions v "
+        "WHERE v.document_role = 'exam' AND NOT EXISTS ("
+        "SELECT 1 FROM document_links current "
+        "WHERE current.exam_version_id = v.id AND current.status = 'active' "
+        "AND current.algorithm_version = ?) AND NOT EXISTS ("
         "SELECT 1 FROM association_revalidation_audit a "
-        "WHERE a.old_link_id = l.id) "
-        "ORDER BY l.exam_version_id",
-        (ASSOCIATION_ALGORITHM_VERSION, ASSOCIATION_ALGORITHM_VERSION),
+        "JOIN association_revalidation_runs r ON r.id = a.run_id "
+        "WHERE a.exam_version_id = v.id AND r.algorithm_version = ?) "
+        "AND NOT EXISTS (SELECT 1 FROM association_review_queue q "
+        "WHERE q.exam_version_id = v.id AND q.status != 'obsolete') "
+        "ORDER BY v.id",
+        (
+            ASSOCIATION_ALGORITHM_VERSION,
+            ASSOCIATION_ALGORITHM_VERSION,
+            ASSOCIATION_ALGORITHM_VERSION,
+        ),
     ).fetchall()
-    return [cast(str, row["exam_version_id"]) for row in rows]
+    return [
+        cast(str, row["id"])
+        for row in rows
+        if bool(row["has_legacy_link"])
+        or (not bool(row["has_any_link"]) and _version_is_fgv(connection, row["id"]))
+    ]
+
+
+def _version_is_fgv(connection: sqlite3.Connection, version_id: str) -> bool:
+    version = connection.execute(
+        "SELECT profile_json FROM document_versions WHERE id = ?",
+        (version_id,),
+    ).fetchone()
+    if version is not None:
+        profile = DocumentSemanticProfile.model_validate_json(
+            cast(str, version["profile_json"])
+        )
+        if any(
+            is_fgv_source(board=str(value), provider=None)
+            for value in profile.identity.board.normalized_values
+        ):
+            return True
+    document = connection.execute(
+        "SELECT normalized_json FROM documents WHERE document_version_id = ? "
+        "AND normalized_json IS NOT NULL ORDER BY created_at, id LIMIT 1",
+        (version_id,),
+    ).fetchone()
+    if document is None:
+        return False
+    normalized = NormalizedDocument.model_validate_json(
+        cast(str, document["normalized_json"])
+    )
+    return is_fgv_source(
+        board=str(normalized.metadata.get("board") or normalized.metadata.get("banca") or ""),
+        provider=str(normalized.metadata.get("provider") or normalized.source_id or ""),
+    )
+
+
+def _review_reason(decision: DocumentAssociationDecision) -> str:
+    incomplete = sorted(
+        {
+            field
+            for assessment in decision.assessments
+            for field in assessment.incomplete_fields
+        }
+    )
+    conflicts = sorted(
+        {
+            conflict.split(":", 1)[0]
+            for assessment in decision.assessments
+            for conflict in assessment.conflicts
+        }
+    )
+    details: list[str] = []
+    if incomplete:
+        details.append("campos incompletos: " + ", ".join(incomplete))
+    if conflicts:
+        details.append("campos conflitantes: " + ", ".join(conflicts))
+    return decision.reason + ("; " + "; ".join(details) if details else "")
 
 
 def _case_identity(
@@ -476,26 +603,25 @@ def revalidate_answer_key_associations(
                         ),
                         changed_at=changed_at,
                     )
-                    if result in {"ambiguous", "incomplete"}:
-                        connection.execute(
-                            "INSERT INTO association_review_queue "
-                            "(exam_version_id, run_id, status, reason, candidates_json, "
-                            "created_at, updated_at) VALUES (?, ?, 'pending', ?, ?, ?, ?) "
-                            "ON CONFLICT(exam_version_id) DO UPDATE SET run_id=excluded.run_id, "
-                            "status='pending', reason=excluded.reason, "
-                            "candidates_json=excluded.candidates_json, "
-                            "updated_at=excluded.updated_at",
-                            (
-                                exam_version_id, effective_run_id, decision.reason,
-                                canonical_json([
-                                    item.model_dump(mode="json") for item in decision.assessments
-                                ]), changed_at, changed_at,
-                            ),
-                        )
+                    review_reason = _review_reason(decision)
+                    connection.execute(
+                        "INSERT INTO association_review_queue "
+                        "(exam_version_id, run_id, status, reason, candidates_json, "
+                        "created_at, updated_at) VALUES (?, ?, 'pending', ?, ?, ?, ?) "
+                        "ON CONFLICT(exam_version_id) DO UPDATE SET run_id=excluded.run_id, "
+                        "status='pending', reason=excluded.reason, "
+                        "candidates_json=excluded.candidates_json, "
+                        "updated_at=excluded.updated_at "
+                        "WHERE association_review_queue.status IN ('pending', 'obsolete')",
+                        (
+                            exam_version_id, effective_run_id, review_reason,
+                            canonical_json([
+                                item.model_dump(mode="json") for item in decision.assessments
+                            ]), changed_at, changed_at,
+                        ),
+                    )
                 old_status = cast(str, legacy["status"] if legacy is not None else "missing")
-                new_status = "active" if new_link_id is not None else (
-                    "review" if result in {"ambiguous", "incomplete"} else "invalidated"
-                )
+                new_status = "active" if new_link_id is not None else "review"
                 comparison = {
                     "examInterval": (
                         context.exam_interval.model_dump(mode="json")
@@ -568,6 +694,7 @@ def revalidate_answer_key_associations(
             "decisionOutcome": decision.outcome,
             "reason": decision.reason,
             "answersInvalidated": answers_invalidated,
+            "sentToReview": decision.selected_version_id is None,
         }
         report.record(case)
     remaining = _pending_exam_versions(connection) if apply else []
@@ -600,6 +727,7 @@ def revalidate_answer_key_associations(
                     "answersInvalidated": int(
                         comparison.get("answersInvalidated", 0)
                     ),
+                    "sentToReview": row["new_link_id"] is None,
                 }
             )
         aggregate.status = "paused" if remaining else "completed"

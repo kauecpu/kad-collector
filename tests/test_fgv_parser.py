@@ -61,7 +61,7 @@ def _context(*, shift: str = "Manhã", board: str = "FGV") -> BankParsingContext
 
 
 def _parse(
-    pages: list[dict[str, object]], *, shift: str = "Manhã"
+    pages: list[dict[str, object]], *, shift: str | None = "Manhã"
 ):
     adapter = FgvSectionAdapter(load_fgv_profiles(PROFILE_TOML))
     return adapter.parse(  # type: ignore[arg-type]
@@ -72,6 +72,22 @@ def _parse(
 
 
 class FgvSectionAdapterTests(unittest.TestCase):
+    def test_question_body_shift_does_not_override_missing_context(self) -> None:
+        result = _parse(
+            [_page(1, "PROVA OBJETIVA\n" + _question(1) + "\nO evento será pela manhã.")],
+            shift=None,  # type: ignore[arg-type]
+        )
+
+        self.assertIsNone(result.identity.shift)
+
+    def test_exam_with_two_structural_shifts_has_no_single_shift_identity(self) -> None:
+        result = _parse(
+            [_page(1, "MANHÃ\nTARDE\nAnalista de Teste\nTIPO 1\n" + _question(1))],
+            shift=None,  # type: ignore[arg-type]
+        )
+
+        self.assertIsNone(result.identity.shift)
+
     def test_recognizes_shift_objective_discursive_and_non_question_sections(self) -> None:
         result = _parse(
             [
@@ -96,7 +112,7 @@ Instruções ao candidato.
         )
 
         self.assertEqual(result.status, "completed")
-        self.assertEqual(result.identity.shift, "Tarde")
+        self.assertEqual(result.identity.shift, "tarde")
         self.assertEqual(result.discursive_numbers, (1,))
         self.assertTrue(
             {"instructions", "objective", "discursive", "answer_sheet", "non_question"}
@@ -296,6 +312,7 @@ Enunciado da questão dividido entre páginas.
         result = _parse([_page(1, "MANHÃ\nAnalista de Teste\nTIPO 1\n" + _question(1))])
 
         self.assertEqual(result.adapter_id, "fgv-sections")
+        self.assertEqual(result.adapter_version, "1.1")
         self.assertEqual(result.profile_id, "test-analyst-morning")
 
     def test_unknown_fgv_contest_is_incomplete_instead_of_guessing_ranges(self) -> None:

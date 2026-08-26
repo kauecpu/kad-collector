@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Literal, cast
 
 from pydantic import ConfigDict, model_validator
 
+from .fgv_turn import extract_fgv_turn_evidence, is_fgv_source, normalize_fgv_turn
 from .models import StrictModel
 
 if TYPE_CHECKING:
@@ -437,6 +438,15 @@ def _values(raw_value: str | int | Sequence[str | int], field: str) -> tuple[Sem
                 if len(parts) > MAX_SEMANTIC_VALUES:
                     raise SemanticValueLimitError("lista semântica excede limite seguro")
                 expanded.extend(_variant_value(part) for part in parts if part.strip())
+        elif field == "turns":
+            parts = re.split(r"\s*[,;/]\s*", text)
+            if len(parts) > MAX_SEMANTIC_VALUES:
+                raise SemanticValueLimitError("lista semântica excede limite seguro")
+            expanded.extend(
+                normalize_fgv_turn(part) or part.strip()
+                for part in parts
+                if part.strip()
+            )
         else:
             parts = re.split(r"\s*[,;/]\s*", text)
             if len(parts) > MAX_SEMANTIC_VALUES:
@@ -508,9 +518,14 @@ def _field_from_sources(
     document: NormalizedDocument,
     pages: Sequence[tuple[int, str]],
     human_overrides: Mapping[str, str | int | Sequence[str]] | None,
+    document_role: DocumentRole,
 ) -> SemanticField:
     human_groups: list[tuple[SemanticEvidence, ...]] = []
     strong_groups: list[tuple[SemanticEvidence, ...]] = []
+    is_fgv_turn_field = name == "turns" and is_fgv_source(
+        board=str(document.metadata.get("board") or document.metadata.get("banca") or ""),
+        provider=str(document.metadata.get("provider") or document.source_id or ""),
+    )
     try:
         if human_overrides is not None and name in human_overrides:
             values = _values(human_overrides[name], name)
@@ -531,14 +546,37 @@ def _field_from_sources(
                             for value in values
                         )
                     )
-        for locator, raw_value in _labeled_values(pages, name):
-            values = _values(raw_value, name)
-            if values:
-                strong_groups.append(
-                    tuple(SemanticEvidence.pdf_text(locator, value) for value in values)
-                )
+        if not is_fgv_turn_field:
+            for locator, raw_value in _labeled_values(pages, name):
+                values = _values(raw_value, name)
+                if values:
+                    strong_groups.append(
+                        tuple(SemanticEvidence.pdf_text(locator, value) for value in values)
+                    )
     except SemanticValueLimitError:
         return SemanticField.unknown(f"{name} excede limite semântico seguro")
+    if (
+        name == "turns"
+        and document_role in {"exam", "answer_key"}
+        and is_fgv_turn_field
+    ):
+        turn_evidence = extract_fgv_turn_evidence(
+            pages,
+            document_role=document_role,
+        )
+        if turn_evidence:
+            strong_groups.append(
+                tuple(
+                    SemanticEvidence(
+                        source="pdf_text",
+                        locator=item.locator,
+                        raw_value=item.raw,
+                        normalized_value=item.normalized,
+                        strength="strong",
+                    )
+                    for item in turn_evidence
+                )
+            )
     if name == "roles" and document.declared_type == "answer_key" and not strong_groups:
         try:
             answer_grid_roles = _answer_grid_roles(pages)
@@ -645,12 +683,26 @@ def _field_from_sources(
             weak_groups.append(
                 tuple(SemanticEvidence.title("title", value) for value in title_values)
             )
-    return _resolve_field(
+    field = _resolve_field(
         name,
         human_groups=human_groups,
         source_groups=strong_groups or weak_groups,
         collection=name in {"roles", "stage", "turns", "variants"},
     )
+    if (
+        name == "turns"
+        and document_role == "exam"
+        and field.status == "known"
+        and len(field.normalized_values) != 1
+    ):
+        return _semantic_field(
+            name,
+            field.evidence,
+            (),
+            "conflict",
+            "multiple_exam_turns",
+        )
+    return field
 
 
 def _resolve_field(
@@ -775,8 +827,9 @@ def extract_semantic_profile(
     pages: Sequence[tuple[int, str]],
     human_overrides: Mapping[str, str | int | Sequence[str]] | None = None,
 ) -> DocumentSemanticProfile:
+    role = _detect_role(document, pages)
     fields = {
-        name: _field_from_sources(name, document, pages, human_overrides)
+        name: _field_from_sources(name, document, pages, human_overrides, role)
         for name in METADATA_ALIASES
     }
     identity = ExamSemanticIdentity(**fields)
@@ -784,7 +837,6 @@ def extract_semantic_profile(
         roles=fields["roles"], stage=fields["stage"], turns=fields["turns"],
         variants=fields["variants"],
     )
-    role = _detect_role(document, pages)
     return DocumentSemanticProfile(
         identity=identity, identity_key=semantic_identity_key(identity), document_role=role,
         answer_key_state=_answer_key_state(document, pages) if role == "answer_key" else "unknown",

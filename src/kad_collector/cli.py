@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sqlite3
 import sys
 from contextlib import closing
 from pathlib import Path
@@ -59,6 +60,18 @@ from .workflow import read_requested_urls, run_semiautomatic
 
 def _path(value: str) -> Path:
     return Path(value)
+
+
+def _open_sqlite_read_only(path: Path) -> sqlite3.Connection:
+    if not path.is_file():
+        raise FileNotFoundError(f"banco local não encontrado: {path}")
+    connection = sqlite3.connect(
+        f"{path.resolve().as_uri()}?mode=ro&immutable=1",
+        uri=True,
+        timeout=30,
+    )
+    connection.row_factory = sqlite3.Row
+    return connection
 
 
 def _add_filter_arguments(parser: argparse.ArgumentParser) -> None:
@@ -545,8 +558,12 @@ def _run(args: argparse.Namespace) -> int:
     if args.command == "revalidate-answer-keys":
         if args.limit is not None and args.limit < 1:
             raise ValueError("--limit deve ser positivo")
-        store = DesktopStore(args.database)
-        with closing(store._connect()) as connection:
+        connection = (
+            DesktopStore(args.database)._connect()
+            if args.apply
+            else _open_sqlite_read_only(args.database)
+        )
+        with closing(connection):
             revalidation_report = revalidate_answer_key_associations(
                 connection,
                 apply=args.apply,

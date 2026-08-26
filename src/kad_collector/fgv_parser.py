@@ -11,6 +11,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from .fgv_turn import extract_fgv_turn_evidence, is_fgv_source, normalize_fgv_turn
 from .models import QuestionRecord
 
 SectionKind = Literal[
@@ -44,17 +45,10 @@ _QUESTION_MARKER = re.compile(
 _DISCURSIVE_QUESTION = re.compile(
     r"(?im)^\s*Quest(?:ão|ao)\s+(?P<number>\d{1,3})\s*$"
 )
-_SHIFT = re.compile(r"(?im)^\s*(?P<shift>MANH[ÃA]|TARDE)\s*$")
 _BOOKLET_TYPE = re.compile(r"(?i)\bTIPO\s+(?P<number>[1-9]\d*)\b")
 _NON_QUESTION_PAGE = re.compile(r"(?i)^\s*(?:realizaç(?:ão|ao)|fim)\s*$")
 _RESPONSE_LINE_NUMBER = re.compile(r"^\s*\d{1,3}\s*$")
 _RESPONSE_RULE = re.compile(r"-{20,}")
-_FGV_BOARDS = {
-    "fgv",
-    "fgv conhecimento",
-    "fundacao getulio vargas",
-    "fundacao getulio vargas fgv",
-}
 
 
 def _normalize(value: str | None) -> str:
@@ -252,10 +246,18 @@ def infer_fgv_identity(
     normalized_header = _normalize(header_text)
     evidence: list[str] = []
 
-    shift_match = _SHIFT.search(header_text)
-    shift = shift_match.group("shift").title() if shift_match else context.shift
-    if shift_match:
-        evidence.append(" ".join(shift_match.group(0).split()))
+    turn_evidence = extract_fgv_turn_evidence(
+        [(_page_number(page), _page_text(page)) for page in pages],
+        document_role="exam",
+    )
+    shift = (
+        turn_evidence[0].normalized
+        if len(turn_evidence) == 1
+        else normalize_fgv_turn(context.shift or "")
+        if not turn_evidence
+        else None
+    )
+    evidence.extend(item.raw for item in turn_evidence)
 
     type_match = _BOOKLET_TYPE.search(header_text)
     booklet_type = int(type_match.group("number")) if type_match else context.booklet_type
@@ -281,8 +283,7 @@ def infer_fgv_identity(
 
 
 def _is_fgv(context: BankParsingContext) -> bool:
-    board = _normalize(context.board)
-    return board in _FGV_BOARDS or context.provider == "fgv_conhecimento"
+    return is_fgv_source(board=context.board, provider=context.provider)
 
 
 def _profile_matches_contest(profile: FgvSectionProfile, contest: str | None) -> bool:
@@ -540,7 +541,7 @@ def _detected_sections(
 
 class FgvSectionAdapter:
     adapter_id = "fgv-sections"
-    adapter_version = "1.0"
+    adapter_version = "1.1"
 
     def __init__(self, catalog: FgvProfileCatalog | None = None) -> None:
         self.catalog = catalog or load_fgv_profiles()

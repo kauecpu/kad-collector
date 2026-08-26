@@ -21,6 +21,95 @@ except ImportError:
 
 
 class SemanticContractTests(unittest.TestCase):
+    def test_fgv_exam_uses_structural_pdf_shift_when_manifest_omits_it(self) -> None:
+        profile = extract_semantic_profile(
+            normalized_document(
+                Path("prova.pdf"),
+                metadata={"board": "FGV", "concurso": "RFB", "year": 2023},
+            ),
+            [(1, "FUNDAÇÃO GETULIO VARGAS\nMANHÃ\nPROVA OBJETIVA\n{01}\nTexto")],
+        )
+
+        self.assertEqual(profile.identity.turns.status, "known")
+        self.assertEqual(profile.identity.turns.normalized_values, ("manhã",))
+
+    def test_fgv_exam_ignores_labeled_shift_inside_question_body(self) -> None:
+        profile = extract_semantic_profile(
+            normalized_document(
+                Path("prova.pdf"),
+                metadata={"board": "FGV", "concurso": "RFB", "year": 2023},
+            ),
+            [
+                (
+                    1,
+                    "FUNDAÇÃO GETULIO VARGAS\nMANHÃ\nPROVA OBJETIVA\n"
+                    "{01}\nTurno: TARDE\nAssinale a alternativa correta.",
+                )
+            ],
+        )
+
+        self.assertEqual(profile.identity.turns.status, "known")
+        self.assertEqual(profile.identity.turns.normalized_values, ("manhã",))
+
+    def test_fgv_exam_conflicts_when_metadata_disagrees_with_structural_shift(self) -> None:
+        profile = extract_semantic_profile(
+            normalized_document(
+                Path("prova.pdf"),
+                metadata={
+                    "board": "FGV",
+                    "concurso": "RFB",
+                    "year": 2023,
+                    "turn": "Manhã",
+                },
+            ),
+            [(1, "FUNDAÇÃO GETULIO VARGAS\nTARDE\nPROVA OBJETIVA\n{01}\nTexto")],
+        )
+
+        self.assertEqual(profile.identity.turns.status, "conflict")
+        self.assertEqual(profile.identity.turns.normalized_values, ("manhã", "tarde"))
+
+    def test_human_shift_override_wins_over_conflicting_fgv_sources(self) -> None:
+        profile = extract_semantic_profile(
+            normalized_document(
+                Path("prova.pdf"),
+                metadata={"board": "FGV", "turn": "Manhã"},
+            ),
+            [(1, "TARDE\nPROVA OBJETIVA\n{01}\nTexto")],
+            human_overrides={"turns": "Tarde"},
+        )
+
+        self.assertEqual(profile.identity.turns.status, "known")
+        self.assertEqual(profile.identity.turns.normalized_values, ("tarde",))
+        self.assertEqual(profile.identity.turns.method, "human_override")
+
+    def test_fgv_answer_key_multi_shift_coverage_is_not_a_conflict(self) -> None:
+        profile = extract_semantic_profile(
+            normalized_document(
+                Path("gabarito.pdf"),
+                declared_type="answer_key",
+                metadata={"board": "FGV", "concurso": "RFB", "year": 2023},
+            ),
+            [
+                (1, "Auditor Fiscal - TIPO 1 (Manhã)\n1 2\nA B"),
+                (2, "Auditor Fiscal - TIPO 1 (Tarde)\n1 2\nC D"),
+            ],
+        )
+
+        self.assertEqual(profile.coverage.turns.status, "known")
+        self.assertEqual(profile.coverage.turns.normalized_values, ("manhã", "tarde"))
+        self.assertFalse(profile.has_conflict)
+
+    def test_non_fgv_document_does_not_gain_shift_from_bare_header(self) -> None:
+        profile = extract_semantic_profile(
+            normalized_document(
+                Path("prova.pdf"),
+                metadata={"board": "Outra banca", "concurso": "Teste", "year": 2026},
+            ),
+            [(1, "MANHÃ\nPROVA OBJETIVA")],
+        )
+
+        self.assertEqual(profile.identity.turns.status, "unknown")
+
     def test_extracts_labeled_pdf_fields_without_source_rules(self) -> None:
         profile = extract_semantic_profile(
             normalized_document(Path("prova.pdf"), metadata={}),
