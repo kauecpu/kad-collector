@@ -137,9 +137,11 @@ aprovação.
 ### Pelo aplicativo desktop
 
 Na tela principal, use **Classificar pendentes com Qwen 8B**. A primeira tela é uma prévia
-passiva e não chama `/api/chat`: ela mostra a quantidade elegível, já completa, resolvida pelas
-regras locais, dependente do Qwen e a contagem por campo ainda ausente. O lote começa em 25
-questões e aceita limites entre 1 e 250.
+passiva e não chama `/api/chat`: ela separa questões brutas, questões canônicas, elegíveis,
+já completas, resolvidas pelas regras locais e dependentes do Qwen. Campos ausentes só são
+contabilizados quando existem questões elegíveis para análise. Se a preparação canônica ainda
+não ocorreu, a interface explica o bloqueio e mantém a confirmação desativada. O lote começa
+em 25 questões e aceita limites entre 1 e 250.
 
 O contrato do desktop é fixo e não segue `OLLAMA_MODEL`: endpoint
 `http://127.0.0.1:11434`, modelo `qwen3:8b`, quantização `Q4_K_M` e digest

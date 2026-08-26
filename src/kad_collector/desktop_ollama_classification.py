@@ -331,12 +331,52 @@ class DesktopOllamaClassificationManager:
         finally:
             memory.close()
             source.close()
+        operational = self.store.operational_presentation_summary()
+        exclusion_reasons: list[dict[str, Any]] = []
+        if operational["rawQuestions"] == 0:
+            exclusion_reasons.append({
+                "code": "no_questions",
+                "label": "Nenhuma questão coletada",
+                "count": 0,
+                "action": "Colete uma fonte ou adicione PDFs.",
+            })
+        elif operational["canonicalQuestions"] == 0:
+            exclusion_reasons.append({
+                "code": "canonical_preparation_pending",
+                "label": "Preparação canônica pendente",
+                "count": operational["rawQuestions"],
+                "action": "Associe provas e gabaritos e confirme os grupos equivalentes.",
+            })
+        if operational["pendingGroups"]:
+            exclusion_reasons.append({
+                "code": "unconfirmed_groups",
+                "label": "Grupos equivalentes não confirmados",
+                "count": operational["pendingGroups"],
+                "action": "Revise os grupos que ainda não têm uma questão canônica confirmada.",
+            })
+        if operational["canonicalBlocked"]:
+            exclusion_reasons.append({
+                "code": "blocked_questions",
+                "label": "Questões canônicas bloqueadas",
+                "count": operational["canonicalBlocked"],
+                "action": "Abra a revisão e resolva o bloqueio editorial.",
+            })
+        if report.already_complete:
+            exclusion_reasons.append({
+                "code": "already_complete",
+                "label": "Classificação já completa",
+                "count": report.already_complete,
+                "action": "Nenhuma ação de classificação é necessária para essas questões.",
+            })
         return {
+            "rawQuestions": operational["rawQuestions"],
+            "canonicalQuestions": operational["canonicalQuestions"],
             "eligible": report.eligible,
             "alreadyComplete": report.already_complete,
             "deterministic": report.deterministic_questions,
             "qwenRequired": report.ai_candidates,
             "missingFields": dict(sorted(report.requested_fields.items())),
+            "exclusionReasons": exclusion_reasons,
         }
 
     def preview(self, limit: int = DEFAULT_BATCH_LIMIT) -> dict[str, Any]:

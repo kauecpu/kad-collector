@@ -54,6 +54,70 @@ def default_desktop_data_dir() -> Path:
     return Path.cwd() / "data" / "desktop"
 
 
+def _desktop_environment(data_dir: Path) -> str:
+    parts = {part.casefold() for part in data_dir.resolve().parts}
+    joined = " ".join(parts)
+    reference_parts = {"baseline", "fresh", "reference", "references"}
+    if parts.intersection(reference_parts) or "benchmark" in joined:
+        return "reference"
+    if parts.intersection({"test", "tests", "tmp", "temp"}) or "pytest" in joined:
+        return "test"
+    return "operational"
+
+
+def _next_desktop_action(summary: dict[str, Any], operational: dict[str, Any]) -> dict[str, str]:
+    if not operational["rawQuestions"]:
+        return {
+            "step": "collect",
+            "title": "Adicione uma fonte ou um lote de PDFs",
+            "detail": "Ainda não existem questões neste banco.",
+            "action": "Começar coleta",
+        }
+    if not operational["canonicalQuestions"]:
+        return {
+            "step": "prepare",
+            "title": "Preparação canônica pendente",
+            "detail": (
+                "As questões foram coletadas, mas ainda precisam ser associadas e "
+                "agrupadas antes da classificação com Qwen."
+            ),
+            "action": "Ver preparação",
+        }
+    if summary.get("unclassified", 0):
+        return {
+            "step": "complete",
+            "title": "Complete a classificação",
+            "detail": (
+                f"{summary['unclassified']} questão(ões) ainda têm campos editoriais "
+                "ausentes."
+            ),
+            "action": "Ver pendências",
+        }
+    if summary.get("pending", 0) or summary.get("exception", 0):
+        return {
+            "step": "review",
+            "title": "Revisão humana necessária",
+            "detail": (
+                f"{summary.get('pending', 0) + summary.get('exception', 0)} "
+                "questão(ões) aguardam decisão."
+            ),
+            "action": "Abrir revisão",
+        }
+    if summary.get("importable", 0):
+        return {
+            "step": "export",
+            "title": "Revise o lote pronto para exportação",
+            "detail": f"{summary['importable']} questão(ões) estão prontas para o app.",
+            "action": "Ver exportação",
+        }
+    return {
+        "step": "review",
+        "title": "Ainda existem bloqueios editoriais",
+        "detail": "Nenhuma questão está pronta para exportação. Revise os motivos pendentes.",
+        "action": "Ver bloqueios",
+    }
+
+
 class DesktopApplication:
     def __init__(self, data_dir: Path | None = None) -> None:
         self.data_dir = (data_dir or default_desktop_data_dir()).resolve()
@@ -72,6 +136,8 @@ class DesktopApplication:
 
     def bootstrap(self) -> dict[str, Any]:
         query = self.store.query(DesktopFilterSet())
+        operational = self.store.operational_presentation_summary()
+        environment = _desktop_environment(self.data_dir)
         return {
             **query,
             "jobs": self.store.list_jobs(),
@@ -80,8 +146,19 @@ class DesktopApplication:
             "collectionEngine": self.collection_manager.engine_summary(),
             "savedFilters": self.store.saved_filters(),
             "semanticSummary": self.store.semantic_presentation_summary(),
+            "operationalSummary": {
+                **operational,
+                "nextAction": _next_desktop_action(query["summary"], operational),
+            },
             "config": {
                 "dataDirectory": str(self.data_dir),
+                "databasePath": str(self.store.path.resolve()),
+                "environment": environment,
+                "environmentLabel": {
+                    "operational": "Banco operacional",
+                    "test": "Banco de teste",
+                    "reference": "Referência",
+                }[environment],
                 "openaiConfigured": bool(os.environ.get("OPENAI_API_KEY")),
                 "openaiModel": os.environ.get("OPENAI_MODEL", "gpt-5.6-terra"),
                 "localOnly": True,

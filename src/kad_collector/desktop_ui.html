@@ -16,17 +16,23 @@
           <span><strong>KAD</strong><small>COLLECTOR</small></span>
         </div>
         <nav class="rail-nav">
-          <button class="rail-link active" type="button" data-section="workspace">
-            <span class="rail-icon">⌁</span><span>Operação</span>
+          <button class="rail-link active" type="button" data-section="overview">
+            <span class="rail-icon">⌂</span><span>Visão geral</span>
           </button>
-          <button class="rail-link" type="button" data-section="sources">
-            <span class="rail-icon">↓</span><span>Coletar links</span>
+          <button class="rail-link" type="button" data-section="collect">
+            <span class="rail-icon">1</span><span>Coletar</span>
           </button>
-          <button class="rail-link" type="button" data-section="reviews">
-            <span class="rail-icon">✓</span><span>Revisão</span>
+          <button class="rail-link" type="button" data-section="prepare">
+            <span class="rail-icon">2</span><span>Preparar</span>
           </button>
-          <button class="rail-link" type="button" data-section="exports">
-            <span class="rail-icon">↗</span><span>Exportações</span>
+          <button class="rail-link" type="button" data-section="complete">
+            <span class="rail-icon">3</span><span>Completar</span>
+          </button>
+          <button class="rail-link" type="button" data-section="review">
+            <span class="rail-icon">4</span><span>Revisar</span>
+          </button>
+          <button class="rail-link" type="button" data-section="export">
+            <span class="rail-icon">5</span><span>Exportar</span>
           </button>
         </nav>
         <div class="local-seal"><span></span>100% local</div>
@@ -36,9 +42,9 @@
         <div id="editorial-view">
         <header class="app-header">
           <div>
-            <p class="eyebrow">CENTRAL EDITORIAL</p>
-            <h1>Transforme PDFs em conteúdo revisável.</h1>
-            <p class="header-copy">Extração, relação com o gabarito oficial, classificação e auditoria em um fluxo seguro.</p>
+            <p class="eyebrow">VISÃO GERAL</p>
+            <h1>Veja o que está pronto e o que precisa de atenção.</h1>
+            <p class="header-copy">Da coleta à exportação, cada etapa mostra seu estado e a próxima ação.</p>
           </div>
           <div class="header-actions">
             <button id="qwen-classify-open" class="button ghost" type="button">Classificar pendentes com Qwen 8B</button>
@@ -48,12 +54,33 @@
           </div>
         </header>
 
+        <section class="database-banner" aria-label="Banco de dados ativo">
+          <div>
+            <span id="database-environment" class="environment-badge operational">Banco operacional</span>
+            <strong>Banco ativo neste aplicativo</strong>
+          </div>
+          <code id="database-path">—</code>
+          <button id="copy-database-path" class="button ghost" type="button">Copiar caminho</button>
+        </section>
+
+        <nav class="journey" aria-label="Etapas do trabalho">
+          <button type="button" data-section-jump="collect"><span>1</span><strong>Coletar</strong><small>Buscar e processar PDFs</small></button>
+          <button type="button" data-section-jump="prepare"><span>2</span><strong>Preparar</strong><small>Associar e agrupar</small></button>
+          <button type="button" data-section-jump="complete"><span>3</span><strong>Completar</strong><small>Preencher classificação</small></button>
+          <button type="button" data-section-jump="review"><span>4</span><strong>Revisar</strong><small>Decidir pendências</small></button>
+          <button type="button" data-section-jump="export"><span>5</span><strong>Exportar</strong><small>Confirmar o lote pronto</small></button>
+        </nav>
+
         <section class="metric-grid" aria-label="Resumo do acervo">
           <article class="metric-card signature">
             <span class="metric-label">QUESTÕES</span>
             <strong id="metric-total">0</strong>
-            <small id="metric-answer-summary">0 vinculadas ao gabarito · 0 sem resposta oficial</small>
+            <small id="metric-answer-summary">0 com resposta oficial · 0 sem gabarito associado</small>
           </article>
+          <article class="metric-card"><span class="metric-label">COM RESPOSTA OFICIAL</span><strong id="overview-official">0</strong><small>vinculadas ao gabarito</small></article>
+          <article class="metric-card"><span class="metric-label">ANULADAS</span><strong id="overview-annulled">0</strong><small>conforme gabarito oficial</small></article>
+          <article class="metric-card attention"><span class="metric-label">SEM GABARITO ASSOCIADO</span><strong id="overview-unmatched">0</strong><small>exigem associação ou fonte oficial</small></article>
+          <article class="metric-card attention"><span class="metric-label">SEM CLASSIFICAÇÃO</span><strong id="overview-unclassified">0</strong><small>campos editoriais ausentes</small></article>
           <button id="metric-card-pending" class="metric-card metric-action" type="button" aria-label="Abrir fila de revisão editorial">
             <span class="metric-label">REVISÃO EDITORIAL</span>
             <strong id="metric-pending">0</strong>
@@ -87,7 +114,28 @@
           </div>
         </section>
 
-        <section class="workbench">
+        <section class="next-action-card" aria-live="polite">
+          <div><p class="eyebrow">PRÓXIMA AÇÃO</p><h2 id="next-action-title">Carregando estado do banco</h2><p id="next-action-detail"></p></div>
+          <button id="next-action-button" class="button primary" type="button">Ver fluxo</button>
+        </section>
+
+        <section id="preparation-overview" class="flow-section">
+          <header><div><p class="eyebrow">ETAPA 2 · PREPARAR</p><h2>Da extração à questão canônica</h2></div><p>Uma <abbr title="Versão editorial única escolhida para representar ocorrências equivalentes da mesma questão.">questão canônica</abbr> só existe depois que a prova é identificada e o <abbr title="Conjunto de ocorrências da mesma questão em cadernos ou versões diferentes.">grupo equivalente</abbr> é confirmado.</p></header>
+          <div class="preparation-steps">
+            <article><strong id="prep-raw">0</strong><span>Questões brutas</span><small>extraídas dos PDFs</small></article>
+            <i>→</i><article><strong id="prep-occurrences">0</strong><span>Ocorrências preparadas</span><small>ligadas à prova</small></article>
+            <i>→</i><article><strong id="prep-groups">0</strong><span>Grupos confirmados</span><small>equivalências revisadas</small></article>
+            <i>→</i><article><strong id="prep-canonical">0</strong><span>Questões canônicas</span><small>aptas à classificação</small></article>
+          </div>
+          <p id="canonical-empty-message" class="plain-warning" hidden>As questões foram coletadas, mas ainda precisam da preparação canônica antes da classificação com Qwen.</p>
+        </section>
+
+        <section id="completion-overview" class="flow-section qwen-explainer">
+          <div><p class="eyebrow">ETAPA 3 · COMPLETAR</p><h2>Classificação editorial assistida</h2><p>Primeiro o Collector aplica regras locais. Depois, somente questões canônicas elegíveis podem receber uma <abbr title="Classificação proposta pela IA local que continua sujeita à revisão humana.">sugestão do Qwen</abbr>.</p></div>
+          <div class="safety-note"><strong>O Qwen pode sugerir</strong><span>Disciplina, Matéria, Assunto e Nível.</span><strong>O Qwen nunca altera</strong><span>Gabaritos, respostas oficiais, identidade da prova ou decisões humanas.</span></div>
+        </section>
+
+        <section id="review-workbench" class="workbench">
           <aside class="filter-panel" aria-label="Filtros profissionais">
             <header class="panel-heading">
               <div><p class="eyebrow">REFINAR</p><h2>Filtros</h2></div>
@@ -136,6 +184,10 @@
             <div id="question-list" class="question-list" aria-live="polite"></div>
           </section>
         </section>
+        <section id="export-overview" class="flow-section export-callout">
+          <div><p class="eyebrow">ETAPA 5 · EXPORTAR</p><h2>Somente questões prontas entram no arquivo</h2><p>O Collector lista os bloqueios restantes e pede confirmação antes de gerar a exportação.</p></div>
+          <button id="export-summary-open" class="button success" type="button">Revisar exportação</button>
+        </section>
         </div>
 
         <section id="source-view" class="source-view" hidden>
@@ -147,6 +199,16 @@
             </div>
             <span class="source-safety"><i></i>motor seguro · coleta retomável</span>
           </header>
+
+          <ol class="collection-pipeline" aria-label="Etapas da coleta">
+            <li><span>1</span><strong>Página consultada</strong><small>Aguardando ou concluída</small></li>
+            <li><span>2</span><strong>PDFs encontrados</strong><small>Origem validada</small></li>
+            <li><span>3</span><strong>PDFs baixados</strong><small>Arquivos locais</small></li>
+            <li><span>4</span><strong>Texto extraído</strong><small>Leitura dos documentos</small></li>
+            <li><span>5</span><strong>Questões identificadas</strong><small>Registro bruto</small></li>
+            <li><span>6</span><strong>Gabaritos associados</strong><small>Resposta oficial</small></li>
+            <li><span>7</span><strong>Preparação canônica</strong><small>Identidade e equivalência</small></li>
+          </ol>
 
           <div class="source-layout">
             <form id="source-form" class="source-form-card">
@@ -311,6 +373,7 @@
           </div>
         </header>
         <div id="review-flags" class="review-flags"></div>
+        <section id="question-state-groups" class="question-state-groups" aria-label="Estado da questão"></section>
         <section id="import-diagnosis" class="import-diagnosis" aria-label="Diagnóstico de importação"></section>
         <div id="review-context" class="review-context" aria-label="Contexto da questão"></div>
         <section id="document-identity" class="document-identity" aria-label="Identidade semântica do documento"></section>
@@ -401,6 +464,7 @@
           <button class="icon-button modal-close" type="button" aria-label="Fechar">×</button>
         </header>
         <p class="modal-copy">A prévia não executa inferência nem altera o banco. Regras determinísticas serão aplicadas antes da IA.</p>
+        <p class="qwen-fixed-explanation">O Qwen pode sugerir Disciplina, Matéria, Assunto e Nível. Ele não altera gabaritos, respostas oficiais, identidade da prova ou decisões humanas.</p>
         <label>Limite deste lote
           <input id="qwen-classification-limit" type="number" min="1" max="250" value="25" required>
         </label>
