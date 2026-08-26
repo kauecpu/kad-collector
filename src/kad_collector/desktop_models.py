@@ -77,6 +77,10 @@ class DesktopFilterSet(StrictModel):
     topics: list[str] = Field(default_factory=list)
     difficulties: list[str] = Field(default_factory=list)
     statuses: list[str] = Field(default_factory=list)
+    answer_states: list[Literal["official", "annulled", "missing"]] = Field(
+        default_factory=list
+    )
+    answer_diagnostics: list[str] = Field(default_factory=list)
     readiness_states: list[Literal["importable", "unclassified", "blocked"]] = Field(
         default_factory=list
     )
@@ -97,6 +101,8 @@ class DesktopFilterSet(StrictModel):
         "topics",
         "difficulties",
         "statuses",
+        "answer_states",
+        "answer_diagnostics",
         "readiness_states",
         "block_reasons",
         "quality_flags",

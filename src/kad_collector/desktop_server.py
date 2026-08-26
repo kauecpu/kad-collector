@@ -531,6 +531,8 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                             "exceptions": preview.exception_count,
                             "questions": preview.questions,
                             "exclusionReasons": preview.exclusion_reasons,
+                            "answerKeySummary": preview.answer_key_summary,
+                            "answerKeyDiagnostics": preview.answer_key_diagnostics,
                         }
                     )
                     return

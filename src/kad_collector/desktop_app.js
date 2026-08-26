@@ -87,17 +87,24 @@ function qwenPreviewPresentation(preview) {
 
 function questionStatePresentation(view) {
   const question = view?.question || {};
-  const reasons = new Set(view?.block_reasons || []);
   const equivalence = view?.question_equivalence || {};
   const fieldLabels = {discipline: 'Disciplina', matter: 'Matéria', subject: 'Assunto', level: 'Nível'};
   const missingClassification = Object.keys(fieldLabels).filter((field) => !question[field]);
+  const diagnosis = view?.answer_key_diagnosis || {};
+  const answerContext = {
+    examDocument: view?.answer_key_evidence?.examDocument || view?.filename || 'Não informado',
+    answerKeyDocument: view?.answer_key_evidence?.linkedAnswerKeyDocument || 'Nenhum documento ligado',
+  };
   const answer = question.answer_status === 'annulled'
-    ? {state: 'Anulada', tone: 'attention', reason: 'O gabarito oficial anulou esta questão.', action: 'Revisar questão'}
+    ? {state: 'Anulada', tone: 'attention', reason: diagnosis.explanation || 'O gabarito oficial anulou esta questão.', action: diagnosis.action || 'Nenhuma ação', context: answerContext}
     : question.answer_status === 'matched'
-      ? {state: 'Encontrado', tone: 'success', reason: 'A resposta foi vinculada ao gabarito oficial.', action: 'Nenhuma ação'}
-      : reasons.has('ambiguous_association')
-        ? {state: 'Associação pendente', tone: 'attention', reason: 'A prova e o gabarito existem, mas o Collector ainda não confirmou o mesmo caderno.', action: 'Revisar associação'}
-        : {state: 'Ausente', tone: 'blocked', reason: 'Não existe resposta oficial comprovada para esta questão.', action: 'Localizar ou associar gabarito'};
+      ? {state: 'Com resposta oficial', tone: 'success', reason: diagnosis.explanation || 'A resposta foi vinculada ao gabarito oficial.', action: diagnosis.action || 'Nenhuma ação', context: answerContext}
+      : {
+          state: diagnosis.label || 'Diagnóstico pendente', tone: 'blocked',
+          reason: diagnosis.explanation || 'O banco ainda não explica a ausência da resposta.',
+          action: diagnosis.action || 'Revisar preparação', context: answerContext,
+          details: view?.answer_key_evidence || {},
+        };
   const preparation = equivalence.status === 'confirmed' && equivalence.canonicalQuestionId
     ? {state: 'Canônica', tone: 'success', reason: 'O grupo equivalente foi confirmado e possui representante canônica.', action: 'Nenhuma ação'}
     : equivalence.groupId
@@ -137,7 +144,8 @@ const token = document.querySelector('meta[name="kad-desktop-token"]').content;
 const emptyFilters = () => ({
   source_files: [], concursos: [], boards: [], years: [], roles: [], variants: [], levels: [],
   disciplines: [], subjects: [], topics: [], difficulties: [], statuses: [],
-  readiness_states: [], block_reasons: [], quality_flags: [], search: '', min_confidence: null,
+  answer_states: [], answer_diagnostics: [], readiness_states: [], block_reasons: [],
+  quality_flags: [], search: '', min_confidence: null,
 });
 
 const state = {
@@ -232,6 +240,9 @@ function flagLabel(flag) {
 }
 
 const facetDefinitions = [
+  ['Gabarito oficial', [
+    ['answer_states', 'Situação da resposta'], ['answer_diagnostics', 'Motivo da ausência'],
+  ]],
   ['Origem', [
     ['source_files', 'PDF de origem'], ['concursos', 'Concurso'], ['boards', 'Banca'],
     ['years', 'Ano'], ['roles', 'Cargo'], ['variants', 'Variante'], ['levels', 'Nível'],
@@ -590,6 +601,47 @@ function renderMetrics() {
   byId('metric-card-pending').classList.toggle('active', activeStatus === 'pending');
   byId('metric-card-exceptions').classList.toggle('active', activeStatus === 'exception');
   byId('metric-card-importable').classList.toggle('active', activeStatus === 'importable');
+  const activeAnswer = state.filters.answer_states.length === 1 ? state.filters.answer_states[0] : null;
+  byId('metric-card-answer-official').classList.toggle('active', activeAnswer === 'official');
+  byId('metric-card-answer-annulled').classList.toggle('active', activeAnswer === 'annulled');
+  byId('metric-card-answer-missing').classList.toggle('active', activeAnswer === 'missing');
+  renderAnswerDiagnosticSummary(summary.answer_key_diagnostics || {});
+}
+
+const answerStateLabels = {
+  official: 'Com resposta oficial', annulled: 'Anulada', missing: 'Sem resposta associada',
+};
+const answerDiagnosticLabels = {
+  answer_key_not_collected: 'Gabarito oficial não encontrado',
+  answer_key_unlinked: 'Gabarito aguardando associação',
+  question_missing_in_answer_key: 'Questão não localizada no gabarito',
+  ambiguous_answer_key_association: 'Associação do gabarito em dúvida',
+  answer_key_diagnosis_pending: 'Motivo ainda não identificado',
+};
+
+function renderAnswerDiagnosticSummary(counts) {
+  const root = byId('answer-diagnostic-summary');
+  root.replaceChildren();
+  const intro = document.createElement('div');
+  const heading = document.createElement('strong');
+  heading.textContent = 'Por que faltam respostas?';
+  const detail = document.createElement('span');
+  detail.textContent = 'Cada questão aparece em um único motivo, conforme a evidência guardada.';
+  intro.append(heading, detail);
+  root.append(intro);
+  Object.entries(answerDiagnosticLabels).forEach(([code, label]) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'answer-diagnostic-button';
+    const count = document.createElement('strong');
+    count.textContent = counts[code] || 0;
+    const copy = document.createElement('span');
+    copy.textContent = label;
+    button.append(count, copy);
+    button.classList.toggle('active', state.filters.answer_diagnostics.length === 1 && state.filters.answer_diagnostics[0] === code);
+    button.addEventListener('click', () => activateAnswerQueue('missing', code));
+    root.append(button);
+  });
 }
 
 function renderJobs() {
@@ -735,7 +787,11 @@ function renderQuery() {
   );
   byId('result-count').textContent = state.query.total || 0;
   const activeStatus = state.filters.statuses.length === 1 ? state.filters.statuses[0] : null;
-  byId('records-kicker').textContent = activeStatus === 'pending' ? 'FILA DE REVISÃO'
+  const activeAnswer = state.filters.answer_states.length === 1 ? state.filters.answer_states[0] : null;
+  byId('records-kicker').textContent = activeAnswer === 'official' ? 'COM RESPOSTA OFICIAL'
+    : activeAnswer === 'annulled' ? 'QUESTÕES ANULADAS'
+      : activeAnswer === 'missing' ? 'SEM RESPOSTA ASSOCIADA'
+        : activeStatus === 'pending' ? 'FILA DE REVISÃO'
     : activeStatus === 'exception' ? 'QUESTÕES EM EXCEÇÃO'
       : activeStatus === 'importable' ? 'IMPORTÁVEIS PARA O APP' : 'QUESTÕES ENCONTRADAS';
   renderFacets();
@@ -782,7 +838,9 @@ function renderFacets() {
         const copy = document.createElement('strong');
         copy.textContent = key === 'quality_flags' ? flagLabel(option.value)
           : key === 'block_reasons' ? blockReasonLabel(option.value)
-            : ['statuses', 'readiness_states'].includes(key)
+            : key === 'answer_states' ? (answerStateLabels[option.value] || option.value)
+              : key === 'answer_diagnostics' ? (answerDiagnosticLabels[option.value] || option.value)
+                : ['statuses', 'readiness_states'].includes(key)
               ? statusLabel(option.value) : String(option.value);
         const count = document.createElement('span');
         count.textContent = option.count;
@@ -831,6 +889,8 @@ function filterChip(key, value) {
   button.className = 'filter-chip';
   const label = key === 'quality_flags' ? flagLabel(value)
     : key === 'block_reasons' ? blockReasonLabel(value)
+      : key === 'answer_states' ? (answerStateLabels[value] || value)
+        : key === 'answer_diagnostics' ? (answerDiagnosticLabels[value] || value)
       : ['statuses', 'readiness_states'].includes(key) ? statusLabel(value) : value;
   button.textContent = `${label} ×`;
   button.addEventListener('click', async () => {
@@ -912,6 +972,26 @@ function renderQuestions() {
     topic.textContent = [question.matter, question.subject].filter(Boolean).join(' · ') || 'Classificação pendente';
     classification.append(discipline, topic);
 
+    const answer = document.createElement('span');
+    answer.className = `answer-copy ${view.answer_key_state || 'missing'}`;
+    const answerLabel = document.createElement('strong');
+    const answerCode = view.answer_key_diagnosis?.diagnosticCode;
+    answerLabel.textContent = view.answer_key_state === 'official' ? 'Resposta oficial encontrada'
+      : view.answer_key_state === 'annulled' ? 'Questão anulada'
+        : ['answer_key_unlinked', 'ambiguous_answer_key_association'].includes(answerCode)
+          ? 'Associação pendente' : 'Sem resposta oficial';
+    answer.append(answerLabel);
+    if (view.answer_key_state === 'missing') {
+      const answerReason = document.createElement('small');
+      answerReason.className = 'answer-reason';
+      answerReason.textContent = view.answer_key_diagnosis?.label || 'Motivo ainda não identificado';
+      const answerExplanation = document.createElement('small');
+      answerExplanation.textContent = view.answer_key_diagnosis?.explanation || 'A resposta oficial ainda não foi comprovada.';
+      const answerAction = document.createElement('small');
+      answerAction.textContent = `Próxima ação: ${view.answer_key_diagnosis?.action || 'Abrir detalhes para diagnóstico'}`;
+      answer.append(answerReason, answerExplanation, answerAction);
+    }
+
     const confidence = document.createElement('span');
     confidence.className = 'confidence';
     const hasClassification = Boolean(question.discipline || question.matter || question.subject);
@@ -927,7 +1007,7 @@ function renderQuestions() {
     const status = document.createElement('span');
     status.className = `status-pill ${view.status}`;
     status.textContent = view.importable ? 'Importável' : statusLabel(view.status);
-    open.append(main, classification, confidence, status);
+    open.append(main, answer, classification, confidence, status);
     row.append(open);
     root.append(row);
   });
@@ -1470,6 +1550,14 @@ async function openExportPreview() {
       `${preview.included} de ${preview.selected} selecionada(s) entrarão no arquivo; ${preview.exceptions} ficarão no relatório de exceções.`;
     const root = byId('export-preview-list');
     root.replaceChildren();
+    const answerSummary = document.createElement('strong');
+    answerSummary.textContent = `Neste recorte: ${preview.answerKeySummary?.official || 0} com resposta oficial · ${preview.answerKeySummary?.annulled || 0} anuladas · ${preview.answerKeySummary?.missing || 0} sem resposta associada.`;
+    root.append(answerSummary);
+    Object.entries(preview.answerKeyDiagnostics || {}).forEach(([code, count]) => {
+      const item = document.createElement('span');
+      item.textContent = `${answerDiagnosticLabels[code] || code}: ${count}`;
+      root.append(item);
+    });
     preview.questions.slice(0, 100).forEach((question) => {
       const item = document.createElement('span');
       item.textContent = `Questão ${question.number} · ${question.discipline} · ${question.sourceDocument}`;
@@ -1569,6 +1657,21 @@ async function reclassifyCollection() {
   finally { button.disabled = false; }
 }
 
+function activateAnswerQueue(answerState, diagnosticCode = null) {
+  state.activeSection = 'review';
+  state.filters = emptyFilters();
+  state.filters.answer_states = [answerState];
+  if (diagnosticCode) state.filters.answer_diagnostics = [diagnosticCode];
+  state.selectedQuestionIds.clear();
+  byId('question-search').value = '';
+  document.querySelectorAll('.rail-link').forEach((item) => item.classList.remove('active'));
+  document.querySelector('.rail-link[data-section="review"]')?.classList.add('active');
+  renderSection();
+  runQuery().then(() => {
+    document.querySelector('.workbench')?.scrollIntoView({behavior: 'smooth', block: 'start'});
+  }).catch((error) => toast(error.message, 'error'));
+}
+
 function renderQuestionStates() {
   const root = byId('question-state-groups');
   root.replaceChildren();
@@ -1584,6 +1687,26 @@ function renderQuestionStates() {
     const action = document.createElement('small');
     action.textContent = `Próxima ação: ${item.action}`;
     card.append(label, stateLabel, reason, action);
+    if (item.context) {
+      const context = document.createElement('p');
+      context.className = 'answer-document-context';
+      context.textContent = `Prova: ${item.context.examDocument} · Gabarito relacionado: ${item.context.answerKeyDocument}`;
+      card.append(context);
+    }
+    if (item.details && Object.values(item.details).some((value) => value !== null && value !== '' && (!Array.isArray(value) || value.length))) {
+      const details = document.createElement('details');
+      details.className = 'answer-technical-details';
+      const summary = document.createElement('summary');
+      summary.textContent = 'Detalhes para diagnóstico';
+      details.append(summary);
+      Object.entries(item.details).forEach(([key, value]) => {
+        if (value === null || value === '' || (Array.isArray(value) && !value.length)) return;
+        const row = document.createElement('span');
+        row.textContent = `${key}: ${Array.isArray(value) ? value.join(', ') : value}`;
+        details.append(row);
+      });
+      card.append(details);
+    }
     root.append(card);
   });
 }
@@ -1821,6 +1944,9 @@ byId('export-summary-open').addEventListener('click', openExportPreview);
 byId('metric-card-pending').addEventListener('click', () => activateEditorialQueue('pending'));
 byId('metric-card-exceptions').addEventListener('click', () => activateEditorialQueue('exception'));
 byId('metric-card-importable').addEventListener('click', () => activateEditorialQueue('importable'));
+byId('metric-card-answer-official').addEventListener('click', () => activateAnswerQueue('official'));
+byId('metric-card-answer-annulled').addEventListener('click', () => activateAnswerQueue('annulled'));
+byId('metric-card-answer-missing').addEventListener('click', () => activateAnswerQueue('missing'));
 byId('review-pdf').addEventListener('click', openAuthenticatedPdf);
 byId('choose-files').addEventListener('click', () => choosePaths('files'));
 byId('choose-folder').addEventListener('click', () => choosePaths('folder'));

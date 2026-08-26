@@ -418,6 +418,8 @@ class ExportPreviewTests(ImportReadinessStoreTests):
 
         self.assertEqual(preview.selected, 2)
         self.assertEqual(preview.included_count, 1)
+        self.assertEqual(preview.answer_key_summary, {"official": 2})
+        self.assertEqual(preview.answer_key_diagnostics, {})
         self.assertEqual(preview.questions[0]["questionId"], approved_id)
         self.assertTrue(
             any(
@@ -444,6 +446,19 @@ class ExportPreviewTests(ImportReadinessStoreTests):
         ]
         self.assertEqual(result.exported_count, preview.included_count)
         self.assertEqual(records[0]["data"]["statement"], preview.questions[0]["statement"])
+
+    def test_preview_reports_and_blocks_a_missing_official_answer(self) -> None:
+        self.save(1, answer_status="missing", correct_answer=None)
+
+        preview = preview_filtered_questions(self.application.store, DesktopFilterSet())
+
+        self.assertEqual(preview.selected, 1)
+        self.assertEqual(preview.included_count, 0)
+        self.assertEqual(preview.answer_key_summary, {"missing": 1})
+        self.assertEqual(
+            preview.answer_key_diagnostics,
+            {"answer_key_diagnosis_pending": 1},
+        )
 
 
 if __name__ == "__main__":
