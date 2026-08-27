@@ -66,6 +66,41 @@ class CanonicalAIInputTests(unittest.TestCase):
         )
         self.assertEqual(sanitized.removed_artifacts, ("section_heading_bleed",))
 
+    def test_preserves_receita_federal_reference_inside_statement(self) -> None:
+        statement = (
+            "Auditores-fiscais da Secretaria Especial da Receita Federal do Brasil\n"
+            "dirigem-se até certo terreno em uma ação de fiscalização tributária."
+        )
+
+        sanitized = sanitize_canonical_ai_content(statement, ("Resposta A.", "Resposta B."))
+
+        self.assertEqual(sanitized.statement, statement)
+        self.assertEqual(sanitized.removed_artifacts, ())
+
+    def test_preserves_receita_federal_reference_on_its_own_content_line(self) -> None:
+        statement = (
+            "Segundo entendimento da\n"
+            "Receita Federal do Brasil\n"
+            "é correto afirmar que a obrigação permanece válida."
+        )
+
+        sanitized = sanitize_canonical_ai_content(statement, ("Resposta A.", "Resposta B."))
+
+        self.assertEqual(sanitized.statement, statement)
+        self.assertEqual(sanitized.removed_artifacts, ())
+
+    def test_preserves_receita_federal_reference_inside_alternative(self) -> None:
+        alternatives = (
+            "A primeira afirmativa está correta.",
+            "Não é atribuição da Receita Federal do Brasil identificar eventual ausência "
+            "de recolhimento previdenciário.",
+        )
+
+        sanitized = sanitize_canonical_ai_content("Assinale a opção correta.", alternatives)
+
+        self.assertEqual(sanitized.alternatives, alternatives)
+        self.assertEqual(sanitized.removed_artifacts, ())
+
     def test_cleaned_content_has_its_own_stable_fingerprint(self) -> None:
         clean = sanitize_canonical_ai_content("Questão.", ("A", "B"))
         changed = sanitize_canonical_ai_content("Questão alterada.", ("A", "B"))
