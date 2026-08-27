@@ -8,6 +8,7 @@ AnswerKeyDiagnosticCode = Literal[
     "answer_key_unlinked",
     "question_missing_in_answer_key",
     "ambiguous_answer_key_association",
+    "answer_key_awaiting_definitive",
     "answer_key_diagnosis_pending",
 ]
 
@@ -55,6 +56,14 @@ _PRESENTATION: dict[AnswerKeyDiagnosticCode, dict[str, str]] = {
         ),
         "action": "Confirmar caderno, cargo, turno e tipo",
     },
+    "answer_key_awaiting_definitive": {
+        "label": "Aguardando gabarito definitivo",
+        "explanation": (
+            "O Collector encontrou apenas um gabarito preliminar. A resposta só será "
+            "considerada oficial quando o definitivo for coletado."
+        ),
+        "action": "Coletar o gabarito definitivo quando for publicado",
+    },
     "answer_key_diagnosis_pending": {
         "label": "Motivo ainda não identificado",
         "explanation": (
@@ -87,7 +96,10 @@ def diagnose_answer_key(evidence: AnswerKeyEvidence) -> dict[str, object]:
         }
 
     code: AnswerKeyDiagnosticCode
-    if evidence.answer_key_link_id and evidence.valid_answer_association:
+    review_reason = (evidence.review_reason or "").casefold()
+    if "aguardando definitivo" in review_reason:
+        code = "answer_key_awaiting_definitive"
+    elif evidence.answer_key_link_id and evidence.valid_answer_association:
         code = "question_missing_in_answer_key"
     elif evidence.exam_version_id is None:
         code = "answer_key_diagnosis_pending"

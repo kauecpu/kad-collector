@@ -814,8 +814,8 @@ Enunciado completo da segunda questao.
         self.assertEqual(self.stored_question(str(exam["id"]), 1)["answer_status"], "missing")
 
         key = self.process_text_documents([(
-            "gabarito-after.pdf", "Gabarito preliminar\n1 - B",
-            self.semantic_metadata("answer_key", "Gabarito preliminar Analista 2026"),
+            "gabarito-after.pdf", "Gabarito definitivo\n1 - B",
+            self.semantic_metadata("answer_key", "Gabarito definitivo Analista 2026"),
         )])[0]
 
         question = self.stored_question(str(exam["id"]), 1)
@@ -921,8 +921,9 @@ Enunciado completo da segunda questao.
             "key-preliminary.pdf", "Gabarito preliminar\n1 - A\n2 - B",
             self.semantic_metadata("answer_key", "Gabarito preliminar 2026"),
         )])[0]
-        self.assertEqual(self.stored_question(str(exam["id"]), 2)["correct_answer"], "B")
-        question_id = self.approve_stored_question(str(exam["id"]), 2)
+        before_definitive = self.stored_question(str(exam["id"]), 2)
+        self.assertEqual(before_definitive["answer_status"], "missing")
+        self.assertIsNone(before_definitive["correct_answer"])
 
         definitive = self.process_text_documents([(
             "key-definitive.pdf", "Gabarito definitivo\n1 - A\n2 - C",
@@ -934,22 +935,11 @@ Enunciado completo da segunda questao.
                 "SELECT answer_key_version_id, status FROM document_links ORDER BY created_at"
             ).fetchall()
         self.assertEqual(self.stored_question(str(exam["id"]), 2)["correct_answer"], "C")
-        invalidated = self.store.question(question_id)
-        self.assertEqual(invalidated["status"], "pending")
-        self.assertIsNone(invalidated["reviewer"])
-        self.assertIsNone(invalidated["review_notes"])
-        self.assertEqual(self.store.audit_log(question_id)[0]["action"], "decision_invalidated")
-        self.assertIn(
-            "decision_invalidated",
-            [event["action"] for event in self.store.identity_events(str(exam["id"]))],
-        )
         self.assertEqual(
             [(row["answer_key_version_id"], row["status"]) for row in links],
-            [
-                (preliminary["document_version_id"], "superseded"),
-                (definitive["document_version_id"], "active"),
-            ],
+            [(definitive["document_version_id"], "active")],
         )
+        self.assertNotEqual(preliminary["document_version_id"], definitive["document_version_id"])
 
     def test_definitive_annulment_is_applied_and_audited_without_erasing_absent_answers(
         self,
@@ -963,8 +953,8 @@ Enunciado completo da segunda questao.
             self.semantic_metadata("exam", "Prova com anulacao 2026"),
         )])[0]
         self.process_text_documents([(
-            "key-before-annulment.pdf", "Gabarito preliminar\n1 - A\n2 - B",
-            self.semantic_metadata("answer_key", "Gabarito preliminar com anulacao"),
+            "key-before-annulment.pdf", "Gabarito oficial\n1 - A\n2 - B",
+            self.semantic_metadata("answer_key", "Gabarito oficial com anulacao"),
         )])
         question_id = self.approve_stored_question(str(exam["id"]), 1)
         definitive = self.process_text_documents([(
@@ -995,8 +985,8 @@ Enunciado completo da segunda questao.
             self.semantic_metadata("exam", "Prova com resposta estável 2026"),
         )])[0]
         self.process_text_documents([(
-            "key-stable-preliminary.pdf", "Gabarito preliminar\n1 - A",
-            self.semantic_metadata("answer_key", "Gabarito preliminar estável"),
+            "key-stable-official.pdf", "Gabarito oficial\n1 - A",
+            self.semantic_metadata("answer_key", "Gabarito oficial estável"),
         )])
         question_id = self.approve_stored_question(str(exam["id"]), 1)
 
@@ -1364,9 +1354,9 @@ C D""",
             ),
             (
                 "key-inherited-tipo-1.pdf",
-                "Gabarito preliminar\nAnalista\n1 2\nB. A\n3 4\nA B",
+                "Gabarito definitivo\nAnalista\n1 2\nB. A\n3 4\nA B",
                 self.semantic_metadata(
-                    "answer_key", "Gabarito preliminar", variant="Tipo 1"
+                    "answer_key", "Gabarito definitivo", variant="Tipo 1"
                 ),
             ),
         ])

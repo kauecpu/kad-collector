@@ -602,7 +602,7 @@ def _canonical_rows(connection: sqlite3.Connection, contest_id: str | None) -> l
                         WHERE representative_link.id = q.answer_key_link_id
                           AND representative_link.status = 'active'
                           AND representative_link.algorithm_version =
-                              'semantic-association-v2'
+                              'semantic-association-v3'
                     )) AS representative_fresh,
                    NOT EXISTS (
                        SELECT 1
@@ -617,7 +617,7 @@ def _canonical_rows(connection: sqlite3.Connection, contest_id: str | None) -> l
                                SELECT 1 FROM document_links fresh_link
                                WHERE fresh_link.id = fresh_q.answer_key_link_id
                                  AND fresh_link.status = 'active'
-                                 AND fresh_link.algorithm_version = 'semantic-association-v2'
+                                 AND fresh_link.algorithm_version = 'semantic-association-v3'
                            ))
                    ) AS group_fresh
             FROM canonical_questions cq

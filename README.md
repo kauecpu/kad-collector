@@ -940,21 +940,25 @@ O inventario, as contagens oficiais, as fontes e a politica de manutencao estao 
 ### Revalidação obrigatória de gabaritos
 
 O banco local pode simular e aplicar a migração de vínculos antigos para
-`semantic-association-v2`. A rotina exige cargo, etapa, turno, tipo e intervalo
+`semantic-association-v3`. A rotina exige cargo, etapa, tipo e intervalo
 compatíveis, inclui provas ainda sem vínculo, desativa empates e encaminha toda
 associação não resolvida para revisão. Em documentos FGV, `MANHÃ`, `MANHA` e
 `TARDE` são lidos somente de regiões estruturais do PDF; gabaritos podem cobrir
-mais de um turno sem conflito. Consulte
+mais de um turno. Turno ausente é aceito somente quando não existe divisão por
+turno ou quando um único gabarito definitivo compatível declara um único turno.
+Gabaritos preliminares ficam aguardando o definitivo e não fornecem respostas
+oficiais. Consulte
 [`docs/answer-key-revalidation-v2.md`](docs/answer-key-revalidation-v2.md) para o
 comando, retomada, formato do relatório e limitações.
 
 No aplicativo, **Auditar vínculos** confere novamente todas as provas, inclusive
-as que já possuem vínculo v2. A auditoria compara concurso, cargo, turno, tipo,
+as que já possuem vínculo anterior. A auditoria compara concurso, cargo, turno, tipo,
 ano, quantidade de questões e cada letra do gabarito com as alternativas da
 prova. Ela mantém vínculos confirmados, corrige uma troca quando existe um único
 gabarito compatível e envia dúvidas para revisão. O operador pode trocar ou
 remover o gabarito do lote; o Collector recalcula todas as respostas afetadas e
-registra a mudança no histórico.
+registra a mudança no histórico. Antes de aplicar a auditoria, o aplicativo cria
+uma cópia íntegra em `backups/`, ao lado do banco operacional.
 
 O pipeline usa um [adaptador FGV orientado por secoes](docs/fgv-section-parser.md). O adaptador
 separa as partes objetiva e discursiva antes de interpretar numeros isolados e compara o

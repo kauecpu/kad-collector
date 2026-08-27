@@ -334,6 +334,7 @@ function renderOperationalOverview() {
   byId('audit-uncertain').textContent = answerAudit.uncertain || 0;
   byId('audit-incorrect').textContent = answerAudit.incorrect || 0;
   byId('audit-missing').textContent = answerAudit.missing || 0;
+  byId('audit-awaiting-definitive').textContent = answerAudit.awaitingDefinitive || 0;
   byId('canonical-empty-message').hidden = !(
     operational.rawQuestions > 0 && operational.canonicalQuestions === 0
   );
@@ -446,6 +447,7 @@ async function runPreparation(event) {
 
 const answerAuditLabels = {
   confirmed: 'Confirmado', uncertain: 'Duvidoso', incorrect: 'Incorreto', missing: 'Sem gabarito',
+  awaiting_definitive: 'Aguardando definitivo',
 };
 
 function renderAnswerKeyAudit(report) {
@@ -459,6 +461,7 @@ function renderAnswerKeyAudit(report) {
     ['Duvidosos', report.uncertain || 0],
     ['Incorretos', report.incorrect || 0],
     ['Sem gabarito', report.missing || 0],
+    ['Aguardando definitivo', report.awaitingDefinitive || 0],
     ['Questões afetadas', report.questionsAffected || 0],
   ].forEach(([label, value]) => {
     const item = document.createElement('span');
@@ -507,7 +510,7 @@ function renderAnswerKeyAudit(report) {
     const actions = document.createElement('div');
     actions.className = 'answer-key-audit-actions';
     (auditCase.candidates || [])
-      .filter((candidate) => !(candidate.conflicts || []).length)
+      .filter((candidate) => !(candidate.conflicts || []).length && candidate.document?.answerKeyState === 'definitive')
       .forEach((candidate) => {
         const button = document.createElement('button');
         button.type = 'button';
@@ -556,7 +559,7 @@ async function runAnswerKeyAudit(event) {
     const report = await request('/api/answer-key-audit/run', {method: 'POST', body: '{}'});
     renderAnswerKeyAudit(report);
     await loadBootstrap({preserveQuery: false});
-    toast(`${report.confirmed || 0} vínculo(s) confirmados; ${report.corrected || 0} corrigido(s).`);
+    toast(`${report.confirmed || 0} vínculo(s) confirmados; ${report.corrected || 0} corrigido(s). Backup salvo antes da auditoria.`);
   } catch (error) {
     toast(error.message, 'error');
   } finally {
@@ -876,6 +879,7 @@ const answerDiagnosticLabels = {
   answer_key_unlinked: 'Gabarito aguardando associação',
   question_missing_in_answer_key: 'Questão não localizada no gabarito',
   ambiguous_answer_key_association: 'Associação do gabarito em dúvida',
+  answer_key_awaiting_definitive: 'Aguardando gabarito definitivo',
   answer_key_diagnosis_pending: 'Motivo ainda não identificado',
 };
 

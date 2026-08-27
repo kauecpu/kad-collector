@@ -182,7 +182,7 @@ def _linked_exam_rows(connection: sqlite3.Connection) -> list[sqlite3.Row]:
             JOIN document_links link
               ON link.exam_version_id = exam_version.id
              AND link.status = 'active'
-             AND link.algorithm_version = 'semantic-association-v2'
+             AND link.algorithm_version = 'semantic-association-v3'
             JOIN document_versions key_version
               ON key_version.id = link.answer_key_version_id
              AND key_version.document_role = 'answer_key'

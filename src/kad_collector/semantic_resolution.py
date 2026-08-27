@@ -23,7 +23,7 @@ from .semantic_identity import (
     stable_sha256,
 )
 
-ASSOCIATION_ALGORITHM_VERSION = "semantic-association-v2"
+ASSOCIATION_ALGORITHM_VERSION = "semantic-association-v3"
 MATCH_WEIGHTS = {
     "board": 12, "concurso": 12, "year": 12, "organization": 8,
     "role": 10, "stage": 8, "turn": 8, "variant": 8, "interval": 12,
@@ -305,6 +305,108 @@ def _assess(
             exam, name if name not in {"role", "turn", "variant"} else _field_name(name)
         )
         candidate_field = _candidate_field(candidate, name)
+        if name == "turn" and (
+            exam_field.status != "known"
+            or candidate_field.status != "known"
+            or _weak_only(exam_field)
+            or _weak_only(candidate_field)
+        ):
+            if exam_field.status == "conflict":
+                conflicts.append("turn: conflito conhecido")
+                comparisons.append(
+                    _comparison(
+                        "turn",
+                        "incompatible",
+                        exam_field.normalized_values,
+                        candidate_field.normalized_values,
+                        "campo semântico conflitante",
+                    )
+                )
+                continue
+            if candidate_field.status == "conflict":
+                if exam_field.status != "known" and len(candidate_field.normalized_values) > 1:
+                    incomplete.append("turn")
+                    comparisons.append(
+                        _comparison(
+                            "turn",
+                            "incomplete",
+                            exam_field.normalized_values,
+                            candidate_field.normalized_values,
+                            "a prova não informa turno e o gabarito separa múltiplos turnos",
+                        )
+                    )
+                    continue
+                conflicts.append("turn: conflito conhecido")
+                comparisons.append(
+                    _comparison(
+                        "turn",
+                        "incompatible",
+                        exam_field.normalized_values,
+                        candidate_field.normalized_values,
+                        "campo semântico conflitante",
+                    )
+                )
+                continue
+            if _weak_only(candidate_field):
+                incomplete.append("turn")
+                comparisons.append(
+                    _comparison(
+                        "turn",
+                        "incomplete",
+                        exam_field.normalized_values,
+                        candidate_field.normalized_values,
+                        "o gabarito possui somente evidência fraca de turno",
+                    )
+                )
+                continue
+            candidate_turns = (
+                candidate_field.normalized_values
+                if candidate_field.status == "known"
+                else ()
+            )
+            if exam_field.status != "known" or _weak_only(exam_field):
+                if len(candidate_turns) > 1:
+                    incomplete.append("turn")
+                    comparisons.append(
+                        _comparison(
+                            "turn",
+                            "incomplete",
+                            exam_field.normalized_values,
+                            candidate_turns,
+                            "a prova não informa turno e o gabarito separa múltiplos turnos",
+                        )
+                    )
+                    continue
+                matched.append("turn")
+                reason = (
+                    "turno derivado do único turno declarado pelo gabarito"
+                    if candidate_turns
+                    else "prova e gabarito não separam a aplicação por turno"
+                )
+                comparisons.append(
+                    _comparison(
+                        "turn",
+                        "matched",
+                        exam_field.normalized_values,
+                        candidate_turns,
+                        reason,
+                    )
+                )
+                reasons.append(reason)
+                continue
+            matched.append("turn")
+            reason = "o gabarito não separa a aplicação por turno"
+            comparisons.append(
+                _comparison(
+                    "turn",
+                    "matched",
+                    exam_field.normalized_values,
+                    (),
+                    reason,
+                )
+            )
+            reasons.append(reason)
+            continue
         if exam_field.status == "conflict" or candidate_field.status == "conflict":
             conflicts.append(f"{name}: conflito conhecido")
             comparisons.append(_comparison(
@@ -460,9 +562,12 @@ def select_answer_key(
         )
     compatible = [item for item in assessments if item.compatible and item.score >= MINIMUM_SCORE]
     if not compatible:
+        non_conflicting = [item for item in assessments if not item.conflicts]
         outcome: AssociationOutcome = (
-            "conflict" if any(item.conflicts for item in assessments)
-            else "incomplete" if any(item.incomplete_fields for item in assessments)
+            "incomplete"
+            if any(item.incomplete_fields for item in non_conflicting)
+            else "conflict"
+            if any(item.conflicts for item in assessments)
             else "insufficient_evidence"
         )
         return DocumentAssociationDecision(
@@ -477,6 +582,38 @@ def select_answer_key(
             ),
             algorithm_version=ASSOCIATION_ALGORITHM_VERSION,
         )
+    definitive = [
+        item
+        for item in compatible
+        if next(
+            candidate
+            for candidate in candidates
+            if candidate.version_id == item.version_id
+        ).profile.answer_key_state
+        == "definitive"
+    ]
+    unknown_state = [
+        item
+        for item in compatible
+        if next(
+            candidate
+            for candidate in candidates
+            if candidate.version_id == item.version_id
+        ).profile.answer_key_state
+        == "unknown"
+    ]
+    if not definitive and not unknown_state:
+        return DocumentAssociationDecision(
+            outcome="awaiting_definitive",
+            selected_version_id=None,
+            assessments=assessments,
+            minimum_score=MINIMUM_SCORE,
+            minimum_margin=MINIMUM_MARGIN,
+            achieved_margin=None,
+            reason="somente gabarito preliminar compatível; aguardando definitivo",
+            algorithm_version=ASSOCIATION_ALGORITHM_VERSION,
+        )
+    compatible = definitive or unknown_state
     top = compatible[0]
     second = compatible[1] if len(compatible) > 1 else None
     best_semantic = top.score

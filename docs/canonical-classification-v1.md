@@ -24,7 +24,7 @@ Uma questão entra no fluxo somente quando:
 
 - o grupo está `confirmed`;
 - todas as ocorrências ainda correspondem às versões atuais das questões e dos vínculos
-  `semantic-association-v2`;
+  `semantic-association-v3`;
 - a questão canônica não está bloqueada;
 - a representante não foi rejeitada;
 - não existe decisão humana conflitante em um campo ausente.

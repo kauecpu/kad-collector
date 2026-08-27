@@ -180,6 +180,7 @@ console.log(JSON.stringify(output));
             'id="audit-uncertain"',
             'id="audit-incorrect"',
             'id="audit-missing"',
+            'id="audit-awaiting-definitive"',
             'id="prep-duplicates"',
             'id="edit-stage"',
             'id="edit-turn"',

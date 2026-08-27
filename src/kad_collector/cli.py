@@ -225,7 +225,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     revalidate_answers = subparsers.add_parser(
         "revalidate-answer-keys",
-        help="simula ou aplica a revalidação semantic-association-v2 no banco local",
+        help="simula ou aplica a revalidação semantic-association-v3 no banco local",
     )
     revalidate_answers.add_argument("--database", type=_path, required=True)
     revalidate_answers.add_argument("--apply", action="store_true")

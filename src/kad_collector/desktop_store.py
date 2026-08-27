@@ -1188,6 +1188,7 @@ class DesktopStore:
                 "uncertain": 0,
                 "incorrect": 0,
                 "missing": 0,
+                "awaitingDefinitive": 0,
                 "corrected": 0,
                 "questionsAffected": 0,
                 "cases": [],
@@ -1205,9 +1206,29 @@ class DesktopStore:
             memory.close()
             source.close()
 
+    def backup_before_answer_key_audit(self) -> Path:
+        backup_directory = self.path.parent / "backups"
+        backup_directory.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
+        backup_path = backup_directory / f"collector-before-answer-key-audit-{timestamp}.sqlite3"
+        source = sqlite3.connect(self.path, timeout=30)
+        destination = sqlite3.connect(backup_path)
+        try:
+            source.backup(destination)
+            integrity = destination.execute("PRAGMA quick_check").fetchone()
+            if integrity is None or integrity[0] != "ok":
+                raise RuntimeError("a cópia de segurança do banco não passou na verificação")
+        finally:
+            destination.close()
+            source.close()
+        return backup_path
+
     def run_answer_key_audit(self) -> dict[str, Any]:
+        backup_path = self.backup_before_answer_key_audit()
         with closing(self._connect()) as connection:
-            return audit_answer_key_associations(connection, apply=True).as_dict()
+            report = audit_answer_key_associations(connection, apply=True).as_dict()
+        report["backupPath"] = str(backup_path)
+        return report
 
     def replace_answer_key_for_exam(
         self,
@@ -2982,7 +3003,7 @@ class DesktopStore:
                                SELECT 1 FROM document_links l
                                WHERE l.id = q.answer_key_link_id
                                  AND l.status = 'active'
-                                 AND l.algorithm_version = 'semantic-association-v2'
+                                 AND l.algorithm_version = 'semantic-association-v3'
                            )) AS valid_answer_association,
                            review.status AS answer_review_status,
                            review.reason AS answer_review_reason,
@@ -3023,7 +3044,7 @@ class DesktopStore:
                                        WHERE fresh_link.id = fresh_q.answer_key_link_id
                                          AND fresh_link.status = 'active'
                                          AND fresh_link.algorithm_version =
-                                             'semantic-association-v2'
+                                             'semantic-association-v3'
                                    ))
                            ) AS equivalence_group_fresh
                     FROM questions q JOIN documents d ON d.id = q.document_id
@@ -3547,7 +3568,7 @@ class DesktopStore:
                             SELECT 1 FROM document_links l
                             WHERE l.id = questions.answer_key_link_id
                               AND l.status = 'active'
-                              AND l.algorithm_version = 'semantic-association-v2'
+                              AND l.algorithm_version = 'semantic-association-v3'
                         )
                     )""",  # noqa: S608
                 (now, now, *question_ids),
