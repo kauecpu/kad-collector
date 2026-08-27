@@ -296,6 +296,58 @@ class ImportReadinessTests(unittest.TestCase):
 
 
 class StoredReclassificationTests(unittest.TestCase):
+    def test_reclassification_preserves_accepted_qwen_fields(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "prova.pdf"
+            document = canvas.Canvas(str(pdf_path))
+            document.drawString(50, 800, "CONHECIMENTOS GERAIS")
+            document.showPage()
+            document.save()
+            application = DesktopApplication(root / "data")
+            job_id = application.store.create_job([pdf_path], _fgv_metadata(), "local")
+            stored_document = application.store.documents_for_job(job_id)[0]
+            application.store.save_page(
+                stored_document["id"], 1, "CONHECIMENTOS GERAIS", status="text"
+            )
+            question = _question(1, "Assinale a alternativa correta.").model_copy(
+                update={
+                    "discipline": "Direito Tributário",
+                    "matter": "Sistema Tributário Nacional",
+                    "subject": "Competência Tributária",
+                }
+            )
+
+            def qwen(value: str) -> ClassificationValue:
+                return ClassificationValue(
+                    value=value,
+                    confidence=0.91,
+                    evidence="sugestão local aceita",
+                    source="ai_suggestion",
+                )
+
+            question_id = application.store.save_question(
+                stored_document["id"],
+                question,
+                QuestionClassification(
+                    discipline=qwen("Direito Tributário"),
+                    subject=qwen("Sistema Tributário Nacional"),
+                    topic=qwen("Competência Tributária"),
+                    level=qwen("Superior"),
+                ),
+            )
+
+            first = application.reclassify_questions()
+            after = application.store.question(question_id)
+            second = application.reclassify_questions()
+
+            self.assertEqual(first["changed"], 0)
+            self.assertEqual(second["changed"], 0)
+            self.assertEqual(after["question"]["discipline"], "Direito Tributário")
+            self.assertEqual(
+                after["classification"]["discipline"]["source"], "ai_suggestion"
+            )
+
     def test_reclassification_is_idempotent_audited_and_preserves_human_decision(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)

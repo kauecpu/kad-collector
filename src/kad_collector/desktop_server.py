@@ -137,13 +137,15 @@ class DesktopApplication:
         self.token = secrets.token_urlsafe(32)
 
     def bootstrap(self) -> dict[str, Any]:
-        query = self.store.query(
+        query = self.store.query(DesktopFilterSet())
+        raw_summary = self.store.query(
             DesktopFilterSet(), include_equivalent_copies=True
-        )
+        )["summary"]
         operational = self.store.operational_presentation_summary()
         environment = _desktop_environment(self.data_dir)
         return {
             **query,
+            "rawSummary": raw_summary,
             "jobs": self.store.list_jobs(),
             "collectionJobs": self.collection_manager.list_jobs(),
             "sources": self.collection_manager.catalog(),
@@ -438,11 +440,7 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                 payload = self._read_json()
                 if path == "/api/query":
                     filters = DesktopFilterSet.model_validate(payload.get("filters", payload))
-                    self._send_json(
-                        application.store.query(
-                            filters, include_equivalent_copies=True
-                        )
-                    )
+                    self._send_json(application.store.query(filters))
                     return
                 if path == "/api/import":
                     job_ids = application.import_pdfs(payload)
@@ -563,6 +561,11 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                 self._send_error(HTTPStatus.NOT_FOUND, "rota não encontrada")
             except (OSError, RuntimeError, ValueError, ValidationError) as exc:
                 self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
+            except Exception as exc:  # pragma: no cover - defensive desktop boundary
+                self._send_error(
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                    f"falha interna do Collector ({type(exc).__name__}): {exc}",
+                )
 
         def do_PUT(self) -> None:
             if not self._trusted_request(require_origin=True) or not self._authorized():

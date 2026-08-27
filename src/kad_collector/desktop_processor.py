@@ -289,10 +289,13 @@ class DesktopProcessor:
         self.store.update_job(job_id, status="cancelling", message="Pausando com segurança")
 
     @staticmethod
-    def _is_human_classification(value: Any) -> bool:
+    def _is_protected_classification(value: Any) -> bool:
         source = str(getattr(value, "source", "") or "").casefold()
         evidence = str(getattr(value, "evidence", "") or "").casefold()
-        return source == "human_review" or "revisão humana" in evidence
+        return (
+            source in {"human_review", "ai_suggestion"}
+            or "revisão humana" in evidence
+        )
 
     def reclassify_existing_questions(self) -> dict[str, Any]:
         """Reclassify stored questions without reading or downloading any PDF again."""
@@ -313,6 +316,7 @@ class DesktopProcessor:
 
         taxonomy = EditorialTaxonomy.load_default()
         classifier = LocalRuleClassifier(taxonomy)
+        recovery = self.store.recover_canonical_classifications()
         grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for row in self.store.classification_question_rows():
             grouped[cast(str, row["document_id"])].append(row)
@@ -369,9 +373,16 @@ class DesktopProcessor:
                 merged = existing.model_copy(deep=True)
                 for field in ("discipline", "subject", "topic"):
                     existing_value = getattr(existing, field)
-                    if not self._is_human_classification(existing_value):
-                        setattr(merged, field, getattr(automatic, field))
-                if not self._is_human_classification(existing.level):
+                    automatic_value = getattr(automatic, field)
+                    if (
+                        not self._is_protected_classification(existing_value)
+                        and automatic_value.value not in {None, ""}
+                    ):
+                        setattr(merged, field, automatic_value)
+                if (
+                    not self._is_protected_classification(existing.level)
+                    and automatic.level.value not in {None, ""}
+                ):
                     merged.level = automatic.level
                 values = {
                     "discipline": merged.discipline.value,
@@ -402,6 +413,7 @@ class DesktopProcessor:
         total = len(updates)
         return {
             "taxonomyVersion": taxonomy.version,
+            "recovery": recovery,
             "total": total,
             "changed": changed,
             "classified": field_counts,

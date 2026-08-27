@@ -40,6 +40,7 @@ from .question_equivalence import (
     initialize_question_equivalence_schema,
     invalidate_question_equivalence,
     question_equivalence_view,
+    recover_canonical_editorial_classifications,
     sync_canonical_editorial_from_question,
 )
 from .semantic_identity import (
@@ -1019,6 +1020,21 @@ class DesktopStore:
             for row in rows
         ]
 
+    def recover_canonical_classifications(self) -> dict[str, int]:
+        """Recover protected editorial values from equivalent copies."""
+
+        with closing(self._connect()) as connection:
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                report = recover_canonical_editorial_classifications(
+                    connection, changed_at=_now()
+                )
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+        return report
+
     def save_reclassifications(
         self,
         updates: list[tuple[str, QuestionRecord, QuestionClassification, str]],
@@ -1028,6 +1044,7 @@ class DesktopStore:
         """Persist classification-only changes without invalidating human decisions."""
 
         changed = 0
+        synchronized_question_ids: list[str] = []
         updated_at = _now()
         with closing(self._connect()) as connection:
             try:
@@ -1108,10 +1125,12 @@ class DesktopStore:
                         },
                         f"Reclassificação local com taxonomia {taxonomy_version}.",
                     )
+                    synchronized_question_ids.append(question_id)
+                    changed += 1
+                for question_id in synchronized_question_ids:
                     sync_canonical_editorial_from_question(
                         connection, question_id, changed_at=updated_at
                     )
-                    changed += 1
                 connection.commit()
             except Exception:
                 connection.rollback()
