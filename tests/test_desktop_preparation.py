@@ -62,7 +62,7 @@ def _question(*, noisy: bool = False) -> QuestionRecord:
     )
 
 
-def _decision(booklet: str) -> dict[str, object]:
+def _decision(booklet: str, *, year: object = 2023) -> dict[str, object]:
     comparisons = [
         {
             "field": name,
@@ -74,7 +74,7 @@ def _decision(booklet: str) -> dict[str, object]:
         for name, values in (
             ("board", ["fgv"]),
             ("concurso", ["rfb22"]),
-            ("year", [2023]),
+            ("year", [year]),
             ("organization", ["receita federal"]),
             ("role", ["analista"]),
             ("stage", ["prova objetiva"]),
@@ -106,7 +106,9 @@ def _decision(booklet: str) -> dict[str, object]:
     }
 
 
-def _seed(root: Path, *, include_review: bool = False) -> DesktopStore:
+def _seed(
+    root: Path, *, include_review: bool = False, decision_year: object = 2023
+) -> DesktopStore:
     store = DesktopStore(root / "collector.sqlite3")
     profile = {
         "identity": {
@@ -202,7 +204,13 @@ def _seed(root: Path, *, include_review: bool = False) -> DesktopStore:
                 "INSERT INTO document_links (id,exam_version_id,answer_key_version_id,status,"
                 "decision_json,algorithm_version,created_at,updated_at) "
                 "VALUES (?,?,'key-version','active',?,'semantic-association-v3',?,?)",
-                (link_id, version_id, _json(_decision(booklet)), NOW, NOW),
+                (
+                    link_id,
+                    version_id,
+                    _json(_decision(booklet, year=decision_year)),
+                    NOW,
+                    NOW,
+                ),
             )
         connection.commit()
     for booklet in ("1", "2"):
@@ -269,6 +277,14 @@ class DesktopPreparationTests(unittest.TestCase):
         self.assertEqual(summary["pendingCases"], 1)
         self.assertEqual(summary["reviews"][0]["missingLabels"], ["turno"])
         self.assertIsNotNone(summary["reviews"][0]["questionId"])
+
+    def test_preparation_accepts_numeric_year_stored_as_text(self) -> None:
+        manager = DesktopPreparationManager(_seed(self.root, decision_year="2023"))
+
+        result = manager.run()
+
+        self.assertEqual(result["canonicalQuestions"], 1)
+        self.assertEqual(result["qwenEligible"], 1)
 
     def test_desktop_application_exposes_preparation_without_calling_qwen(self) -> None:
         _seed(self.root)
