@@ -27,6 +27,7 @@ from kad_collector.question_equivalence import (
     _content_groupings,
     question_fingerprints,
     run_question_equivalence_migration,
+    sync_canonical_editorial_from_question,
 )
 
 RFB22_MANIFEST = Path("tests/regression/rfb22/manifest.v1.toml")
@@ -524,6 +525,207 @@ class QuestionEquivalenceTests(unittest.TestCase):
             ],
             ["Direito", "Direito"],
         )
+
+    def test_qwen_fields_left_on_a_copy_are_recovered_to_the_main_copy(self) -> None:
+        fixture = SyntheticCatalog(self.root)
+        first_id = fixture.add("Analista", "1", _question())
+        second_id = fixture.add("Analista", "2", _question(order=("Certa", "Errada")))
+        with closing(fixture.store._connect()) as connection:
+            run_question_equivalence_migration(connection, apply=True)
+            primary_id = connection.execute(
+                "SELECT o.question_id FROM canonical_questions cq "
+                "JOIN question_occurrences o ON o.id=cq.representative_occurrence_id"
+            ).fetchone()[0]
+            copy_id = second_id if primary_id == first_id else first_id
+
+            for question_id, values in (
+                (primary_id, (None, None, None, None, None)),
+                (
+                    copy_id,
+                    (
+                        "Direito Tributário",
+                        "Sistema Tributário Nacional",
+                        "Competência Tributária",
+                        "Superior",
+                        "ai_suggestion",
+                    ),
+                ),
+            ):
+                row = connection.execute(
+                    "SELECT payload_json,classification_json FROM questions WHERE id=?",
+                    (question_id,),
+                ).fetchone()
+                payload = json.loads(row[0])
+                classification = json.loads(row[1])
+                for payload_field, classification_field, value in (
+                    ("discipline", "discipline", values[0]),
+                    ("matter", "subject", values[1]),
+                    ("subject", "topic", values[2]),
+                    ("level", "level", values[3]),
+                ):
+                    payload[payload_field] = value
+                    classification[classification_field] = {
+                        "value": value,
+                        "confidence": 0.91 if value else 0,
+                        "evidence": "sugestão local aceita" if value else None,
+                        "source": values[4],
+                        "reason": None,
+                        "provenance": [],
+                    }
+                connection.execute(
+                    "UPDATE questions SET payload_json=?,classification_json=?,updated_at=? "
+                    "WHERE id=?",
+                    (_json(payload), _json(classification), NOW, question_id),
+                )
+            connection.commit()
+
+        first = fixture.store.recover_canonical_classifications()
+        second = fixture.store.recover_canonical_classifications()
+
+        self.assertEqual(first["groupsRecovered"], 1)
+        self.assertEqual(first["fieldsRecovered"], 4)
+        self.assertEqual(second["groupsRecovered"], 0)
+        self.assertEqual(second["fieldsRecovered"], 0)
+        for question_id in (first_id, second_id):
+            stored = fixture.store.question(question_id)
+            self.assertEqual(stored["question"]["discipline"], "Direito Tributário")
+            self.assertEqual(
+                stored["classification"]["discipline"]["source"], "ai_suggestion"
+            )
+        with closing(fixture.store._connect()) as connection:
+            events = connection.execute(
+                "SELECT action FROM question_equivalence_events "
+                "WHERE action='canonical_classification_recovered'"
+            ).fetchall()
+        self.assertEqual(len(events), 1)
+
+    def test_new_copy_found_later_inherits_the_main_qwen_classification(self) -> None:
+        fixture = SyntheticCatalog(self.root)
+        main_id = fixture.add("Analista", "1", _question())
+        with closing(fixture.store._connect()) as connection:
+            run_question_equivalence_migration(
+                connection, apply=True, run_id="before-new-copy"
+            )
+            row = connection.execute(
+                "SELECT payload_json,classification_json FROM questions WHERE id=?",
+                (main_id,),
+            ).fetchone()
+            payload = json.loads(row[0])
+            classification = json.loads(row[1])
+            payload["discipline"] = "Direito Tributário"
+            classification["discipline"] = {
+                "value": "Direito Tributário",
+                "confidence": 0.91,
+                "evidence": "sugestão local aceita",
+                "source": "ai_suggestion",
+                "reason": None,
+                "provenance": [],
+            }
+            connection.execute(
+                "UPDATE questions SET payload_json=?,classification_json=?,updated_at=? "
+                "WHERE id=?",
+                (_json(payload), _json(classification), NOW, main_id),
+            )
+            connection.commit()
+
+        copy_id = fixture.add(
+            "Analista", "2", _question(number=42, order=("Certa", "Errada"))
+        )
+        with closing(fixture.store._connect()) as connection:
+            run_question_equivalence_migration(
+                connection, apply=True, run_id="after-new-copy"
+            )
+
+        visible = fixture.store.query(DesktopFilterSet())
+        inherited = fixture.store.question(copy_id)
+        self.assertEqual(visible["total"], 1)
+        self.assertEqual(inherited["question"]["discipline"], "Direito Tributário")
+        self.assertEqual(
+            inherited["classification"]["discipline"]["source"], "ai_suggestion"
+        )
+
+    def test_recovery_keeps_a_conflicting_group_blocked(self) -> None:
+        fixture = SyntheticCatalog(self.root)
+        first_id = fixture.add(
+            "Analista", "1", _question(correct_text="Certa")
+        )
+        second_id = fixture.add(
+            "Analista", "2", _question(correct_text="Errada")
+        )
+        with closing(fixture.store._connect()) as connection:
+            run_question_equivalence_migration(connection, apply=True)
+            group = connection.execute(
+                "SELECT id,status,representative_occurrence_id "
+                "FROM question_equivalence_groups"
+            ).fetchone()
+            self.assertEqual(group["status"], "conflict")
+            primary_id = connection.execute(
+                "SELECT question_id FROM question_occurrences WHERE id=?",
+                (group["representative_occurrence_id"],),
+            ).fetchone()[0]
+            copy_id = second_id if primary_id == first_id else first_id
+            for question_id, value, source in (
+                (primary_id, None, None),
+                (copy_id, "Direito Tributário", "ai_suggestion"),
+            ):
+                row = connection.execute(
+                    "SELECT payload_json,classification_json FROM questions WHERE id=?",
+                    (question_id,),
+                ).fetchone()
+                payload = json.loads(row[0])
+                classification = json.loads(row[1])
+                payload["discipline"] = value
+                classification["discipline"] = {
+                    "value": value,
+                    "confidence": 0.91 if value else 0,
+                    "evidence": "sugestão local aceita" if value else None,
+                    "source": source,
+                    "reason": None,
+                    "provenance": [],
+                }
+                connection.execute(
+                    "UPDATE questions SET payload_json=?,classification_json=?,updated_at=? "
+                    "WHERE id=?",
+                    (_json(payload), _json(classification), NOW, question_id),
+                )
+            connection.commit()
+
+        report = fixture.store.recover_canonical_classifications()
+
+        self.assertEqual(report["groupsRecovered"], 1)
+        self.assertEqual(
+            fixture.store.question(primary_id)["question"]["discipline"],
+            "Direito Tributário",
+        )
+        with closing(fixture.store._connect()) as connection:
+            status = connection.execute(
+                "SELECT status FROM question_equivalence_groups WHERE id=?", (group["id"],)
+            ).fetchone()[0]
+        self.assertEqual(status, "conflict")
+
+    def test_stale_inactive_primary_does_not_abort_other_synchronization(self) -> None:
+        fixture = SyntheticCatalog(self.root)
+        fixture.add("Analista", "1", _question())
+        fixture.add("Analista", "2", _question(order=("Certa", "Errada")))
+        with closing(fixture.store._connect()) as connection:
+            run_question_equivalence_migration(connection, apply=True)
+            representative = connection.execute(
+                "SELECT cq.representative_occurrence_id,o.question_id "
+                "FROM canonical_questions cq JOIN question_occurrences o "
+                "ON o.id=cq.representative_occurrence_id"
+            ).fetchone()
+            connection.execute(
+                "UPDATE question_group_occurrences SET status='inactive' "
+                "WHERE occurrence_id=?",
+                (representative["representative_occurrence_id"],),
+            )
+
+            sync_canonical_editorial_from_question(
+                connection, representative["question_id"], changed_at=NOW
+            )
+            connection.commit()
+
+        self.assertIsNotNone(fixture.store.question(representative["question_id"]))
 
     def test_content_grouping_scales_to_twenty_thousand_occurrences(self) -> None:
         occurrences: list[dict[str, object]] = []

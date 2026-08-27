@@ -1763,7 +1763,8 @@ async function reclassifyCollection() {
     const result = await request('/api/questions/reclassify', {
       method: 'POST', body: '{}',
     });
-    toast(`Reclassificação concluída: ${result.changed} alterada(s) de ${result.total}. Taxonomia ${result.taxonomyVersion}.`);
+    const recovered = result.recovery?.fieldsRecovered || 0;
+    toast(`Reclassificação concluída: ${result.changed} principal(is) alterada(s) de ${result.total}; ${recovered} campo(s) recuperado(s) das cópias. Taxonomia ${result.taxonomyVersion}.`);
     await loadBootstrap({preserveQuery: false});
   } catch (error) { toast(error.message, 'error'); }
   finally { button.disabled = false; }

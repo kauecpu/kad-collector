@@ -1482,7 +1482,8 @@ def sync_canonical_editorial_from_question(
 ) -> None:
     row = connection.execute(
         """
-        SELECT cq.id, q.payload_json, q.classification_json, q.status
+        SELECT cq.id, cq.group_id, o.id AS occurrence_id,
+               q.payload_json, q.classification_json, q.status
         FROM questions q
         JOIN question_occurrences o ON o.question_id = q.id
         JOIN canonical_questions cq ON cq.representative_occurrence_id = o.id
@@ -1516,6 +1517,296 @@ def sync_canonical_editorial_from_question(
             question_id,
         ),
     )
+    occurrences = connection.execute(
+        """
+        SELECT o.id, o.question_id, q.payload_json, q.classification_json
+        FROM question_group_occurrences go
+        JOIN question_occurrences o ON o.id = go.occurrence_id
+        JOIN questions q ON q.id = o.question_id
+        WHERE go.group_id = ? AND go.status = 'active'
+        ORDER BY o.id
+        """,
+        (row["group_id"],),
+    ).fetchall()
+    representative = next(
+        (item for item in occurrences if item["id"] == row["occurrence_id"]),
+        None,
+    )
+    if representative is None:
+        return
+    _propagate_editorial_fields(
+        connection, representative, occurrences, changed_at=changed_at
+    )
+
+
+def _protected_classification_priority(value: dict[str, Any]) -> int:
+    source = str(value.get("source") or "").casefold()
+    evidence = str(value.get("evidence") or "").casefold()
+    if source == "human_review" or "revisão humana" in evidence:
+        return 2
+    if source == "ai_suggestion":
+        return 1
+    return 0
+
+
+def recover_canonical_editorial_classifications(
+    connection: sqlite3.Connection, *, changed_at: str
+) -> dict[str, int]:
+    """Restore protected editorial values left on copies to their representative."""
+
+    fields = (
+        ("discipline", "discipline"),
+        ("matter", "subject"),
+        ("subject", "topic"),
+        ("level", "level"),
+    )
+    groups = connection.execute(
+        """
+        SELECT g.id, cq.id AS canonical_question_id,
+               g.representative_occurrence_id
+        FROM question_equivalence_groups g
+        LEFT JOIN canonical_questions cq ON cq.group_id = g.id
+        WHERE g.status != 'rejected' AND g.representative_occurrence_id IS NOT NULL
+        ORDER BY g.id
+        """
+    ).fetchall()
+    report = {
+        "groupsScanned": len(groups),
+        "groupsRecovered": 0,
+        "fieldsRecovered": 0,
+        "conflictingGroups": 0,
+    }
+    for group in groups:
+        occurrences = connection.execute(
+            """
+            SELECT o.id, o.question_id, q.payload_json, q.classification_json
+            FROM question_group_occurrences go
+            JOIN question_occurrences o ON o.id = go.occurrence_id
+            JOIN questions q ON q.id = o.question_id
+            WHERE go.group_id = ? AND go.status = 'active'
+            ORDER BY o.id
+            """,
+            (group["id"],),
+        ).fetchall()
+        representative = next(
+            (
+                item
+                for item in occurrences
+                if item["id"] == group["representative_occurrence_id"]
+            ),
+            None,
+        )
+        if representative is None:
+            continue
+        representative_payload = json.loads(cast(str, representative["payload_json"]))
+        representative_classification = json.loads(
+            cast(str, representative["classification_json"])
+        )
+        before_payload = canonical_json(representative_payload)
+        before_classification = canonical_json(representative_classification)
+        recovered_fields: list[str] = []
+        conflict_fields: list[str] = []
+        for payload_field, classification_field in fields:
+            candidates: list[tuple[int, str, dict[str, Any]]] = []
+            for occurrence in occurrences:
+                classification = json.loads(
+                    cast(str, occurrence["classification_json"])
+                )
+                value = classification.get(classification_field)
+                if not isinstance(value, dict) or value.get("value") in {None, ""}:
+                    continue
+                priority = _protected_classification_priority(value)
+                if priority:
+                    candidates.append((priority, str(value["value"]), value))
+            if not candidates:
+                continue
+            highest = max(item[0] for item in candidates)
+            preferred = [item for item in candidates if item[0] == highest]
+            distinct = {item[1].strip().casefold() for item in preferred}
+            if len(distinct) != 1:
+                conflict_fields.append(payload_field)
+                continue
+            _, selected_text, selected_value = preferred[0]
+            current = representative_classification.get(classification_field)
+            current_priority = (
+                _protected_classification_priority(current)
+                if isinstance(current, dict)
+                else 0
+            )
+            current_text = (
+                str(current.get("value") or "") if isinstance(current, dict) else ""
+            )
+            if current_priority > highest or (
+                current_priority == highest
+                and current_text.strip().casefold() == selected_text.strip().casefold()
+            ):
+                continue
+            representative_payload[payload_field] = selected_value["value"]
+            representative_classification[classification_field] = selected_value
+            recovered_fields.append(payload_field)
+
+        if conflict_fields:
+            report["conflictingGroups"] += 1
+            reason = "Classificações protegidas conflitantes: " + ", ".join(conflict_fields)
+            connection.execute(
+                "UPDATE question_equivalence_groups SET status='needs_review',reason=?,"
+                "updated_at=? WHERE id=?",
+                (reason, changed_at, group["id"]),
+            )
+            if group["canonical_question_id"] is not None:
+                connection.execute(
+                    "UPDATE canonical_questions SET editorial_status='blocked',updated_at=? "
+                    "WHERE id=?",
+                    (changed_at, group["canonical_question_id"]),
+                )
+            connection.execute(
+                "INSERT INTO question_equivalence_review_queue "
+                "(group_id,run_id,status,reason,occurrence_ids_json,created_at,updated_at) "
+                "VALUES (?,NULL,'pending',?,?,?,?) "
+                "ON CONFLICT(group_id) DO UPDATE SET status='pending',reason=excluded.reason,"
+                "occurrence_ids_json=excluded.occurrence_ids_json,updated_at=excluded.updated_at",
+                (
+                    group["id"],
+                    reason,
+                    canonical_json([item["id"] for item in occurrences]),
+                    changed_at,
+                    changed_at,
+                ),
+            )
+            conflict_after = {
+                "status": "needs_review",
+                "fields": conflict_fields,
+                "occurrenceIds": [item["id"] for item in occurrences],
+            }
+            event_key = stable_sha256(
+                {
+                    "groupId": group["id"],
+                    "action": "canonical_classification_conflict",
+                    "after": conflict_after,
+                }
+            )
+            connection.execute(
+                "INSERT OR IGNORE INTO question_equivalence_events "
+                "(event_key,group_id,canonical_question_id,action,actor,algorithm_version,"
+                "after_json,reason,created_at) VALUES "
+                "(?,?,?,'canonical_classification_conflict','system',?,?,?,?)",
+                (
+                    event_key,
+                    group["id"],
+                    group["canonical_question_id"],
+                    QUESTION_EQUIVALENCE_ALGORITHM_VERSION,
+                    canonical_json(conflict_after),
+                    reason,
+                    changed_at,
+                ),
+            )
+            continue
+        if not recovered_fields:
+            continue
+
+        after_payload = canonical_json(representative_payload)
+        after_classification = canonical_json(representative_classification)
+        connection.execute(
+            "UPDATE questions SET payload_json=?,classification_json=?,updated_at=? WHERE id=?",
+            (
+                after_payload,
+                after_classification,
+                changed_at,
+                representative["question_id"],
+            ),
+        )
+        connection.execute(
+            "UPDATE question_occurrences SET payload_json=?,classification_json=?,"
+            "source_updated_at=?,updated_at=? WHERE id=?",
+            (
+                after_payload,
+                after_classification,
+                changed_at,
+                changed_at,
+                representative["id"],
+            ),
+        )
+        if group["canonical_question_id"] is not None:
+            connection.execute(
+                "UPDATE canonical_questions SET payload_json=?,classification_json=?,"
+                "editorial_version=editorial_version+1,updated_at=? WHERE id=?",
+                (
+                    after_payload,
+                    after_classification,
+                    changed_at,
+                    group["canonical_question_id"],
+                ),
+            )
+        refreshed = connection.execute(
+            """
+            SELECT o.id, o.question_id, q.payload_json, q.classification_json
+            FROM question_group_occurrences go
+            JOIN question_occurrences o ON o.id = go.occurrence_id
+            JOIN questions q ON q.id = o.question_id
+            WHERE go.group_id = ? AND go.status = 'active'
+            ORDER BY o.id
+            """,
+            (group["id"],),
+        ).fetchall()
+        refreshed_representative = next(
+            item for item in refreshed if item["id"] == representative["id"]
+        )
+        _propagate_editorial_fields(
+            connection, refreshed_representative, refreshed, changed_at=changed_at
+        )
+        event_after = {
+            "questionId": representative["question_id"],
+            "fields": recovered_fields,
+            "classification": representative_classification,
+        }
+        event_key = stable_sha256(
+            {
+                "groupId": group["id"],
+                "action": "canonical_classification_recovered",
+                "after": event_after,
+            }
+        )
+        connection.execute(
+            "INSERT OR IGNORE INTO question_equivalence_events "
+            "(event_key,group_id,canonical_question_id,action,actor,algorithm_version,"
+            "before_json,after_json,reason,created_at) "
+            "VALUES (?,?,?,'canonical_classification_recovered','system',?,?,?,?,?)",
+            (
+                event_key,
+                group["id"],
+                group["canonical_question_id"],
+                QUESTION_EQUIVALENCE_ALGORITHM_VERSION,
+                canonical_json(
+                    {
+                        "payload": json.loads(before_payload),
+                        "classification": json.loads(before_classification),
+                    }
+                ),
+                canonical_json(event_after),
+                "Classificação protegida recuperada de uma cópia equivalente.",
+                changed_at,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO audit_log "
+            "(question_id,action,actor,created_at,before_json,after_json,notes) "
+            "VALUES (?,'canonical_classification_recovered','system',?,?,?,?)",
+            (
+                representative["question_id"],
+                changed_at,
+                canonical_json(
+                    {
+                        "payload": json.loads(before_payload),
+                        "classification": json.loads(before_classification),
+                    }
+                ),
+                canonical_json(event_after),
+                "Classificação protegida recuperada de uma cópia equivalente.",
+            ),
+        )
+        report["groupsRecovered"] += 1
+        report["fieldsRecovered"] += len(recovered_fields)
+    return report
 
 
 def invalidate_question_equivalence(

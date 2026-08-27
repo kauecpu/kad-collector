@@ -153,7 +153,9 @@ titulo de secao, intervalo do edital, contexto das questoes vizinhas e regras se
 locais. Cada valor guarda origem, confianca e justificativa. Quando nao existe evidencia
 suficiente, o campo permanece vazio e a interface apresenta **Nao classificada**; nomes fora
 da taxonomia nao sao criados. O botao **Reclassificar acervo** reaplica essa classificacao ao
-banco local sem baixar os PDFs e sem alterar gabaritos ou decisoes humanas.
+banco local sem baixar os PDFs e sem alterar gabaritos, decisoes humanas ou sugestoes aceitas do
+Qwen. Antes das regras locais, ele recupera para a questão principal qualquer classificação
+protegida que ainda esteja preservada em uma cópia equivalente.
 
 O botão **Classificar pendentes com Qwen 8B** oferece um lote local assistido. Ao abrir,
 o Collector prepara uma cópia em memória e conta questões com resposta oficial, unidades de
@@ -316,6 +318,9 @@ A migração, o diagrama, a regressão RFB22 e os comandos de simulação e apli
 com escopo e resposta oficial compatíveis e direciona classificação e exportação para uma única
 representante. O algoritmo, o modelo de auditoria, a CLI e os limites da regressão sintética
 RFB22 estão em [`docs/question-equivalence-v1.md`](docs/question-equivalence-v1.md).
+
+O painel e as filas comuns contam somente questões únicas. O total de aparições extraídas dos
+PDFs fica separado na etapa de preparação, e as cópias só aparecem em **Ver cópias e origens**.
 
 No desktop, grupos ainda não confirmados ganham uma representante provisória apenas para
 classificação. Esse registro não confirma equivalência e não libera exportação.

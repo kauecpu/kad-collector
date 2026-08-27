@@ -171,6 +171,8 @@ console.log(JSON.stringify(output));
             "Gabaritos associados",
             "Preparação canônica",
             "Preparar questões para classificação",
+            "QUESTÕES ÚNICAS",
+            "Aparições brutas",
             'id="prep-duplicates"',
             'id="edit-stage"',
             'id="edit-turn"',
