@@ -22,6 +22,11 @@ como evidência. Cabeçalhos isolados de turno no gabarito valem para as grades
 seguintes; se houver grades identificadas por turno e nenhuma corresponder à
 prova, nenhuma resposta é aproveitada.
 
+Antes de ativar o vínculo, o Collector também exige que o gabarito cubra os
+números da prova e que cada resposta exista entre as alternativas extraídas.
+Uma letra inexistente invalida o candidato. Um gabarito parcial permanece sem
+vínculo até revisão.
+
 Chamadas legadas que ainda não fornecem intervalos continuam legíveis durante a
 transição. O processamento do banco local e a rotina de revalidação sempre
 fornecem intervalos e, portanto, executam as regras estritas da v2.
@@ -35,6 +40,8 @@ A abertura do `DesktopStore` cria, sem apagar registros antigos:
   da v2;
 - `association_review_queue`, fila operacional para toda prova que continue sem
   associação, com os campos incompletos ou conflitantes no motivo;
+- `answer_key_audit_runs` e `answer_key_audit_cases`, histórico imutável das
+  auditorias feitas pelo aplicativo;
 - proveniência e motivo de invalidação nas questões.
 
 Os vínculos antigos continuam disponíveis no histórico. Uma associação mantida
@@ -108,6 +115,22 @@ ainda existem vínculos antigos pendentes.
 Cada item de `cases` contém apenas identificadores locais, resultado e motivo.
 O histórico no SQLite acrescenta os perfis comparados, intervalos, candidatos,
 pontuações, evidências, vínculo anterior e vínculo novo.
+
+## Auditoria no aplicativo
+
+O botão **Auditar vínculos** simula a análise antes de alterar o banco e separa
+as provas em quatro estados:
+
+- **Confirmado:** o vínculo ativo continua sendo o único candidato compatível;
+- **Duvidoso:** faltam dados ou existe empate entre candidatos;
+- **Incorreto:** uma incompatibilidade comprovada invalida o vínculo ativo;
+- **Sem gabarito:** não existe vínculo ativo nem candidato compatível.
+
+Ao aplicar a auditoria, o Collector preserva vínculos confirmados. Ele substitui
+um vínculo somente quando encontra um candidato único e compatível. Casos
+duvidosos perdem respostas derivadas de um vínculo não comprovado e entram na
+fila de revisão. A escolha manual e a remoção atuam sobre todas as questões da
+prova, recalculam o lote e acrescentam um evento ao histórico.
 
 ## Riscos e limites restantes
 

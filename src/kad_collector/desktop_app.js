@@ -314,6 +314,7 @@ function renderOperationalOverview() {
   const summary = state.bootstrap.summary || {};
   const operational = state.bootstrap.operationalSummary || {};
   const preparation = state.bootstrap.preparationSummary || {};
+  const answerAudit = state.bootstrap.answerKeyAuditSummary || {};
   const config = state.bootstrap.config || {};
   byId('database-environment').textContent = config.environmentLabel || 'Banco operacional';
   byId('database-environment').className = `environment-badge ${config.environment || 'operational'}`;
@@ -329,6 +330,10 @@ function renderOperationalOverview() {
   byId('prep-ready').textContent = preparation.qwenEligible || 0;
   byId('prep-duplicates').textContent = preparation.duplicateQuestions || 0;
   byId('prep-pending').textContent = preparation.pendingQuestions || 0;
+  byId('audit-confirmed').textContent = answerAudit.confirmed || 0;
+  byId('audit-uncertain').textContent = answerAudit.uncertain || 0;
+  byId('audit-incorrect').textContent = answerAudit.incorrect || 0;
+  byId('audit-missing').textContent = answerAudit.missing || 0;
   byId('canonical-empty-message').hidden = !(
     operational.rawQuestions > 0 && operational.canonicalQuestions === 0
   );
@@ -436,6 +441,153 @@ async function runPreparation(event) {
     toast(error.message, 'error');
   } finally {
     button.disabled = false;
+  }
+}
+
+const answerAuditLabels = {
+  confirmed: 'Confirmado', uncertain: 'Duvidoso', incorrect: 'Incorreto', missing: 'Sem gabarito',
+};
+
+function renderAnswerKeyAudit(report) {
+  const summary = byId('answer-key-audit-preview');
+  summary.replaceChildren();
+  const grid = document.createElement('div');
+  grid.className = 'qwen-count-grid';
+  [
+    ['Provas auditadas', report.examined || 0],
+    ['Confirmados', report.confirmed || 0],
+    ['Duvidosos', report.uncertain || 0],
+    ['Incorretos', report.incorrect || 0],
+    ['Sem gabarito', report.missing || 0],
+    ['Questões afetadas', report.questionsAffected || 0],
+  ].forEach(([label, value]) => {
+    const item = document.createElement('span');
+    const number = document.createElement('strong');
+    number.textContent = value;
+    const caption = document.createElement('small');
+    caption.textContent = label;
+    item.append(number, caption);
+    grid.append(item);
+  });
+  summary.append(grid);
+
+  const root = byId('answer-key-audit-cases');
+  root.replaceChildren();
+  (report.cases || []).forEach((auditCase) => {
+    const article = document.createElement('article');
+    article.className = `answer-key-audit-case ${auditCase.status}`;
+    const header = document.createElement('header');
+    const title = document.createElement('h3');
+    title.textContent = auditCase.filename || 'Prova sem nome';
+    const status = document.createElement('span');
+    status.className = 'status-chip';
+    status.textContent = answerAuditLabels[auditCase.status] || auditCase.status;
+    header.append(title, status);
+    const reason = document.createElement('p');
+    reason.textContent = `${auditCase.questionCount || 0} questão(ões). ${auditCase.reason}`;
+    const details = document.createElement('details');
+    const detailsTitle = document.createElement('summary');
+    detailsTitle.textContent = 'Ver evidências e candidatos';
+    const list = document.createElement('ul');
+    (auditCase.candidates || []).forEach((candidate) => {
+      const item = document.createElement('li');
+      const documentName = candidate.document?.filename || candidate.version_id;
+      const problems = [...(candidate.conflicts || []), ...(candidate.incomplete_fields || [])];
+      item.textContent = `${documentName}: ${problems.length ? problems.join('; ') : `coincide em ${(candidate.matched_fields || []).join(', ')}`}`;
+      list.append(item);
+    });
+    if (!(auditCase.candidates || []).length) {
+      const item = document.createElement('li');
+      item.textContent = 'Nenhum gabarito candidato foi encontrado.';
+      list.append(item);
+    }
+    details.append(detailsTitle, list);
+    article.append(header, reason, details);
+
+    const actions = document.createElement('div');
+    actions.className = 'answer-key-audit-actions';
+    (auditCase.candidates || [])
+      .filter((candidate) => !(candidate.conflicts || []).length)
+      .forEach((candidate) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'button ghost';
+        button.textContent = `Usar ${candidate.document?.filename || 'este gabarito'}`;
+        button.addEventListener('click', () => replaceAnswerKeyFromAudit(auditCase, candidate));
+        actions.append(button);
+      });
+    if (auditCase.currentAnswerKey) {
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'button danger';
+      remove.textContent = 'Remover vínculo do lote';
+      remove.addEventListener('click', () => removeAnswerKeyFromAudit(auditCase));
+      actions.append(remove);
+    }
+    if (actions.childElementCount) article.append(actions);
+    root.append(article);
+  });
+}
+
+async function refreshAnswerKeyAudit() {
+  const report = await request('/api/answer-key-audit/preview', {method: 'POST', body: '{}'});
+  renderAnswerKeyAudit(report);
+  return report;
+}
+
+async function openAnswerKeyAudit() {
+  const button = byId('answer-key-audit-open');
+  button.disabled = true;
+  try {
+    await refreshAnswerKeyAudit();
+    byId('answer-key-audit-dialog').showModal();
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function runAnswerKeyAudit(event) {
+  event.preventDefault();
+  const button = byId('answer-key-audit-submit');
+  button.disabled = true;
+  try {
+    const report = await request('/api/answer-key-audit/run', {method: 'POST', body: '{}'});
+    renderAnswerKeyAudit(report);
+    await loadBootstrap({preserveQuery: false});
+    toast(`${report.confirmed || 0} vínculo(s) confirmados; ${report.corrected || 0} corrigido(s).`);
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function replaceAnswerKeyFromAudit(auditCase, candidate) {
+  const filename = candidate.document?.filename || 'o gabarito selecionado';
+  if (!window.confirm(`Aplicar ${filename} às ${auditCase.questionCount || 0} questões desta prova?`)) return;
+  try {
+    const result = await request(`/api/answer-key-associations/${auditCase.examVersionId}/replace`, {
+      method: 'POST', body: JSON.stringify({answerKeyVersionId: candidate.version_id}),
+    });
+    toast(`${result.questionsAffected || 0} questão(ões) recalculadas.`);
+    await Promise.all([refreshAnswerKeyAudit(), loadBootstrap({preserveQuery: false})]);
+  } catch (error) {
+    toast(error.message, 'error');
+  }
+}
+
+async function removeAnswerKeyFromAudit(auditCase) {
+  if (!window.confirm(`Remover o gabarito das ${auditCase.questionCount || 0} questões deste lote?`)) return;
+  try {
+    const result = await request(`/api/answer-key-associations/${auditCase.examVersionId}/remove`, {
+      method: 'POST', body: '{}',
+    });
+    toast(`${result.questionsAffected || 0} questão(ões) voltaram para revisão.`);
+    await Promise.all([refreshAnswerKeyAudit(), loadBootstrap({preserveQuery: false})]);
+  } catch (error) {
+    toast(error.message, 'error');
   }
 }
 
@@ -2072,6 +2224,8 @@ byId('reclassify-open').addEventListener('click', reclassifyCollection);
 byId('qwen-classify-open').addEventListener('click', openQwenClassification);
 byId('prepare-questions-open').addEventListener('click', openPreparation);
 byId('preparation-form').addEventListener('submit', runPreparation);
+byId('answer-key-audit-open').addEventListener('click', openAnswerKeyAudit);
+byId('answer-key-audit-form').addEventListener('submit', runAnswerKeyAudit);
 byId('qwen-preview-refresh').addEventListener('click', () => refreshQwenPreview().catch((error) => toast(error.message, 'error')));
 byId('qwen-classification-limit').addEventListener('input', () => {
   state.localAIPreview = null;

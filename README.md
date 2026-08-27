@@ -948,6 +948,14 @@ mais de um turno sem conflito. Consulte
 [`docs/answer-key-revalidation-v2.md`](docs/answer-key-revalidation-v2.md) para o
 comando, retomada, formato do relatório e limitações.
 
+No aplicativo, **Auditar vínculos** confere novamente todas as provas, inclusive
+as que já possuem vínculo v2. A auditoria compara concurso, cargo, turno, tipo,
+ano, quantidade de questões e cada letra do gabarito com as alternativas da
+prova. Ela mantém vínculos confirmados, corrige uma troca quando existe um único
+gabarito compatível e envia dúvidas para revisão. O operador pode trocar ou
+remover o gabarito do lote; o Collector recalcula todas as respostas afetadas e
+registra a mudança no histórico.
+
 O pipeline usa um [adaptador FGV orientado por secoes](docs/fgv-section-parser.md). O adaptador
 separa as partes objetiva e discursiva antes de interpretar numeros isolados e compara o
 resultado com `src/kad_collector/fgv_section_profiles.v1.toml`. Uma lacuna, duplicidade, quebra

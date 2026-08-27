@@ -12,7 +12,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from .answer_association import decide_runtime_association, invalidate_answer_association
+from .answer_association import (
+    audit_answer_key_associations,
+    decide_runtime_association,
+    invalidate_answer_association,
+    remove_answer_key_association,
+    replace_answer_key_association,
+)
 from .answer_key import parse_answer_key
 from .answer_key_diagnostics import AnswerKeyEvidence, diagnose_answer_key
 from .canonical_classification import (
@@ -1168,6 +1174,65 @@ class DesktopStore:
         if decision.selected_version_id is None:
             return None, decision
         return self.answer_key_document(decision.selected_version_id), decision
+
+    def answer_key_audit_summary(self) -> dict[str, Any]:
+        with closing(self._connect()) as connection:
+            row = connection.execute(
+                "SELECT totals_json FROM answer_key_audit_runs "
+                "WHERE status='completed' ORDER BY finished_at DESC,id DESC LIMIT 1"
+            ).fetchone()
+        if row is None:
+            return {
+                "examined": 0,
+                "confirmed": 0,
+                "uncertain": 0,
+                "incorrect": 0,
+                "missing": 0,
+                "corrected": 0,
+                "questionsAffected": 0,
+                "cases": [],
+            }
+        return cast(dict[str, Any], json.loads(cast(str, row["totals_json"])))
+
+    def preview_answer_key_audit(self) -> dict[str, Any]:
+        source = sqlite3.connect(self.path, timeout=30)
+        memory = sqlite3.connect(":memory:")
+        memory.row_factory = sqlite3.Row
+        try:
+            source.backup(memory)
+            return audit_answer_key_associations(memory, apply=False).as_dict()
+        finally:
+            memory.close()
+            source.close()
+
+    def run_answer_key_audit(self) -> dict[str, Any]:
+        with closing(self._connect()) as connection:
+            return audit_answer_key_associations(connection, apply=True).as_dict()
+
+    def replace_answer_key_for_exam(
+        self,
+        exam_version_id: str,
+        answer_key_version_id: str,
+        *,
+        actor: str,
+    ) -> dict[str, Any]:
+        with closing(self._connect()) as connection:
+            return replace_answer_key_association(
+                connection,
+                exam_version_id=exam_version_id,
+                answer_key_version_id=answer_key_version_id,
+                actor=actor,
+            )
+
+    def remove_answer_key_for_exam(
+        self, exam_version_id: str, *, actor: str
+    ) -> dict[str, Any]:
+        with closing(self._connect()) as connection:
+            return remove_answer_key_association(
+                connection,
+                exam_version_id=exam_version_id,
+                actor=actor,
+            )
 
     def apply_answer_key_updates(
         self,
