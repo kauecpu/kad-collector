@@ -662,71 +662,66 @@ def _upsert_group(
             ),
         )
     canonical_question_id = _stable_id("canonical-question", group_id)
+    payload = json.loads(cast(str, representative["payload_json"]))
+    classification = json.loads(cast(str, representative["classification_json"]))
+    canonical_answer_text = cast(str | None, representative["answer_text"])
+    representative_question = connection.execute(
+        "SELECT status FROM questions WHERE id = ?", (representative["question_id"],)
+    ).fetchone()
+    editorial_status = (
+        "approved"
+        if representative_question is not None
+        and representative_question["status"] in {"approved", "exported"}
+        else "pending"
+    )
+    existing_canonical = connection.execute(
+        "SELECT representative_occurrence_id, payload_json, classification_json, "
+        "editorial_version FROM canonical_questions WHERE id = ?",
+        (canonical_question_id,),
+    ).fetchone()
+    changed = existing_canonical is not None and (
+        existing_canonical["representative_occurrence_id"] != representative["id"]
+        or existing_canonical["payload_json"] != canonical_json(payload)
+        or existing_canonical["classification_json"] != canonical_json(classification)
+    )
+    version = (
+        int(existing_canonical["editorial_version"]) + 1
+        if existing_canonical is not None and changed
+        else int(existing_canonical["editorial_version"])
+        if existing_canonical is not None
+        else 1
+    )
+    connection.execute(
+        "INSERT INTO canonical_questions "
+        "(id, group_id, representative_occurrence_id, payload_json, classification_json, "
+        "content_fingerprint, canonical_answer_text, editorial_status, editorial_version, "
+        "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(group_id) DO UPDATE SET "
+        "representative_occurrence_id=excluded.representative_occurrence_id, "
+        "payload_json=excluded.payload_json, classification_json=excluded.classification_json, "
+        "content_fingerprint=excluded.content_fingerprint, "
+        "canonical_answer_text=excluded.canonical_answer_text, "
+        "editorial_status=excluded.editorial_status, "
+        "editorial_version=excluded.editorial_version, updated_at=excluded.updated_at",
+        (
+            canonical_question_id,
+            group_id,
+            representative["id"],
+            canonical_json(payload),
+            canonical_json(classification),
+            representative["equivalence_fingerprint"],
+            canonical_answer_text,
+            editorial_status,
+            version,
+            changed_at,
+            changed_at,
+        ),
+    )
     if status == "confirmed":
-        payload = json.loads(cast(str, representative["payload_json"]))
-        classification = json.loads(cast(str, representative["classification_json"]))
-        canonical_answer_text = cast(str | None, representative["answer_text"])
-        representative_question = connection.execute(
-            "SELECT status FROM questions WHERE id = ?", (representative["question_id"],)
-        ).fetchone()
-        editorial_status = (
-            "approved"
-            if representative_question is not None
-            and representative_question["status"] in {"approved", "exported"}
-            else "pending"
-        )
-        existing_canonical = connection.execute(
-            "SELECT representative_occurrence_id, payload_json, classification_json, "
-            "editorial_version FROM canonical_questions WHERE id = ?",
-            (canonical_question_id,),
-        ).fetchone()
-        changed = existing_canonical is not None and (
-            existing_canonical["representative_occurrence_id"] != representative["id"]
-            or existing_canonical["payload_json"] != canonical_json(payload)
-            or existing_canonical["classification_json"] != canonical_json(classification)
-        )
-        version = (
-            int(existing_canonical["editorial_version"]) + 1
-            if existing_canonical is not None and changed
-            else int(existing_canonical["editorial_version"])
-            if existing_canonical is not None
-            else 1
-        )
-        connection.execute(
-            "INSERT INTO canonical_questions "
-            "(id, group_id, representative_occurrence_id, payload_json, classification_json, "
-            "content_fingerprint, canonical_answer_text, editorial_status, editorial_version, "
-            "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
-            "ON CONFLICT(group_id) DO UPDATE SET "
-            "representative_occurrence_id=excluded.representative_occurrence_id, "
-            "payload_json=excluded.payload_json, classification_json=excluded.classification_json, "
-            "content_fingerprint=excluded.content_fingerprint, "
-            "canonical_answer_text=excluded.canonical_answer_text, "
-            "editorial_status=excluded.editorial_status, "
-            "editorial_version=excluded.editorial_version, updated_at=excluded.updated_at",
-            (
-                canonical_question_id,
-                group_id,
-                representative["id"],
-                canonical_json(payload),
-                canonical_json(classification),
-                representative["equivalence_fingerprint"],
-                canonical_answer_text,
-                editorial_status,
-                version,
-                changed_at,
-                changed_at,
-            ),
-        )
         connection.execute(
             "DELETE FROM question_equivalence_review_queue WHERE group_id = ?", (group_id,)
         )
     else:
-        connection.execute(
-            "UPDATE canonical_questions SET editorial_status = 'blocked', updated_at = ? "
-            "WHERE group_id = ?",
-            (changed_at, group_id),
-        )
         connection.execute(
             "INSERT INTO question_equivalence_review_queue "
             "(group_id, run_id, status, reason, occurrence_ids_json, created_at, updated_at) "
@@ -754,7 +749,7 @@ def _upsert_group(
         connection,
         run_id=run_id,
         group_id=group_id,
-        canonical_question_id=(canonical_question_id if status == "confirmed" else None),
+        canonical_question_id=canonical_question_id,
         action=("group_created" if old is None else "group_revalidated"),
         before=before,
         after=after,

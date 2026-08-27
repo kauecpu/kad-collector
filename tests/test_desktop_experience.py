@@ -158,7 +158,7 @@ console.log(JSON.stringify(output));
         self.assertEqual(states["Gabarito"]["state"], "Diagnóstico pendente")
         self.assertEqual(states["Preparação"]["state"], "Bruta")
         self.assertEqual(states["Classificação"]["state"], "Incompleta")
-        self.assertEqual(states["Classificação"]["action"], "Concluir preparação primeiro")
+        self.assertEqual(states["Classificação"]["action"], "Resolver o gabarito primeiro")
         self.assertEqual(states["Importação"]["state"], "Bloqueada")
 
     def test_packaged_ui_exposes_pipeline_accessibility_and_qwen_safety_copy(self) -> None:

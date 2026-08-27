@@ -110,9 +110,11 @@ respostas oficiais e por isso nunca aparece como ação para uma pendência de g
 
 O botão **Preparar questões para classificação** usa apenas evidências já salvas no banco.
 Ele identifica as provas com vínculo ativo de gabarito, separa os cadernos por cargo, etapa,
-turno e tipo, reúne cópias comprovadas e escolhe uma ocorrência principal. O painel mostra
-quantas questões principais podem seguir para o Qwen, quantas são cópias e quantas continuam
-pendentes. A prévia não grava dados e a confirmação não executa o modelo.
+turno e tipo, reúne cópias pelo conteúdo e escolhe uma ocorrência principal. A preparação
+mantém separados dois estados: uma unidade pode receber classificação mesmo quando sua
+equivalência ainda exige revisão; somente a importação depende da confirmação canônica. O
+painel mostra quantas questões o Qwen cobre, quantas chamadas são necessárias e quantas cópias
+herdarão a classificação. A prévia não grava dados e a confirmação não executa o modelo.
 
 O Collector aceita uma equivalência automática quando o conteúdo normalizado coincide. Ele
 também tolera um cabeçalho capturado no fim de uma alternativa quando o contexto, os cadernos,
@@ -151,17 +153,20 @@ da taxonomia nao sao criados. O botao **Reclassificar acervo** reaplica essa cla
 banco local sem baixar os PDFs e sem alterar gabaritos ou decisoes humanas.
 
 O botão **Classificar pendentes com Qwen 8B** oferece um lote local assistido. Ao abrir,
-o Collector faz somente uma prévia passiva: conta questões brutas, canônicas, elegíveis,
-completas, resolvíveis pelas regras e dependentes de IA. Quando nada é elegível, a tela mostra
-o motivo real, como preparação canônica pendente ou grupo ainda não confirmado. A prévia
-também confere o endpoint loopback, a tag `qwen3:8b`, a
+o Collector prepara uma cópia em memória e conta questões com resposta oficial, unidades de
+classificação, cópias que herdam o resultado, campos completos, regras locais e chamadas de IA.
+Uma questão respondida não fica bloqueada por grupo incompleto ou conflitante: o Qwen classifica
+cada conjunto de conteúdo equivalente, sem confirmar a importação. Questões com alternativas,
+origem ou vínculo inválidos permanecem fora do lote com o motivo visível. A prévia também
+confere o endpoint loopback, a tag `qwen3:8b`, a
 quantização `Q4_K_M` e o digest aprovado. Nenhuma inferência ou escrita ocorre antes da
 confirmação. O limite padrão é 25 e pode ser ajustado entre 1 e 250.
 
 Depois da confirmação, um aquecimento exige contexto 4096 e `100% GPU` em `/api/ps` e
 `ollama ps`. O motor determinístico continua vindo primeiro, e o Qwen recebe somente os campos
 ausentes entre disciplina, matéria, assunto e nível. O progresso pode ser pausado e retomado
-no mesmo identificador; cada questão é gravada separadamente e o modelo é descarregado ao
+no mesmo identificador; uma sugestão aceita preenche as cópias equivalentes que ainda não têm
+decisão editorial e o modelo é descarregado ao
 parar ou concluir. Respostas, gabaritos, vínculos, classificações existentes e decisões
 humanas não são alterados. O desktop não carrega o 14B nem usa provedor externo nesse fluxo.
 
@@ -308,6 +313,9 @@ A migração, o diagrama, a regressão RFB22 e os comandos de simulação e apli
 com escopo e resposta oficial compatíveis e direciona classificação e exportação para uma única
 representante. O algoritmo, o modelo de auditoria, a CLI e os limites da regressão sintética
 RFB22 estão em [`docs/question-equivalence-v1.md`](docs/question-equivalence-v1.md).
+
+No desktop, grupos ainda não confirmados ganham uma representante provisória apenas para
+classificação. Esse registro não confirma equivalência e não libera exportação.
 
 ### Classificação canônica
 

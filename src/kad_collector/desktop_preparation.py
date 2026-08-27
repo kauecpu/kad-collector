@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, cast
 
+from .canonical_classification import canonical_classification_coverage
 from .canonical_identity import initialize_canonical_identity_schema
 from .question_equivalence import (
     initialize_question_equivalence_schema,
@@ -16,7 +17,7 @@ from .question_equivalence import (
 )
 from .semantic_identity import canonical_json
 
-DESKTOP_PREPARATION_ALGORITHM_VERSION = "desktop-preparation-v1"
+DESKTOP_PREPARATION_ALGORITHM_VERSION = "desktop-preparation-v2"
 
 _REQUIRED_CONTEXT_FIELDS = (
     "board",
@@ -528,6 +529,9 @@ def _summary(connection: sqlite3.Connection) -> dict[str, Any]:
             "WHERE g.status='confirmed'"
         ).fetchone()[0]
     )
+    classification_coverage = canonical_classification_coverage(
+        connection, eligibility_scope="answered"
+    )
     return {
         "algorithmVersion": DESKTOP_PREPARATION_ALGORITHM_VERSION,
         "exams": int(row["exams"]),
@@ -539,13 +543,18 @@ def _summary(connection: sqlite3.Connection) -> dict[str, Any]:
         "readyQuestions": prepared_question_ids,
         "duplicateQuestions": int(row["duplicate_occurrences"]),
         "pendingQuestions": max(raw - prepared_question_ids, 0),
-        "qwenEligible": canonical,
+        "qwenEligible": classification_coverage["classificationUnits"],
+        "qwenEligibleQuestions": classification_coverage["eligibleQuestions"],
+        "qwenInheritedCopies": classification_coverage["inheritedCopies"],
+        "qwenBlockedAnswered": classification_coverage["blockedAnswered"],
         "pendingCases": len(reviews) + int(row["group_reviews"]),
         "reviews": reviews,
     }
 
 
-def _apply_preparation(connection: sqlite3.Connection, *, run_id: str) -> dict[str, Any]:
+def apply_desktop_preparation(
+    connection: sqlite3.Connection, *, run_id: str
+) -> dict[str, Any]:
     initialize_canonical_identity_schema(connection)
     initialize_question_equivalence_schema(connection)
     changed_at = _now()
@@ -623,7 +632,7 @@ class DesktopPreparationManager:
         memory.row_factory = sqlite3.Row
         try:
             source.backup(memory)
-            report = _apply_preparation(memory, run_id=f"preview-{uuid.uuid4().hex}")
+            report = apply_desktop_preparation(memory, run_id=f"preview-{uuid.uuid4().hex}")
             report["mode"] = "preview"
             return report
         finally:
@@ -642,7 +651,7 @@ class DesktopPreparationManager:
             )
             connection.commit()
             try:
-                report = _apply_preparation(connection, run_id=run_id)
+                report = apply_desktop_preparation(connection, run_id=run_id)
                 finished_at = _now()
                 connection.execute(
                     "UPDATE desktop_preparation_runs SET status='completed',report_json=?,"

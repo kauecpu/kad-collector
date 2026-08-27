@@ -28,7 +28,10 @@ from .editorial_taxonomy import (
     normalize_taxonomy_text,
 )
 from .models import QuestionRecord, StrictModel
-from .question_equivalence import sync_canonical_editorial_from_question
+from .question_equivalence import (
+    sync_canonical_editorial_from_question,
+    sync_question_occurrence,
+)
 from .semantic_identity import canonical_json, stable_sha256
 
 CANONICAL_CLASSIFICATION_SCHEMA_VERSION = 2
@@ -46,6 +49,7 @@ CANONICAL_AI_INSTRUCTIONS = (
 )
 
 ClassificationMode = Literal["dry-run", "apply"]
+EligibilityScope = Literal["canonical", "answered"]
 ClassificationState = Literal["complete", "incomplete", "needs_review", "rejected", "approved"]
 ReviewDecision = Literal["accept", "correct", "reject"]
 
@@ -585,10 +589,21 @@ def _canonical_rows(connection: sqlite3.Connection, contest_id: str | None) -> l
             SELECT cq.*, g.status AS group_status, g.contest_id, g.application_id,
                    r.display_name AS role_name, sh.official_name AS shift_name,
                    q.id AS question_id, q.status AS question_status,
+                   q.answer_key_link_id,
                    q.payload_json AS representative_payload_json,
                    q.classification_json AS representative_classification_json,
                    q.updated_at AS representative_updated_at,
-                   d.id AS document_id, d.metadata_json, d.warnings_json,
+                   d.id AS document_id, d.sha256 AS document_sha256,
+                   d.metadata_json, d.warnings_json,
+                   (o.source_updated_at = q.updated_at
+                    AND o.answer_key_link_id IS q.answer_key_link_id
+                    AND EXISTS (
+                        SELECT 1 FROM document_links representative_link
+                        WHERE representative_link.id = q.answer_key_link_id
+                          AND representative_link.status = 'active'
+                          AND representative_link.algorithm_version =
+                              'semantic-association-v2'
+                    )) AS representative_fresh,
                    NOT EXISTS (
                        SELECT 1
                        FROM question_group_occurrences fresh_go
@@ -621,13 +636,92 @@ def _canonical_rows(connection: sqlite3.Connection, contest_id: str | None) -> l
     )
 
 
-def _eligible(row: sqlite3.Row) -> bool:
+def _answered_eligible(row: sqlite3.Row) -> bool:
+    if (
+        row["group_status"] == "rejected"
+        or not row["representative_fresh"]
+        or row["editorial_status"] == "blocked"
+        or row["question_status"] == "rejected"
+    ):
+        return False
+    try:
+        question = QuestionRecord.model_validate_json(
+            cast(str, row["representative_payload_json"])
+        )
+        metadata = json.loads(cast(str, row["metadata_json"]))
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return False
+    alternatives = question.alternatives
+    letters = [item.letter for item in alternatives]
+    valid_alternatives = bool(
+        2 <= len(alternatives) <= 5
+        and letters == list("ABCDE"[: len(alternatives)])
+        and question.correct_answer in letters
+    )
+    proved_origin = bool(
+        str(metadata.get("provider") or "").strip()
+        and str(metadata.get("source_url") or "").startswith("https://")
+        and len(str(row["document_sha256"] or "")) == 64
+        and question.source_pages
+    )
+    return bool(
+        question.answer_status == "matched"
+        and question.correct_answer is not None
+        and valid_alternatives
+        and proved_origin
+    )
+
+
+def _eligible(row: sqlite3.Row, eligibility_scope: EligibilityScope) -> bool:
+    if eligibility_scope == "answered":
+        return _answered_eligible(row)
     return bool(
         row["group_status"] == "confirmed"
         and row["group_fresh"]
         and row["editorial_status"] != "blocked"
         and row["question_status"] != "rejected"
     )
+
+
+def canonical_classification_coverage(
+    connection: sqlite3.Connection,
+    *,
+    eligibility_scope: EligibilityScope = "canonical",
+) -> dict[str, int]:
+    rows = _canonical_rows(connection, None)
+    eligible = [row for row in rows if _eligible(row, eligibility_scope)]
+    covered_question_ids: set[str] = set()
+    for row in eligible:
+        members = connection.execute(
+            "SELECT q.id,q.payload_json FROM question_group_occurrences go "
+            "JOIN question_occurrences o ON o.id=go.occurrence_id "
+            "JOIN questions q ON q.id=o.question_id "
+            "WHERE go.group_id=? AND go.status='active'",
+            (row["group_id"],),
+        ).fetchall()
+        for member in members:
+            try:
+                question = QuestionRecord.model_validate_json(cast(str, member["payload_json"]))
+            except ValueError:
+                continue
+            if question.answer_status == "matched" and question.correct_answer is not None:
+                covered_question_ids.add(cast(str, member["id"]))
+    official_answered = int(
+        connection.execute(
+            "SELECT COUNT(*) FROM questions "
+            "WHERE json_extract(payload_json,'$.answer_status')='matched' "
+            "AND json_extract(payload_json,'$.correct_answer') IS NOT NULL"
+        ).fetchone()[0]
+    )
+    units = len(eligible)
+    covered = len(covered_question_ids)
+    return {
+        "officialAnswered": official_answered,
+        "classificationUnits": units,
+        "eligibleQuestions": covered,
+        "inheritedCopies": max(covered - units, 0),
+        "blockedAnswered": max(official_answered - covered, 0),
+    }
 
 
 def _classification_value(
@@ -808,6 +902,52 @@ def _record_field(
     )
 
 
+def _fill_missing_fields(
+    question: QuestionRecord,
+    classification: QuestionClassification,
+    fields: Mapping[str, tuple[str, float, str, str]],
+    *,
+    taxonomy_version: str,
+    model: str | None,
+) -> tuple[QuestionRecord, QuestionClassification]:
+    payload = question.model_dump(mode="json")
+    next_classification = classification.model_copy(deep=True)
+    for field_name, (value, confidence, evidence, source) in fields.items():
+        if payload.get(field_name) not in {None, ""}:
+            continue
+        attribute = _CLASSIFICATION_ATTRIBUTE.get(field_name)
+        if attribute is not None:
+            current = cast(ClassificationValue, getattr(next_classification, attribute))
+            if current.value is not None:
+                payload[field_name] = current.value
+                continue
+            if current.source == "human_review" and source != "human_review":
+                continue
+            setattr(
+                next_classification,
+                attribute,
+                ClassificationValue(
+                    value=value,
+                    confidence=confidence,
+                    evidence=evidence,
+                    source=source,
+                    reason=(
+                        "Taxonomia determinística aplicada à questão canônica"
+                        if source == "deterministic"
+                        else "Sugestão restrita aplicada à questão canônica"
+                        if source == "ai_suggestion"
+                        else "Decisão humana na fila canônica"
+                    ),
+                    provenance=[
+                        f"taxonomy:{taxonomy_version}",
+                        *([f"model:{model}"] if model else []),
+                    ],
+                ),
+            )
+        payload[field_name] = value
+    return QuestionRecord.model_validate(payload), next_classification
+
+
 def _apply_fields(
     connection: sqlite3.Connection,
     *,
@@ -823,39 +963,14 @@ def _apply_fields(
 ) -> tuple[QuestionRecord, QuestionClassification]:
     if not fields:
         return question, classification
-    payload = question.model_dump(mode="json")
-    next_classification = classification.model_copy(deep=True)
+    next_question, next_classification = _fill_missing_fields(
+        question,
+        classification,
+        fields,
+        taxonomy_version=taxonomy_version,
+        model=model,
+    )
     for field_name, (value, confidence, evidence, source) in fields.items():
-        if payload.get(field_name) not in {None, ""}:
-            continue
-        payload[field_name] = value
-        attribute = _CLASSIFICATION_ATTRIBUTE.get(field_name)
-        if attribute is not None:
-            current = cast(ClassificationValue, getattr(next_classification, attribute))
-            if current.value is None and (
-                current.source != "human_review" or source == "human_review"
-            ):
-                setattr(
-                    next_classification,
-                    attribute,
-                    ClassificationValue(
-                        value=value,
-                        confidence=confidence,
-                        evidence=evidence,
-                        source=source,
-                        reason=(
-                            "Taxonomia determinística aplicada à questão canônica"
-                            if source == "deterministic"
-                            else "Sugestão restrita aplicada à questão canônica"
-                            if source == "ai_suggestion"
-                            else "Decisão humana na fila canônica"
-                        ),
-                        provenance=[
-                            f"taxonomy:{taxonomy_version}",
-                            *([f"model:{model}"] if model else []),
-                        ],
-                    ),
-                )
         _record_field(
             connection,
             canonical_question_id=cast(str, row["id"]),
@@ -870,17 +985,55 @@ def _apply_fields(
             model=model,
             prompt_version=prompt_version,
         )
-    next_question = QuestionRecord.model_validate(payload)
-    connection.execute(
-        "UPDATE questions SET payload_json = ?, classification_json = ?, updated_at = ? "
-        "WHERE id = ?",
-        (
-            canonical_json(next_question.model_dump(mode="json")),
-            canonical_json(next_classification.model_dump(mode="json")),
-            changed_at,
-            row["question_id"],
-        ),
+    row_keys = set(row.keys()) if hasattr(row, "keys") else set(row)
+    group_id = row["group_id"] if "group_id" in row_keys else None
+    if group_id is None:
+        group = connection.execute(
+            "SELECT group_id FROM canonical_questions WHERE id=?", (row["id"],)
+        ).fetchone()
+        group_id = group["group_id"] if group is not None else None
+    members = (
+        connection.execute(
+            "SELECT q.id,q.payload_json,q.classification_json "
+            "FROM question_group_occurrences go "
+            "JOIN question_occurrences o ON o.id=go.occurrence_id "
+            "JOIN questions q ON q.id=o.question_id "
+            "WHERE go.group_id=? AND go.status='active' ORDER BY q.id",
+            (group_id,),
+        ).fetchall()
+        if group_id is not None
+        else connection.execute(
+            "SELECT id,payload_json,classification_json FROM questions WHERE id=?",
+            (row["question_id"],),
+        ).fetchall()
     )
+    for member in members:
+        member_id = cast(str, member["id"])
+        if member_id == row["question_id"]:
+            member_question = next_question
+            member_classification = next_classification
+        else:
+            member_question, member_classification = _fill_missing_fields(
+                QuestionRecord.model_validate_json(cast(str, member["payload_json"])),
+                QuestionClassification.model_validate_json(
+                    cast(str, member["classification_json"])
+                ),
+                fields,
+                taxonomy_version=taxonomy_version,
+                model=model,
+            )
+        payload_json = canonical_json(member_question.model_dump(mode="json"))
+        classification_json = canonical_json(member_classification.model_dump(mode="json"))
+        if (
+            payload_json == member["payload_json"]
+            and classification_json == member["classification_json"]
+        ):
+            continue
+        connection.execute(
+            "UPDATE questions SET payload_json=?,classification_json=?,updated_at=? WHERE id=?",
+            (payload_json, classification_json, changed_at, member_id),
+        )
+        sync_question_occurrence(connection, member_id, changed_at=changed_at)
     sync_canonical_editorial_from_question(
         connection, cast(str, row["question_id"]), changed_at=changed_at
     )
@@ -1647,13 +1800,14 @@ def _queue_ineligible(
     connection: sqlite3.Connection,
     rows: list[sqlite3.Row],
     *,
+    eligibility_scope: EligibilityScope,
     run_id: str,
     apply: bool,
     report: CanonicalClassificationReport,
     changed_at: str,
 ) -> None:
     for row in rows:
-        if _eligible(row):
+        if _eligible(row, eligibility_scope):
             continue
         report.review_required += 1
         reason = (
@@ -1693,9 +1847,14 @@ def _queue_ineligible(
 
 
 def _context_report(
-    connection: sqlite3.Connection, contest_id: str | None
+    connection: sqlite3.Connection,
+    contest_id: str | None,
+    eligibility_scope: EligibilityScope,
 ) -> dict[str, dict[str, int]]:
-    clause = "" if contest_id is None else "WHERE g.contest_id = ?"
+    conditions = ["g.status = 'confirmed'"] if eligibility_scope == "canonical" else []
+    if contest_id is not None:
+        conditions.append("g.contest_id = ?")
+    clause = "" if not conditions else "WHERE " + " AND ".join(conditions)
     parameters: tuple[str, ...] = () if contest_id is None else (contest_id,)
     rows = connection.execute(
         """
@@ -1741,6 +1900,7 @@ def run_canonical_classification(
     should_pause: Callable[[], bool] | None = None,
     progress_callback: Callable[[CanonicalClassificationReport], None] | None = None,
     queue_ineligible: bool = True,
+    eligibility_scope: EligibilityScope = "canonical",
 ) -> CanonicalClassificationReport:
     if limit is not None and limit < 1:
         raise CanonicalClassificationError("limit deve ser positivo")
@@ -1750,6 +1910,8 @@ def run_canonical_classification(
         raise CanonicalClassificationError(
             f"provedor não permitido na classificação canônica: {provider.name}"
         )
+    if eligibility_scope not in {"canonical", "answered"}:
+        raise CanonicalClassificationError("escopo de elegibilidade inválido")
     initialize_canonical_classification_schema(connection)
     connection.commit()
     active_taxonomy = taxonomy or EditorialTaxonomy.load_default()
@@ -1834,12 +1996,13 @@ def run_canonical_classification(
             _queue_ineligible(
                 connection,
                 rows,
+                eligibility_scope=eligibility_scope,
                 run_id=effective_run_id,
                 apply=apply,
                 report=report,
                 changed_at=changed_at,
             )
-        eligible = [row for row in rows if _eligible(row)]
+        eligible = [row for row in rows if _eligible(row, eligibility_scope)]
         if pending_only:
             eligible = [row for row in eligible if _pending_work(connection, row)]
         if apply:
@@ -1871,7 +2034,7 @@ def run_canonical_classification(
             report.processed = len(selected)
             report.remaining = len(eligible) - len(selected)
             report.status = "paused" if report.remaining else "completed"
-            report.by_context = _context_report(connection, contest_id)
+            report.by_context = _context_report(connection, contest_id, eligibility_scope)
             connection.rollback()
             return report
 
@@ -1914,7 +2077,7 @@ def run_canonical_classification(
                 report.processed = processed
                 report.remaining = len(eligible) - processed
                 report.status = "paused"
-                report.by_context = _context_report(connection, contest_id)
+                report.by_context = _context_report(connection, contest_id, eligibility_scope)
                 connection.execute(
                     "UPDATE canonical_classification_runs SET status = 'paused',"
                     "cursor_canonical_question_id = ?,report_json = ?,finished_at = NULL "
@@ -1929,7 +2092,7 @@ def run_canonical_classification(
                 report.processed = processed
                 report.remaining = len(eligible) - processed
                 report.status = "paused"
-                report.by_context = _context_report(connection, contest_id)
+                report.by_context = _context_report(connection, contest_id, eligibility_scope)
                 connection.execute(
                     "UPDATE canonical_classification_runs SET status = 'paused',"
                     "cursor_canonical_question_id = ?,report_json = ?,finished_at = NULL "
@@ -1942,7 +2105,7 @@ def run_canonical_classification(
         report.processed = processed
         report.remaining = len(eligible) - processed
         report.status = "paused" if report.remaining else "completed"
-        report.by_context = _context_report(connection, contest_id)
+        report.by_context = _context_report(connection, contest_id, eligibility_scope)
         connection.execute(
             "UPDATE canonical_classification_runs SET status = ?,"
             "cursor_canonical_question_id = ?,report_json = ?,finished_at = ? WHERE id = ?",

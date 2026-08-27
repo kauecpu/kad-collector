@@ -224,6 +224,56 @@ class CanonicalClassificationTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.directory.cleanup()
 
+    def test_answered_incomplete_group_reaches_desktop_classification(self) -> None:
+        fixture = SyntheticCatalog(self.root, booklets=("1", "2"))
+        question_id = fixture.add("Analista", "1", _question())
+        _clear_fields(fixture, question_id, {"level"})
+        with closing(fixture.store._connect()) as connection:
+            equivalence = run_question_equivalence_migration(connection, apply=True)
+            provider = FakeProvider(_level_decision())
+            report = run_canonical_classification(
+                connection,
+                apply=True,
+                enable_ai=True,
+                provider=provider,
+                run_id="answered-incomplete",
+                taxonomy=self.taxonomy,
+                eligibility_scope="answered",
+            )
+
+        self.assertEqual(equivalence.incomplete_groups, 1)
+        self.assertEqual(equivalence.canonical_questions, 0)
+        self.assertEqual(report.eligible, 1)
+        self.assertEqual(len(provider.requests), 1)
+        self.assertEqual(fixture.store.question(question_id)["question"]["level"], "Superior")
+
+    def test_one_qwen_result_fills_equivalent_copies(self) -> None:
+        fixture = SyntheticCatalog(self.root)
+        question_ids = [
+            fixture.add("Analista", booklet, _question()) for booklet in ("1", "2")
+        ]
+        for question_id in question_ids:
+            _clear_fields(fixture, question_id, {"level"})
+        with closing(fixture.store._connect()) as connection:
+            run_question_equivalence_migration(connection, apply=True)
+            provider = FakeProvider(_level_decision())
+            report = run_canonical_classification(
+                connection,
+                apply=True,
+                enable_ai=True,
+                provider=provider,
+                run_id="answered-duplicates",
+                taxonomy=self.taxonomy,
+                eligibility_scope="answered",
+            )
+
+        self.assertEqual(report.eligible, 1)
+        self.assertEqual(len(provider.requests), 1)
+        self.assertEqual(
+            [fixture.store.question(item)["question"]["level"] for item in question_ids],
+            ["Superior", "Superior"],
+        )
+
     def test_taxonomy_options_have_stable_ids_and_editorial_keywords(self) -> None:
         paths = self.taxonomy.candidate_paths(
             catalog_ids=("generic-public-exam",),
