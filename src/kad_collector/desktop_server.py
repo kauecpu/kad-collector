@@ -395,6 +395,9 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                 try:
                     question_id = question_match.group(1)
                     question = application.store.question(question_id)
+                    detailed_equivalence = application.store.question_equivalence(question_id)
+                    if detailed_equivalence is not None:
+                        question["question_equivalence"] = detailed_equivalence
                     question["documentIdentity"] = application.store.document_identity(
                         cast(str, question["document_id"])
                     )

@@ -24,6 +24,8 @@ from kad_collector.desktop_store import (
 from kad_collector.models import Alternative, QuestionRecord
 from kad_collector.question_equivalence import (
     QUESTION_EQUIVALENCE_ALGORITHM_VERSION,
+    _content_groupings,
+    question_fingerprints,
     run_question_equivalence_migration,
 )
 
@@ -339,13 +341,13 @@ class QuestionEquivalenceTests(unittest.TestCase):
         )
         self.assertTrue(records[0]["data"]["id"].startswith("cq-"))
 
-    def test_missing_booklet_and_answer_conflict_are_not_auto_confirmed(self) -> None:
+    def test_missing_booklet_does_not_block_and_answer_conflict_does(self) -> None:
         missing = SyntheticCatalog(self.root / "missing")
         missing.add("Analista", "1", _question())
         with closing(missing.store._connect()) as connection:
             missing_report = run_question_equivalence_migration(connection, apply=True)
-        self.assertEqual(missing_report.incomplete_groups, 1)
-        self.assertEqual(missing_report.canonical_questions, 0)
+        self.assertEqual(missing_report.confirmed_groups, 1)
+        self.assertEqual(missing_report.canonical_questions, 1)
 
         conflict = SyntheticCatalog(self.root / "conflict")
         conflict.add("Analista", "1", _question(correct_text="Certa"))
@@ -382,7 +384,7 @@ class QuestionEquivalenceTests(unittest.TestCase):
         self.assertEqual(report.confirmed_groups, 2)
         self.assertEqual(report.canonical_questions, 2)
 
-    def test_same_statement_with_different_alternatives_requires_review(self) -> None:
+    def test_same_statement_with_real_differences_stays_separate_without_blocking(self) -> None:
         fixture = SyntheticCatalog(self.root)
         fixture.add("Analista", "1", _question(order=("Errada", "Certa")))
         fixture.add(
@@ -392,9 +394,166 @@ class QuestionEquivalenceTests(unittest.TestCase):
         )
         with closing(fixture.store._connect()) as connection:
             report = run_question_equivalence_migration(connection, apply=True)
-        self.assertEqual(report.conflicting_groups, 2)
-        self.assertEqual(report.sent_to_review, 2)
-        self.assertEqual(report.canonical_questions, 0)
+            reasons = [
+                row[0]
+                for row in connection.execute(
+                    "SELECT reason FROM question_equivalence_groups "
+                    "WHERE status='confirmed' ORDER BY id"
+                )
+            ]
+            variant_markers = [
+                row[0]
+                for row in connection.execute(
+                    "SELECT has_statement_variants FROM question_equivalence_groups "
+                    "WHERE status='confirmed' ORDER BY id"
+                )
+            ]
+        self.assertEqual(report.confirmed_groups, 2)
+        self.assertEqual(report.conflicting_groups, 0)
+        self.assertEqual(report.canonical_questions, 2)
+        self.assertTrue(
+            all("mantidas separadas" in reason for reason in reasons), reasons
+        )
+        self.assertEqual(variant_markers, [1, 1])
+
+    def test_main_copy_is_stable_and_only_it_is_importable(self) -> None:
+        fixture = SyntheticCatalog(self.root)
+        first_id = fixture.add("Analista", "1", _question(number=17))
+        second_id = fixture.add(
+            "Analista", "2", _question(number=42, order=("Certa", "Errada"))
+        )
+        with closing(fixture.store._connect()) as connection:
+            connection.execute(
+                "UPDATE questions SET status='approved' WHERE id=?", (second_id,)
+            )
+            connection.commit()
+            run_question_equivalence_migration(
+                connection, apply=True, run_id="stable-primary-first"
+            )
+            primary_before = connection.execute(
+                "SELECT o.question_id FROM canonical_questions cq "
+                "JOIN question_occurrences o ON o.id=cq.representative_occurrence_id"
+            ).fetchone()[0]
+            connection.execute(
+                "UPDATE question_occurrences SET algorithm_version='legacy'"
+            )
+            connection.commit()
+            run_question_equivalence_migration(
+                connection, apply=True, run_id="stable-primary-second"
+            )
+            primary_after = connection.execute(
+                "SELECT o.question_id FROM canonical_questions cq "
+                "JOIN question_occurrences o ON o.id=cq.representative_occurrence_id"
+            ).fetchone()[0]
+            occurrence_versions = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT DISTINCT algorithm_version FROM question_occurrences"
+                )
+            }
+
+        self.assertEqual(primary_before, second_id)
+        self.assertEqual(primary_after, second_id)
+        self.assertEqual(
+            occurrence_versions, {QUESTION_EQUIVALENCE_ALGORITHM_VERSION}
+        )
+        visible = fixture.store.query(DesktopFilterSet())
+        all_copies = fixture.store.query(
+            DesktopFilterSet(), include_equivalent_copies=True
+        )
+        self.assertEqual(visible["total"], 1)
+        self.assertEqual(sum(item["importable"] for item in all_copies["questions"]), 1)
+        hidden = next(item for item in all_copies["questions"] if item["id"] == first_id)
+        self.assertIn("unresolved_duplicate", hidden["block_reasons"])
+        details = fixture.store.question_equivalence(first_id)
+        assert details is not None
+        self.assertFalse(details["isRepresentative"])
+        self.assertEqual(len(details["provenances"]), 2)
+
+    def test_question_number_prefix_and_extraction_noise_are_ignored(self) -> None:
+        fixture = SyntheticCatalog(self.root)
+        fixture.add(
+            "Analista",
+            "1",
+            _question(
+                number=11,
+                statement=(
+                    "Questão 11 - Assinale a alternativa correta segundo a norma "
+                    "apresentada."
+                ),
+                order=("Distrator extenso", "Certa"),
+            ),
+        )
+        fixture.add(
+            "Analista",
+            "2",
+            _question(
+                number=38,
+                statement="Q. 38: Assinale a alternativa correta segundo a norma apresentada.",
+                order=("Certa", "Distrator ex tenso\nTipo 2 - Página 7"),
+            ),
+        )
+        with closing(fixture.store._connect()) as connection:
+            report = run_question_equivalence_migration(connection, apply=True)
+        self.assertEqual(report.confirmed_groups, 1)
+        self.assertEqual(report.canonical_questions, 1)
+
+    def test_editorial_fields_from_main_copy_are_replicated(self) -> None:
+        fixture = SyntheticCatalog(self.root)
+        first_id = fixture.add("Analista", "1", _question())
+        second_id = fixture.add("Analista", "2", _question(order=("Certa", "Errada")))
+        with closing(fixture.store._connect()) as connection:
+            row = connection.execute(
+                "SELECT payload_json FROM questions WHERE id=?", (second_id,)
+            ).fetchone()
+            payload = json.loads(row[0])
+            payload["discipline"] = "Língua Portuguesa"
+            connection.execute(
+                "UPDATE questions SET payload_json=?,updated_at=? WHERE id=?",
+                (_json(payload), "2026-08-26T13:00:00+00:00", second_id),
+            )
+            connection.commit()
+            report = run_question_equivalence_migration(connection, apply=True)
+
+        self.assertEqual(report.confirmed_groups, 1)
+        self.assertEqual(report.classification_conflicts, 1)
+        self.assertEqual(
+            [
+                fixture.store.question(question_id)["question"]["discipline"]
+                for question_id in (first_id, second_id)
+            ],
+            ["Direito", "Direito"],
+        )
+
+    def test_content_grouping_scales_to_twenty_thousand_occurrences(self) -> None:
+        occurrences: list[dict[str, object]] = []
+        for question_index in range(5_000):
+            payload = _question(
+                number=question_index + 1,
+                statement=f"Enunciado exclusivo {question_index}",
+            ).model_dump(mode="json")
+            fingerprints = question_fingerprints(payload)
+            for booklet in range(4):
+                occurrences.append(
+                    {
+                        "id": f"occurrence-{question_index}-{booklet}",
+                        "contest_id": "contest",
+                        "application_id": "application",
+                        "role_id": "role",
+                        "stage_id": "stage",
+                        "shift_id": "shift",
+                        "content_kind": "objective",
+                        "booklet_id": f"booklet-{booklet}",
+                        "statement_fingerprint": fingerprints.statement,
+                        "equivalence_fingerprint": fingerprints.invariant,
+                        "payload_json": _json(payload),
+                    }
+                )
+
+        grouped = _content_groupings(occurrences)  # type: ignore[arg-type]
+
+        self.assertEqual(len(grouped), 20_000)
+        self.assertEqual(len({fingerprint for fingerprint, _ in grouped.values()}), 5_000)
 
     def test_content_edit_blocks_a_confirmed_group_until_revalidation(self) -> None:
         fixture = SyntheticCatalog(self.root)

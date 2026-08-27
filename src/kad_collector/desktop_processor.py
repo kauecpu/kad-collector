@@ -7,6 +7,7 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
+from contextlib import closing
 from io import BytesIO
 from pathlib import Path
 from typing import Any, cast
@@ -571,6 +572,17 @@ class DesktopProcessor:
                     job_id, status="paused", message="Lote pausado; pronto para retomar"
                 )
                 return
+            self.store.update_job(
+                job_id,
+                status="running",
+                message="Organizando cópias e escolhendo as questões principais",
+            )
+            from .desktop_preparation import apply_desktop_preparation
+
+            with closing(self.store._connect()) as connection:
+                apply_desktop_preparation(
+                    connection, run_id=f"automatic-after-collection-{job_id}"
+                )
             self.store.update_job(
                 job_id,
                 status="completed",

@@ -108,7 +108,9 @@ function questionStatePresentation(view) {
           details: view?.answer_key_evidence || {},
         };
   const preparation = equivalence.status === 'confirmed' && equivalence.canonicalQuestionId
-    ? {state: 'Canônica', tone: 'success', reason: 'O grupo equivalente foi confirmado e possui representante canônica.', action: 'Nenhuma ação'}
+    ? equivalence.isRepresentative
+      ? {state: 'Principal', tone: 'success', reason: equivalence.hasStatementVariants ? 'Esta é a principal; questões realmente diferentes com o mesmo enunciado ficaram separadas.' : 'Esta é a cópia escolhida automaticamente para classificação e importação.', action: 'Nenhuma ação'}
+      : {state: 'Cópia preservada', tone: 'success', reason: 'A classificação será herdada da principal e esta cópia não será importada.', action: 'Consultar a principal nos detalhes'}
     : equivalence.groupId
       ? {state: 'Equivalência pendente', tone: 'attention', reason: 'A questão foi agrupada, mas o grupo ainda precisa de confirmação.', action: 'Revisar grupo equivalente'}
       : view?.canonical_identity
@@ -381,8 +383,9 @@ function renderPreparationPreview(preview) {
   grid.className = 'qwen-count-grid';
   [
     ['Questões coletadas', preview.rawQuestions || 0],
-    ['Ligadas e preparadas', preview.readyQuestions || 0],
+    ['Questões principais', preview.mainQuestions || preview.canonicalQuestions || 0],
     ['Cópias repetidas', preview.duplicateQuestions || 0],
+    ['Separadas por conflito', preview.conflictQuestions || 0],
     ['Unidades para o Qwen', preview.qwenEligible || 0],
     ['Questões cobertas', preview.qwenEligibleQuestions || 0],
     ['Cópias que herdam', preview.qwenInheritedCopies || 0],
@@ -1311,6 +1314,7 @@ function fillReviewForm() {
   byId('edit-correct-answer').disabled = question.answer_status !== 'matched';
   renderReviewFlags();
   renderQuestionStates();
+  renderEquivalenceDetails();
   renderImportDiagnosis();
   renderBatchCorrection();
   renderReviewContext();
@@ -1763,6 +1767,33 @@ async function reclassifyCollection() {
     await loadBootstrap({preserveQuery: false});
   } catch (error) { toast(error.message, 'error'); }
   finally { button.disabled = false; }
+}
+
+function renderEquivalenceDetails() {
+  const root = byId('equivalence-details');
+  root.replaceChildren();
+  const equivalence = state.currentQuestion?.question_equivalence;
+  if (!equivalence?.groupId) {
+    root.hidden = true;
+    return;
+  }
+  root.hidden = false;
+  const title = document.createElement('strong');
+  title.textContent = equivalence.isRepresentative
+    ? 'Esta é a cópia principal' : 'Esta é uma cópia repetida';
+  const summary = document.createElement('span');
+  const total = equivalence.occurrenceCount || equivalence.provenances?.length || 1;
+  summary.textContent = `${total} cópia(s) preservada(s). Somente a principal será importada.`;
+  root.append(title, summary);
+  const list = document.createElement('div');
+  list.className = 'equivalence-copy-list';
+  (equivalence.provenances || []).forEach((copy) => {
+    const item = document.createElement('small');
+    const isMain = copy.occurrenceId === equivalence.representativeOccurrenceId;
+    item.textContent = `${isMain ? 'Principal' : 'Cópia'} · ${copy.booklet || 'tipo não informado'} · questão ${copy.questionNumber} · ${copy.filename || 'documento preservado'}`;
+    list.append(item);
+  });
+  root.append(list);
 }
 
 function activateAnswerQueue(answerState, diagnosticCode = null) {

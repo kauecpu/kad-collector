@@ -349,6 +349,13 @@ Informações editoriais da banca.
             self.assertEqual(store.job(job_id)["status"], "completed")
             result = store.query(DesktopFilterSet())
             self.assertEqual(result["total"], 1)
+            with closing(store._connect()) as connection:
+                automatic_preparation = connection.execute(
+                    "SELECT COUNT(*) FROM question_equivalence_runs "
+                    "WHERE id=? AND status='completed'",
+                    (f"automatic-after-collection-{job_id}-equivalence",),
+                ).fetchone()[0]
+            self.assertEqual(automatic_preparation, 1)
             question = result["questions"][0]
             self.assertEqual(question["status"], "exception")
             self.assertIn("without_explanation", question["flags"])

@@ -10,19 +10,23 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from difflib import SequenceMatcher
+from itertools import permutations
 from typing import Any, Literal, cast
 
 from .canonical_identity import resolve_contest_alias
 from .semantic_identity import canonical_json, stable_sha256
 
-QUESTION_EQUIVALENCE_SCHEMA_VERSION = 1
-QUESTION_EQUIVALENCE_ALGORITHM_VERSION = "question-equivalence-v2"
+QUESTION_EQUIVALENCE_SCHEMA_VERSION = 3
+QUESTION_EQUIVALENCE_ALGORITHM_VERSION = "question-equivalence-v3"
 MigrationMode = Literal["dry-run", "apply"]
 GroupStatus = Literal[
     "candidate", "confirmed", "incomplete", "conflict", "needs_review", "rejected"
 ]
 
 _ALTERNATIVE_PREFIX = re.compile(r"^\s*[A-H]\s*[\)\.\-:]\s*", re.IGNORECASE)
+_QUESTION_PREFIX = re.compile(
+    r"^\s*(?:quest(?:ão|ao)|q\.?)[-_ ]*\d+\s*[\)\.\-:]?\s*", re.IGNORECASE
+)
 _PARSER_HEADER = re.compile(
     r"(?i)^\s*(?:concurso\s+p[uú]blico.*|.*\btipo\s+[1-9]\d*\s*[-–—]?\s*"
     r"p[aá]gina\s+\d+\s*)$"
@@ -115,11 +119,26 @@ def normalize_question_text(value: str, *, alternative: bool = False) -> str:
     normalized = " ".join(lines).casefold()
     if alternative:
         normalized = _ALTERNATIVE_PREFIX.sub("", normalized)
+    else:
+        normalized = _QUESTION_PREFIX.sub("", normalized)
     return normalized
+
+
+def _comparison_text(value: str, *, alternative: bool = False) -> str:
+    """Return a conservative matching key tolerant of spacing and punctuation OCR noise."""
+    normalized = unicodedata.normalize(
+        "NFKD", normalize_question_text(value, alternative=alternative)
+    )
+    return "".join(
+        character.casefold()
+        for character in normalized
+        if character.isalnum() and not unicodedata.combining(character)
+    )
 
 
 def question_fingerprints(payload: dict[str, Any]) -> QuestionFingerprints:
     statement = normalize_question_text(str(payload.get("statement") or ""))
+    comparable_statement = _comparison_text(str(payload.get("statement") or ""))
     alternatives_payload = payload.get("alternatives")
     alternatives = alternatives_payload if isinstance(alternatives_payload, list) else []
     ordered = tuple(
@@ -130,22 +149,27 @@ def question_fingerprints(payload: dict[str, Any]) -> QuestionFingerprints:
     exact = stable_sha256(
         {
             "algorithm": QUESTION_EQUIVALENCE_ALGORITHM_VERSION,
-            "statement": statement,
-            "alternatives": ordered,
+            "statement": comparable_statement,
+            "alternatives": tuple(_comparison_text(item, alternative=True) for item in ordered),
         }
     )
     invariant = stable_sha256(
         {
             "algorithm": QUESTION_EQUIVALENCE_ALGORITHM_VERSION,
-            "statement": statement,
-            "alternatives": sorted(ordered),
+            "statement": comparable_statement,
+            "alternatives": sorted(
+                _comparison_text(item, alternative=True) for item in ordered
+            ),
         }
     )
     return QuestionFingerprints(
         exact=exact,
         invariant=invariant,
         statement=stable_sha256(
-            {"algorithm": QUESTION_EQUIVALENCE_ALGORITHM_VERSION, "statement": statement}
+            {
+                "algorithm": QUESTION_EQUIVALENCE_ALGORITHM_VERSION,
+                "statement": comparable_statement,
+            }
         ),
         normalized_statement=statement,
         normalized_alternatives=ordered,
@@ -200,6 +224,7 @@ def initialize_question_equivalence_schema(connection: sqlite3.Connection) -> No
             legacy_duplicate INTEGER NOT NULL,
             occurrence_status TEXT NOT NULL,
             source_updated_at TEXT NOT NULL,
+            algorithm_version TEXT NOT NULL,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
@@ -223,6 +248,7 @@ def initialize_question_equivalence_schema(connection: sqlite3.Connection) -> No
             expected_occurrences INTEGER NOT NULL,
             occurrence_count INTEGER NOT NULL,
             representative_occurrence_id TEXT REFERENCES question_occurrences(id),
+            has_statement_variants INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
@@ -283,6 +309,24 @@ def initialize_question_equivalence_schema(connection: sqlite3.Connection) -> No
         BEGIN SELECT RAISE(ABORT, 'question equivalence events are append-only'); END;
         """
     )
+    occurrence_columns = {
+        cast(str, row["name"])
+        for row in connection.execute("PRAGMA table_info(question_occurrences)")
+    }
+    if "algorithm_version" not in occurrence_columns:
+        connection.execute(
+            "ALTER TABLE question_occurrences ADD COLUMN algorithm_version "
+            "TEXT NOT NULL DEFAULT 'legacy'"
+        )
+    group_columns = {
+        cast(str, row["name"])
+        for row in connection.execute("PRAGMA table_info(question_equivalence_groups)")
+    }
+    if "has_statement_variants" not in group_columns:
+        connection.execute(
+            "ALTER TABLE question_equivalence_groups ADD COLUMN "
+            "has_statement_variants INTEGER NOT NULL DEFAULT 0"
+        )
 
 
 def _answer_content(payload: dict[str, Any]) -> tuple[str | None, str | None]:
@@ -413,6 +457,7 @@ def sync_question_occurrence(
         "legacy_duplicate": int("duplicate" in flags),
         "occurrence_status": occurrence_status,
         "source_updated_at": row["updated_at"],
+        "algorithm_version": QUESTION_EQUIVALENCE_ALGORITHM_VERSION,
         "created_at": changed_at,
         "updated_at": changed_at,
     }
@@ -457,38 +502,241 @@ def _editorial_snapshot(row: sqlite3.Row) -> dict[str, Any]:
     payload = json.loads(cast(str, row["payload_json"]))
     return {
         name: payload.get(name)
-        for name in ("discipline", "matter", "subject", "level", "difficulty", "explanation")
+        for name in ("discipline", "matter", "subject", "level")
         if payload.get(name) not in {None, ""}
     }
+
+
+def _alternative_items(row: sqlite3.Row) -> list[tuple[str, str, bool]]:
+    payload = json.loads(cast(str, row["payload_json"]))
+    return [
+        (
+            normalize_question_text(str(item.get("text") or ""), alternative=True),
+            _comparison_text(str(item.get("text") or ""), alternative=True),
+            "\n" in str(item.get("text") or ""),
+        )
+        for item in payload.get("alternatives", [])
+        if isinstance(item, dict)
+    ]
+
+
+def _alternative_pair_score(left: tuple[str, str, bool], right: tuple[str, str, bool]) -> float:
+    if not left[1] or not right[1]:
+        return 0.0
+    return max(
+        SequenceMatcher(None, left[0], right[0]).ratio(),
+        SequenceMatcher(None, left[1], right[1]).ratio(),
+    )
+
+
+def _alternative_alignment(
+    left: Sequence[tuple[str, str, bool]],
+    right: Sequence[tuple[str, str, bool]],
+) -> list[tuple[int, int, float, float]]:
+    if len(left) != len(right) or not left:
+        return []
+    matrix: list[list[tuple[float, float]]] = []
+    for left_value in left:
+        row: list[tuple[float, float]] = []
+        for right_value in right:
+            score = _alternative_pair_score(left_value, right_value)
+            shorter, longer = sorted(
+                (left_value[1], right_value[1]), key=lambda value: (len(value), value)
+            )
+            containment = (
+                len(shorter) / len(longer)
+                if shorter and shorter in longer and len(longer) > 0
+                else 0.0
+            )
+            row.append((score, containment))
+        matrix.append(row)
+    best: list[tuple[int, int, float, float]] = []
+    best_rank: tuple[int, float, float] = (-1, -1.0, -1.0)
+    for order in permutations(range(len(right))):
+        matches = [
+            (left_index, right_index, *matrix[left_index][right_index])
+            for left_index, right_index in enumerate(order)
+        ]
+        rank = (
+            sum(score >= 0.94 for _, _, score, _ in matches),
+            min(score for _, _, score, _ in matches),
+            sum(score for _, _, score, _ in matches),
+        )
+        if rank > best_rank:
+            best_rank = rank
+            best = matches
+    return best
+
+
+def _alternatives_compatible(left: sqlite3.Row, right: sqlite3.Row) -> bool:
+    left_items = _alternative_items(left)
+    right_items = _alternative_items(right)
+    matches = _alternative_alignment(left_items, right_items)
+    if not matches:
+        return False
+    if all(score >= 0.90 for _, _, score, _ in matches):
+        return True
+    strong = [item for item in matches if item[2] >= 0.94]
+    weak = [item for item in matches if item[2] < 0.94]
+    if len(strong) < len(matches) - 1 or len(weak) != 1:
+        return False
+    left_index, right_index, score, containment = weak[0]
+    left_value = left_items[left_index]
+    right_value = right_items[right_index]
+    shortest_length = min(len(left_value[1]), len(right_value[1]))
+    extraction_evidence = (
+        left_value[2]
+        or right_value[2]
+        or max(len(left_value[1]), len(right_value[1]))
+        >= max(shortest_length * 1.35, shortest_length + 18)
+    )
+    if (
+        (left_value[2] or right_value[2])
+        and shortest_length >= 5
+        and containment >= 0.25
+    ):
+        return True
+    return bool(
+        len(matches) >= 4
+        and extraction_evidence
+        and shortest_length >= 8
+        and (score >= 0.72 or containment >= 0.45)
+    )
+
+
+def _mapped_answer_value(reference: sqlite3.Row, occurrence: sqlite3.Row) -> str | None:
+    answer = cast(str | None, occurrence["normalized_answer_text"])
+    if not answer:
+        return None
+    reference_items = _alternative_items(reference)
+    occurrence_items = _alternative_items(occurrence)
+    alignment = _alternative_alignment(occurrence_items, reference_items)
+    answer_key = _comparison_text(answer, alternative=True)
+    source_index = next(
+        (index for index, item in enumerate(occurrence_items) if item[1] == answer_key),
+        None,
+    )
+    if source_index is not None and alignment:
+        target_index = next(
+            (
+                right_index
+                for left_index, right_index, _, _ in alignment
+                if left_index == source_index
+            ),
+            None,
+        )
+        if target_index is not None:
+            return reference_items[target_index][1]
+    candidates = [
+        (_alternative_pair_score((answer, answer_key, False), item), item[1])
+        for item in reference_items
+    ]
+    if candidates:
+        score, value = max(candidates)
+        if score >= 0.90:
+            return value
+    return answer_key
+
+
+def _propagate_editorial_fields(
+    connection: sqlite3.Connection,
+    representative: sqlite3.Row,
+    occurrences: Sequence[sqlite3.Row],
+    *,
+    changed_at: str,
+) -> None:
+    representative_payload = json.loads(cast(str, representative["payload_json"]))
+    representative_classification = json.loads(
+        cast(str, representative["classification_json"])
+    )
+    classification_fields = {
+        "discipline": "discipline",
+        "matter": "subject",
+        "subject": "topic",
+        "level": "level",
+    }
+    inherited = {
+        name: representative_payload.get(name)
+        for name in classification_fields
+        if representative_payload.get(name) not in {None, ""}
+    }
+    if not inherited:
+        return
+    for occurrence in occurrences:
+        if occurrence["id"] == representative["id"]:
+            continue
+        payload = json.loads(cast(str, occurrence["payload_json"]))
+        classification = json.loads(cast(str, occurrence["classification_json"]))
+        before = (canonical_json(payload), canonical_json(classification))
+        for field_name, value in inherited.items():
+            payload[field_name] = value
+            classification_name = classification_fields[field_name]
+            representative_value = representative_classification.get(classification_name)
+            if representative_value is not None:
+                classification[classification_name] = representative_value
+        after = (canonical_json(payload), canonical_json(classification))
+        if before == after:
+            continue
+        connection.execute(
+            "UPDATE questions SET payload_json=?,classification_json=?,updated_at=? WHERE id=?",
+            (*after, changed_at, occurrence["question_id"]),
+        )
+        connection.execute(
+            "UPDATE question_occurrences SET payload_json=?,classification_json=?,"
+            "source_updated_at=?,updated_at=? WHERE id=?",
+            (*after, changed_at, changed_at, occurrence["id"]),
+        )
 
 
 def _representative(
     connection: sqlite3.Connection, occurrences: Sequence[sqlite3.Row]
 ) -> sqlite3.Row:
-    def rank(item: sqlite3.Row) -> tuple[int, int, int, int, int, str]:
-        details = connection.execute(
-            """
-            SELECT q.status AS question_status, d.status AS document_status,
-                   d.warnings_json, d.canonical_document_id,
-                   COALESCE(cd.canonical_key, d.id) AS canonical_key,
-                   key_version.answer_key_state
-            FROM questions q
-            JOIN documents d ON d.id = q.document_id
-            LEFT JOIN canonical_documents cd ON cd.id = d.canonical_document_id
-            LEFT JOIN document_links l ON l.id = q.answer_key_link_id
-            LEFT JOIN document_versions key_version ON key_version.id = l.answer_key_version_id
-            WHERE q.id = ?
-            """,
-            (item["question_id"],),
-        ).fetchone()
+    question_ids = [cast(str, item["question_id"]) for item in occurrences]
+    placeholders = ",".join("?" for _ in question_ids)
+    detail_rows = connection.execute(
+        f"""
+        SELECT q.id, q.status AS question_status, d.status AS document_status,
+               d.warnings_json, d.canonical_document_id,
+               COALESCE(cd.canonical_key, d.id) AS canonical_key,
+               key_version.answer_key_state
+        FROM questions q
+        JOIN documents d ON d.id = q.document_id
+        LEFT JOIN canonical_documents cd ON cd.id = d.canonical_document_id
+        LEFT JOIN document_links l ON l.id = q.answer_key_link_id
+        LEFT JOIN document_versions key_version ON key_version.id = l.answer_key_version_id
+        WHERE q.id IN ({placeholders})
+        """,  # noqa: S608
+        question_ids,
+    ).fetchall()
+    details_by_id = {cast(str, row["id"]): row for row in detail_rows}
+
+    def rank(item: sqlite3.Row) -> tuple[int, int, int, int, int, int, int, str, str]:
+        details = details_by_id[cast(str, item["question_id"])]
         warnings = json.loads(cast(str, details["warnings_json"]))
+        payload = json.loads(cast(str, item["payload_json"]))
+        alternatives = [
+            entry
+            for entry in payload.get("alternatives", [])
+            if isinstance(entry, dict) and str(entry.get("text") or "").strip()
+        ]
+        completeness = sum(
+            (
+                bool(str(payload.get("statement") or "").strip()),
+                len(alternatives) >= 2,
+                bool(payload.get("source_pages")),
+                item["answer_status"] in {"matched", "annulled"},
+            )
+        )
         return (
             0 if details["question_status"] in {"approved", "exported"} else 1,
             0 if details["answer_key_state"] == "definitive" else 1,
+            0 if item["answer_link_valid"] else 1,
+            0 if item["occurrence_status"] == "ready" else 1,
+            -completeness,
             0 if details["document_status"] in {"extracted", "processed"} else 1,
             len(warnings),
-            0 if details["canonical_document_id"] else 1,
             cast(str, details["canonical_key"]),
+            cast(str, item["question_id"]),
         )
 
     return sorted(occurrences, key=rank)[0]
@@ -546,6 +794,7 @@ def _upsert_group(
 ) -> tuple[str, GroupStatus, bool, bool]:
     first = occurrences[0]
     boundary = _boundary(first)
+    representative = _representative(connection, occurrences)
     expected_booklets = _expected_booklets(connection, boundary)
     present_booklets = tuple(
         sorted(cast(str, item["booklet_id"]) for item in occurrences if item["booklet_id"])
@@ -555,9 +804,9 @@ def _upsert_group(
     answer_statuses = {cast(str, item["answer_status"]) for item in occurrences}
     valid_answers = all(bool(item["answer_link_valid"]) for item in occurrences)
     answer_values = {
-        cast(str, item["normalized_answer_text"])
+        mapped
         for item in occurrences
-        if item["normalized_answer_text"]
+        if (mapped := _mapped_answer_value(representative, item)) is not None
     }
     answer_conflict = len(answer_values) > 1 or (
         len(answer_statuses) > 1 and "missing" not in answer_statuses
@@ -571,30 +820,33 @@ def _upsert_group(
     classification_conflict = len(snapshots) > 1
     coverage_incomplete = set(present_booklets) != set(expected_booklets)
     status: GroupStatus = "confirmed"
-    reason = "ocorrências cobrem os cadernos esperados com conteúdo e resposta compatíveis"
-    if statement_collision or duplicate_booklet or answer_conflict or classification_conflict:
+    reason_parts = [
+        "conteúdo e resposta são compatíveis; cópia principal escolhida automaticamente"
+    ]
+    if statement_collision:
+        reason_parts.append("outras questões com o mesmo enunciado foram mantidas separadas")
+    if coverage_incomplete:
+        reason_parts.append("nem todos os tipos possuem esta questão")
+    if classification_conflict:
+        reason_parts.append("a classificação da cópia principal prevalece")
+    reason = "; ".join(reason_parts)
+    if duplicate_booklet or answer_conflict:
         status = "conflict"
         reasons = []
-        if statement_collision:
-            reasons.append("mesmo enunciado possui conjuntos de alternativas diferentes")
         if duplicate_booklet:
             reasons.append("mais de uma ocorrência pertence ao mesmo caderno")
         if answer_conflict:
             reasons.append("respostas oficiais apontam para conteúdos diferentes")
-        if classification_conflict:
-            reasons.append("classificações editoriais divergem")
         reason = "; ".join(reasons)
     elif content_problem:
         status = "needs_review"
         reason = "uma ocorrência possui escopo, conteúdo ou recurso visual incompleto"
-    elif coverage_incomplete or answer_incomplete:
+    elif answer_incomplete:
         status = "incomplete"
-        reasons = []
-        if coverage_incomplete:
-            reasons.append("grupo não cobre todos os cadernos esperados")
-        if answer_incomplete:
-            reasons.append("resposta oficial ativa está ausente ou incompleta")
-        reason = "; ".join(reasons)
+        reason = "resposta oficial ativa está ausente ou incompleta"
+    _propagate_editorial_fields(
+        connection, representative, occurrences, changed_at=changed_at
+    )
     canonical_key = ":".join((*boundary, grouping_fingerprint))
     group_id = _stable_id("question-equivalence-group", canonical_key)
     old = connection.execute(
@@ -602,19 +854,20 @@ def _upsert_group(
         "WHERE id = ?",
         (group_id,),
     ).fetchone()
-    representative = _representative(connection, occurrences)
     connection.execute(
         """
         INSERT INTO question_equivalence_groups (
             id, canonical_key, algorithm_version, equivalence_fingerprint,
             statement_fingerprint, contest_id, application_id, role_id, stage_id,
             shift_id, content_kind, status, reason, expected_occurrences,
-            occurrence_count, representative_occurrence_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            occurrence_count, representative_occurrence_id, has_statement_variants,
+            created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET status=excluded.status, reason=excluded.reason,
             expected_occurrences=excluded.expected_occurrences,
             occurrence_count=excluded.occurrence_count,
             representative_occurrence_id=excluded.representative_occurrence_id,
+            has_statement_variants=excluded.has_statement_variants,
             updated_at=excluded.updated_at
         """,
         (
@@ -629,6 +882,7 @@ def _upsert_group(
             len(expected_booklets),
             len(occurrences),
             representative["id"],
+            int(statement_collision),
             changed_at,
             changed_at,
         ),
@@ -759,85 +1013,73 @@ def _upsert_group(
     return group_id, status, answer_conflict, classification_conflict
 
 
-def _answer_consensus_fingerprints(
-    connection: sqlite3.Connection,
+def _content_groupings(
     occurrences: Sequence[sqlite3.Row],
-) -> dict[str, str]:
-    def alternatives_compatible(left: sqlite3.Row, right: sqlite3.Row) -> bool:
-        def alternatives(row: sqlite3.Row) -> list[tuple[str, bool]]:
-            payload = json.loads(cast(str, row["payload_json"]))
-            return [
-                (
-                    normalize_question_text(str(item.get("text") or ""), alternative=True),
-                    "\n" in str(item.get("text") or ""),
-                )
-                for item in payload.get("alternatives", [])
-                if isinstance(item, dict)
-            ]
-
-        left_items = alternatives(left)
-        right_items = alternatives(right)
-        if len(left_items) != len(right_items) or not left_items:
-            return False
-        common = {item[0] for item in left_items} & {item[0] for item in right_items}
-        if len(common) == len(left_items):
-            return True
-        if len(common) != len(left_items) - 1:
-            return False
-        left_only = [item for item in left_items if item[0] not in common]
-        right_only = [item for item in right_items if item[0] not in common]
-        return bool(
-            len(left_only) == len(right_only) == 1
-            and (left_only[0][1] or right_only[0][1])
-            and (left_only[0][0] in right_only[0][0] or right_only[0][0] in left_only[0][0])
-        )
-
-    candidates: dict[tuple[tuple[str, str, str, str, str, str], str], list[sqlite3.Row]] = (
-        defaultdict(list)
-    )
+) -> dict[str, tuple[str, str]]:
+    """Cluster exact and extraction-noisy copies without comparing unrelated questions."""
+    statement_buckets: dict[
+        tuple[tuple[str, str, str, str, str, str], str], list[sqlite3.Row]
+    ] = defaultdict(list)
     for occurrence in occurrences:
-        answer_text = cast(str | None, occurrence["normalized_answer_text"])
-        if occurrence["answer_status"] != "matched" or not answer_text:
-            continue
-        candidates[(_boundary(occurrence), answer_text)].append(occurrence)
-    consensus: dict[str, str] = {}
-    for (boundary, answer_text), members in candidates.items():
-        expected_booklets = set(_expected_booklets(connection, boundary))
-        present_booklets = [cast(str, item["booklet_id"]) for item in members]
-        if (
-            len(members) < 2
-            or len(members) != len(expected_booklets)
-            or set(present_booklets) != expected_booklets
-            or len(present_booklets) != len(set(present_booklets))
-            or not all(item["occurrence_status"] == "ready" for item in members)
-            or not all(bool(item["answer_link_valid"]) for item in members)
-        ):
-            continue
-        statements = [
-            normalize_question_text(
-                str(json.loads(cast(str, item["payload_json"])).get("statement") or "")
-            )
-            for item in members
+        statement_buckets[
+            (_boundary(occurrence), cast(str, occurrence["statement_fingerprint"]))
+        ].append(occurrence)
+
+    result: dict[str, tuple[str, str]] = {}
+    for (_, statement_fingerprint), members in sorted(statement_buckets.items()):
+        exact: dict[str, list[sqlite3.Row]] = defaultdict(list)
+        for occurrence in members:
+            exact[cast(str, occurrence["equivalence_fingerprint"])].append(occurrence)
+        clusters = [
+            sorted(group, key=lambda item: cast(str, item["id"]))
+            for _, group in sorted(exact.items())
         ]
-        minimum_similarity = min(
-            SequenceMatcher(None, left, right).ratio()
-            for index, left in enumerate(statements)
-            for right in statements[index + 1 :]
-        )
-        if minimum_similarity < 0.90:
-            continue
-        if not all(alternatives_compatible(members[0], item) for item in members[1:]):
-            continue
-        fingerprint = "answer-consensus:" + stable_sha256(
-            {
-                "boundary": boundary,
-                "answer": answer_text,
-                "statements": sorted(cast(str, item["statement_fingerprint"]) for item in members),
-            }
-        )
-        for item in members:
-            consensus[cast(str, item["id"])] = fingerprint
-    return consensus
+        merged = True
+        while merged:
+            merged = False
+            for left_index, left in enumerate(clusters):
+                left_booklets = {cast(str, item["booklet_id"]) for item in left}
+                for right_index in range(left_index + 1, len(clusters)):
+                    right = clusters[right_index]
+                    right_booklets = {cast(str, item["booklet_id"]) for item in right}
+                    if left_booklets & right_booklets:
+                        continue
+                    if not all(
+                        _alternatives_compatible(left_item, right_item)
+                        for left_item in left
+                        for right_item in right
+                    ):
+                        continue
+                    clusters[left_index] = sorted(
+                        [*left, *right], key=lambda item: cast(str, item["id"])
+                    )
+                    del clusters[right_index]
+                    merged = True
+                    break
+                if merged:
+                    break
+        for cluster in clusters:
+            fingerprints = sorted(
+                {cast(str, item["equivalence_fingerprint"]) for item in cluster}
+            )
+            if len(fingerprints) == 1:
+                grouping_fingerprint = fingerprints[0]
+                relation_type = "deterministic_fingerprint"
+            else:
+                grouping_fingerprint = "normalized-content:" + stable_sha256(
+                    {
+                        "algorithm": QUESTION_EQUIVALENCE_ALGORITHM_VERSION,
+                        "statement": statement_fingerprint,
+                        "contentFingerprints": fingerprints,
+                    }
+                )
+                relation_type = "normalized_content"
+            for occurrence in cluster:
+                result[cast(str, occurrence["id"])] = (
+                    grouping_fingerprint,
+                    relation_type,
+                )
+    return result
 
 
 def rebuild_equivalence_groups(
@@ -868,33 +1110,32 @@ def rebuild_equivalence_groups(
             for name in ("contest_id", "application_id", "role_id", "stage_id", "shift_id")
         )
     ]
-    answer_consensus = _answer_consensus_fingerprints(connection, eligible)
+    content_groupings = _content_groupings(eligible)
     statement_groups: dict[tuple[tuple[str, ...], str], set[str]] = defaultdict(set)
     grouped: dict[tuple[tuple[str, ...], str], list[sqlite3.Row]] = defaultdict(list)
+    relation_types: dict[tuple[tuple[str, ...], str], str] = {}
     for occurrence in eligible:
         boundary: tuple[str, ...] = _boundary(occurrence)
-        equivalence = answer_consensus.get(
+        equivalence, relation_type = content_groupings.get(
             cast(str, occurrence["id"]),
-            cast(str, occurrence["equivalence_fingerprint"]),
+            (
+                cast(str, occurrence["equivalence_fingerprint"]),
+                "deterministic_fingerprint",
+            ),
         )
         statement = cast(str, occurrence["statement_fingerprint"])
         grouped[(boundary, equivalence)].append(occurrence)
+        relation_types[(boundary, equivalence)] = relation_type
         statement_groups[(boundary, statement)].add(equivalence)
     totals: Counter[str] = Counter()
     conflicts: list[dict[str, Any]] = []
     for (boundary, grouping_fingerprint), members in sorted(
         grouped.items(), key=lambda item: item[0]
     ):
-        relation_type = (
-            "statement_answer_consensus"
-            if grouping_fingerprint.startswith("answer-consensus:")
-            else "deterministic_fingerprint"
-        )
-        collision = (
-            relation_type == "deterministic_fingerprint"
-            and len(statement_groups[(boundary, cast(str, members[0]["statement_fingerprint"]))])
-            > 1
-        )
+        relation_type = relation_types[(boundary, grouping_fingerprint)]
+        collision = len(
+            statement_groups[(boundary, cast(str, members[0]["statement_fingerprint"]))]
+        ) > 1
         group_id, status, answer_conflict, classification_conflict = _upsert_group(
             connection,
             run_id=run_id,
@@ -951,11 +1192,18 @@ def _measure_before(connection: sqlite3.Connection, contest_id: str | None) -> t
 
 def _pending_questions(connection: sqlite3.Connection, contest_id: str | None) -> list[str]:
     clause = "" if contest_id is None else "AND d.canonical_contest_id = ?"
-    parameters: tuple[str, ...] = () if contest_id is None else (contest_id,)
+    parameters = (
+        (QUESTION_EQUIVALENCE_ALGORITHM_VERSION,)
+        if contest_id is None
+        else (QUESTION_EQUIVALENCE_ALGORITHM_VERSION, contest_id)
+    )
     rows = connection.execute(
         "SELECT q.id FROM questions q JOIN documents d ON d.id = q.document_id "
         "LEFT JOIN question_occurrences o ON o.question_id = q.id "
-        "WHERE (o.id IS NULL OR o.source_updated_at != q.updated_at) " + clause + " ORDER BY q.id",
+        "WHERE (o.id IS NULL OR o.source_updated_at != q.updated_at "
+        "OR o.algorithm_version != ?) "
+        + clause
+        + " ORDER BY q.id",
         parameters,
     ).fetchall()
     return [cast(str, row["id"]) for row in rows]
@@ -1116,6 +1364,7 @@ def question_equivalence_view(
         """
         SELECT o.id AS occurrence_id, g.id AS group_id, g.status AS group_status,
                g.reason, g.expected_occurrences, g.occurrence_count,
+               g.has_statement_variants,
                cq.id AS canonical_question_id, cq.representative_occurrence_id,
                cq.canonical_answer_text, cq.editorial_status, cq.editorial_version,
                NOT EXISTS (
@@ -1198,8 +1447,13 @@ def question_equivalence_view(
         "reason": row["reason"],
         "expectedOccurrences": row["expected_occurrences"],
         "occurrenceCount": row["occurrence_count"],
+        "hasStatementVariants": bool(row["has_statement_variants"]),
         "canonicalQuestionId": row["canonical_question_id"],
         "representativeOccurrenceId": row["representative_occurrence_id"],
+        "isRepresentative": bool(
+            row["occurrence_id"]
+            and row["occurrence_id"] == row["representative_occurrence_id"]
+        ),
         "canonicalAnswerText": row["canonical_answer_text"],
         "editorialStatus": row["editorial_status"],
         "editorialVersion": row["editorial_version"],

@@ -2829,7 +2829,7 @@ class DesktopStore:
             else [
                 view
                 for view in all_views
-                if not view.get("question_equivalence")
+                if not (view.get("question_equivalence") or {}).get("groupId")
                 or view["question_equivalence"].get("isRepresentative")
             ]
         )
@@ -2920,6 +2920,7 @@ class DesktopStore:
                            qeg.reason AS equivalence_reason,
                            qeg.expected_occurrences AS equivalence_expected_occurrences,
                            qeg.occurrence_count AS equivalence_occurrence_count,
+                           qeg.has_statement_variants AS equivalence_has_statement_variants,
                            cq.id AS canonical_question_id,
                            COALESCE(cq.representative_occurrence_id,
                                     qeg.representative_occurrence_id)
@@ -3016,6 +3017,9 @@ class DesktopStore:
                     "equivalence_expected_occurrences", None
                 ),
                 "occurrenceCount": payload.pop("equivalence_occurrence_count", None),
+                "hasStatementVariants": bool(
+                    payload.pop("equivalence_has_statement_variants", False)
+                ),
                 "canonicalQuestionId": payload.pop("canonical_question_id", None),
                 "representativeOccurrenceId": representative_id,
                 "isRepresentative": bool(
@@ -3055,13 +3059,13 @@ class DesktopStore:
             document_warnings=warnings,
             semantic_resolution=cast(str | None, payload.get("semantic_resolution")),
         )
-        import_issues = [item.what for item in import_diagnosis.issues]
+        diagnosis_issues = list(import_diagnosis.issues)
         origin_issues = [
-            item.what for item in import_diagnosis.issues if item.code == "unproved_origin"
+            item.what for item in diagnosis_issues if item.code == "unproved_origin"
         ]
         duplicate_issues = [
             item.what
-            for item in import_diagnosis.issues
+            for item in diagnosis_issues
             if item.code == "unresolved_duplicate"
         ]
         canonical_duplicate = bool(
@@ -3080,13 +3084,51 @@ class DesktopStore:
         )
         if canonical_duplicate:
             duplicate_issues = []
+            diagnosis_issues = [
+                item for item in diagnosis_issues if item.code != "unresolved_duplicate"
+            ]
+        equivalence_issue: dict[str, Any] | None = None
+        if equivalence is not None and not equivalence_ready:
+            equivalence_issue = {
+                "code": "unresolved_duplicate",
+                "what": (
+                    "Cópia repetida preservada"
+                    if equivalence["status"] == "confirmed"
+                    and not equivalence["isRepresentative"]
+                    else "Agrupamento de cópias ainda não confirmado"
+                ),
+                "why": (
+                    "Somente a cópia principal entra no app; esta cópia continua no banco "
+                    "como evidência."
+                    if equivalence["status"] == "confirmed"
+                    and not equivalence["isRepresentative"]
+                    else str(equivalence.get("reason") or "As evidências ainda divergem.")
+                ),
+                "how_to_resolve": (
+                    "Abra os detalhes da cópia principal."
+                    if equivalence["status"] == "confirmed"
+                    and not equivalence["isRepresentative"]
+                    else "Revise apenas este grupo; as demais questões continuam normalmente."
+                ),
+                "source_document": source_document,
+                "missing": [],
+            }
+        effective_diagnosis_issues = [
+            item.model_dump(mode="json") for item in diagnosis_issues
+        ]
+        if equivalence_issue is not None:
+            effective_diagnosis_issues.append(equivalence_issue)
+        effective_importable = not effective_diagnosis_issues
+        import_issues = [
+            cast(str, item["what"]) for item in effective_diagnosis_issues
+        ]
         publication_issues = [
             *validate_editorial_question(question_record),
             *origin_issues,
             *duplicate_issues,
             *([] if equivalence_ready else ["equivalência canônica exige revalidação"]),
         ]
-        readiness_states = ["importable" if import_diagnosis.importable else "blocked"]
+        readiness_states = ["importable" if effective_importable else "blocked"]
         if any(
             not str(question.get(field_name) or "").strip()
             for field_name in ("discipline", "matter", "subject")
@@ -3099,10 +3141,15 @@ class DesktopStore:
                 "flags": flags,
                 "metadata": metadata,
                 "document_warnings": warnings,
-                "importable": import_diagnosis.importable,
+                "importable": effective_importable,
                 "import_issues": list(dict.fromkeys(import_issues)),
-                "import_diagnosis": import_diagnosis.model_dump(mode="json"),
-                "block_reasons": [item.code for item in import_diagnosis.issues],
+                "import_diagnosis": {
+                    "importable": effective_importable,
+                    "issues": effective_diagnosis_issues,
+                },
+                "block_reasons": [
+                    cast(str, item["code"]) for item in effective_diagnosis_issues
+                ],
                 "readiness_states": readiness_states,
                 "publication_ready": not publication_issues,
                 "publication_issues": list(dict.fromkeys(publication_issues)),
