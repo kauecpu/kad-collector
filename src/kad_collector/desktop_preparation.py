@@ -106,10 +106,29 @@ def _single(values: Mapping[str, list[Any]], field: str) -> Any | None:
     return items[0] if len(items) == 1 else None
 
 
+def _year_or_none(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        year = value
+    elif isinstance(value, str) and value.strip().isdigit():
+        year = int(value.strip())
+    else:
+        return None
+    return year if 1900 <= year <= 2100 else None
+
+
 def _exam_context(row: sqlite3.Row) -> tuple[_ExamContext | None, list[str]]:
     decision = json.loads(cast(str, row["decision_json"]))
     values = _comparison_values(decision, cast(str, row["key_version_id"]))
-    missing = [field for field in _REQUIRED_CONTEXT_FIELDS if _single(values, field) is None]
+    year = _year_or_none(_single(values, "year"))
+    missing = [
+        field
+        for field in _REQUIRED_CONTEXT_FIELDS
+        if field != "year" and _single(values, field) is None
+    ]
+    if year is None:
+        missing.append("year")
     interval = values.get("interval", [])
     if len(interval) != 2 or not all(isinstance(value, int) for value in interval):
         missing.append("interval")
@@ -117,8 +136,6 @@ def _exam_context(row: sqlite3.Row) -> tuple[_ExamContext | None, list[str]]:
         return None, missing
     exam_metadata = json.loads(cast(str, row["exam_metadata_json"]))
     key_metadata = json.loads(cast(str, row["key_metadata_json"]))
-    year = _single(values, "year")
-    assert isinstance(year, int)
     return (
         _ExamContext(
             exam_document_id=cast(str, row["exam_document_id"]),
@@ -142,7 +159,7 @@ def _exam_context(row: sqlite3.Row) -> tuple[_ExamContext | None, list[str]]:
             key_sha256=cast(str, row["key_sha256"]),
             board=str(_single(values, "board")),
             contest=str(_single(values, "concurso")),
-            year=year,
+            year=cast(int, year),
             role=str(_single(values, "role")),
             stage=str(_single(values, "stage")),
             turn=str(_single(values, "turn")),
