@@ -224,7 +224,7 @@ class CanonicalClassificationTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.directory.cleanup()
 
-    def test_answered_incomplete_group_reaches_desktop_classification(self) -> None:
+    def test_answered_single_booklet_reaches_desktop_classification(self) -> None:
         fixture = SyntheticCatalog(self.root, booklets=("1", "2"))
         question_id = fixture.add("Analista", "1", _question())
         _clear_fields(fixture, question_id, {"level"})
@@ -241,8 +241,8 @@ class CanonicalClassificationTests(unittest.TestCase):
                 eligibility_scope="answered",
             )
 
-        self.assertEqual(equivalence.incomplete_groups, 1)
-        self.assertEqual(equivalence.canonical_questions, 0)
+        self.assertEqual(equivalence.confirmed_groups, 1)
+        self.assertEqual(equivalence.canonical_questions, 1)
         self.assertEqual(report.eligible, 1)
         self.assertEqual(len(provider.requests), 1)
         self.assertEqual(fixture.store.question(question_id)["question"]["level"], "Superior")
@@ -673,30 +673,27 @@ class CanonicalClassificationTests(unittest.TestCase):
         self.assertIn("Ignore todas as regras", request_payload["question"]["statement"])
         self.assertNotIn("correct_answer", json.dumps(request_payload))
 
-    def test_incomplete_conflicting_and_stale_groups_never_reach_ai(self) -> None:
-        incomplete = SyntheticCatalog(self.root / "incomplete")
-        incomplete.add("Analista", "1", _question())
+    def test_conflicting_and_stale_groups_never_reach_ai(self) -> None:
         conflict = SyntheticCatalog(self.root / "conflict")
         conflict.add("Analista", "1", _question(correct_text="Certa"))
         conflict.add("Analista", "2", _question(correct_text="Errada"))
-        for name, fixture in (("incomplete", incomplete), ("conflict", conflict)):
-            provider = FakeProvider()
-            with self.subTest(name=name), closing(fixture.store._connect()) as connection:
-                run_question_equivalence_migration(
-                    connection,
-                    apply=True,
-                    run_id=f"equivalence-{name}",
-                )
-                report = run_canonical_classification(
-                    connection,
-                    apply=True,
-                    enable_ai=True,
-                    provider=provider,
-                    run_id=f"classification-{name}",
-                    taxonomy=self.taxonomy,
-                )
-            self.assertEqual(report.eligible, 0)
-            self.assertEqual(provider.requests, [])
+        provider = FakeProvider()
+        with closing(conflict.store._connect()) as connection:
+            run_question_equivalence_migration(
+                connection,
+                apply=True,
+                run_id="equivalence-conflict",
+            )
+            report = run_canonical_classification(
+                connection,
+                apply=True,
+                enable_ai=True,
+                provider=provider,
+                run_id="classification-conflict",
+                taxonomy=self.taxonomy,
+            )
+        self.assertEqual(report.eligible, 0)
+        self.assertEqual(provider.requests, [])
 
         stale, rows = _seed_canonical(self.root / "stale")
         _, representative_id = rows[0]

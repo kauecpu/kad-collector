@@ -108,19 +108,22 @@ Os mesmos estados aparecem na lista, na revisão e na prévia de exportação.
 O Qwen pode sugerir somente a classificação editorial; ele não cria, completa nem confirma
 respostas oficiais e por isso nunca aparece como ação para uma pendência de gabarito.
 
-O botão **Preparar questões para classificação** usa apenas evidências já salvas no banco.
-Ele identifica as provas com vínculo ativo de gabarito, separa os cadernos por cargo, etapa,
-turno e tipo, reúne cópias pelo conteúdo e escolhe uma ocorrência principal. A preparação
+Ao concluir uma coleta, o Collector prepara automaticamente as questões usando apenas evidências
+já salvas no banco. O botão **Preparar questões para classificação** permite repetir essa operação
+de forma segura. Ela identifica as provas com vínculo ativo de gabarito, separa os cadernos por
+cargo, etapa, turno e tipo, reúne cópias pelo conteúdo e escolhe uma ocorrência principal. A preparação
 mantém separados dois estados: uma unidade pode receber classificação mesmo quando sua
 equivalência ainda exige revisão; somente a importação depende da confirmação canônica. O
 painel mostra quantas questões o Qwen cobre, quantas chamadas são necessárias e quantas cópias
 herdarão a classificação. A prévia não grava dados e a confirmação não executa o modelo.
 
-O Collector aceita uma equivalência automática quando o conteúdo normalizado coincide. Ele
-também tolera um cabeçalho capturado no fim de uma alternativa quando o contexto, os cadernos,
-o enunciado e o texto da resposta oficial confirmam a mesma questão. Qualquer conflito fica na
-revisão. Nos casos de associação duvidosa, o usuário pode abrir uma questão da prova, corrigir
-cargo, etapa, turno ou tipo e executar a preparação outra vez.
+O Collector ignora número, letra e ordem das alternativas ao comparar cópias. Também tolera
+espaçamento, pontuação e pequenos resíduos de extração, mas mantém alternativas realmente
+diferentes em grupos separados. O gabarito é comparado pelo texto da resposta, não pela letra.
+A cópia principal é escolhida por evidência oficial, vínculo válido, integridade e avisos; o mesmo
+banco sempre produz a mesma escolha enquanto os dados não mudarem. As cópias ficam consultáveis
+nos detalhes, herdam a classificação editorial e não aparecem na fila normal nem na importação.
+Uma questão que não exista em todos os tipos continua válida e não bloqueia as demais.
 
 A aba **Coletar links** permite escolher uma fonte cadastrada e informar a pagina especifica
 de um concurso, exame ou ano. A coleta roda em segundo plano, valida o host, respeita

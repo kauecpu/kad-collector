@@ -17,7 +17,7 @@ from .question_equivalence import (
 )
 from .semantic_identity import canonical_json
 
-DESKTOP_PREPARATION_ALGORITHM_VERSION = "desktop-preparation-v2"
+DESKTOP_PREPARATION_ALGORITHM_VERSION = "desktop-preparation-v3"
 
 _REQUIRED_CONTEXT_FIELDS = (
     "board",
@@ -512,6 +512,12 @@ def _summary(connection: sqlite3.Connection) -> dict[str, Any]:
           (SELECT COALESCE(SUM(g.occurrence_count - 1),0)
              FROM question_equivalence_groups g
              WHERE g.status='confirmed') AS duplicate_occurrences,
+          (SELECT COUNT(*) FROM question_equivalence_groups
+             WHERE status IN ('conflict','needs_review')
+                OR (status='confirmed' AND has_statement_variants=1)) AS conflict_groups,
+          (SELECT COALESCE(SUM(occurrence_count),0) FROM question_equivalence_groups
+             WHERE status IN ('conflict','needs_review')
+                OR (status='confirmed' AND has_statement_variants=1)) AS conflict_occurrences,
           (SELECT COUNT(*) FROM question_equivalence_review_queue
              WHERE status='pending') AS group_reviews
         """
@@ -540,8 +546,11 @@ def _summary(connection: sqlite3.Connection) -> dict[str, Any]:
         "occurrences": occurrences,
         "confirmedGroups": int(row["confirmed_groups"]),
         "canonicalQuestions": canonical,
+        "mainQuestions": canonical,
         "readyQuestions": prepared_question_ids,
         "duplicateQuestions": int(row["duplicate_occurrences"]),
+        "conflictGroups": int(row["conflict_groups"]),
+        "conflictQuestions": int(row["conflict_occurrences"]),
         "pendingQuestions": max(raw - prepared_question_ids, 0),
         "qwenEligible": classification_coverage["classificationUnits"],
         "qwenEligibleQuestions": classification_coverage["eligibleQuestions"],
