@@ -776,7 +776,8 @@ class DesktopStore:
                     (SELECT COUNT(*) FROM documents
                      WHERE status IN ('failed', 'exception')) AS documents_blocked,
                     (SELECT COUNT(*) FROM questions) AS raw_questions,
-                    (SELECT COUNT(*) FROM question_occurrences) AS occurrences,
+                    (SELECT COUNT(*) FROM question_occurrences
+                     WHERE scope_id IS NOT NULL) AS occurrences,
                     (SELECT COUNT(*) FROM question_equivalence_groups) AS groups_total,
                     (SELECT COUNT(*) FROM question_equivalence_groups
                      WHERE status = 'confirmed') AS groups_confirmed,
@@ -2810,15 +2811,24 @@ class DesktopStore:
                 ).fetchall()
             )
 
-    def query(self, filters: DesktopFilterSet) -> dict[str, Any]:
+    def query(
+        self,
+        filters: DesktopFilterSet,
+        *,
+        include_equivalent_copies: bool = False,
+    ) -> dict[str, Any]:
         rows = self._all_question_rows()
         all_views = [self._question_view(row) for row in rows]
-        views = [
-            view
-            for view in all_views
-            if not view.get("question_equivalence")
-            or view["question_equivalence"].get("isRepresentative")
-        ]
+        views = (
+            all_views
+            if include_equivalent_copies
+            else [
+                view
+                for view in all_views
+                if not view.get("question_equivalence")
+                or view["question_equivalence"].get("isRepresentative")
+            ]
+        )
         selected = [view for view in views if self._matches(view, filters)]
         return {
             "questions": selected,

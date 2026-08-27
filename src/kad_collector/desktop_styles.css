@@ -416,6 +416,22 @@ label { display: grid; gap: 6px; color: #5f596b; font-size: 10px; font-weight: 7
 .preparation-steps article span { font-size: 13px; font-weight: 800; }
 .preparation-steps article small { color: var(--muted); font-size: 11px; }
 .preparation-steps > i { color: var(--subtle); font-style: normal; }
+.preparation-heading-action { display: grid; justify-items: end; gap: 12px; }
+.preparation-heading-action .button { width: max-content; }
+.preparation-result-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-top: 10px; }
+.preparation-result-grid article { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; background: #faf7f2; border: 1px solid var(--line); border-radius: 11px; }
+.preparation-result-grid span { color: var(--muted); font-size: 11px; font-weight: 750; }
+.preparation-result-grid strong { color: var(--purple-dark); font: 800 20px/1 "Consolas", monospace; }
+.preparation-review-list { display: grid; gap: 8px; margin-top: 12px; }
+.preparation-review-heading, .preparation-review-list article { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.preparation-review-heading { padding: 11px 13px; color: var(--warning); background: var(--warning-soft); border-radius: 10px; }
+.preparation-review-heading strong, .preparation-review-heading span, .preparation-review-list article strong, .preparation-review-list article span, .preparation-review-list article small { display: block; }
+.preparation-review-heading span, .preparation-review-list article span { font-size: 10px; }
+.preparation-review-list article { padding: 12px 13px; border: 1px solid var(--line); border-radius: 11px; }
+.preparation-review-list article > div { min-width: 0; }
+.preparation-review-list article strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.preparation-review-list article span { margin-top: 3px; color: var(--warning); }
+.preparation-review-list article small { margin-top: 3px; color: var(--muted); font-size: 9px; }
 .plain-warning { max-width: none !important; margin-top: 14px !important; padding: 12px 14px; color: #6f4618 !important; background: var(--warning-soft); border-left: 4px solid var(--warning); border-radius: 8px; font-weight: 700; }
 .safety-note { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 10px; min-width: 390px; padding: 14px; color: #3e2d55; background: var(--purple-soft); border-radius: 12px; font-size: 12px; }
 .safety-note strong { color: var(--purple-dark); }
@@ -461,6 +477,7 @@ label { display: grid; gap: 6px; color: #5f596b; font-size: 10px; font-weight: 7
   .source-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .journey { grid-template-columns: repeat(5, minmax(150px, 1fr)); overflow-x: auto; }
   .preparation-steps { grid-template-columns: 1fr 1fr; }
+  .preparation-result-grid { grid-template-columns: 1fr; }
   .preparation-steps > i { display: none; }
 }
 
@@ -501,6 +518,7 @@ label { display: grid; gap: 6px; color: #5f596b; font-size: 10px; font-weight: 7
   .qwen-job-strip { grid-template-columns: 1fr; }
   .qwen-job-actions { justify-content: flex-start; }
   .database-banner, .flow-section > header, .qwen-explainer, .export-callout { display: grid; }
+  .preparation-heading-action { justify-items: start; }
   .database-banner { grid-template-columns: 1fr; }
   .database-banner code { white-space: normal; overflow-wrap: anywhere; }
   .journey { grid-template-columns: repeat(5, minmax(145px, 1fr)); }

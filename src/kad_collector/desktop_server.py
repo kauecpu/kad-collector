@@ -37,6 +37,7 @@ from .desktop_ollama_classification import (
     DEFAULT_BATCH_LIMIT,
     DesktopOllamaClassificationManager,
 )
+from .desktop_preparation import DesktopPreparationManager
 from .desktop_processor import DesktopProcessor
 from .desktop_store import DesktopStore
 from .document_pipeline import DocumentPipeline
@@ -131,11 +132,14 @@ class DesktopApplication:
             self.processor,
             self.pipeline,
         )
+        self.preparation = DesktopPreparationManager(self.store)
         self.ollama_classification = DesktopOllamaClassificationManager(self.store)
         self.token = secrets.token_urlsafe(32)
 
     def bootstrap(self) -> dict[str, Any]:
-        query = self.store.query(DesktopFilterSet())
+        query = self.store.query(
+            DesktopFilterSet(), include_equivalent_copies=True
+        )
         operational = self.store.operational_presentation_summary()
         environment = _desktop_environment(self.data_dir)
         return {
@@ -146,6 +150,7 @@ class DesktopApplication:
             "collectionEngine": self.collection_manager.engine_summary(),
             "savedFilters": self.store.saved_filters(),
             "semanticSummary": self.store.semantic_presentation_summary(),
+            "preparationSummary": self.preparation.summary(),
             "operationalSummary": {
                 **operational,
                 "nextAction": _next_desktop_action(query["summary"], operational),
@@ -205,6 +210,12 @@ class DesktopApplication:
 
     def reclassify_questions(self) -> dict[str, Any]:
         return self.processor.reclassify_existing_questions()
+
+    def preview_preparation(self) -> dict[str, Any]:
+        return self.preparation.preview()
+
+    def prepare_questions(self) -> dict[str, Any]:
+        return self.preparation.run()
 
     def preview_ollama_classification(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self.ollama_classification.preview(
@@ -424,7 +435,11 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                 payload = self._read_json()
                 if path == "/api/query":
                     filters = DesktopFilterSet.model_validate(payload.get("filters", payload))
-                    self._send_json(application.store.query(filters))
+                    self._send_json(
+                        application.store.query(
+                            filters, include_equivalent_copies=True
+                        )
+                    )
                     return
                 if path == "/api/import":
                     job_ids = application.import_pdfs(payload)
@@ -484,6 +499,12 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                     return
                 if path == "/api/questions/reclassify":
                     self._send_json(application.reclassify_questions())
+                    return
+                if path == "/api/preparation/preview":
+                    self._send_json(application.preview_preparation())
+                    return
+                if path == "/api/preparation/run":
+                    self._send_json(application.prepare_questions())
                     return
                 if path == "/api/local-ai/classification/preview":
                     self._send_json(application.preview_ollama_classification(payload))

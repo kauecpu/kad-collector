@@ -309,6 +309,7 @@ function renderSection() {
 function renderOperationalOverview() {
   const summary = state.bootstrap.summary || {};
   const operational = state.bootstrap.operationalSummary || {};
+  const preparation = state.bootstrap.preparationSummary || {};
   const config = state.bootstrap.config || {};
   byId('database-environment').textContent = config.environmentLabel || 'Banco operacional';
   byId('database-environment').className = `environment-badge ${config.environment || 'operational'}`;
@@ -321,6 +322,9 @@ function renderOperationalOverview() {
   byId('prep-occurrences').textContent = operational.occurrences || 0;
   byId('prep-groups').textContent = operational.confirmedGroups || 0;
   byId('prep-canonical').textContent = operational.canonicalQuestions || 0;
+  byId('prep-ready').textContent = preparation.qwenEligible || 0;
+  byId('prep-duplicates').textContent = preparation.duplicateQuestions || 0;
+  byId('prep-pending').textContent = preparation.pendingQuestions || 0;
   byId('canonical-empty-message').hidden = !(
     operational.rawQuestions > 0 && operational.canonicalQuestions === 0
   );
@@ -329,6 +333,103 @@ function renderOperationalOverview() {
   byId('next-action-detail').textContent = next.detail || '';
   byId('next-action-button').textContent = next.action || 'Ver fluxo';
   byId('next-action-button').dataset.step = next.step || 'collect';
+  byId('prepare-questions-open').disabled = (operational.rawQuestions || 0) === 0;
+  renderPreparationReviews(preparation.reviews || []);
+}
+
+function renderPreparationReviews(reviews) {
+  const root = byId('preparation-review-list');
+  root.replaceChildren();
+  if (!reviews.length) return;
+  const heading = document.createElement('div');
+  heading.className = 'preparation-review-heading';
+  const title = document.createElement('strong');
+  title.textContent = `${reviews.length} prova(s) precisam de revisão`;
+  const copy = document.createElement('span');
+  copy.textContent = 'Corrija os dados indicados e execute a preparação novamente.';
+  heading.append(title, copy);
+  root.append(heading);
+  reviews.forEach((review) => {
+    const item = document.createElement('article');
+    const text = document.createElement('div');
+    const name = document.createElement('strong');
+    name.textContent = review.filename || 'Prova sem nome';
+    const reason = document.createElement('span');
+    reason.textContent = review.missingLabels?.length
+      ? `Conferir: ${review.missingLabels.join(', ')}.`
+      : review.reason;
+    const context = document.createElement('small');
+    context.textContent = `${review.questionCount || 0} questão(ões) · ${review.candidates?.length || 0} gabarito(s) candidato(s)`;
+    text.append(name, reason, context);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'button ghost';
+    button.textContent = 'Revisar prova';
+    button.disabled = !review.questionId;
+    button.addEventListener('click', () => openQuestion(review.questionId));
+    item.append(text, button);
+    root.append(item);
+  });
+}
+
+function renderPreparationPreview(preview) {
+  const root = byId('preparation-preview');
+  root.replaceChildren();
+  const grid = document.createElement('div');
+  grid.className = 'qwen-count-grid';
+  [
+    ['Questões coletadas', preview.rawQuestions || 0],
+    ['Ligadas e preparadas', preview.readyQuestions || 0],
+    ['Cópias repetidas', preview.duplicateQuestions || 0],
+    ['Prontas para o Qwen', preview.qwenEligible || 0],
+    ['Pendentes', preview.pendingQuestions || 0],
+  ].forEach(([label, value]) => {
+    const item = document.createElement('span');
+    const number = document.createElement('strong');
+    number.textContent = value;
+    const caption = document.createElement('small');
+    caption.textContent = label;
+    item.append(number, caption);
+    grid.append(item);
+  });
+  root.append(grid);
+  const detail = document.createElement('p');
+  detail.className = 'qwen-zero-reason';
+  detail.textContent = preview.pendingCases
+    ? `${preview.pendingCases} caso(s) continuarão na revisão por falta de evidência suficiente.`
+    : 'Nenhum caso duvidoso foi encontrado.';
+  root.append(detail);
+}
+
+async function openPreparation() {
+  const button = byId('prepare-questions-open');
+  button.disabled = true;
+  try {
+    const preview = await request('/api/preparation/preview', {method: 'POST', body: '{}'});
+    renderPreparationPreview(preview);
+    byId('preparation-submit').disabled = (preview.identifiedExams || 0) === 0;
+    byId('preparation-dialog').showModal();
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function runPreparation(event) {
+  event.preventDefault();
+  const button = byId('preparation-submit');
+  button.disabled = true;
+  try {
+    const result = await request('/api/preparation/run', {method: 'POST', body: '{}'});
+    byId('preparation-dialog').close();
+    toast(`${result.qwenEligible || 0} questão(ões) ficaram prontas para classificação.`);
+    await loadBootstrap({preserveQuery: false});
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function sourceById(sourceId) {
@@ -1193,6 +1294,8 @@ function fillReviewForm() {
   byId('edit-year').value = question.year || '';
   byId('edit-role').value = question.role || '';
   byId('edit-variant').value = view.metadata.variant || '';
+  byId('edit-stage').value = view.metadata.stage || '';
+  byId('edit-turn').value = view.metadata.turn || '';
   byId('edit-organization').value = question.organization || '';
   byId('edit-level').value = question.level || '';
   byId('edit-difficulty').value = question.difficulty || '';
@@ -1408,6 +1511,7 @@ function documentMetadata(question) {
     ...state.currentQuestion.metadata,
     provider: optional('edit-provider'), source_url: optional('edit-source-url'),
     variant: optional('edit-variant'),
+    stage: optional('edit-stage'), turn: optional('edit-turn'),
     concurso: question.concurso, board: question.board, year: question.year,
     role: question.role, organization: question.organization, level: question.level,
     discipline: question.discipline, subject: question.matter, topic: question.subject,
@@ -1930,6 +2034,8 @@ document.querySelectorAll('.modal-close').forEach((button) => {
 byId('import-open').addEventListener('click', () => byId('import-dialog').showModal());
 byId('reclassify-open').addEventListener('click', reclassifyCollection);
 byId('qwen-classify-open').addEventListener('click', openQwenClassification);
+byId('prepare-questions-open').addEventListener('click', openPreparation);
+byId('preparation-form').addEventListener('submit', runPreparation);
 byId('qwen-preview-refresh').addEventListener('click', () => refreshQwenPreview().catch((error) => toast(error.message, 'error')));
 byId('qwen-classification-limit').addEventListener('input', () => {
   state.localAIPreview = null;
