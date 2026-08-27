@@ -1207,10 +1207,16 @@ class DesktopStore:
             source.close()
 
     def backup_before_answer_key_audit(self) -> Path:
+        return self._verified_backup("collector-before-answer-key-audit")
+
+    def backup_before_preparation(self) -> Path:
+        return self._verified_backup("collector-before-preparation")
+
+    def _verified_backup(self, filename_prefix: str) -> Path:
         backup_directory = self.path.parent / "backups"
         backup_directory.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
-        backup_path = backup_directory / f"collector-before-answer-key-audit-{timestamp}.sqlite3"
+        backup_path = backup_directory / f"{filename_prefix}-{timestamp}.sqlite3"
         source = sqlite3.connect(self.path, timeout=30)
         destination = sqlite3.connect(backup_path)
         try:
@@ -3173,6 +3179,14 @@ class DesktopStore:
             for item in diagnosis_issues
             if item.code == "unresolved_duplicate"
         ]
+        preparation_pending = not (equivalence or {}).get("groupId") and bool(
+            duplicate_issues
+        )
+        if preparation_pending:
+            diagnosis_issues = [
+                item for item in diagnosis_issues if item.code != "unresolved_duplicate"
+            ]
+            duplicate_issues = []
         canonical_duplicate = bool(
             equivalence
             and equivalence["status"] == "confirmed"
@@ -3193,7 +3207,16 @@ class DesktopStore:
                 item for item in diagnosis_issues if item.code != "unresolved_duplicate"
             ]
         equivalence_issue: dict[str, Any] | None = None
-        if equivalence is not None and not equivalence_ready:
+        if preparation_pending:
+            equivalence_issue = {
+                "code": "canonical_preparation_pending",
+                "what": "Preparação canônica ainda não executada",
+                "why": "A questão ainda não entrou em um grupo de cópias.",
+                "how_to_resolve": "Execute Preparar questões para classificação.",
+                "source_document": source_document,
+                "missing": [],
+            }
+        if equivalence and equivalence.get("groupId") and not equivalence_ready:
             equivalence_issue = {
                 "code": "unresolved_duplicate",
                 "what": (

@@ -960,6 +960,14 @@ remover o gabarito do lote; o Collector recalcula todas as respostas afetadas e
 registra a mudança no histórico. Antes de aplicar a auditoria, o aplicativo cria
 uma cópia íntegra em `backups/`, ao lado do banco operacional.
 
+Na preparação canônica, um vínculo ativo confirmado por
+`semantic-association-v3` não exige que o turno esteja repetido no PDF da prova.
+O Collector usa o único turno derivado de um gabarito definitivo ou registra
+`não se aplica` quando os documentos não dividem a aplicação por turno. Dois
+turnos ou candidatos possíveis continuam na revisão. A preparação cria uma
+cópia íntegra do banco em `backups/`, mantém as ocorrências repetidas como
+evidência e mostra somente a questão principal nas filas e na exportação.
+
 O pipeline usa um [adaptador FGV orientado por secoes](docs/fgv-section-parser.md). O adaptador
 separa as partes objetiva e discursiva antes de interpretar numeros isolados e compara o
 resultado com `src/kad_collector/fgv_section_profiles.v1.toml`. Uma lacuna, duplicidade, quebra

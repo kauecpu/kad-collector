@@ -62,7 +62,15 @@ def _question(*, noisy: bool = False) -> QuestionRecord:
     )
 
 
-def _decision(booklet: str, *, year: object = 2023) -> dict[str, object]:
+def _decision(
+    booklet: str,
+    *,
+    year: object = 2023,
+    exam_turns: list[str] | None = None,
+    candidate_turns: list[str] | None = None,
+) -> dict[str, object]:
+    exam_turns = ["manhã"] if exam_turns is None else exam_turns
+    candidate_turns = exam_turns if candidate_turns is None else candidate_turns
     comparisons = [
         {
             "field": name,
@@ -78,11 +86,25 @@ def _decision(booklet: str, *, year: object = 2023) -> dict[str, object]:
             ("organization", ["receita federal"]),
             ("role", ["analista"]),
             ("stage", ["prova objetiva"]),
-            ("turn", ["manhã"]),
             ("variant", [f"tipo {booklet}"]),
             ("interval", [1, 1]),
         )
     ]
+    comparisons.append(
+        {
+            "field": "turn",
+            "status": "matched",
+            "exam_values": exam_turns,
+            "candidate_values": candidate_turns,
+            "reason": (
+                "turno derivado do único turno declarado pelo gabarito"
+                if not exam_turns and len(candidate_turns) == 1
+                else "prova e gabarito não separam a aplicação por turno"
+                if not exam_turns and not candidate_turns
+                else "fixture"
+            ),
+        }
+    )
     return {
         "outcome": "selected",
         "selected_version_id": "key-version",
@@ -107,7 +129,13 @@ def _decision(booklet: str, *, year: object = 2023) -> dict[str, object]:
 
 
 def _seed(
-    root: Path, *, include_review: bool = False, decision_year: object = 2023
+    root: Path,
+    *,
+    include_review: bool = False,
+    decision_year: object = 2023,
+    exam_turns: list[str] | None = None,
+    candidate_turns: list[str] | None = None,
+    answer_key_state: str = "definitive",
 ) -> DesktopStore:
     store = DesktopStore(root / "collector.sqlite3")
     profile = {
@@ -134,9 +162,9 @@ def _seed(
             "INSERT INTO document_versions (id,identity_key,document_role,answer_key_state,"
             "coverage_json,profile_json,content_sha256,content_normalizer_version,version_number,"
             "created_at,updated_at) VALUES "
-            "('key-version','identity','answer_key','definitive','{}','{}',"
+            "('key-version','identity','answer_key',?,'{}','{}',"
             "'key-sha','fixture',1,?,?)",
-            (NOW, NOW),
+            (answer_key_state, NOW, NOW),
         )
         connection.execute(
             "INSERT INTO documents (id,job_id,local_path,filename,sha256,status,metadata_json,"
@@ -183,7 +211,6 @@ def _seed(
                 "year": 2023,
                 "role": "Analista",
                 "stage": "Prova objetiva",
-                "turn": "Manhã",
             }
             connection.execute(
                 "INSERT INTO documents (id,job_id,local_path,filename,sha256,status,metadata_json,"
@@ -207,7 +234,14 @@ def _seed(
                 (
                     link_id,
                     version_id,
-                    _json(_decision(booklet, year=decision_year)),
+                    _json(
+                        _decision(
+                            booklet,
+                            year=decision_year,
+                            exam_turns=exam_turns,
+                            candidate_turns=candidate_turns,
+                        )
+                    ),
                     NOW,
                     NOW,
                 ),
@@ -261,6 +295,7 @@ class DesktopPreparationTests(unittest.TestCase):
         self.assertEqual(result["conflictQuestions"], 0)
         self.assertEqual(result["pendingQuestions"], 0)
         self.assertEqual(repeated["canonicalQuestions"], 1)
+        self.assertEqual(repeated["equivalence"]["canonicalQuestions"], 1)
         self.assertEqual(store.query(DesktopFilterSet())["total"], 1)
         self.assertEqual(
             store.query(
@@ -268,6 +303,122 @@ class DesktopPreparationTests(unittest.TestCase):
             )["total"],
             2,
         )
+        self.assertEqual(len(store.export_candidates(DesktopFilterSet())), 1)
+        self.assertTrue(Path(result["backupPath"]).is_file())
+
+    def test_preparation_uses_turn_derived_from_unique_definitive_key(self) -> None:
+        store = _seed(self.root, exam_turns=[], candidate_turns=["manhã"])
+
+        result = DesktopPreparationManager(store).run()
+
+        self.assertEqual(result["identifiedExams"], 2)
+        self.assertEqual(result["canonicalQuestions"], 1)
+        self.assertEqual(result["skipped"], [])
+        with closing(store._connect()) as connection:
+            shift = connection.execute(
+                "SELECT official_name,evidence_json FROM application_shifts"
+            ).fetchone()
+        self.assertEqual(shift["official_name"], "manhã")
+        evidence = json.loads(shift["evidence_json"])
+        self.assertEqual(
+            evidence["turnResolution"]["source"],
+            "derived_from_unique_definitive_answer_key",
+        )
+
+    def test_preparation_uses_not_applicable_without_turn_partition(self) -> None:
+        store = _seed(self.root, exam_turns=[], candidate_turns=[])
+
+        result = DesktopPreparationManager(store).run()
+
+        self.assertEqual(result["skipped"], [])
+        with closing(store._connect()) as connection:
+            shift = connection.execute(
+                "SELECT official_name,evidence_json FROM application_shifts"
+            ).fetchone()
+        self.assertEqual(shift["official_name"], "não se aplica")
+        evidence = json.loads(shift["evidence_json"])
+        self.assertEqual(evidence["turnResolution"]["source"], "not_applicable")
+
+    def test_preparation_blocks_multiple_candidate_turns(self) -> None:
+        manager = DesktopPreparationManager(
+            _seed(self.root, exam_turns=[], candidate_turns=["manhã", "tarde"])
+        )
+
+        result = manager.run()
+
+        self.assertEqual(result["identifiedExams"], 0)
+        self.assertEqual(result["skipped"][0]["missingFields"], ["turn"])
+        self.assertEqual(result["canonicalQuestions"], 0)
+
+    def test_preparation_does_not_derive_turn_from_preliminary_key(self) -> None:
+        manager = DesktopPreparationManager(
+            _seed(
+                self.root,
+                exam_turns=[],
+                candidate_turns=["manhã"],
+                answer_key_state="preliminary",
+            )
+        )
+
+        result = manager.run()
+
+        self.assertEqual(result["identifiedExams"], 0)
+        self.assertEqual(result["skipped"][0]["missingFields"], ["turn"])
+
+    def test_newly_resolved_scope_refreshes_existing_occurrences(self) -> None:
+        store = _seed(self.root, exam_turns=[], candidate_turns=["manhã", "tarde"])
+        manager = DesktopPreparationManager(store)
+        first = manager.run()
+        with closing(store._connect()) as connection:
+            unresolved_before = connection.execute(
+                "SELECT COUNT(*) FROM question_occurrences WHERE scope_id IS NULL"
+            ).fetchone()[0]
+            for booklet in ("1", "2"):
+                connection.execute(
+                    "UPDATE document_links SET decision_json=? WHERE id=?",
+                    (
+                        _json(
+                            _decision(
+                                booklet,
+                                exam_turns=[],
+                                candidate_turns=["manhã"],
+                            )
+                        ),
+                        f"link-{booklet}",
+                    ),
+                )
+            connection.commit()
+
+        second = manager.run()
+
+        self.assertEqual(first["canonicalQuestions"], 0)
+        self.assertEqual(unresolved_before, 2)
+        self.assertEqual(second["canonicalQuestions"], 1)
+        self.assertEqual(second["occurrences"], 2)
+        with closing(store._connect()) as connection:
+            unresolved_after = connection.execute(
+                "SELECT COUNT(*) FROM question_occurrences WHERE scope_id IS NULL"
+            ).fetchone()[0]
+        self.assertEqual(unresolved_after, 0)
+
+    def test_unprepared_question_does_not_claim_an_unconfirmed_group(self) -> None:
+        store = _seed(
+            self.root, exam_turns=[], candidate_turns=["manhã", "tarde"]
+        )
+        DesktopPreparationManager(store).run()
+        with closing(store._connect()) as connection:
+            connection.execute("UPDATE questions SET flags_json='[\"duplicate\"]'")
+            connection.commit()
+
+        result = store.query(DesktopFilterSet(), include_equivalent_copies=True)
+
+        issue_codes = {
+            issue["code"]
+            for item in result["questions"]
+            for issue in item["import_diagnosis"]["issues"]
+        }
+        self.assertIn("canonical_preparation_pending", issue_codes)
+        self.assertNotIn("unresolved_duplicate", issue_codes)
 
     def test_pending_association_points_to_document_identity_review(self) -> None:
         manager = DesktopPreparationManager(_seed(self.root, include_review=True))

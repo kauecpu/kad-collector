@@ -14,10 +14,13 @@ from .canonical_identity import initialize_canonical_identity_schema
 from .question_equivalence import (
     initialize_question_equivalence_schema,
     run_question_equivalence_migration,
+    sync_question_occurrence,
 )
 from .semantic_identity import canonical_json
 
-DESKTOP_PREPARATION_ALGORITHM_VERSION = "desktop-preparation-v3"
+DESKTOP_PREPARATION_ALGORITHM_VERSION = "desktop-preparation-v4"
+
+_NOT_APPLICABLE_TURN = "não se aplica"
 
 _REQUIRED_CONTEXT_FIELDS = (
     "board",
@@ -73,7 +76,15 @@ class _ExamContext:
     evidence: dict[str, Any]
 
 
-def _comparison_values(decision: Mapping[str, Any], version_id: str) -> dict[str, list[Any]]:
+def _matched_comparisons(
+    decision: Mapping[str, Any], version_id: str
+) -> dict[str, Mapping[str, Any]]:
+    if (
+        decision.get("outcome") != "selected"
+        or decision.get("selected_version_id") != version_id
+        or decision.get("algorithm_version") != "semantic-association-v3"
+    ):
+        return {}
     assessments = decision.get("assessments")
     if not isinstance(assessments, list):
         return {}
@@ -87,18 +98,53 @@ def _comparison_values(decision: Mapping[str, Any], version_id: str) -> dict[str
     )
     if not isinstance(selected, Mapping):
         return {}
+    if not selected.get("compatible"):
+        return {}
     comparisons = selected.get("comparisons")
     if not isinstance(comparisons, list):
         return {}
-    values: dict[str, list[Any]] = {}
+    matched: dict[str, Mapping[str, Any]] = {}
     for comparison in comparisons:
         if not isinstance(comparison, Mapping) or comparison.get("status") != "matched":
             continue
         field = comparison.get("field")
+        if isinstance(field, str):
+            matched[field] = comparison
+    return matched
+
+
+def _comparison_values(
+    comparisons: Mapping[str, Mapping[str, Any]],
+) -> dict[str, list[Any]]:
+    values: dict[str, list[Any]] = {}
+    for field, comparison in comparisons.items():
         exam_values = comparison.get("exam_values")
-        if isinstance(field, str) and isinstance(exam_values, list):
+        if isinstance(exam_values, list):
             values[field] = exam_values
     return values
+
+
+def _resolved_turn(
+    comparisons: Mapping[str, Mapping[str, Any]], *, answer_key_state: str
+) -> tuple[str | None, str | None]:
+    comparison = comparisons.get("turn")
+    if comparison is None:
+        return None, None
+    exam_values = comparison.get("exam_values")
+    candidate_values = comparison.get("candidate_values")
+    if not isinstance(exam_values, list) or not isinstance(candidate_values, list):
+        return None, None
+    if len(exam_values) == 1:
+        return str(exam_values[0]), "declared_on_exam"
+    if exam_values:
+        return None, None
+    if answer_key_state != "definitive":
+        return None, None
+    if len(candidate_values) == 1:
+        return str(candidate_values[0]), "derived_from_unique_definitive_answer_key"
+    if not candidate_values:
+        return _NOT_APPLICABLE_TURN, "not_applicable"
+    return None, None
 
 
 def _single(values: Mapping[str, list[Any]], field: str) -> Any | None:
@@ -120,13 +166,19 @@ def _year_or_none(value: object) -> int | None:
 
 def _exam_context(row: sqlite3.Row) -> tuple[_ExamContext | None, list[str]]:
     decision = json.loads(cast(str, row["decision_json"]))
-    values = _comparison_values(decision, cast(str, row["key_version_id"]))
+    comparisons = _matched_comparisons(decision, cast(str, row["key_version_id"]))
+    values = _comparison_values(comparisons)
+    turn, turn_source = _resolved_turn(
+        comparisons, answer_key_state=cast(str, row["answer_key_state"])
+    )
     year = _year_or_none(_single(values, "year"))
     missing = [
         field
         for field in _REQUIRED_CONTEXT_FIELDS
-        if field != "year" and _single(values, field) is None
+        if field not in {"year", "turn"} and _single(values, field) is None
     ]
+    if turn is None:
+        missing.append("turn")
     if year is None:
         missing.append("year")
     interval = values.get("interval", [])
@@ -134,6 +186,7 @@ def _exam_context(row: sqlite3.Row) -> tuple[_ExamContext | None, list[str]]:
         missing.append("interval")
     if missing:
         return None, missing
+    assert turn is not None
     exam_metadata = json.loads(cast(str, row["exam_metadata_json"]))
     key_metadata = json.loads(cast(str, row["key_metadata_json"]))
     return (
@@ -162,7 +215,7 @@ def _exam_context(row: sqlite3.Row) -> tuple[_ExamContext | None, list[str]]:
             year=cast(int, year),
             role=str(_single(values, "role")),
             stage=str(_single(values, "stage")),
-            turn=str(_single(values, "turn")),
+            turn=turn,
             variant=str(_single(values, "variant")),
             first_question=int(interval[0]),
             last_question=int(interval[1]),
@@ -171,6 +224,11 @@ def _exam_context(row: sqlite3.Row) -> tuple[_ExamContext | None, list[str]]:
                 "source": "active_answer_key_link",
                 "linkId": row["link_id"],
                 "algorithmVersion": row["link_algorithm_version"],
+                "turnResolution": {
+                    "value": turn,
+                    "source": turn_source,
+                    "reason": comparisons.get("turn", {}).get("reason"),
+                },
                 "decision": decision,
             },
         ),
@@ -415,6 +473,12 @@ def _upsert_catalog(connection: sqlite3.Connection, context: _ExamContext, chang
                 changed_at,
             ),
         )
+        if kind == "exam":
+            connection.execute(
+                "DELETE FROM canonical_document_scopes WHERE document_id=? "
+                "AND content_kind='objective' AND scope_id<>?",
+                (canonical_document_id, scope_id),
+            )
         connection.execute(
             "INSERT OR IGNORE INTO canonical_document_scopes "
             "(document_id,scope_id,content_kind,first_question,last_question,created_at) "
@@ -608,6 +672,18 @@ def apply_desktop_preparation(
     try:
         for context in contexts:
             _upsert_catalog(connection, context, changed_at)
+        exam_document_ids = sorted({context.exam_document_id for context in contexts})
+        if exam_document_ids:
+            placeholders = ",".join("?" for _ in exam_document_ids)
+            question_ids = connection.execute(
+                f"SELECT id FROM questions WHERE document_id IN ({placeholders}) "  # noqa: S608
+                "ORDER BY id",
+                exam_document_ids,
+            ).fetchall()
+            for question in question_ids:
+                sync_question_occurrence(
+                    connection, cast(str, question["id"]), changed_at=changed_at
+                )
         connection.commit()
     except Exception:
         connection.rollback()
@@ -666,6 +742,7 @@ class DesktopPreparationManager:
             source.close()
 
     def run(self) -> dict[str, Any]:
+        backup_path = self.store.backup_before_preparation()
         run_id = str(uuid.uuid4())
         started_at = _now()
         with closing(self.store._connect()) as connection:
@@ -678,6 +755,7 @@ class DesktopPreparationManager:
             connection.commit()
             try:
                 report = apply_desktop_preparation(connection, run_id=run_id)
+                report["backupPath"] = str(backup_path)
                 finished_at = _now()
                 connection.execute(
                     "UPDATE desktop_preparation_runs SET status='completed',report_json=?,"
