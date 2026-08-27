@@ -20,8 +20,10 @@ from .canonical_classification import (
     CanonicalAIResult,
     CanonicalClassificationError,
     CanonicalClassificationReport,
+    canonical_classification_coverage,
     run_canonical_classification,
 )
+from .desktop_preparation import DesktopPreparationManager, apply_desktop_preparation
 from .desktop_store import DesktopStore
 from .editorial_taxonomy import EditorialTaxonomy
 from .ollama_ai_provider import (
@@ -44,7 +46,7 @@ DESKTOP_OLLAMA_DIGEST = (
 )
 DESKTOP_OLLAMA_QUANTIZATION = "Q4_K_M"
 DESKTOP_OLLAMA_ENDPOINT = "http://127.0.0.1:11434"
-DESKTOP_OLLAMA_JOB_VERSION = "desktop-qwen8b-classification-v1"
+DESKTOP_OLLAMA_JOB_VERSION = "desktop-qwen8b-classification-v2"
 DEFAULT_BATCH_LIMIT = 25
 MAX_BATCH_LIMIT = 250
 
@@ -245,6 +247,7 @@ class DesktopOllamaClassificationManager:
         self._provider_factory = provider_factory or self._default_provider
         self._command_runner = command_runner
         self._taxonomy = taxonomy
+        self._preparation = DesktopPreparationManager(store)
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="kad-qwen8b")
         self._future: Future[None] | None = None
         self._lock = threading.Lock()
@@ -325,41 +328,43 @@ class DesktopOllamaClassificationManager:
         memory.row_factory = sqlite3.Row
         try:
             source.backup(memory)
+            preparation = apply_desktop_preparation(
+                memory, run_id=f"qwen-preview-{uuid.uuid4().hex}"
+            )
             report = run_canonical_classification(
-                memory, apply=False, enable_ai=False, taxonomy=self._taxonomy
+                memory,
+                apply=False,
+                enable_ai=False,
+                taxonomy=self._taxonomy,
+                eligibility_scope="answered",
+            )
+            coverage = canonical_classification_coverage(
+                memory, eligibility_scope="answered"
             )
         finally:
             memory.close()
             source.close()
-        operational = self.store.operational_presentation_summary()
         exclusion_reasons: list[dict[str, Any]] = []
-        if operational["rawQuestions"] == 0:
+        if preparation["rawQuestions"] == 0:
             exclusion_reasons.append({
                 "code": "no_questions",
                 "label": "Nenhuma questão coletada",
                 "count": 0,
                 "action": "Colete uma fonte ou adicione PDFs.",
             })
-        elif operational["canonicalQuestions"] == 0:
+        elif coverage["officialAnswered"] == 0:
             exclusion_reasons.append({
-                "code": "canonical_preparation_pending",
-                "label": "Preparação canônica pendente",
-                "count": operational["rawQuestions"],
-                "action": "Associe provas e gabaritos e confirme os grupos equivalentes.",
+                "code": "no_official_answers",
+                "label": "Nenhuma resposta oficial disponível",
+                "count": preparation["rawQuestions"],
+                "action": "Relacione as provas aos gabaritos oficiais.",
             })
-        if operational["pendingGroups"]:
+        if coverage["blockedAnswered"]:
             exclusion_reasons.append({
-                "code": "unconfirmed_groups",
-                "label": "Grupos equivalentes não confirmados",
-                "count": operational["pendingGroups"],
-                "action": "Revise os grupos que ainda não têm uma questão canônica confirmada.",
-            })
-        if operational["canonicalBlocked"]:
-            exclusion_reasons.append({
-                "code": "blocked_questions",
-                "label": "Questões canônicas bloqueadas",
-                "count": operational["canonicalBlocked"],
-                "action": "Abra a revisão e resolva o bloqueio editorial.",
+                "code": "answered_but_invalid",
+                "label": "Respondidas com outro impedimento comprovado",
+                "count": coverage["blockedAnswered"],
+                "action": "Confira alternativas, origem ou vínculo dessas questões.",
             })
         if report.already_complete:
             exclusion_reasons.append({
@@ -369,8 +374,13 @@ class DesktopOllamaClassificationManager:
                 "action": "Nenhuma ação de classificação é necessária para essas questões.",
             })
         return {
-            "rawQuestions": operational["rawQuestions"],
-            "canonicalQuestions": operational["canonicalQuestions"],
+            "rawQuestions": preparation["rawQuestions"],
+            "officialAnswered": coverage["officialAnswered"],
+            "canonicalQuestions": preparation["canonicalQuestions"],
+            "classificationUnits": coverage["classificationUnits"],
+            "eligibleQuestions": coverage["eligibleQuestions"],
+            "inheritedCopies": coverage["inheritedCopies"],
+            "blockedAnswered": coverage["blockedAnswered"],
             "eligible": report.eligible,
             "alreadyComplete": report.already_complete,
             "deterministic": report.deterministic_questions,
@@ -448,6 +458,7 @@ class DesktopOllamaClassificationManager:
                 approval.preflight
             ):
                 raise RuntimeError("o ambiente Ollama mudou desde a prévia")
+            self._preparation.run()
             current_counts = self._passive_counts()
             if current_counts != approval.counts:
                 raise RuntimeError("o acervo mudou desde a prévia; atualize antes de confirmar")
@@ -665,6 +676,7 @@ class DesktopOllamaClassificationManager:
                     ),
                     taxonomy=self._taxonomy,
                     queue_ineligible=False,
+                    eligibility_scope="answered",
                 )
             self._update_progress(run_id, base_processed, base_metrics, report)
             current = self._job_row(run_id)

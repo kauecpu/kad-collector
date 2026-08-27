@@ -19,6 +19,7 @@ from test_canonical_classification import (
     _seed_canonical,
     _taxonomy,
 )
+from test_question_equivalence import SyntheticCatalog, _question
 
 from kad_collector.canonical_classification import (
     CanonicalClassificationError,
@@ -146,6 +147,26 @@ class DesktopOllamaClassificationTests(unittest.TestCase):
         self.assertEqual(preview["preflight"]["digest"], DESKTOP_OLLAMA_DIGEST)
         self.assertEqual(preview["preflight"]["quantization"], "Q4_K_M")
         self.assertIn("Respostas, gabaritos e vínculos", preview["warning"])
+
+    def test_answered_question_does_not_wait_for_canonical_confirmation(self) -> None:
+        fixture = SyntheticCatalog(self.root, booklets=("1", "2"))
+        question_id = fixture.add("Analista", "1", _question())
+        _clear_fields(fixture, question_id, {"level"})
+        provider = FakeProvider(_level_decision())
+        admin = FakeAdmin()
+        manager = self._manager(fixture, admin, provider)
+
+        preview = manager.preview(25)
+        started = manager.start(preview["confirmationToken"], 25)
+        manager.wait()
+        status = manager.status(started["runId"])
+
+        self.assertEqual(preview["counts"]["officialAnswered"], 1)
+        self.assertEqual(preview["counts"]["eligibleQuestions"], 1)
+        self.assertEqual(preview["counts"]["classificationUnits"], 1)
+        self.assertEqual(preview["counts"]["qwenRequired"], 1)
+        self.assertEqual(status["processed"], 1)
+        self.assertEqual(fixture.store.question(question_id)["question"]["level"], "Superior")
 
     def test_cancel_after_preview_does_not_create_job_or_call_model(self) -> None:
         fixture, rows = _seed_canonical(self.root)

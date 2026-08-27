@@ -783,9 +783,13 @@ class DesktopStore:
                      WHERE status = 'confirmed') AS groups_confirmed,
                     (SELECT COUNT(*) FROM question_equivalence_groups
                      WHERE status != 'confirmed') AS groups_pending,
-                    (SELECT COUNT(*) FROM canonical_questions) AS canonical_questions,
-                    (SELECT COUNT(*) FROM canonical_questions
-                     WHERE editorial_status = 'blocked') AS canonical_blocked,
+                    (SELECT COUNT(*) FROM canonical_questions cq
+                     JOIN question_equivalence_groups g ON g.id=cq.group_id
+                     WHERE g.status='confirmed') AS canonical_questions,
+                    (SELECT COUNT(*) FROM canonical_questions cq
+                     JOIN question_equivalence_groups g ON g.id=cq.group_id
+                     WHERE g.status='confirmed'
+                       AND cq.editorial_status = 'blocked') AS canonical_blocked,
                     (SELECT COUNT(*) FROM question_equivalence_review_queue
                      WHERE status = 'pending') AS equivalence_review_pending
                 """

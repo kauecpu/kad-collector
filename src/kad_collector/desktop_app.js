@@ -71,8 +71,10 @@ function qwenPreviewPresentation(preview) {
   return {
     counts: [
       ['Questões brutas', counts.rawQuestions || 0],
-      ['Questões canônicas', counts.canonicalQuestions || 0],
-      ['Elegíveis', counts.eligible || 0],
+      ['Com resposta oficial', counts.officialAnswered || 0],
+      ['Prontas para classificar', counts.eligibleQuestions || 0],
+      ['Unidades de classificação', counts.classificationUnits || 0],
+      ['Cópias que herdam', counts.inheritedCopies || 0],
       ['Já completas', counts.alreadyComplete || 0],
       ['Resolvidas por regras', counts.deterministic || 0],
       ['Precisam do Qwen', counts.qwenRequired || 0],
@@ -113,7 +115,7 @@ function questionStatePresentation(view) {
         ? {state: 'Identidade pendente', tone: 'attention', reason: 'O documento foi reconhecido, mas a preparação das ocorrências ainda não terminou.', action: 'Executar preparação'}
         : {state: 'Bruta', tone: 'attention', reason: 'A questão foi extraída, mas ainda não entrou na preparação canônica.', action: 'Executar preparação'};
   const classification = missingClassification.length
-    ? {state: 'Incompleta', tone: 'attention', reason: `Faltam ${missingClassification.map((field) => fieldLabels[field]).join(', ')}.`, action: preparation.state === 'Canônica' ? 'Aplicar regras ou usar Qwen' : 'Concluir preparação primeiro'}
+    ? {state: 'Incompleta', tone: 'attention', reason: `Faltam ${missingClassification.map((field) => fieldLabels[field]).join(', ')}.`, action: question.answer_status === 'matched' ? 'Aplicar regras ou usar Qwen' : 'Resolver o gabarito primeiro'}
     : {state: 'Completa', tone: 'success', reason: 'Os campos editoriais necessários estão preenchidos.', action: 'Revisar conteúdo'};
   const importing = view?.importable
     ? {state: 'Pronta', tone: 'success', reason: 'Os requisitos mínimos de importação foram atendidos.', action: 'Revisar e exportar'}
@@ -381,7 +383,9 @@ function renderPreparationPreview(preview) {
     ['Questões coletadas', preview.rawQuestions || 0],
     ['Ligadas e preparadas', preview.readyQuestions || 0],
     ['Cópias repetidas', preview.duplicateQuestions || 0],
-    ['Prontas para o Qwen', preview.qwenEligible || 0],
+    ['Unidades para o Qwen', preview.qwenEligible || 0],
+    ['Questões cobertas', preview.qwenEligibleQuestions || 0],
+    ['Cópias que herdam', preview.qwenInheritedCopies || 0],
     ['Pendentes', preview.pendingQuestions || 0],
   ].forEach(([label, value]) => {
     const item = document.createElement('span');
