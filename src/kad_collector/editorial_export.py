@@ -15,7 +15,11 @@ from pydantic import ConfigDict, Field
 
 from .json_utils import write_json, write_json_lines
 from .models import DocumentRecord, QuestionBatch, QuestionRecord, StrictModel
-from .validation import validate_editorial_question, verify_approved_batch
+from .validation import validate_app_import_question, verify_approved_batch
+
+EDITORIAL_IMPORT_V2_FINGERPRINT = (
+    "f6143444db37b30fd0c17e6eba5b5a1701743b69a8d45079f6eaa9f02abfb5e1"
+)
 
 
 class EditorialAlternative(StrictModel):
@@ -66,7 +70,7 @@ class EditorialCanonicalQuestion(StrictModel):
     provenances: list[EditorialQuestionProvenance] = Field(min_length=1)
 
 
-class EditorialQuestionData(StrictModel):
+class EditorialQuestionDataBase(StrictModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{2,119}$")
@@ -79,11 +83,10 @@ class EditorialQuestionData(StrictModel):
     institution: str
     concurso: str
     level: Literal["Fundamental", "Médio", "Superior"]
-    difficulty: Literal["Fácil", "Média", "Difícil"]
+    difficulty: Literal["Fácil", "Média", "Difícil"] | None = None
     statement: str
     alternatives: list[EditorialAlternative] = Field(min_length=2, max_length=5)
     correct: Literal["A", "B", "C", "D", "E"]
-    explanation: str
     canonical_identity: EditorialCanonicalIdentity | None = Field(
         default=None, alias="canonicalIdentity"
     )
@@ -91,6 +94,34 @@ class EditorialQuestionData(StrictModel):
         default=None, alias="canonicalQuestion"
     )
     publication_status: Literal["draft"] = Field(alias="publicationStatus")
+
+
+class EditorialExplanation(StrictModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    text: str = Field(min_length=10, max_length=12000)
+    origin: Literal["official", "editorial", "ai"]
+    review_status: Literal["draft", "reviewed"] = Field(alias="reviewStatus")
+    provider: str | None = Field(default=None, min_length=1)
+    model: str | None = Field(default=None, min_length=1)
+    prompt_version: str | None = Field(default=None, alias="promptVersion", min_length=1)
+
+    def model_post_init(self, __context: Any) -> None:
+        if self.origin == "ai" and not all(
+            (self.provider, self.model, self.prompt_version)
+        ):
+            raise ValueError(
+                "explicação de IA exige provider, model e promptVersion"
+            )
+
+
+class EditorialQuestionDataV2(EditorialQuestionDataBase):
+    explanation: EditorialExplanation | None = None
+
+
+class EditorialQuestionDataV1(EditorialQuestionDataBase):
+    difficulty: Literal["Fácil", "Média", "Difícil"]
+    explanation: str
 
 
 class EditorialSource(StrictModel):
@@ -109,7 +140,16 @@ class EditorialImportRecordV1(StrictModel):
     schema_version: Literal[1] = Field(alias="schemaVersion")
     kind: Literal["question"]
     source: EditorialSource
-    data: EditorialQuestionData
+    data: EditorialQuestionDataV1
+
+
+class EditorialImportRecordV2(StrictModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    schema_version: Literal[2] = Field(alias="schemaVersion")
+    kind: Literal["question"]
+    source: EditorialSource
+    data: EditorialQuestionDataV2
 
 
 class EditorialExportException(StrictModel):
@@ -163,8 +203,8 @@ def build_editorial_record(
     *,
     canonical_identity: dict[str, Any] | EditorialCanonicalIdentity | None = None,
     canonical_question: dict[str, Any] | EditorialCanonicalQuestion | None = None,
-) -> EditorialImportRecordV1:
-    issues = [*validate_editorial_question(question), *_source_errors(batch.source_document)]
+) -> EditorialImportRecordV2:
+    issues = [*validate_app_import_question(question), *_source_errors(batch.source_document)]
     if issues:
         raise ValueError("; ".join(issues))
 
@@ -183,7 +223,8 @@ def build_editorial_record(
         if isinstance(canonical_identity, dict)
         else canonical_identity
     )
-    data = EditorialQuestionData(
+    explanation = (question.explanation or "").strip()
+    data = EditorialQuestionDataV2(
         id=stable_id,
         discipline=question.discipline or "",
         subject=question.matter or "",
@@ -198,14 +239,22 @@ def build_editorial_record(
             else question.concurso or ""
         ),
         level=question.level,  # type: ignore[arg-type]
-        difficulty=question.difficulty,  # type: ignore[arg-type]
+        difficulty=question.difficulty,
         statement=question.statement.strip(),
         alternatives=[
             EditorialAlternative(id=item.letter, text=item.text.strip())  # type: ignore[arg-type]
             for item in question.alternatives
         ],
         correct=question.correct_answer,  # type: ignore[arg-type]
-        explanation=(question.explanation or "").strip(),
+        explanation=(
+            EditorialExplanation(
+                text=explanation,
+                origin="editorial",
+                reviewStatus="reviewed",
+            )
+            if explanation
+            else None
+        ),
         canonicalIdentity=canonical_value,
         canonicalQuestion=canonical_question_value,
         publicationStatus="draft",
@@ -214,8 +263,8 @@ def build_editorial_record(
     fingerprint_payload.pop("id")
     fingerprint = _canonical_sha256(fingerprint_payload)
     provider = _slug(batch.source_document.source_id, maximum=100)
-    return EditorialImportRecordV1(
-        schemaVersion=1,
+    return EditorialImportRecordV2(
+        schemaVersion=2,
         kind="question",
         source=EditorialSource(
             provider=provider,
@@ -266,13 +315,13 @@ def export_admin_package(
     questions_path = directory / "questoes.jsonl"
     exceptions_path = directory / "excecoes" / "questoes.jsonl"
 
-    records: list[EditorialImportRecordV1] = []
+    records: list[EditorialImportRecordV2] = []
     exceptions = list(additional_exceptions or [])
     seen_ids: set[str] = set()
     seen_fingerprints: set[str] = set()
     for question in batch.questions:
         stable_id = stable_question_id(batch, question)
-        issues = [*validate_editorial_question(question), *_source_errors(batch.source_document)]
+        issues = [*validate_app_import_question(question), *_source_errors(batch.source_document)]
         if issues:
             exceptions.append(_exception(question, issues, stable_id=stable_id))
             continue
@@ -309,7 +358,8 @@ def export_admin_package(
     write_json(
         directory / "relatorio.json",
         {
-            "schemaVersion": 1,
+            "schemaVersion": 2,
+            "contractFingerprint": EDITORIAL_IMPORT_V2_FINGERPRINT,
             "batchId": batch.batch_id,
             "createdAt": created_at.isoformat(),
             "exported": len(records),
@@ -320,7 +370,11 @@ def export_admin_package(
     write_json(
         directory / "manifesto.json",
         {
-            "schemaVersion": 1,
+            "schemaVersion": 2,
+            "contract": {
+                "name": "editorial-question-import-v2",
+                "fingerprint": EDITORIAL_IMPORT_V2_FINGERPRINT,
+            },
             "batchId": batch.batch_id,
             "createdAt": created_at.isoformat(),
             "importFile": "questoes.jsonl",

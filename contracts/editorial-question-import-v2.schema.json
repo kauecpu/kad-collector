@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kadconcursos.com.br/contracts/editorial-question-import-v2.schema.json",
+  "title": "KAD EditorialImportRecord question schemaVersion 2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "source", "data"],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "kind": { "const": "question" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "externalId", "url", "collectedAt", "fingerprint"],
+      "properties": {
+        "provider": { "type": "string", "minLength": 2 },
+        "externalId": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "collectedAt": { "type": "string", "format": "date-time" },
+        "fingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "discipline", "subject", "topic", "board", "year", "role",
+        "institution", "concurso", "level", "statement",
+        "alternatives", "correct", "publicationStatus"
+      ],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,119}$" },
+        "discipline": { "type": "string", "minLength": 2 },
+        "subject": { "type": "string", "minLength": 2 },
+        "topic": { "type": "string", "minLength": 2 },
+        "board": { "type": "string", "minLength": 2 },
+        "year": { "type": "integer", "minimum": 1900, "maximum": 2100 },
+        "role": { "type": "string", "minLength": 2 },
+        "institution": { "type": "string", "minLength": 2 },
+        "concurso": { "type": "string", "minLength": 2 },
+        "level": { "enum": ["Fundamental", "Médio", "Superior"] },
+        "difficulty": { "enum": ["Fácil", "Média", "Difícil"] },
+        "statement": { "type": "string", "minLength": 10 },
+        "alternatives": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 5,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "text"],
+            "properties": {
+              "id": { "enum": ["A", "B", "C", "D", "E"] },
+              "text": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "correct": { "enum": ["A", "B", "C", "D", "E"] },
+        "explanation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["text", "origin", "reviewStatus"],
+          "properties": {
+            "text": { "type": "string", "minLength": 10, "maxLength": 12000 },
+            "origin": { "enum": ["official", "editorial", "ai"] },
+            "reviewStatus": { "enum": ["draft", "reviewed"] },
+            "provider": { "type": "string", "minLength": 1 },
+            "model": { "type": "string", "minLength": 1 },
+            "promptVersion": { "type": "string", "minLength": 1 }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "origin": { "const": "ai" } }, "required": ["origin"] },
+              "then": { "required": ["provider", "model", "promptVersion"] }
+            }
+          ]
+        },
+        "canonicalIdentity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "contestId", "contestKey", "contestName", "applicationId",
+            "applicationKey", "applicationName", "documentId", "scopeIds", "aliases"
+          ],
+          "properties": {
+            "contestId": { "type": "string", "minLength": 1 },
+            "contestKey": { "type": "string", "minLength": 1 },
+            "contestName": { "type": "string", "minLength": 1 },
+            "applicationId": { "type": "string", "minLength": 1 },
+            "applicationKey": { "type": "string", "minLength": 1 },
+            "applicationName": { "type": "string", "minLength": 1 },
+            "documentId": { "type": "string", "minLength": 1 },
+            "scopeIds": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "aliases": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "canonicalQuestion": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["questionId", "groupId", "occurrenceCount", "provenances"],
+          "properties": {
+            "questionId": { "type": "string", "minLength": 1 },
+            "groupId": { "type": "string", "minLength": 1 },
+            "occurrenceCount": { "type": "integer", "minimum": 1 },
+            "provenances": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "occurrenceId", "questionId", "questionNumber", "pages", "answerStatus"
+                ],
+                "properties": {
+                  "occurrenceId": { "type": "string", "minLength": 1 },
+                  "questionId": { "type": "string", "minLength": 1 },
+                  "documentId": { "type": ["string", "null"], "minLength": 1 },
+                  "documentVersionId": { "type": ["string", "null"], "minLength": 1 },
+                  "scopeId": { "type": ["string", "null"], "minLength": 1 },
+                  "role": { "type": ["string", "null"] },
+                  "shift": { "type": ["string", "null"] },
+                  "booklet": { "type": ["string", "null"] },
+                  "questionNumber": { "type": "integer", "minimum": 1 },
+                  "pages": {
+                    "type": "array",
+                    "items": { "type": "integer", "minimum": 1 }
+                  },
+                  "sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+                  "url": { "type": ["string", "null"] },
+                  "answer": {
+                    "type": ["string", "null"],
+                    "enum": ["A", "B", "C", "D", "E", null]
+                  },
+                  "answerStatus": { "type": "string", "minLength": 1 },
+                  "answerKeyLinkId": { "type": ["string", "null"] }
+                }
+              }
+            }
+          }
+        },
+        "publicationStatus": { "const": "draft" }
+      }
+    }
+  }
+}

@@ -8,7 +8,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from kad_collector.editorial_export import (
+    EDITORIAL_IMPORT_V2_FINGERPRINT,
+    EditorialExplanation,
     EditorialImportRecordV1,
+    EditorialImportRecordV2,
     build_editorial_record,
     export_admin_package,
     stable_question_id,
@@ -88,6 +91,18 @@ class EditorialExportTests(unittest.TestCase):
         self.assertEqual(record.data.publication_status, "draft")
         self.assertEqual([item.id for item in record.data.alternatives], ["A", "B"])
 
+    def test_shared_contract_fixture_is_valid_version_two_without_explanation(self) -> None:
+        fixture = (
+            Path(__file__).parents[1]
+            / "contracts"
+            / "editorial-question-v2.fixture.jsonl"
+        )
+        payload = json.loads(fixture.read_text(encoding="utf-8"))
+        record = EditorialImportRecordV2.model_validate(payload)
+
+        self.assertEqual(record.schema_version, 2)
+        self.assertIsNone(record.data.explanation)
+
     def test_stable_id_depends_on_source_proof_and_question_number(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             source = Path(temporary) / "prova.pdf"
@@ -99,10 +114,10 @@ class EditorialExportTests(unittest.TestCase):
 
             self.assertEqual(stable_question_id(source_batch, original), first)
 
-    def test_missing_fields_invalid_alternatives_and_annulled_are_blocked(self) -> None:
+    def test_optional_explanation_invalid_alternatives_and_annulled(self) -> None:
         missing = question(1)
         missing.explanation = None
-        self.assertTrue(
+        self.assertFalse(
             any("explicacao" in issue for issue in validate_editorial_question(missing))
         )
 
@@ -146,10 +161,48 @@ class EditorialExportTests(unittest.TestCase):
             self.assertTrue((result.directory / "fontes").is_dir())
             self.assertTrue(
                 all(
-                    json.loads(line)["data"]["publicationStatus"] == "draft"
+                    json.loads(line)["schemaVersion"] == 2
+                    and json.loads(line)["data"]["publicationStatus"] == "draft"
                     for line in lines
                 )
             )
+            manifest = json.loads(
+                (result.directory / "manifesto.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                manifest["contract"]["fingerprint"],
+                EDITORIAL_IMPORT_V2_FINGERPRINT,
+            )
+
+    def test_version_two_omits_empty_explanation_and_difficulty(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "prova.pdf"
+            source.write_bytes(b"evidence")
+            item = question(1)
+            item.explanation = None
+            item.difficulty = None
+            record = build_editorial_record(batch(source, [item]), item)
+            payload = record.model_dump(mode="json", by_alias=True, exclude_none=True)
+
+        self.assertNotIn("explanation", payload["data"])
+        self.assertNotIn("difficulty", payload["data"])
+
+    def test_ai_explanation_requires_traceability(self) -> None:
+        with self.assertRaisesRegex(ValueError, "provider"):
+            EditorialExplanation(
+                text="Explicação suficientemente longa para validação.",
+                origin="ai",
+                reviewStatus="draft",
+            )
+        explanation = EditorialExplanation(
+            text="Explicação suficientemente longa para validação.",
+            origin="ai",
+            reviewStatus="draft",
+            provider="openai",
+            model="modelo-teste",
+            promptVersion="explanation-v1",
+        )
+        self.assertEqual(explanation.prompt_version, "explanation-v1")
 
     def test_duplicate_content_is_sent_to_exceptions(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

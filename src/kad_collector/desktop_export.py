@@ -10,10 +10,10 @@ from typing import Any, cast
 
 from .desktop_models import DesktopFilterSet
 from .desktop_store import DesktopStore
-from .editorial_export import build_editorial_record
+from .editorial_export import EDITORIAL_IMPORT_V2_FINGERPRINT, build_editorial_record
 from .json_utils import write_json, write_json_lines
 from .models import DocumentRecord, QuestionBatch, QuestionRecord, ValidationState
-from .validation import validate_editorial_question
+from .validation import validate_app_import_question
 
 
 @dataclass(frozen=True)
@@ -130,7 +130,7 @@ def _evaluate_filtered_questions(
 
     for view in candidates:
         question = QuestionRecord.model_validate(view["question"])
-        issues = validate_editorial_question(question)
+        issues = validate_app_import_question(question)
         equivalence = store.question_equivalence(cast(str, view["id"]))
         confirmed_representative = bool(
             equivalence
@@ -289,7 +289,8 @@ def export_filtered_questions(
     write_json(
         report_path,
         {
-            "schemaVersion": 1,
+            "schemaVersion": 2,
+            "contractFingerprint": EDITORIAL_IMPORT_V2_FINGERPRINT,
             "createdAt": created_at.isoformat(),
             "filters": filters.model_dump(mode="json"),
             "selected": evaluation.selected,
@@ -310,7 +311,11 @@ def export_filtered_questions(
     write_json(
         directory / "manifesto.json",
         {
-            "schemaVersion": 1,
+            "schemaVersion": 2,
+            "contract": {
+                "name": "editorial-question-import-v2",
+                "fingerprint": EDITORIAL_IMPORT_V2_FINGERPRINT,
+            },
             "createdAt": created_at.isoformat(),
             "importFile": "questoes.jsonl",
             "files": [

@@ -800,7 +800,7 @@ class DesktopReviewAndFilterTests(unittest.TestCase):
             for line in result.questions_path.read_text(encoding="utf-8").splitlines()
         ]
         self.assertEqual(len(records), 1)
-        self.assertEqual(records[0]["schemaVersion"], 1)
+        self.assertEqual(records[0]["schemaVersion"], 2)
         self.assertEqual(records[0]["data"]["publicationStatus"], "draft")
         self.assertEqual(self.store.question(question_id)["status"], "exported")
         self.assertTrue((result.directory / "fontes").is_dir())
@@ -898,7 +898,7 @@ class DesktopReviewAndFilterTests(unittest.TestCase):
             self.document["id"], valid_question(1), full_classification()
         )
         invalid = valid_question(2).model_copy(
-            update={"explanation": None, "difficulty": None}
+            update={"matter": None, "subject": None}
         )
         invalid_id = self.store.save_question(
             self.document["id"], invalid, full_classification()

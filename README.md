@@ -757,8 +757,10 @@ kad-collector validate data\reviewed\LOTE.json --require-answers
 kad-collector approve data\reviewed\LOTE.json --reviewer "nome.do.revisor"
 ```
 
-A aprovacao exige todos os campos do `EditorialImportRecord` v1, de duas a cinco
-alternativas sequenciais entre A e E, uma explicacao e todas as respostas. Ela grava um
+A aprovacao exige os campos obrigatorios do `EditorialImportRecord` v2, de duas a cinco
+alternativas sequenciais entre A e E e uma resposta oficial. A explicacao e opcional. Quando
+presente, leva origem e estado de revisao; conteudo de IA tambem exige provedor, modelo e versao
+do prompt. Ela grava um
 hash do conteudo. Qualquer alteracao
 posterior invalida a importacao. Revise tambem direitos, fidelidade do enunciado,
 alternativas, classificacao e gabarito antes de aprovar.
@@ -774,7 +776,7 @@ kad-collector export-admin data\approved\LOTE.json
 
 A pasta `data/exports/LOTE/` contem:
 
-- `questoes.jsonl`, com uma questao valida por linha no contrato versionado;
+- `questoes.jsonl`, com uma questao principal valida por linha no contrato v2;
 - `excecoes/questoes.jsonl`, com rejeicoes, anuladas e itens incompletos;
 - `fontes/`, com os PDFs da prova e do gabarito preservados como evidencia;
 - `manifesto.json` e `relatorio.json`, com hashes, contagens e motivos.
@@ -782,7 +784,8 @@ A pasta `data/exports/LOTE/` contem:
 Importe apenas `questoes.jsonl` na tela **Importacoes** do painel KAD. O painel cria um
 lote para revisao e aplica itens validos sempre como rascunho. O coletor nao usa o schema
 `collector.*`, nao recebe credenciais do Supabase e nao escreve diretamente no banco.
-O contrato oficial e sua fixture estao em `contracts/`.
+O contrato v1 permanece disponivel para compatibilidade. A fonte canonica do v2 vive no
+repositorio KAD e sua copia, fixture e fingerprint verificado estao em `contracts/`.
 
 ## Execucao automatica por novidades
 

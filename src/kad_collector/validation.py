@@ -17,7 +17,6 @@ _EDITORIAL_TEXT_FIELDS = (
     ("cargo", "role"),
     ("nivel", "level"),
     ("dificuldade", "difficulty"),
-    ("explicacao", "explanation"),
 )
 
 def _normalized(value: str) -> str:
@@ -176,8 +175,12 @@ def verify_approved_batch(batch: QuestionBatch) -> None:
     expected = batch_content_sha256(batch)
     if batch.review.content_sha256 != expected:
         raise ValueError("o conteudo mudou depois da aprovacao")
-    validation = validate_questions(
-        batch.questions, require_answers=True, require_editorial=True
-    )
-    if not validation.valid:
-        raise ValueError("lote aprovado falhou na validacao: " + "; ".join(validation.errors))
+    validation = validate_questions(batch.questions, require_answers=True)
+    import_errors = [
+        error
+        for question in batch.questions
+        for error in validate_app_import_question(question)
+    ]
+    errors = [*validation.errors, *import_errors]
+    if errors:
+        raise ValueError("lote aprovado falhou na validacao: " + "; ".join(errors))
