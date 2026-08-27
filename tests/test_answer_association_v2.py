@@ -52,7 +52,7 @@ def profile(
     *,
     role: str = "Analista",
     stage: str = "Prova objetiva",
-    turn: str = "Manha",
+    turn: str | None = "Manha",
     variant: str = "Tipo 1",
     document_role: str = "exam",
     state: str = "definitive",
@@ -64,7 +64,11 @@ def profile(
         year=known("year", 2026),
         roles=known("roles", role),
         stage=known("stage", stage),
-        turns=known("turns", turn),
+        turns=(
+            known("turns", turn)
+            if turn is not None
+            else SemanticField.unknown("turno ausente")
+        ),
         variants=known("variants", variant),
     )
     return DocumentSemanticProfile(
@@ -92,7 +96,7 @@ def candidate(
     version_id: str = "key",
     *,
     interval: tuple[int, int] = (1, 2),
-    **changes: str,
+    **changes: str | None,
 ) -> AssociationCandidate:
     return AssociationCandidate(
         version_id=version_id,
@@ -112,7 +116,7 @@ class SemanticAssociationV2DecisionTests(unittest.TestCase):
     def test_valid_association_requires_every_compatible_field(self) -> None:
         decision = self.decide(candidate())
         self.assertEqual(decision.selected_version_id, "key")
-        self.assertEqual(decision.algorithm_version, "semantic-association-v2")
+        self.assertEqual(decision.algorithm_version, "semantic-association-v3")
         self.assertEqual(
             set(decision.assessments[0].matched_fields),
             {
@@ -141,19 +145,48 @@ class SemanticAssociationV2DecisionTests(unittest.TestCase):
         self.assertEqual(decision.outcome, "conflict")
         self.assertIn("interval: valores incompatíveis", decision.assessments[0].conflicts)
 
-    def test_missing_required_metadata_is_incomplete(self) -> None:
-        incomplete = candidate().model_copy(
+    def test_missing_turn_on_key_is_non_blocking_when_key_has_no_turn_partition(self) -> None:
+        decision = self.decide(candidate(turn=None))
+
+        self.assertEqual(decision.outcome, "selected")
+        self.assertEqual(decision.selected_version_id, "key")
+        turn = next(
+            item for item in decision.assessments[0].comparisons if item.field == "turn"
+        )
+        self.assertIn("não separa", turn.reason)
+
+    def test_missing_exam_turn_uses_single_turn_from_unique_definitive_key(self) -> None:
+        decision = select_answer_key(
+            profile(turn=None),
+            [candidate("morning-definitive", turn="Manha")],
+            exam_interval=QuestionInterval(first=1, last=2),
+        )
+
+        self.assertEqual(decision.outcome, "selected")
+        self.assertEqual(decision.selected_version_id, "morning-definitive")
+        turn = next(
+            item for item in decision.assessments[0].comparisons if item.field == "turn"
+        )
+        self.assertIn("derivado", turn.reason)
+
+    def test_missing_exam_turn_with_multiple_key_turns_requires_review(self) -> None:
+        multiple = candidate("multiple-turns").model_copy(
             update={
-                "profile": candidate().profile.model_copy(
+                "profile": candidate("multiple-turns").profile.model_copy(
                     update={
-                        "coverage": candidate().profile.coverage.model_copy(
-                            update={"turns": SemanticField.unknown("turno ausente")}
+                        "coverage": candidate("multiple-turns").profile.coverage.model_copy(
+                            update={"turns": known("turns", "Manha", "Tarde")}
                         )
                     }
                 )
             }
         )
-        decision = self.decide(incomplete)
+        decision = select_answer_key(
+            profile(turn=None),
+            [multiple],
+            exam_interval=QuestionInterval(first=1, last=2),
+        )
+
         self.assertEqual(decision.outcome, "incomplete")
         self.assertIn("turn", decision.assessments[0].incomplete_fields)
 
@@ -174,7 +207,15 @@ class SemanticAssociationV2DecisionTests(unittest.TestCase):
             candidate("wrong-definitive", state="definitive", turn="Tarde"),
         )
 
-        self.assertEqual(decision.selected_version_id, "preliminary")
+        self.assertEqual(decision.outcome, "awaiting_definitive")
+        self.assertIsNone(decision.selected_version_id)
+
+    def test_preliminary_only_waits_for_definitive(self) -> None:
+        decision = self.decide(candidate("preliminary", state="preliminary"))
+
+        self.assertEqual(decision.outcome, "awaiting_definitive")
+        self.assertIsNone(decision.selected_version_id)
+        self.assertIn("definitivo", decision.reason)
 
     def test_definitive_wins_over_preliminary_inside_the_same_scope(self) -> None:
         decision = self.decide(
@@ -230,13 +271,18 @@ class AnswerAssociationRevalidationTests(unittest.TestCase):
         return self.store.document(str(document["id"]))
 
     def add_exam(
-        self, prefix: str = "one", *, role: str = "Analista"
+        self,
+        prefix: str = "one",
+        *,
+        role: str = "Analista",
+        turn: str | None = "Manha",
     ) -> tuple[dict[str, object], list[str]]:
+        turn_line = f"Turno: {turn}\n" if turn is not None else ""
         exam = self.add_document(
             f"exam-{prefix}.pdf",
             f"Documento: {prefix}\nBanca: FGV\nConcurso: Concurso teste\nAno: 2026\n"
-            f"Cargo: {role}\nEtapa: Prova objetiva\nTurno: Manha\nTipo: 1",
-            self.metadata("exam", role=role),
+            f"Cargo: {role}\nEtapa: Prova objetiva\n{turn_line}Tipo: 1",
+            self.metadata("exam", role=role, turn=turn),
         )
         question_ids = []
         for number in (1, 2):
@@ -271,23 +317,53 @@ class AnswerAssociationRevalidationTests(unittest.TestCase):
         state: str = "definitivo",
         answers: tuple[str, str] = ("A", "B"),
         role: str = "Analista",
+        turn: str | None = "Manha",
     ) -> dict[str, object]:
+        turn_line = f"Turno: {turn}\n" if turn is not None else ""
         return self.add_document(
             f"key-{prefix}-{state}.pdf",
             f"Documento: {prefix}\nGabarito {state}\nBanca: FGV\n"
             f"Concurso: Concurso teste\nAno: 2026\n"
-            f"Cargo: {role}\nEtapa: Prova objetiva\nTurno: Manha\nTipo: 1\n"
+            f"Cargo: {role}\nEtapa: Prova objetiva\n{turn_line}Tipo: 1\n"
             f"1 - {answers[0]}\n2 - {answers[1]}",
-            self.metadata("answer_key", role=role),
+            self.metadata("answer_key", role=role, turn=turn),
         )
 
     def make_old_link(
         self, exam: dict[str, object], key: dict[str, object]
     ) -> str:
-        self.assertEqual(
-            self.processor._reconcile_answer_key(str(key["document_version_id"])), 1
-        )
         with closing(self.store._connect()) as connection:
+            version_id = str(key["document_version_id"])
+            version = connection.execute(
+                "SELECT answer_key_state,profile_json FROM document_versions WHERE id=?",
+                (version_id,),
+            ).fetchone()
+            original_profile = str(version["profile_json"])
+            original_state = str(version["answer_key_state"])
+            if original_state != "definitive":
+                temporary_profile = json.loads(original_profile)
+                temporary_profile["answer_key_state"] = "definitive"
+                connection.execute(
+                    "UPDATE document_versions SET answer_key_state='definitive',"
+                    "profile_json=? WHERE id=?",
+                    (json.dumps(temporary_profile, ensure_ascii=False), version_id),
+                )
+                connection.commit()
+            try:
+                replace_answer_key_association(
+                    connection,
+                    exam_version_id=str(exam["document_version_id"]),
+                    answer_key_version_id=version_id,
+                    actor="fixture-legado",
+                )
+            finally:
+                if original_state != "definitive":
+                    connection.execute(
+                        "UPDATE document_versions SET answer_key_state=?,profile_json=? "
+                        "WHERE id=?",
+                        (original_state, original_profile, version_id),
+                    )
+                    connection.commit()
             link = connection.execute(
                 "SELECT id, decision_json FROM document_links WHERE exam_version_id = ? "
                 "AND status = 'active'",
@@ -500,6 +576,107 @@ class AnswerAssociationRevalidationTests(unittest.TestCase):
             context.candidates[0].question_interval,
             QuestionInterval(first=1, last=70),
         )
+
+    def test_runtime_links_definitive_key_when_both_documents_omit_turn(self) -> None:
+        exam, question_ids = self.add_exam("no-shift-partition", turn=None)
+        key = self.add_key("no-shift-partition", turn=None)
+
+        with closing(self.store._connect()) as connection:
+            context, decision = decide_runtime_association(
+                connection, str(exam["document_version_id"])
+            )
+            applied = audit_answer_key_associations(
+                connection, apply=True, run_id="no-shift-partition"
+            )
+            repeated = audit_answer_key_associations(
+                connection, apply=True, run_id="no-shift-partition-repeat"
+            )
+
+        self.assertEqual(decision.outcome, "selected")
+        self.assertEqual(decision.selected_version_id, key["document_version_id"])
+        assessment = next(
+            item
+            for item in decision.assessments
+            if item.version_id == key["document_version_id"]
+        )
+        self.assertTrue(assessment.compatible)
+        self.assertEqual(
+            next(item.status for item in assessment.comparisons if item.field == "answer_grid"),
+            "matched",
+        )
+        self.assertEqual((applied.corrected, applied.questions_affected), (1, 2))
+        self.assertEqual((repeated.corrected, repeated.confirmed), (0, 1))
+        self.assertTrue(
+            all(
+                self.store.question(question_id)["question"]["answer_status"] == "matched"
+                for question_id in question_ids
+            )
+        )
+        self.assertEqual(len(question_ids), 2)
+
+    def test_runtime_derives_unique_turn_declared_only_by_definitive_key(self) -> None:
+        exam, _ = self.add_exam("derived-shift", turn=None)
+        key = self.add_key("derived-shift", turn="Manha")
+
+        with closing(self.store._connect()) as connection:
+            _, decision = decide_runtime_association(
+                connection, str(exam["document_version_id"])
+            )
+
+        self.assertEqual(decision.selected_version_id, key["document_version_id"])
+        turn = next(
+            item
+            for item in decision.assessments[0].comparisons
+            if item.field == "turn"
+        )
+        self.assertIn("derivado", turn.reason)
+
+    def test_preliminary_only_is_awaiting_definitive_and_is_idempotent(self) -> None:
+        exam, question_ids = self.add_exam("preliminary-only", turn=None)
+        self.add_key("preliminary-only", state="preliminar", turn=None)
+
+        with closing(self.store._connect()) as connection:
+            first = audit_answer_key_associations(
+                connection, apply=True, run_id="preliminary-only"
+            )
+            second = audit_answer_key_associations(
+                connection, apply=True, run_id="preliminary-only-repeat"
+            )
+            link_count = connection.execute(
+                "SELECT COUNT(*) FROM document_links WHERE exam_version_id=? "
+                "AND status='active'",
+                (exam["document_version_id"],),
+            ).fetchone()[0]
+            review = connection.execute(
+                "SELECT status,reason FROM association_review_queue WHERE exam_version_id=?",
+                (exam["document_version_id"],),
+            ).fetchone()
+
+        self.assertEqual(first.awaiting_definitive, 1)
+        self.assertEqual(second.awaiting_definitive, 1)
+        self.assertEqual(link_count, 0)
+        self.assertEqual(review["status"], "pending")
+        self.assertIn("aguardando definitivo", review["reason"])
+        self.assertTrue(
+            all(
+                self.store.question(question_id)["question"]["answer_status"] == "missing"
+                for question_id in question_ids
+            )
+        )
+
+    def test_invalid_preliminary_grid_is_not_reported_as_awaiting_definitive(self) -> None:
+        exam, _ = self.add_exam("invalid-preliminary", turn=None)
+        self.add_key(
+            "invalid-preliminary", state="preliminar", answers=("C", "B"), turn=None
+        )
+
+        with closing(self.store._connect()) as connection:
+            _, decision = decide_runtime_association(
+                connection, str(exam["document_version_id"])
+            )
+
+        self.assertEqual(decision.outcome, "conflict")
+        self.assertIn("alternativas", decision.reason)
 
     def test_initial_unresolved_exam_enters_specific_review_queue_once(self) -> None:
         exam = self.add_document(
@@ -1004,12 +1181,7 @@ class AnswerAssociationAuditTests(AnswerAssociationRevalidationTests):
     def test_audit_replaces_wrong_link_recalculates_batch_and_is_idempotent(self) -> None:
         exam, question_ids = self.add_exam()
         preliminary = self.add_key(state="preliminar", answers=("A", "A"))
-        self.assertEqual(
-            self.processor._reconcile_answer_key(
-                str(preliminary["document_version_id"])
-            ),
-            1,
-        )
+        self.make_old_link(exam, preliminary)
         definitive = self.add_key(state="definitivo", answers=("B", "B"))
 
         with closing(self.store._connect()) as connection:
@@ -1073,6 +1245,28 @@ class AnswerAssociationAuditTests(AnswerAssociationRevalidationTests):
             self.assertEqual(question["answer_status"], "missing")
             self.assertIsNone(question["correct_answer"])
 
+    def test_manual_choice_cannot_promote_preliminary_key_to_official(self) -> None:
+        exam, question_ids = self.add_exam("manual-preliminary")
+        preliminary = self.add_key("manual-preliminary", state="preliminar")
+
+        with (
+            closing(self.store._connect()) as connection,
+            self.assertRaisesRegex(ValueError, "preliminar"),
+        ):
+            replace_answer_key_association(
+                connection,
+                exam_version_id=str(exam["document_version_id"]),
+                answer_key_version_id=str(preliminary["document_version_id"]),
+                actor="operador_local",
+            )
+
+        self.assertTrue(
+            all(
+                self.store.question(question_id)["question"]["answer_status"] == "missing"
+                for question_id in question_ids
+            )
+        )
+
     def test_removed_link_can_be_selected_again_without_reusing_history_row(self) -> None:
         exam, _ = self.add_exam()
         key = self.add_key()
@@ -1125,6 +1319,10 @@ class AnswerAssociationAuditTests(AnswerAssociationRevalidationTests):
         self.assertEqual(runs_before, 0)
         self.assertEqual(applied["confirmed"], 1)
         self.assertEqual(summary["runId"], applied["runId"])
+        backup_path = Path(str(applied["backupPath"]))
+        self.assertTrue(backup_path.is_file())
+        with closing(sqlite3.connect(backup_path)) as backup:
+            self.assertEqual(backup.execute("PRAGMA quick_check").fetchone()[0], "ok")
 
 
 class Rfb22SemanticAssociationRegressionTests(unittest.TestCase):

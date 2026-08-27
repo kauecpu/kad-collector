@@ -369,7 +369,7 @@ def _valid_answer_link(connection: sqlite3.Connection, link_id: str | None) -> b
         return False
     row = connection.execute(
         "SELECT 1 FROM document_links WHERE id = ? AND status = 'active' "
-        "AND algorithm_version = 'semantic-association-v2'",
+        "AND algorithm_version = 'semantic-association-v3'",
         (link_id,),
     ).fetchone()
     return row is not None
@@ -1381,7 +1381,7 @@ def question_equivalence_view(
                              SELECT 1 FROM document_links freshness_link
                              WHERE freshness_link.id = freshness_q.answer_key_link_id
                                AND freshness_link.status = 'active'
-                               AND freshness_link.algorithm_version = 'semantic-association-v2'
+                               AND freshness_link.algorithm_version = 'semantic-association-v3'
                          )
                      )
                ) AS group_fresh

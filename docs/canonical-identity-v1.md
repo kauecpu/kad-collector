@@ -77,7 +77,7 @@ A migração liga `documents` e `document_versions` ao documento canônico por S
 `external_id`. Ela não altera hashes, páginas, versões, eventos semânticos ou decisões humanas.
 Um documento sem correspondência única entra em `canonical_identity_review_queue`.
 
-## Integração com semantic-association-v2
+## Integração com semantic-association-v3
 
 `build_runtime_context` consulta o catálogo antes de comparar prova e gabarito. Quando os dois
 documentos possuem identidade canônica, o comparador usa IDs de concurso, cargo, etapa, turno e

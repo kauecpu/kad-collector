@@ -18,6 +18,7 @@ def _evidence(
     valid_link: bool = False,
     exam_version_id: str | None = "exam-v1",
     candidates: int = 0,
+    review_reason: str | None = None,
 ) -> AnswerKeyEvidence:
     return AnswerKeyEvidence(
         answer_status=status,
@@ -25,6 +26,7 @@ def _evidence(
         valid_answer_association=valid_link,
         exam_version_id=exam_version_id,
         compatible_candidate_count=candidates,
+        review_reason=review_reason,
     )
 
 
@@ -59,7 +61,7 @@ class AnswerKeyDiagnosticTests(unittest.TestCase):
         self.assertEqual(summary["answer_missing"], 0)
         self.assertEqual(summary["answer_key_diagnostics"], {})
 
-    def test_five_missing_answer_scenarios_are_exclusive_and_evidence_based(self) -> None:
+    def test_six_missing_answer_scenarios_are_exclusive_and_evidence_based(self) -> None:
         fixtures = {
             "answer_key_not_collected": _evidence(candidates=0),
             "answer_key_unlinked": _evidence(candidates=1),
@@ -67,6 +69,12 @@ class AnswerKeyDiagnosticTests(unittest.TestCase):
                 link_id="link-v1", valid_link=True, candidates=1
             ),
             "ambiguous_answer_key_association": _evidence(candidates=2),
+            "answer_key_awaiting_definitive": _evidence(
+                candidates=1,
+                review_reason=(
+                    "somente gabarito preliminar compatível; aguardando definitivo"
+                ),
+            ),
             "answer_key_diagnosis_pending": _evidence(
                 exam_version_id=None, candidates=0
             ),
@@ -122,11 +130,12 @@ class AnswerKeyDiagnosticTests(unittest.TestCase):
 
     def test_fixture_preserves_1540_total_and_partitions_all_420_missing(self) -> None:
         distribution = {
-            "answer_key_not_collected": 100,
+            "answer_key_not_collected": 40,
             "answer_key_unlinked": 90,
             "question_missing_in_answer_key": 80,
             "ambiguous_answer_key_association": 70,
             "answer_key_diagnosis_pending": 80,
+            "answer_key_awaiting_definitive": 60,
         }
         views = [_view("official", None) for _ in range(1092)]
         views.extend(_view("annulled", None) for _ in range(28))
@@ -148,6 +157,7 @@ class AnswerKeyDiagnosticTests(unittest.TestCase):
             "answer_key_unlinked",
             "question_missing_in_answer_key",
             "ambiguous_answer_key_association",
+            "answer_key_awaiting_definitive",
             "answer_key_diagnosis_pending",
         ]
         views = [_view("official", None), _view("annulled", None)] + [
@@ -163,7 +173,7 @@ class AnswerKeyDiagnosticTests(unittest.TestCase):
                     DesktopFilterSet(answer_states=[view["answer_key_state"]]),
                 )
             )
-            self.assertEqual(states, {"official": 1, "annulled": 1, "missing": 5})
+            self.assertEqual(states, {"official": 1, "annulled": 1, "missing": 6})
             for code in codes:
                 selected = [
                     view

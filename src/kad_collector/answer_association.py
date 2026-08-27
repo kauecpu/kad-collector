@@ -19,6 +19,7 @@ from .question_equivalence import (
 from .semantic_identity import (
     AssociationCandidate,
     AssociationFieldComparison,
+    CandidateAssessment,
     DocumentAssociationDecision,
     DocumentSemanticProfile,
     QuestionInterval,
@@ -35,8 +36,10 @@ from .semantic_registry import (
 from .semantic_resolution import ASSOCIATION_ALGORITHM_VERSION, select_answer_key
 
 RevalidationResult = Literal["maintained", "changed", "invalidated", "ambiguous", "incomplete"]
-AnswerKeyAuditStatus = Literal["confirmed", "uncertain", "incorrect", "missing"]
-ANSWER_KEY_AUDIT_ALGORITHM_VERSION = "answer-key-audit-v1"
+AnswerKeyAuditStatus = Literal[
+    "confirmed", "uncertain", "incorrect", "missing", "awaiting_definitive"
+]
+ANSWER_KEY_AUDIT_ALGORITHM_VERSION = "answer-key-audit-v2"
 
 
 def _now() -> str:
@@ -233,61 +236,93 @@ def decide_runtime_association(
         context.candidates,
         exam_interval=context.exam_interval,
     )
-    if decision.selected_version_id is not None:
-        validation = _answer_update_validation(
+    candidate_states = {
+        item.version_id: item.profile.answer_key_state for item in context.candidates
+    }
+    validation_ids = (
+        [decision.selected_version_id]
+        if decision.selected_version_id is not None
+        else [
+            item.version_id
+            for item in decision.assessments
+            if decision.outcome == "awaiting_definitive"
+            and item.compatible
+            and candidate_states.get(item.version_id) == "preliminary"
+        ]
+    )
+    validations = {
+        version_id: _answer_update_validation(
             connection,
             exam_version_id=exam_version_id,
-            updates=context.answer_updates[decision.selected_version_id],
+            updates=context.answer_updates[version_id],
         )
-        if not validation["compatible"]:
-            selected = decision.selected_version_id
-            assessments = tuple(
-                item.model_copy(
-                    update={
-                        "compatible": False,
-                        "conflicts": tuple(
-                            dict.fromkeys(
-                                (*item.conflicts, *cast(list[str], validation["conflicts"]))
-                            )
-                        ),
-                        "incomplete_fields": tuple(
-                            dict.fromkeys(
-                                (
-                                    *item.incomplete_fields,
-                                    *cast(list[str], validation["incompleteFields"]),
-                                )
-                            )
-                        ),
-                        "comparisons": (
-                            *item.comparisons,
-                            AssociationFieldComparison(
-                                field="answer_grid",
-                                status=(
-                                    "incompatible"
-                                    if validation["conflicts"]
-                                    else "incomplete"
-                                ),
-                                exam_values=tuple(validation["questionNumbers"]),
-                                candidate_values=tuple(validation["answerNumbers"]),
-                                reason=cast(str, validation["reason"]),
-                            ),
-                        ),
-                        "reasons": (*item.reasons, cast(str, validation["reason"])),
-                    }
-                )
-                if item.version_id == selected
-                else item
-                for item in decision.assessments
-            )
+        for version_id in validation_ids
+    }
+    if validations:
+        assessments = tuple(
+            _assessment_with_answer_grid_validation(item, validations[item.version_id])
+            if item.version_id in validations
+            else item
+            for item in decision.assessments
+        )
+        valid_ids = [
+            version_id
+            for version_id, validation in validations.items()
+            if validation["compatible"]
+        ]
+        decision = decision.model_copy(update={"assessments": assessments})
+        if not valid_ids:
+            validation = next(iter(validations.values()))
+            has_conflict = any(item["conflicts"] for item in validations.values())
             decision = decision.model_copy(
                 update={
-                    "outcome": "conflict" if validation["conflicts"] else "incomplete",
+                    "outcome": "conflict" if has_conflict else "incomplete",
                     "selected_version_id": None,
-                    "assessments": assessments,
                     "reason": validation["reason"],
                 }
             )
     return context, decision
+
+
+def _assessment_with_answer_grid_validation(
+    assessment: CandidateAssessment, validation: dict[str, Any]
+) -> CandidateAssessment:
+    status = (
+        "matched"
+        if validation["compatible"]
+        else "incompatible"
+        if validation["conflicts"]
+        else "incomplete"
+    )
+    return assessment.model_copy(
+        update={
+            "compatible": assessment.compatible and validation["compatible"],
+            "conflicts": tuple(
+                dict.fromkeys(
+                    (*assessment.conflicts, *cast(list[str], validation["conflicts"]))
+                )
+            ),
+            "incomplete_fields": tuple(
+                dict.fromkeys(
+                    (
+                        *assessment.incomplete_fields,
+                        *cast(list[str], validation["incompleteFields"]),
+                    )
+                )
+            ),
+            "comparisons": (
+                *assessment.comparisons,
+                AssociationFieldComparison(
+                    field="answer_grid",
+                    status=cast(Any, status),
+                    exam_values=tuple(validation["questionNumbers"]),
+                    candidate_values=tuple(validation["answerNumbers"]),
+                    reason=cast(str, validation["reason"]),
+                ),
+            ),
+            "reasons": (*assessment.reasons, cast(str, validation["reason"])),
+        }
+    )
 
 
 def _answer_update_validation(
@@ -508,6 +543,7 @@ class AnswerKeyAuditReport:
     uncertain: int = 0
     incorrect: int = 0
     missing: int = 0
+    awaiting_definitive: int = 0
     corrected: int = 0
     questions_affected: int = 0
     sent_to_review: int = 0
@@ -515,7 +551,13 @@ class AnswerKeyAuditReport:
 
     @property
     def examined(self) -> int:
-        return self.confirmed + self.uncertain + self.incorrect + self.missing
+        return (
+            self.confirmed
+            + self.uncertain
+            + self.incorrect
+            + self.missing
+            + self.awaiting_definitive
+        )
 
     def record(self, payload: dict[str, Any]) -> None:
         status = cast(AnswerKeyAuditStatus, payload["status"])
@@ -535,6 +577,7 @@ class AnswerKeyAuditReport:
             "uncertain": self.uncertain,
             "incorrect": self.incorrect,
             "missing": self.missing,
+            "awaitingDefinitive": self.awaiting_definitive,
             "corrected": self.corrected,
             "questionsAffected": self.questions_affected,
             "sentToReview": self.sent_to_review,
@@ -557,6 +600,8 @@ def _answer_key_audit_status(
     current: sqlite3.Row | None, decision: DocumentAssociationDecision
 ) -> AnswerKeyAuditStatus:
     selected = decision.selected_version_id
+    if decision.outcome == "awaiting_definitive":
+        return "awaiting_definitive"
     if current is None:
         if selected is not None or decision.outcome in {
             "missing",
@@ -666,6 +711,10 @@ def audit_answer_key_associations(
                 str | None,
                 current["answer_key_version_id"] if current is not None else None,
             )
+            requires_algorithm_refresh = bool(
+                current is not None
+                and current["algorithm_version"] != ASSOCIATION_ALGORITHM_VERSION
+            )
             question_count = int(
                 connection.execute(
                     "SELECT COUNT(DISTINCT q.question_number) FROM questions q "
@@ -681,7 +730,9 @@ def audit_answer_key_associations(
             changed_at = _now()
             if apply:
                 connection.execute("BEGIN IMMEDIATE")
-                if decision.selected_version_id is not None and status != "confirmed":
+                if decision.selected_version_id is not None and (
+                    status != "confirmed" or requires_algorithm_refresh
+                ):
                     new_link = record_corrected_document_link(
                         connection, exam_version_id, decision, changed_at
                     )
@@ -699,9 +750,20 @@ def audit_answer_key_associations(
                         "DELETE FROM association_review_queue WHERE exam_version_id=?",
                         (exam_version_id,),
                     )
-                    action = "linked" if current is None else "replaced"
+                    action = (
+                        "linked"
+                        if current is None
+                        else "revalidated"
+                        if requires_algorithm_refresh
+                        and decision.selected_version_id == current_key
+                        else "replaced"
+                    )
                     corrected = True
-                elif current is not None and status in {"incorrect", "uncertain"}:
+                elif current is not None and status in {
+                    "incorrect",
+                    "uncertain",
+                    "awaiting_definitive",
+                }:
                     record_corrected_document_link(
                         connection, exam_version_id, decision, changed_at
                     )
@@ -723,7 +785,7 @@ def audit_answer_key_associations(
                     )
                     action = "invalidated"
                     sent_to_review = True
-                elif status == "uncertain":
+                elif status in {"uncertain", "awaiting_definitive"}:
                     _queue_answer_key_review(
                         connection,
                         exam_version_id=exam_version_id,
@@ -863,6 +925,13 @@ def replace_answer_key_association(
     )
     if candidate is None or answer_key_version_id not in context.answer_updates:
         raise ValueError("gabarito não pertence aos candidatos desta prova")
+    candidate_state = next(
+        item.profile.answer_key_state
+        for item in context.candidates
+        if item.version_id == answer_key_version_id
+    )
+    if candidate_state == "preliminary":
+        raise ValueError("gabarito preliminar não pode fornecer resposta oficial")
     if candidate.conflicts:
         raise ValueError("gabarito possui conflito conhecido com a prova")
     validation = _answer_update_validation(
@@ -1030,7 +1099,11 @@ def _result_for(
         )
     if decision.outcome == "ambiguous":
         return "ambiguous"
-    if decision.outcome in {"incomplete", "insufficient_evidence"}:
+    if decision.outcome in {
+        "awaiting_definitive",
+        "incomplete",
+        "insufficient_evidence",
+    }:
         return "incomplete"
     return "invalidated"
 
@@ -1226,7 +1299,7 @@ def revalidate_answer_key_associations(
                         exam_version_id=exam_version_id,
                         link_id=new_link_id,
                         updates=context.answer_updates[decision.selected_version_id],
-                        reason="Respostas recalculadas por semantic-association-v2.",
+                        reason="Respostas recalculadas por semantic-association-v3.",
                         changed_at=changed_at,
                     )
                     connection.execute(
@@ -1243,7 +1316,7 @@ def revalidate_answer_key_associations(
                         link_id=None,
                         updates={},
                         reason=(
-                            "Resposta invalidada porque semantic-association-v2 não confirmou "
+                            "Resposta invalidada porque semantic-association-v3 não confirmou "
                             "um gabarito único e compatível."
                         ),
                         changed_at=changed_at,

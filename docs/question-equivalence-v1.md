@@ -46,7 +46,7 @@ O algoritmo normaliza Unicode e espaços, remove cabeçalhos de página conhecid
 Não há IA, similaridade aproximada ou desempate silencioso. Um grupo só recebe `confirmed`
 quando cobre todos os cadernos declarados no catálogo, possui uma ocorrência por caderno, não
 tem conteúdo incompleto e todas as respostas vêm de vínculos ativos
-`semantic-association-v2`. As letras podem variar entre cadernos; a consolidação compara o
+`semantic-association-v3`. As letras podem variar entre cadernos; a consolidação compara o
 texto normalizado da alternativa correta.
 
 Enunciado igual com alternativas diferentes, respostas divergentes, duas ocorrências no mesmo

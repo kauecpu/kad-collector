@@ -263,7 +263,7 @@ class SyntheticCatalog:
                     )
                     connection.execute(
                         "INSERT INTO document_links VALUES "
-                        "(?,?,?,'active','{}','semantic-association-v2',NULL,?,?)",
+                        "(?,?,?,'active','{}','semantic-association-v3',NULL,?,?)",
                         (link_id, version_id, "key-version", NOW, NOW),
                     )
                     self.documents[(role, booklet)] = (document_id, link_id)
@@ -945,7 +945,7 @@ class Rfb22ManifestBackedEquivalenceTests(unittest.TestCase):
             )
             db.execute(
                 "INSERT INTO document_links VALUES "
-                "(?,?,?,'active','{}','semantic-association-v2',NULL,?,?)",
+                "(?,?,?,'active','{}','semantic-association-v3',NULL,?,?)",
                 (link_id, version_id, "rfb-key", NOW, NOW),
             )
             booklet_offset = int(document["booklet"]) - 1

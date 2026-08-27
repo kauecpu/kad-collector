@@ -102,7 +102,7 @@ def _decision(booklet: str) -> dict[str, object]:
         "minimum_margin": 1,
         "achieved_margin": None,
         "reason": "fixture selecionada",
-        "algorithm_version": "semantic-association-v2",
+        "algorithm_version": "semantic-association-v3",
     }
 
 
@@ -201,7 +201,7 @@ def _seed(root: Path, *, include_review: bool = False) -> DesktopStore:
             connection.execute(
                 "INSERT INTO document_links (id,exam_version_id,answer_key_version_id,status,"
                 "decision_json,algorithm_version,created_at,updated_at) "
-                "VALUES (?,?,'key-version','active',?,'semantic-association-v2',?,?)",
+                "VALUES (?,?,'key-version','active',?,'semantic-association-v3',?,?)",
                 (link_id, version_id, _json(_decision(booklet)), NOW, NOW),
             )
         connection.commit()

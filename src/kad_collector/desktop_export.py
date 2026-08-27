@@ -142,7 +142,7 @@ def _evaluate_filtered_questions(
         if view["status"] != "approved":
             issues.append("questão ainda não aprovada na revisão editorial")
         if not view.get("valid_answer_association"):
-            issues.append("resposta sem associação semantic-association-v2 ativa e válida")
+            issues.append("resposta sem associação semantic-association-v3 ativa e válida")
         if "duplicate" in view["flags"] and not confirmed_representative:
             issues.append("conteúdo duplicado; resolva antes da exportação")
         if equivalence and not confirmed_representative:

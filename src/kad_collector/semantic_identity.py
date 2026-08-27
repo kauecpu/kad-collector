@@ -51,7 +51,13 @@ ResolutionOutcome = Literal[
     "exact_duplicate", "republication", "new_version", "new_identity", "uncertain"
 ]
 AssociationOutcome = Literal[
-    "selected", "missing", "conflict", "insufficient_evidence", "ambiguous", "incomplete"
+    "selected",
+    "missing",
+    "conflict",
+    "insufficient_evidence",
+    "ambiguous",
+    "incomplete",
+    "awaiting_definitive",
 ]
 
 

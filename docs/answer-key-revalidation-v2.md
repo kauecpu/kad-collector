@@ -6,7 +6,7 @@ O mecanismo anterior (`semantic-association-v1`) atribuía pontos às evidência
 semânticas e podia aceitar uma associação com parte do escopo desconhecida. A
 seleção também permitia desempates editoriais entre candidatos equivalentes.
 
-`semantic-association-v2` mantém a comparação de banca, concurso e ano, mas só
+`semantic-association-v3` mantém a comparação de banca, concurso e ano, mas só
 ativa um vínculo quando cargo, etapa, turno, caderno/tipo e intervalo objetivo
 estão presentes e são compatíveis. Os valores são normalizados antes da
 comparação. Um empate na melhor classificação válida não escolhe vencedor: o
@@ -90,7 +90,7 @@ ainda existem vínculos antigos pendentes.
 ```json
 {
   "runId": "2026-08-association-v2",
-  "algorithmVersion": "semantic-association-v2",
+  "algorithmVersion": "semantic-association-v3",
   "mode": "apply",
   "status": "completed",
   "associationsExamined": 3,
@@ -164,3 +164,12 @@ definitivos, resolveu 1.120 respostas e deixou 420 em `missing`. Os sete casos
 restantes entraram uma única vez na fila de revisão; uma segunda execução
 examinou zero provas. Nenhum vínculo selecionado divergiu em cargo, etapa,
 turno, tipo ou intervalo.
+
+## Regra atual de turno e gabarito preliminar
+
+A versão 3 aceita turno ausente quando os documentos não dividem a aplicação
+por turno. Se apenas a prova omitir o campo, um único turno declarado pelo único
+gabarito definitivo compatível pode ser usado como evidência derivada. Múltiplos
+turnos ou candidatos continuam na revisão. Um gabarito preliminar compatível
+fica em `aguardando definitivo`, sem criar vínculo oficial nem preencher
+respostas.
