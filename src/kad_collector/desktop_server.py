@@ -153,6 +153,7 @@ class DesktopApplication:
             "savedFilters": self.store.saved_filters(),
             "semanticSummary": self.store.semantic_presentation_summary(),
             "preparationSummary": self.preparation.summary(),
+            "answerKeyAuditSummary": self.store.answer_key_audit_summary(),
             "operationalSummary": {
                 **operational,
                 "nextAction": _next_desktop_action(query["summary"], operational),
@@ -218,6 +219,29 @@ class DesktopApplication:
 
     def prepare_questions(self) -> dict[str, Any]:
         return self.preparation.run()
+
+    def preview_answer_key_audit(self) -> dict[str, Any]:
+        return self.store.preview_answer_key_audit()
+
+    def run_answer_key_audit(self) -> dict[str, Any]:
+        return self.store.run_answer_key_audit()
+
+    def replace_answer_key_association(
+        self, exam_version_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        answer_key_version_id = payload.get("answerKeyVersionId")
+        if not isinstance(answer_key_version_id, str) or not answer_key_version_id:
+            raise ValueError("answerKeyVersionId deve ser informado")
+        return self.store.replace_answer_key_for_exam(
+            exam_version_id,
+            answer_key_version_id,
+            actor=LOCAL_DESKTOP_ACTOR,
+        )
+
+    def remove_answer_key_association(self, exam_version_id: str) -> dict[str, Any]:
+        return self.store.remove_answer_key_for_exam(
+            exam_version_id, actor=LOCAL_DESKTOP_ACTOR
+        )
 
     def preview_ollama_classification(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self.ollama_classification.preview(
@@ -507,6 +531,27 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                 if path == "/api/preparation/run":
                     self._send_json(application.prepare_questions())
                     return
+                if path == "/api/answer-key-audit/preview":
+                    self._send_json(application.preview_answer_key_audit())
+                    return
+                if path == "/api/answer-key-audit/run":
+                    self._send_json(application.run_answer_key_audit())
+                    return
+                association_action = re.fullmatch(
+                    r"/api/answer-key-associations/([a-f0-9-]+)/(replace|remove)",
+                    path,
+                )
+                if association_action is not None:
+                    exam_version_id, action = association_action.groups()
+                    association_result = (
+                        application.replace_answer_key_association(
+                            exam_version_id, payload
+                        )
+                        if action == "replace"
+                        else application.remove_answer_key_association(exam_version_id)
+                    )
+                    self._send_json(association_result)
+                    return
                 if path == "/api/local-ai/classification/preview":
                     self._send_json(application.preview_ollama_classification(payload))
                     return
@@ -533,14 +578,14 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                     self._send_json(saved, HTTPStatus.CREATED)
                     return
                 if path == "/api/export":
-                    result = application.export(payload)
+                    export_result = application.export(payload)
                     self._send_json(
                         {
-                            "directory": str(result.directory),
-                            "questionsPath": str(result.questions_path),
-                            "exceptionsPath": str(result.exceptions_path),
-                            "exported": result.exported_count,
-                            "exceptions": result.exception_count,
+                            "directory": str(export_result.directory),
+                            "questionsPath": str(export_result.questions_path),
+                            "exceptionsPath": str(export_result.exceptions_path),
+                            "exported": export_result.exported_count,
+                            "exceptions": export_result.exception_count,
                         }
                     )
                     return

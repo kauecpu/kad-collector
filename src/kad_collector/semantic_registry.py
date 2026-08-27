@@ -28,6 +28,8 @@ SEMANTIC_TABLES = frozenset(
         "association_revalidation_runs",
         "association_revalidation_audit",
         "association_review_queue",
+        "answer_key_audit_runs",
+        "answer_key_audit_cases",
         "question_lineage",
         "document_identity_events",
     }
@@ -680,6 +682,32 @@ def initialize_semantic_schema(connection: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS answer_key_audit_runs (
+            id TEXT PRIMARY KEY,
+            algorithm_version TEXT NOT NULL,
+            mode TEXT NOT NULL,
+            status TEXT NOT NULL,
+            totals_json TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            finished_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS answer_key_audit_cases (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL REFERENCES answer_key_audit_runs(id),
+            exam_version_id TEXT NOT NULL REFERENCES document_versions(id),
+            current_link_id TEXT REFERENCES document_links(id),
+            current_answer_key_version_id TEXT REFERENCES document_versions(id),
+            recommended_answer_key_version_id TEXT REFERENCES document_versions(id),
+            audit_status TEXT NOT NULL,
+            action TEXT NOT NULL,
+            question_count INTEGER NOT NULL,
+            questions_affected INTEGER NOT NULL,
+            evidence_json TEXT NOT NULL,
+            decision_json TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(run_id, exam_version_id)
+        );
         CREATE TABLE IF NOT EXISTS question_lineage (
             id TEXT PRIMARY KEY,
             predecessor_version_id TEXT REFERENCES document_versions(id),
@@ -730,6 +758,14 @@ def initialize_semantic_schema(connection: sqlite3.Connection) -> None:
         CREATE TRIGGER IF NOT EXISTS association_revalidation_audit_no_delete
             BEFORE DELETE ON association_revalidation_audit
             BEGIN SELECT RAISE(ABORT, 'association revalidation audit is append-only'); END;
+        CREATE INDEX IF NOT EXISTS answer_key_audit_cases_run_idx
+            ON answer_key_audit_cases(run_id, exam_version_id);
+        CREATE TRIGGER IF NOT EXISTS answer_key_audit_cases_no_update
+            BEFORE UPDATE ON answer_key_audit_cases
+            BEGIN SELECT RAISE(ABORT, 'answer key audit is append-only'); END;
+        CREATE TRIGGER IF NOT EXISTS answer_key_audit_cases_no_delete
+            BEFORE DELETE ON answer_key_audit_cases
+            BEGIN SELECT RAISE(ABORT, 'answer key audit is append-only'); END;
         CREATE UNIQUE INDEX IF NOT EXISTS question_lineage_successor_question_idx
             ON question_lineage(successor_question_id) WHERE successor_question_id IS NOT NULL;
         CREATE UNIQUE INDEX IF NOT EXISTS question_lineage_version_question_idx
@@ -939,7 +975,23 @@ def record_document_link(
             if own_transaction:
                 connection.commit()
             return cast(str, current["id"])
-        predecessor = cast(str | None, current["id"] if current is not None else None)
+        history = (
+            None
+            if current is not None
+            else connection.execute(
+                "SELECT id FROM document_links WHERE exam_version_id=? "
+                "ORDER BY updated_at DESC,created_at DESC,id DESC LIMIT 1",
+                (exam_version_id,),
+            ).fetchone()
+        )
+        predecessor = cast(
+            str | None,
+            current["id"]
+            if current is not None
+            else history["id"]
+            if history is not None
+            else None,
+        )
         if current is not None:
             connection.execute(
                 "UPDATE document_links SET status = 'superseded', updated_at = ? WHERE id = ?",
@@ -1008,7 +1060,23 @@ def record_corrected_document_link(
         and current["decision_json"] == decision_json
     ):
         return cast(str, current["id"])
-    predecessor = cast(str | None, current["id"] if current is not None else None)
+    history = (
+        None
+        if current is not None
+        else connection.execute(
+            "SELECT id FROM document_links WHERE exam_version_id=? "
+            "ORDER BY updated_at DESC,created_at DESC,id DESC LIMIT 1",
+            (exam_version_id,),
+        ).fetchone()
+    )
+    predecessor = cast(
+        str | None,
+        current["id"]
+        if current is not None
+        else history["id"]
+        if history is not None
+        else None,
+    )
     if current is not None:
         connection.execute(
             "UPDATE document_links SET status = 'rejected', updated_at = ? WHERE id = ?",

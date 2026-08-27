@@ -134,6 +134,20 @@
             <article><span>Cópias repetidas</span><strong id="prep-duplicates">0</strong></article>
             <article><span>Pendentes de revisão</span><strong id="prep-pending">0</strong></article>
           </div>
+          <section class="answer-key-audit-card" aria-labelledby="answer-key-audit-title">
+            <div>
+              <p class="eyebrow">PROVA E GABARITO</p>
+              <h3 id="answer-key-audit-title">Auditoria dos vínculos</h3>
+              <p>Confere identidade, quantidade de questões e letras das alternativas antes de manter uma resposta oficial.</p>
+            </div>
+            <div class="answer-key-audit-counts" aria-label="Última auditoria">
+              <span><strong id="audit-confirmed">0</strong> confirmados</span>
+              <span><strong id="audit-uncertain">0</strong> duvidosos</span>
+              <span><strong id="audit-incorrect">0</strong> incorretos</span>
+              <span><strong id="audit-missing">0</strong> sem gabarito</span>
+            </div>
+            <button id="answer-key-audit-open" class="button ghost" type="button">Auditar vínculos</button>
+          </section>
           <p id="canonical-empty-message" class="plain-warning" hidden>As questões foram coletadas, mas ainda precisam da preparação canônica antes da classificação com Qwen.</p>
           <div id="preparation-review-list" class="preparation-review-list" aria-live="polite"></div>
         </section>
@@ -480,6 +494,23 @@
         <footer class="modal-footer">
           <button class="button ghost modal-close" type="button">Cancelar</button>
           <button id="preparation-submit" class="button success" type="submit">Confirmar preparação</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <dialog id="answer-key-audit-dialog" class="modal">
+      <form id="answer-key-audit-form">
+        <header class="modal-header">
+          <div><p class="eyebrow">PROVA E GABARITO</p><h2>Auditar vínculos atuais</h2></div>
+          <button class="icon-button modal-close" type="button" aria-label="Fechar">×</button>
+        </header>
+        <p class="modal-copy">A prévia confere concurso, cargo, turno, tipo, ano, quantidade de questões e alternativas. O Collector não usa IA nesta etapa.</p>
+        <div id="answer-key-audit-preview" class="preview-summary" aria-live="polite"></div>
+        <div id="answer-key-audit-cases" class="answer-key-audit-cases" aria-live="polite"></div>
+        <p class="batch-warning">Vínculos confirmados permanecem intactos. Casos duvidosos vão para revisão; vínculos incompatíveis perdem as respostas até uma correção segura.</p>
+        <footer class="modal-footer">
+          <button class="button ghost modal-close" type="button">Fechar</button>
+          <button id="answer-key-audit-submit" class="button success" type="submit">Aplicar auditoria</button>
         </footer>
       </form>
     </dialog>

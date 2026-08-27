@@ -8,7 +8,10 @@ from contextlib import closing
 from pathlib import Path
 
 from kad_collector.answer_association import (
+    audit_answer_key_associations,
     decide_runtime_association,
+    remove_answer_key_association,
+    replace_answer_key_association,
     revalidate_answer_key_associations,
 )
 from kad_collector.cli import main
@@ -17,6 +20,7 @@ from kad_collector.desktop_models import (
     DesktopImportMetadata,
     QuestionClassification,
 )
+from kad_collector.desktop_preparation import DesktopPreparationManager
 from kad_collector.desktop_processor import DesktopProcessor
 from kad_collector.desktop_store import DesktopStore
 from kad_collector.models import Alternative, QuestionRecord
@@ -906,6 +910,221 @@ class AnswerAssociationRevalidationTests(unittest.TestCase):
                 connection, apply=True, run_id="interrupted-run"
             )
         self.assertEqual((resumed.examined, resumed.status), (2, "completed"))
+
+
+class AnswerAssociationAuditTests(AnswerAssociationRevalidationTests):
+    def test_runtime_keeps_parsing_after_canonical_catalog_replaces_labels_with_ids(
+        self,
+    ) -> None:
+        exam, _ = self.add_exam()
+        key = self.add_key()
+        self.assertEqual(
+            self.processor._reconcile_answer_key(str(key["document_version_id"])),
+            1,
+        )
+        DesktopPreparationManager(self.store).run()
+
+        with closing(self.store._connect()) as connection:
+            context, decision = decide_runtime_association(
+                connection, str(exam["document_version_id"])
+            )
+
+        self.assertEqual(decision.selected_version_id, key["document_version_id"])
+        self.assertEqual(context.exam_interval, QuestionInterval(first=1, last=2))
+        self.assertEqual(sorted(context.answer_updates[str(key["document_version_id"])]), [1, 2])
+
+    def test_runtime_rejects_answer_letter_missing_from_question_alternatives(self) -> None:
+        exam, _ = self.add_exam()
+        self.add_key(answers=("C", "B"))
+
+        with closing(self.store._connect()) as connection:
+            _, decision = decide_runtime_association(
+                connection, str(exam["document_version_id"])
+            )
+
+        self.assertEqual(decision.outcome, "conflict")
+        self.assertIsNone(decision.selected_version_id)
+        self.assertIn("alternativa", decision.reason.casefold())
+
+    def test_audit_classifies_confirmed_uncertain_incorrect_and_missing_links(self) -> None:
+        confirmed, _ = self.add_exam("confirmed", role="Analista")
+        confirmed_key = self.add_key("confirmed", role="Analista")
+        self.assertEqual(
+            self.processor._reconcile_answer_key(
+                str(confirmed_key["document_version_id"])
+            ),
+            1,
+        )
+
+        uncertain, _ = self.add_exam("uncertain", role="Auditor")
+        self.add_key("uncertain-a", role="Auditor")
+        self.add_key("uncertain-b", role="Auditor")
+
+        incorrect, _ = self.add_exam("incorrect", role="Fiscal")
+        incorrect_key = self.add_key("incorrect", role="Fiscal")
+        self.assertEqual(
+            self.processor._reconcile_answer_key(
+                str(incorrect_key["document_version_id"])
+            ),
+            1,
+        )
+        missing, _ = self.add_exam("missing", role="Tecnico")
+
+        with closing(self.store._connect()) as connection:
+            payload = json.loads(
+                connection.execute(
+                    "SELECT profile_json FROM document_versions WHERE id=?",
+                    (incorrect_key["document_version_id"],),
+                ).fetchone()[0]
+            )
+            wrong_role = known("roles", "Outro cargo").model_dump(mode="json")
+            payload["identity"]["roles"] = wrong_role
+            payload["coverage"]["roles"] = wrong_role
+            connection.execute(
+                "UPDATE document_versions SET profile_json=?,coverage_json=? WHERE id=?",
+                (
+                    json.dumps(payload, ensure_ascii=False),
+                    json.dumps(payload["coverage"], ensure_ascii=False),
+                    incorrect_key["document_version_id"],
+                ),
+            )
+            connection.commit()
+            report = audit_answer_key_associations(
+                connection, apply=False, run_id="classification-audit"
+            )
+
+        statuses = {
+            item["examVersionId"]: item["status"] for item in report.cases
+        }
+        self.assertEqual(statuses[confirmed["document_version_id"]], "confirmed")
+        self.assertEqual(statuses[uncertain["document_version_id"]], "uncertain")
+        self.assertEqual(statuses[incorrect["document_version_id"]], "incorrect")
+        self.assertEqual(statuses[missing["document_version_id"]], "missing")
+
+    def test_audit_replaces_wrong_link_recalculates_batch_and_is_idempotent(self) -> None:
+        exam, question_ids = self.add_exam()
+        preliminary = self.add_key(state="preliminar", answers=("A", "A"))
+        self.assertEqual(
+            self.processor._reconcile_answer_key(
+                str(preliminary["document_version_id"])
+            ),
+            1,
+        )
+        definitive = self.add_key(state="definitivo", answers=("B", "B"))
+
+        with closing(self.store._connect()) as connection:
+            first = audit_answer_key_associations(
+                connection, apply=True, run_id="replace-audit"
+            )
+            second = audit_answer_key_associations(
+                connection, apply=True, run_id="repeat-audit"
+            )
+            active = connection.execute(
+                "SELECT answer_key_version_id FROM document_links "
+                "WHERE exam_version_id=? AND status='active'",
+                (exam["document_version_id"],),
+            ).fetchone()[0]
+
+        self.assertEqual(first.corrected, 1)
+        self.assertEqual(first.questions_affected, 2)
+        self.assertEqual(active, definitive["document_version_id"])
+        self.assertEqual(second.corrected, 0)
+        self.assertEqual(second.confirmed, 1)
+        for question_id in question_ids:
+            question = self.store.question(question_id)["question"]
+            self.assertEqual(question["answer_status"], "matched")
+            self.assertEqual(question["correct_answer"], "B")
+
+    def test_manual_choice_and_removal_apply_to_whole_exam_and_append_history(self) -> None:
+        exam, question_ids = self.add_exam()
+        first = self.add_key("first", answers=("A", "B"))
+        self.add_key("second", answers=("B", "A"))
+
+        with closing(self.store._connect()) as connection:
+            result = replace_answer_key_association(
+                connection,
+                exam_version_id=str(exam["document_version_id"]),
+                answer_key_version_id=str(first["document_version_id"]),
+                actor="operador_local",
+            )
+            removed = remove_answer_key_association(
+                connection,
+                exam_version_id=str(exam["document_version_id"]),
+                actor="operador_local",
+            )
+            actions = [
+                row[0]
+                for row in connection.execute(
+                    "SELECT action FROM document_identity_events "
+                    "WHERE document_version_id=? AND action LIKE 'association_manual_%' "
+                    "ORDER BY created_at,action",
+                    (exam["document_version_id"],),
+                ).fetchall()
+            ]
+
+        self.assertEqual(result["questionsAffected"], 2)
+        self.assertEqual(removed["questionsAffected"], 2)
+        self.assertEqual(
+            actions,
+            ["association_manual_replaced", "association_manual_removed"],
+        )
+        for question_id in question_ids:
+            question = self.store.question(question_id)["question"]
+            self.assertEqual(question["answer_status"], "missing")
+            self.assertIsNone(question["correct_answer"])
+
+    def test_removed_link_can_be_selected_again_without_reusing_history_row(self) -> None:
+        exam, _ = self.add_exam()
+        key = self.add_key()
+
+        with closing(self.store._connect()) as connection:
+            first = replace_answer_key_association(
+                connection,
+                exam_version_id=str(exam["document_version_id"]),
+                answer_key_version_id=str(key["document_version_id"]),
+                actor="operador_local",
+            )
+            remove_answer_key_association(
+                connection,
+                exam_version_id=str(exam["document_version_id"]),
+                actor="operador_local",
+            )
+            second = replace_answer_key_association(
+                connection,
+                exam_version_id=str(exam["document_version_id"]),
+                answer_key_version_id=str(key["document_version_id"]),
+                actor="operador_local",
+            )
+            links = connection.execute(
+                "SELECT id,status FROM document_links WHERE exam_version_id=? ORDER BY created_at",
+                (exam["document_version_id"],),
+            ).fetchall()
+
+        self.assertEqual(first["questionsAffected"], 2)
+        self.assertEqual(second["questionsAffected"], 2)
+        self.assertEqual(len(links), 2)
+        self.assertEqual([row["status"] for row in links], ["rejected", "active"])
+
+    def test_desktop_audit_preview_is_passive_and_summary_uses_applied_run(self) -> None:
+        exam, _ = self.add_exam()
+        key = self.add_key()
+        self.assertEqual(
+            self.processor._reconcile_answer_key(str(key["document_version_id"])),
+            1,
+        )
+
+        preview = self.store.preview_answer_key_audit()
+        with closing(self.store._connect()) as connection:
+            runs_before = connection.execute(
+                "SELECT COUNT(*) FROM answer_key_audit_runs"
+            ).fetchone()[0]
+        applied = self.store.run_answer_key_audit()
+        summary = self.store.answer_key_audit_summary()
+
+        self.assertEqual(preview["confirmed"], 1)
+        self.assertEqual(runs_before, 0)
+        self.assertEqual(applied["confirmed"], 1)
+        self.assertEqual(summary["runId"], applied["runId"])
 
 
 class Rfb22SemanticAssociationRegressionTests(unittest.TestCase):
