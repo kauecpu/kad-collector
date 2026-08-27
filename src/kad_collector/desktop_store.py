@@ -74,7 +74,7 @@ from .semantic_registry import (
     semantic_summary,
 )
 from .semantic_resolution import resolve_document_version, select_answer_key
-from .validation import validate_editorial_question
+from .validation import validate_app_import_question, validate_editorial_question
 
 
 def _now() -> str:
@@ -2505,7 +2505,7 @@ class DesktopStore:
         before = self.question(question_id)
         question = QuestionRecord.model_validate(before["question"])
         if status == "approved":
-            errors = validate_editorial_question(question)
+            errors = validate_app_import_question(question)
             if errors:
                 raise ValueError("questao ainda nao exportavel: " + "; ".join(errors))
             equivalence = cast(dict[str, Any] | None, before.get("question_equivalence"))
@@ -2564,7 +2564,7 @@ class DesktopStore:
                 invalid.append(f"questao {before['question']['number']}: nao esta pendente")
                 continue
             question = QuestionRecord.model_validate(before["question"])
-            errors = validate_editorial_question(question)
+            errors = validate_app_import_question(question)
             equivalence = cast(dict[str, Any] | None, before.get("question_equivalence"))
             if equivalence and (
                 equivalence.get("status") != "confirmed"

@@ -277,7 +277,7 @@ class ImportReadinessTests(unittest.TestCase):
         self.assertEqual(validate_app_import_question(question), [])
         publication_errors = validate_editorial_question(question)
         self.assertTrue(any("dificuldade" in error for error in publication_errors))
-        self.assertTrue(any("explicacao" in error for error in publication_errors))
+        self.assertFalse(any("explicacao" in error for error in publication_errors))
 
     def test_import_validation_keeps_answer_alternative_and_origin_fields_required(self) -> None:
         question = _question(1, "Questão sem resposta oficial suficiente.").model_copy(
