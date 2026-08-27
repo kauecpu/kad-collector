@@ -9,6 +9,7 @@ from typing import Any
 
 from test_question_equivalence import SyntheticCatalog, _question
 
+from kad_collector.canonical_ai_input import CanonicalAIInputError
 from kad_collector.canonical_classification import (
     CanonicalAIProviderUnavailableError,
     CanonicalAIRequest,
@@ -390,6 +391,32 @@ class CanonicalClassificationTests(unittest.TestCase):
         self.assertEqual(provider.requests[0].alternatives, ("Errada", "Certa"))
         self.assertEqual(len(provider.requests[0].prompt_content_fingerprint), 64)
         self.assertEqual(stored["alternatives"][1]["text"], raw_footer)
+
+    def test_sanitization_error_identifies_the_question_that_blocked_the_run(self) -> None:
+        question = _question().model_copy(
+            update={
+                "statement": (
+                    "CONCURSO PÚBLICO DA RECEITA FEDERAL DO BRASIL\n"
+                    "Assinale a alternativa correta segundo a norma apresentada."
+                )
+            }
+        )
+        fixture, rows = _seed_canonical(self.root, question=question)
+        canonical_id, question_id = rows[0]
+        _clear_fields(fixture, question_id, {"level"})
+
+        with closing(fixture.store._connect()) as connection, self.assertRaisesRegex(
+            CanonicalAIInputError,
+            rf"questão 1.*{canonical_id}",
+        ):
+            run_canonical_classification(
+                connection,
+                apply=True,
+                enable_ai=True,
+                provider=FakeProvider(_level_decision()),
+                run_id="identified-sanitization-error",
+                taxonomy=self.taxonomy,
+            )
 
     def test_complete_question_and_non_representative_occurrence_never_call_ai(self) -> None:
         fixture, _ = _seed_canonical(self.root)

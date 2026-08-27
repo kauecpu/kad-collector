@@ -12,7 +12,7 @@ from typing import Any, Literal, Protocol, cast
 
 from pydantic import Field
 
-from .canonical_ai_input import sanitize_canonical_ai_content
+from .canonical_ai_input import CanonicalAIInputError, sanitize_canonical_ai_content
 from .canonical_identity import resolve_contest_alias
 from .desktop_classifier import LocalRuleClassifier
 from .desktop_models import (
@@ -1633,11 +1633,16 @@ def _process_row(
     if provider is None:
         raise CanonicalClassificationError("IA habilitada sem provedor")
     catalog_ids = taxonomy.relevant_catalog_ids(_metadata(row))
-    sanitized = sanitize_canonical_ai_content(
-        question.statement,
-        tuple(item.text for item in question.alternatives),
-        official_headings=taxonomy.official_headings(catalog_ids=catalog_ids),
-    )
+    try:
+        sanitized = sanitize_canonical_ai_content(
+            question.statement,
+            tuple(item.text for item in question.alternatives),
+            official_headings=taxonomy.official_headings(catalog_ids=catalog_ids),
+        )
+    except CanonicalAIInputError as exc:
+        raise CanonicalAIInputError(
+            f"questão {question.number} ({canonical_question_id}): {exc}"
+        ) from exc
     request = CanonicalAIRequest(
         canonical_question_id=canonical_question_id,
         content_fingerprint=content_fingerprint,

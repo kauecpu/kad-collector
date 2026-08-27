@@ -6,12 +6,16 @@ from dataclasses import dataclass
 from .editorial_taxonomy import normalize_taxonomy_text
 from .semantic_identity import stable_sha256
 
-CANONICAL_AI_INPUT_SANITIZER_VERSION = "canonical-ai-input-v1"
+CANONICAL_AI_INPUT_SANITIZER_VERSION = "canonical-ai-input-v2"
 
-_FGV_FOOTER = re.compile(r"\bFGV\s+CONHECIMENTO\b", re.IGNORECASE)
+_FGV_FOOTER = re.compile(r"^\s*FGV\s+CONHECIMENTO\s*$", re.IGNORECASE)
 _PAGE_FOOTER = re.compile(r"\bP[ÁA]GINA\s+\d+\b", re.IGNORECASE)
 _EXAM_HEADER = re.compile(
-    r"\b(?:CONCURSO\s+P[ÚU]BLICO\s+DA\s+)?RECEITA\s+FEDERAL\s+DO\s+BRASIL\b",
+    r"^\s*(?:"
+    r"CONCURSO\s+P[ÚU]BLICO\s+DA\s+RECEITA\s+FEDERAL\s+DO\s+BRASIL"
+    r"(?:\s+FGV\s+CONHECIMENTO)?"
+    r"|RECEITA\s+FEDERAL\s+DO\s+BRASIL\s+FGV\s+CONHECIMENTO"
+    r")\s*$",
     re.IGNORECASE,
 )
 _CALENDAR_WEEK = re.compile(
@@ -34,13 +38,16 @@ class SanitizedAIContent:
 
 def _line_artifacts(line: str) -> tuple[str, ...]:
     codes: list[str] = []
+    exam_header = _EXAM_HEADER.fullmatch(line)
     if _CALENDAR_WEEK.fullmatch(line):
         codes.append("calendar")
-    if _FGV_FOOTER.search(line):
+    if _FGV_FOOTER.fullmatch(line) or (
+        exam_header is not None and re.search(r"\bFGV\s+CONHECIMENTO\b", line, re.IGNORECASE)
+    ):
         codes.append("fgv_footer")
     if _PAGE_FOOTER.search(line):
         codes.append("page_footer")
-    if _EXAM_HEADER.search(line):
+    if exam_header is not None:
         codes.append("exam_header")
     return tuple(codes)
 
