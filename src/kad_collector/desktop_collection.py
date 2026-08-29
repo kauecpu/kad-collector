@@ -5,6 +5,7 @@ import re
 import threading
 import time
 import uuid
+from contextlib import suppress
 from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
@@ -21,6 +22,9 @@ from .document_contract import normalize_collected_document
 from .document_pipeline import DocumentPipeline
 from .models import AppConfig, DocumentRecord, SourceDefinition
 from .security import UnsafeUrlError, validate_public_url
+
+COLLECTION_CANCEL_GRACE_SECONDS = 5.0
+COLLECTION_STARTUP_TIMEOUT_SECONDS = 60.0
 
 _SOURCE_PRESENTATION: dict[str, tuple[str, str]] = {
     "fuvest_vestibular": (
@@ -201,6 +205,9 @@ class DesktopCollectionManager:
             str,
             tuple[SourceDefinition, str, Literal["local", "openai"], dict[str, Any]],
         ] = {}
+        self._transport_closers: dict[str, Any] = {}
+        self._forced_terminal: set[str] = set()
+        self._startup_timers: dict[str, threading.Timer] = {}
 
     def catalog(self) -> list[dict[str, Any]]:
         catalog: list[dict[str, Any]] = []
@@ -390,6 +397,15 @@ class DesktopCollectionManager:
             daemon=True,
         )
         thread.start()
+        timer = threading.Timer(
+            COLLECTION_STARTUP_TIMEOUT_SECONDS,
+            self._timeout_startup,
+            args=(job_id,),
+        )
+        timer.daemon = True
+        with self._lock:
+            self._startup_timers[job_id] = timer
+        timer.start()
         return job_id
 
     def action(self, job_id: str, action: str) -> None:
@@ -405,6 +421,14 @@ class DesktopCollectionManager:
                 job["requestedAction"] = action
                 job["status"] = "pausing" if action == "pause" else "cancelling"
                 control.set()
+                if action == "cancel":
+                    timer = threading.Timer(
+                        COLLECTION_CANCEL_GRACE_SECONDS,
+                        self._force_cancel,
+                        args=(job_id,),
+                    )
+                    timer.daemon = True
+                    timer.start()
                 return
             if action != "resume" or job["status"] != "paused":
                 raise ValueError("esta coleta nao pode ser retomada neste estado")
@@ -427,7 +451,67 @@ class DesktopCollectionManager:
 
     def _update(self, job_id: str, **changes: Any) -> None:
         with self._lock:
+            if job_id in self._forced_terminal:
+                return
             self._jobs[job_id].update(changes)
+
+    def _set_transport_closer(self, job_id: str, closer: Any) -> None:
+        with self._lock:
+            if closer is None:
+                self._transport_closers.pop(job_id, None)
+            else:
+                self._transport_closers[job_id] = closer
+
+    def _clear_startup_timer(self, job_id: str) -> None:
+        with self._lock:
+            timer = self._startup_timers.pop(job_id, None)
+        if timer is not None:
+            timer.cancel()
+
+    def _timeout_startup(self, job_id: str) -> None:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None or job.get("status") not in {"queued", "running"}:
+                return
+            telemetry = job.get("telemetry") or {}
+            if int(telemetry.get("requests", 0)) > 0:
+                return
+            closer = self._transport_closers.get(job_id)
+            self._forced_terminal.add(job_id)
+            job.update(
+                {
+                    "status": "failed",
+                    "completedAt": datetime.now(UTC).isoformat(),
+                    "error": (
+                        "tempo esgotado aguardando a primeira resposta do transporte; "
+                        "nenhuma requisição foi concluída"
+                    ),
+                }
+            )
+        if closer is not None:
+            with suppress(Exception):
+                closer()
+
+    def _force_cancel(self, job_id: str) -> None:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None or job.get("status") != "cancelling":
+                return
+            closer = self._transport_closers.get(job_id)
+            self._forced_terminal.add(job_id)
+            job.update(
+                {
+                    "status": "cancelled",
+                    "completedAt": datetime.now(UTC).isoformat(),
+                    "error": (
+                        "coleta cancelada após exceder o prazo de encerramento; "
+                        "a operação de transporte foi interrompida"
+                    ),
+                }
+            )
+        if closer is not None:
+            with suppress(Exception):
+                closer()
 
     def _wait_for_processing(self, collection_id: str, import_job_ids: list[str]) -> None:
         if not import_job_ids:
@@ -542,6 +626,8 @@ class DesktopCollectionManager:
                 run_config,
                 run_id=job_id,
                 stop_event=self._controls[job_id],
+                progress_callback=self._progress_callback(job_id),
+                transport_callback=lambda closer: self._set_transport_closer(job_id, closer),
             )
             paths = [Path(document.local_path).resolve() for document in manifest.documents]
             known_hashes = self.store.processed_sha256s(
@@ -664,9 +750,36 @@ class DesktopCollectionManager:
                 completedAt=(datetime.now(UTC).isoformat() if requested == "cancel" else None),
             )
         except (OSError, RuntimeError, ValueError) as exc:
+            with self._lock:
+                if job_id in self._forced_terminal:
+                    return
             self._update(
                 job_id,
                 status="failed",
                 completedAt=datetime.now(UTC).isoformat(),
                 error=str(exc),
             )
+        finally:
+            self._clear_startup_timer(job_id)
+            self._set_transport_closer(job_id, None)
+
+    def _progress_callback(self, job_id: str) -> Any:
+        def update(event: Any) -> None:
+            self._clear_startup_timer(job_id)
+            with self._lock:
+                if job_id in self._forced_terminal:
+                    return
+                job = self._jobs.get(job_id)
+                if job is None:
+                    return
+                telemetry = job.setdefault("telemetry", {})
+                telemetry["requests"] = int(telemetry.get("requests", 0)) + 1
+                telemetry["bytes"] = int(telemetry.get("bytes", 0)) + int(
+                    event.bytes_received
+                )
+                if event.attempt > 1:
+                    telemetry["retries"] = int(telemetry.get("retries", 0)) + 1
+                if event.cache_status in {"hit", "revalidated"}:
+                    telemetry["cacheHits"] = int(telemetry.get("cacheHits", 0)) + 1
+
+        return update

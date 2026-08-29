@@ -719,6 +719,22 @@ function collectionStatusLabel(status) {
   }[status] || status;
 }
 
+function collectionSummary(job, telemetry) {
+  const flowSummary = [
+    `${job.discoveredDocuments || 0} descobertos`,
+    `${job.downloadedDocuments || job.documents || 0} baixados`,
+    `${job.processedDocuments || 0} processados`,
+    `${job.skippedDocuments || 0} já processados`,
+    `${job.questions || 0} questões`,
+    `${(job.failures || 0) + (job.failedDocuments || 0)} falhas`,
+  ].join(' · ');
+  if (job.status === 'failed') return job.error || 'Falha não detalhada.';
+  if (['queued', 'running'].includes(job.status) && !telemetry.requests) {
+    return 'Aguardando a primeira resposta do transporte.';
+  }
+  return flowSummary;
+}
+
 function formatBytes(bytes) {
   if (!bytes) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB'];
@@ -768,22 +784,15 @@ function renderCollections() {
     const status = document.createElement('strong');
     status.textContent = collectionStatusLabel(job.status);
     const summary = document.createElement('small');
-    const flowSummary = [
-      `${job.discoveredDocuments || 0} descobertos`,
-      `${job.downloadedDocuments || job.documents || 0} baixados`,
-      `${job.processedDocuments || 0} processados`,
-      `${job.skippedDocuments || 0} já processados`,
-      `${job.questions || 0} questões`,
-      `${(job.failures || 0) + (job.failedDocuments || 0)} falhas`,
-    ].join(' · ');
-    if (job.status === 'failed') summary.textContent = job.error || 'Falha não detalhada.';
+    const flowSummary = collectionSummary(job, telemetry);
+    if (job.status === 'failed') summary.textContent = flowSummary;
     else if (collectionFinished) {
       summary.textContent = flowSummary;
       if (!job.documents) status.textContent = 'Concluída sem PDFs';
       else if (job.skippedDocuments === job.documents) status.textContent = 'Já processado — ignorado';
     } else if (job.status === 'processing') {
       summary.textContent = flowSummary;
-    } else summary.textContent = 'A página e os PDFs estão sendo verificados.';
+    } else summary.textContent = flowSummary;
     result.append(status, summary);
     const actions = document.createElement('div');
     actions.className = 'collection-actions';

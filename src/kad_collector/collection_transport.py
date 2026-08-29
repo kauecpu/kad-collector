@@ -6,7 +6,7 @@ import random
 import re
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -44,7 +44,7 @@ class _ChallengePageDetected(Exception):
 
 
 def _content_type_of(headers: httpx.Headers) -> str:
-    return headers.get("Content-Type", "").split(";", 1)[0].strip().casefold()
+    return str(headers.get("Content-Type", "")).split(";", 1)[0].strip().casefold()
 
 
 def _message(headers: httpx.Headers) -> Message:
@@ -172,6 +172,7 @@ class CollectionHttpClient:
         page_transport: Literal["http", "scrapling"] = "http",
         scrapling_session_factory: ScraplingSessionFactory | None = None,
         cloudflare_bypass_enabled: bool = True,
+        progress_callback: Callable[[CollectionTelemetryEvent], None] | None = None,
     ) -> None:
         self.scheduler = HostScheduler(interval_seconds, max_concurrency)
         self.max_retries = max_retries
@@ -186,6 +187,7 @@ class CollectionHttpClient:
         if page_transport not in {"http", "scrapling"}:
             raise ValueError(f"transporte de pagina desconhecido: {page_transport}")
         self.page_transport = page_transport
+        self.progress_callback = progress_callback
         self.scrapling = (
             PersistentScraplingSession(
                 user_agent=user_agent,
@@ -211,6 +213,11 @@ class CollectionHttpClient:
                 "Accept-Encoding": "gzip, deflate",
             },
         )
+
+    def abort(self) -> None:
+        """Best-effort immediate shutdown used by the desktop cancel supervisor."""
+
+        self.close()
 
     def close(self) -> None:
         scrapling_error: ScraplingSessionError | None = None
@@ -260,6 +267,23 @@ class CollectionHttpClient:
                 detail=detail,
             ),
         )
+        if self.progress_callback is not None:
+            self.progress_callback(
+                CollectionTelemetryEvent(
+                    occurred_at=datetime.now(UTC),
+                    source_id=self.source_id,
+                    url=_safe_url(url),
+                    strategy=strategy,
+                    outcome=outcome,
+                    status_code=status_code,
+                    duration_ms=duration_ms,
+                    bytes_received=bytes_received,
+                    attempt=attempt,
+                    wait_seconds=wait_seconds,
+                    cache_status=cache_status,  # type: ignore[arg-type]
+                    detail=detail,
+                )
+            )
 
     def _cache_headers(self, url: str) -> tuple[dict[str, str], dict[str, object] | None]:
         if not self.conditional_cache and not self.development_cache:
