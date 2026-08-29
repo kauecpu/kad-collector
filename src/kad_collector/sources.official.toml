@@ -320,3 +320,36 @@ terms_url = "https://sistema.vestibular.uerj.br/portal_vestibular_uerj/busca_rap
 banca = "UERJ"
 orgao = "Universidade do Estado do Rio de Janeiro"
 cargo = "Vestibular"
+
+# O PCI Concursos funciona como indice de provas publicas. A pagina do Banco
+# do Brasil aponta para os PDFs de cada cargo, ano, caderno e gabarito; o
+# Collector preserva esses vinculos como evidencia e so exporta depois da
+# validacao editorial. Decisao administrativa explicita do responsavel em
+# 2026-08-29: robots.txt e Crawl-delay ficam em modo ignore para o PCI.
+[[sources]]
+id = "pci_concursos"
+name = "PCI Concursos - Banco do Brasil"
+enabled = true
+start_urls = ["https://www.pciconcursos.com.br/provas/banco-do-brasil"]
+allowed_hosts = ["www.pciconcursos.com.br"]
+robots_policy = "ignore"
+crawl_delay_policy = "ignore"
+include_patterns = ["(?i)\\.pdf(?:$|[?#])"]
+exclude_patterns = [
+  "(?i)(apostila|edital|resultado|classificacao|inscricao|noticia|comentario|gabarito.?extraoficial)",
+]
+exam_patterns = ["(?i)(prova|caderno|quest(?:ao|oes))"]
+answer_key_patterns = ["(?i)(gabarito|respostas?|padrao.?de.?resposta)"]
+collection_url_patterns = [
+  "(?i)^https://www\\.pciconcursos\\.com\\.br/provas/(?:banco-do-brasil|download/[a-z0-9-]+)(?:/?[?#].*)?$",
+]
+pagination_patterns = [
+  "(?i)^https://www\\.pciconcursos\\.com\\.br/provas/banco-do-brasil(?:/\\d+)?/?(?:[?#].*)?$",
+]
+max_pages_per_run = 20
+access_mode = "content"
+authorization_basis = "Paginas e PDFs publicos vinculados pelo indice PCI Concursos; uso interno para revisao, com URL e hash preservados. A permissao de republicacao deve ser confirmada antes da exportacao."
+terms_url = "https://www.pciconcursos.com.br/"
+
+[sources.metadata]
+orgao = "Banco do Brasil"

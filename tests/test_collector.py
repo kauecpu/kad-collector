@@ -14,11 +14,13 @@ from kad_collector.collector import (
     extract_dated_link_stages,
     extract_dated_link_variants,
     extract_links,
+    extract_page_metadata,
+    select_collection_links,
     select_document_links,
     select_pagination_links,
 )
 from kad_collector.config import ConfigError, config_for_urls, load_config
-from kad_collector.discovery import _looks_blocked
+from kad_collector.discovery import _looks_blocked, detect_access_challenge
 from kad_collector.filters import document_might_match_filters
 from kad_collector.models import (
     AppConfig,
@@ -90,6 +92,126 @@ class LinkParsingTests(unittest.TestCase):
         )
         self.assertEqual([item[2] for item in links], ["exam", "answer_key"])
         self.assertTrue(all("provas.example.gov.br" in item[0] for item in links))
+
+    def test_pci_banco_brasil_selects_pilot_proofs_and_keys(self) -> None:
+        config = load_config(PROJECT_ROOT / "config" / "sources.official.toml")
+        source = next(item for item in config.sources if item.id == "pci_concursos")
+        html = (FIXTURES / "pci_banco_brasil.html").read_text(encoding="utf-8")
+        selected = select_document_links(
+            html,
+            source.start_urls[0],
+            source,
+        )
+        self.assertEqual(
+            [(Path(url).name, kind) for url, _title, kind in selected],
+            [
+                ("banco-do-brasil-2023-escriturario-agente-comercial.pdf", "exam"),
+                ("banco-do-brasil-2023-gabarito-definitivo.pdf", "answer_key"),
+                ("banco-do-brasil-2021-escriturario-caderno-1.pdf", "exam"),
+                ("banco-do-brasil-2021-gabarito.pdf", "answer_key"),
+            ],
+        )
+        self.assertTrue(all("www.pciconcursos.com.br" in url for url, _title, _kind in selected))
+        self.assertEqual(
+            select_collection_links(html, source.start_urls[0], source),
+            [
+                "https://www.pciconcursos.com.br/provas/download/escriturario-agente-comercial-banco-do-brasil-cesgranrio-2023",
+                "https://www.pciconcursos.com.br/provas/download/escriturario-banco-do-brasil-cesgranrio-2021",
+            ],
+        )
+
+    def test_pci_source_metadata_and_access_policy_are_explicit(self) -> None:
+        config = load_config(PROJECT_ROOT / "config" / "sources.official.toml")
+        source = next(item for item in config.sources if item.id == "pci_concursos")
+        self.assertEqual(source.metadata, {"orgao": "Banco do Brasil"})
+        self.assertEqual(source.robots_policy, "ignore")
+        self.assertEqual(source.crawl_delay_policy, "ignore")
+        self.assertFalse(source.browser_enabled)
+        self.assertIn("publicos", source.authorization_basis)
+
+    def test_pci_detail_page_metadata_is_captured_without_inference(self) -> None:
+        metadata = extract_page_metadata(
+            "<p>Cargo: Escriturário - Agente de Tecnologia</p>"
+            "<p>Ano: 2021</p><p>Órgão: Banco do Brasil S/A</p>"
+            "<p>Organizadora: CESGRANRIO</p><p>Tipo de prova: Caderno 1</p>"
+            "<p>Quantidade de questões: 70</p>"
+        )
+        self.assertEqual(
+            metadata,
+            {
+                "cargo": "Escriturário - Agente de Tecnologia",
+                "ano_publicacao": "2021",
+                "orgao": "Banco do Brasil S/A",
+                "banca": "CESGRANRIO",
+                "tipo_prova": "Caderno 1",
+                "quantidade_questoes": "70",
+            },
+        )
+
+    def test_access_challenge_is_reported_for_manual_action(self) -> None:
+        reason = detect_access_challenge(
+            "Banco do Brasil",
+            '<html><title>Just a moment...</title><div class="cf-turnstile"></div></html>',
+            "https://www.pciconcursos.com.br/provas/banco-do-brasil",
+        )
+        self.assertEqual(reason, "captcha")
+
+    def test_access_challenge_does_not_stop_other_sources(self) -> None:
+        challenge_url = "https://provas.example.gov.br/bloqueado"
+        healthy_url = "https://outro.example.gov.br/lista"
+        pdf_url = "https://outro.example.gov.br/prova.pdf"
+
+        class FixtureClient:
+            def __init__(self, user_agent: str, timeout: float, interval_seconds: float) -> None:
+                pass
+
+            def get(self, url: str, allowed_hosts: list[str], max_bytes: int) -> HttpResult:
+                headers = Message()
+                if url.endswith("/robots.txt"):
+                    headers["Content-Type"] = "text/plain; charset=utf-8"
+                    return HttpResult(
+                        url=url,
+                        status_code=200,
+                        headers=headers,
+                        body=b"User-agent: *\nAllow: /\n",
+                    )
+                headers["Content-Type"] = "text/html; charset=utf-8"
+                if url == challenge_url:
+                    body = b'<html><body><div class="cf-turnstile"></div></body></html>'
+                elif url == healthy_url:
+                    body = b'<a href="/prova.pdf">Prova</a>'
+                elif url == pdf_url:
+                    headers["Content-Type"] = "application/pdf"
+                    body = b"%PDF-1.4\nfixture\n%%EOF"
+                else:
+                    raise AssertionError(f"URL inesperada: {url}")
+                return HttpResult(url=url, status_code=200, headers=headers, body=body)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            blocked = source_definition(
+                id="pci_bloqueado",
+                name="PCI bloqueado",
+                start_urls=[challenge_url],
+                allowed_hosts=["provas.example.gov.br"],
+                robots_policy="enforce",
+                crawl_delay_policy="enforce",
+            )
+            healthy = source_definition(
+                id="fonte_saudavel",
+                name="Fonte saudavel",
+                start_urls=[healthy_url],
+                allowed_hosts=["outro.example.gov.br"],
+            )
+            config = AppConfig(
+                collector=CollectorSettings(data_dir=temporary),
+                sources=[blocked, healthy],
+            )
+            with patch("kad_collector.collector.SafeHttpClient", FixtureClient):
+                manifest, _ = collect_documents(config)
+
+        self.assertEqual([item.original_url for item in manifest.documents], [pdf_url])
+        self.assertEqual(len(manifest.failures), 1)
+        self.assertIn("acao manual necessaria", manifest.failures[0].message)
 
     def test_answer_key_has_priority_when_classifying(self) -> None:
         source = source_definition()
@@ -208,6 +330,65 @@ class LinkParsingTests(unittest.TestCase):
         self.assertEqual(len(manifest.documents), 1)
         self.assertEqual(manifest.documents[0].document_type, "exam")
         self.assertEqual(manifest.duplicate_documents, 1)
+
+    def test_collection_detail_pages_are_followed_to_find_pdfs(self) -> None:
+        listing_url = "https://provas.example.gov.br/banco"
+        detail_url = "https://provas.example.gov.br/provas/download/banco-2023"
+        exam_url = "https://provas.example.gov.br/arquivos/prova-2023.pdf"
+        key_url = "https://provas.example.gov.br/arquivos/gabarito-2023.pdf"
+
+        class FixtureClient:
+            def __init__(self, user_agent: str, timeout: float, interval_seconds: float) -> None:
+                pass
+
+            def get(self, url: str, allowed_hosts: list[str], max_bytes: int) -> HttpResult:
+                headers = Message()
+                if url.endswith("/robots.txt"):
+                    headers["Content-Type"] = "text/plain; charset=utf-8"
+                    body = b"User-agent: *\nAllow: /\n"
+                elif url == listing_url:
+                    headers["Content-Type"] = "text/html; charset=utf-8"
+                    body = b'<a href="/provas/download/banco-2023">Banco 2023</a>'
+                elif url == detail_url:
+                    headers["Content-Type"] = "text/html; charset=utf-8"
+                    body = (
+                        b"<p>Cargo: Escriturario</p><p>Ano: 2023</p>"
+                        b"<p>Orgao: Banco do Brasil</p><p>Organizadora: CESGRANRIO</p>"
+                        b'<a href="/arquivos/prova-2023.pdf">Prova objetiva 2023</a>'
+                        b'<a href="/arquivos/gabarito-2023.pdf">Gabarito definitivo 2023</a>'
+                    )
+                elif url in {exam_url, key_url}:
+                    headers["Content-Type"] = "application/pdf"
+                    body = f"%PDF-1.4\n{url}\n%%EOF".encode()
+                else:
+                    raise AssertionError(f"URL inesperada: {url}")
+                return HttpResult(url=url, status_code=200, headers=headers, body=body)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            source = source_definition(
+                start_urls=[listing_url],
+                collection_url_patterns=[r"/provas/download/[a-z0-9-]+$"],
+            )
+            config = AppConfig(
+                collector=CollectorSettings(data_dir=temporary),
+                sources=[source],
+            )
+            with patch("kad_collector.collector.SafeHttpClient", FixtureClient):
+                manifest, _ = collect_documents(config)
+
+        self.assertEqual(
+            {item.original_url for item in manifest.documents},
+            {exam_url, key_url},
+        )
+        self.assertEqual(
+            manifest.documents[0].metadata,
+            {
+                "cargo": "Escriturario",
+                "ano_publicacao": "2023",
+                "orgao": "Banco do Brasil",
+                "banca": "CESGRANRIO",
+            },
+        )
 
     def test_valid_html_served_as_text_plain_is_discovered(self) -> None:
         page_url = "https://provas.example.gov.br/concurso"
@@ -453,11 +634,16 @@ class SecurityTests(unittest.TestCase):
                 "comvest_unicamp",
                 "obmep_referencias",
                 "uerj_vestibular",
+                "pci_concursos",
             },
         )
         self.assertTrue(all(source.enabled for source in config.sources))
-        self.assertTrue(all(source.robots_policy == "ignore" for source in config.sources))
-        self.assertTrue(all(source.crawl_delay_policy == "ignore" for source in config.sources))
+        legacy_sources = [source for source in config.sources if source.id != "pci_concursos"]
+        self.assertTrue(all(source.robots_policy == "ignore" for source in legacy_sources))
+        self.assertTrue(all(source.crawl_delay_policy == "ignore" for source in legacy_sources))
+        pci = next(source for source in config.sources if source.id == "pci_concursos")
+        self.assertEqual(pci.robots_policy, "ignore")
+        self.assertEqual(pci.crawl_delay_policy, "ignore")
         obmep = next(source for source in config.sources if source.id == "obmep_referencias")
         self.assertEqual(obmep.access_mode, "reference_only")
         fuvest = next(source for source in config.sources if source.id == "fuvest_vestibular")

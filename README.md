@@ -12,8 +12,8 @@ Fonte oficial -> coleta controlada -> PDFs -> extracao -> parser/IA -> gabarito
 ## Estado atual
 
 O repositorio fornece o mecanismo generico. O arquivo `config/sources.example.toml` nao
-habilita fontes. O arquivo opt-in `config/sources.official.toml` cadastra dez fontes oficiais
-conferidas: nove de conteudo e uma somente de referencias. Revise o contato do `user_agent`,
+habilita fontes. O arquivo opt-in `config/sources.official.toml` cadastra onze fontes oficiais
+conferidas: dez de conteudo e uma somente de referencias. Revise o contato do `user_agent`,
 termos, `robots.txt` e limites antes da primeira execucao no ambiente da equipe.
 
 O MVP processa paginas HTML estaticas que contenham links para PDFs. Paginas que dependem
@@ -495,6 +495,26 @@ data de coleta, banca, orgao, cargo/exame e ano quando conhecido.
 | COMVEST/Unicamp | `comvest.unicamp.br`; acervo historico e provas comentadas | Ate 20 paginas | `content`; reproducao parcial com fonte e ano citados |
 | OBMEP | `obmep.org.br`; provas e solucoes de 2005 a 2025 | 20 paginas anuais | `reference_only`; arquivos recentes usam rota do Drive bloqueada pelo `robots.txt` |
 | UERJ | `sistema.vestibular.uerj.br`; provas, gabaritos e padroes desde 1997 | Ate 30 paginas | `content`; aba por pagina/PDF ou `sync` |
+| PCI Concursos - Banco do Brasil | `pciconcursos.com.br`; indice publico com provas e gabaritos por cargo, ano, caderno e versao | Ate 20 paginas do indice | `content`; aba por pagina do concurso ou `sync` |
+
+#### Piloto PCI Concursos (Banco do Brasil)
+
+O piloto usa as paginas publicas do indice do [PCI Concursos](https://www.pciconcursos.com.br/provas/banco-do-brasil)
+para localizar os pares de 2023 e 2021. Cada PDF e gravado com URL original, data, tamanho e
+SHA-256; o manifesto tambem guarda cargo, orgao, banca, ano, tipo/caderno e etapa quando esses
+dados aparecem na pagina. Prova, gabarito preliminar e definitivo ficam separados por versao e
+o definitivo tem prioridade somente depois da conferencia de cobertura e alternativas.
+
+Use a pagina especifica do ano/cargo na aba **Coletar links** para limitar o piloto. O modo `html`
+le apenas links estaticos; se o PCI apresentar CAPTCHA, Cloudflare ou outro desafio, a rodada
+registra `acao manual necessaria` e segue para outras fontes. O Collector nao tenta contornar
+autenticacao, CAPTCHA, Cloudflare ou bloqueios. Por decisao administrativa explicita do
+responsavel em 2026-08-29, esta fonte usa `ignore` para `robots.txt` e `Crawl-delay`; essa
+decisao fica registrada no manifesto e na telemetria. Nao ha um
+limitador artificial adicional criado para o PCI.
+
+Os PDFs ficam fora da exportacao normal ate a revisao editorial confirmar a origem e a permissao
+de republicacao. O piloto nao publica nem importa conteudo no KAD.
 
 Na FUVEST, os cadernos V1-V4 repetem as mesmas questoes em ordens diferentes. O Collector
 preserva todos os PDFs como evidencia, usa a menor versao disponivel (normalmente V1) como

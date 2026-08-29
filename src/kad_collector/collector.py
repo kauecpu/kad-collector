@@ -21,6 +21,7 @@ from .discovery import (
     DiscoveredLink,
     ManualActionRequired,
     browser_discover,
+    detect_access_challenge,
     parse_feed,
     parse_json_links,
     parse_sitemap,
@@ -404,6 +405,45 @@ def extract_dated_link_variants(html: str, page_url: str) -> dict[str, str]:
     return {urljoin(page_url, href): variant for href, variant in parser.variants().items()}
 
 
+def extract_page_metadata(html: str) -> dict[str, str]:
+    """Extract explicit metadata labels from a public detail page."""
+
+    text = re.sub(r"<[^>]+>", " ", html)
+    text = " ".join(text.replace("\xa0", " ").split())
+    metadata: dict[str, str] = {}
+    labels = {
+        "cargo": (
+            r"(?:cargo)\s*:\s*([^|;]+?)"
+            r"(?=\s+(?:ano|órgão|orgao|organizadora|instituição|instituicao|"
+            r"tipo de prova|caderno|quantidade de questões)\s*:|$)"
+        ),
+        "ano_publicacao": r"(?:ano)\s*:\s*((?:19|20)\d{2})",
+        "orgao": (
+            r"(?:órgão|orgao)\s*:\s*([^|;]+?)"
+            r"(?=\s+(?:ano|organizadora|instituição|instituicao|cargo|"
+            r"tipo de prova|caderno|quantidade de questões)\s*:|$)"
+        ),
+        "banca": (
+            r"(?:organizadora|instituição|instituicao)\s*:\s*([^|;]+?)"
+            r"(?=\s+(?:ano|órgão|orgao|cargo|tipo de prova|caderno|"
+            r"quantidade de questões)\s*:|\s+(?:prova|gabarito)\b|$)"
+        ),
+        "tipo_prova": (
+            r"(?:tipo de prova|caderno)\s*:\s*([^|;]+?)"
+            r"(?=\s+(?:ano|órgão|orgao|organizadora|instituição|instituicao|"
+            r"cargo|quantidade de questões)\s*:|\s+(?:prova|gabarito)\b|$)"
+        ),
+        "quantidade_questoes": r"(?:quantidade|n[ºo]?|numero)\s+de\s+quest(?:ões|oes)\s*:\s*(\d+)",
+    }
+    for key, pattern in labels.items():
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            value = " ".join(match.group(1).split()).strip(" -:")
+            if value:
+                metadata[key] = value
+    return metadata
+
+
 def _is_html_page(result: HttpResult | EngineHttpResult) -> bool:
     """Accept mislabeled HTML only when the body has an HTML document signature."""
     content_type = result.headers.get_content_type()
@@ -453,6 +493,32 @@ def select_document_links(
         if source.access_mode == "content" and document_type == "other":
             continue
         selected.append((url, title or Path(urlsplit(url).path).name, document_type))
+    return selected
+
+
+def select_collection_links(html: str, page_url: str, source: SourceDefinition) -> list[str]:
+    """Select public detail pages that must be visited to find their PDFs."""
+
+    if not source.collection_url_patterns:
+        return []
+    selected: list[str] = []
+    seen: set[str] = set()
+    for url, title in extract_links(html, page_url):
+        if url in seen or urlsplit(url).path.casefold().endswith(".pdf"):
+            continue
+        candidate = f"{title}\n{url}"
+        if not any(
+            re.search(pattern, value)
+            for pattern in source.collection_url_patterns
+            for value in (url, candidate)
+        ):
+            continue
+        try:
+            validate_public_url(url, source.allowed_hosts, resolve_dns=False)
+        except UnsafeUrlError:
+            continue
+        seen.add(url)
+        selected.append(url)
     return selected
 
 
@@ -838,6 +904,7 @@ def collect_documents(
         link_years: dict[str, str | None] = {}
         link_stages: dict[str, str | None] = {}
         link_variants: dict[str, str | None] = {}
+        link_metadata: dict[str, dict[str, str]] = {}
         seen_links: set[str] = set()
         source_items = 0
         pagination_truncated = False
@@ -853,6 +920,7 @@ def collect_documents(
             _link_years: dict[str, str | None] = link_years,
             _link_stages: dict[str, str | None] = link_stages,
             _link_variants: dict[str, str | None] = link_variants,
+            _link_metadata: dict[str, dict[str, str]] = link_metadata,
         ) -> None:
             if stop_event is None or not stop_event.is_set():
                 return
@@ -867,6 +935,7 @@ def collect_documents(
                     "link_years": _link_years,
                     "link_stages": _link_stages,
                     "link_variants": _link_variants,
+                    "link_metadata": _link_metadata,
                 },
             )
             raise CollectionPaused(f"coleta de {_source.name} pausada com checkpoint preservado")
@@ -921,6 +990,15 @@ def collect_documents(
                         and re.fullmatch(r"Tipo [1-9]\d*", item_variant)
                     ):
                         link_variants[str(item_url)] = item_variant
+            restored_link_metadata = checkpoint_payload.get("link_metadata", {})
+            if isinstance(restored_link_metadata, dict):
+                for item_url, item_metadata in restored_link_metadata.items():
+                    if isinstance(item_metadata, dict):
+                        link_metadata[str(item_url)] = {
+                            str(key): str(value)
+                            for key, value in item_metadata.items()
+                            if isinstance(key, str) and isinstance(value, str)
+                        }
 
             if "html" in source.discovery_strategies:
                 restored_pending = checkpoint_payload.get("pending_pages", [])
@@ -1051,6 +1129,27 @@ def collect_documents(
                             )
                         charset = page.headers.get_content_charset() or "utf-8"
                         html = page.body.decode(charset, errors="replace")
+                        challenge = detect_access_challenge(
+                            source.name,
+                            html,
+                            page.url,
+                        )
+                        if challenge:
+                            message = (
+                                f"{source.id}: acao manual necessaria: {challenge} "
+                                f"em {page.url}; nenhum contorno automatico foi tentado"
+                            )
+                            warnings.append(message)
+                            failures.append(
+                                CollectionFailure(
+                                    source_id=source.id,
+                                    url=page.url,
+                                    stage="discovery",
+                                    message=message,
+                                    retryable=False,
+                                )
+                            )
+                            continue
                         for document_url, year in extract_dated_link_years(
                             html, page.url
                         ).items():
@@ -1083,6 +1182,22 @@ def collect_documents(
                                 )
                             ]
                         )
+                        page_metadata = extract_page_metadata(html)
+                        for document_url, _title, _kind in select_document_links(
+                            html, page.url, source
+                        ):
+                            link_metadata[document_url] = {
+                                **source.metadata,
+                                **page_metadata,
+                            }
+                        for discovered_collection in select_collection_links(
+                            html, page.url, source
+                        ):
+                            if (
+                                discovered_collection not in seen_pages
+                                and discovered_collection not in pending_pages
+                            ):
+                                pending_pages.append(discovered_collection)
                         for discovered_page in select_pagination_links(html, page.url, source):
                             if (
                                 discovered_page not in seen_pages
@@ -1112,6 +1227,7 @@ def collect_documents(
                             "link_years": link_years,
                             "link_stages": link_stages,
                             "link_variants": link_variants,
+                            "link_metadata": link_metadata,
                         },
                     )
 
@@ -1282,6 +1398,7 @@ def collect_documents(
                 _link_years: dict[str, str | None] = link_years,
                 _link_stages: dict[str, str | None] = link_stages,
                 _link_variants: dict[str, str | None] = link_variants,
+                _link_metadata: dict[str, dict[str, str]] = link_metadata,
             ) -> DocumentRecord:
                 url, title, document_type = item
                 document = _download_pdf_candidate(
@@ -1298,9 +1415,11 @@ def collect_documents(
                 year = _link_years.get(url)
                 stage = _link_stages.get(url)
                 variant = _link_variants.get(url)
-                if year is None and stage is None and variant is None:
+                page_metadata = _link_metadata.get(url, {})
+                if year is None and stage is None and variant is None and not page_metadata:
                     return document
                 metadata = dict(document.metadata)
+                metadata.update(page_metadata)
                 if year is not None:
                     metadata["ano_publicacao"] = year
                 if stage is not None:
