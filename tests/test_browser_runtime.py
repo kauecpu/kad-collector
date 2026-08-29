@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import os
 import unittest
 
 from kad_collector.browser_runtime import (
     INSTALL_HINT,
     BrowserRuntimeError,
     check_patchright_chromium,
+    configure_playwright_browsers_path,
 )
 
 
@@ -59,6 +61,40 @@ class BrowserRuntimeTests(unittest.TestCase):
                 "uma falha ao iniciar o Patchright deve virar BrowserRuntimeError, "
                 f"nao {type(exc).__name__}: {exc}"
             )
+
+
+class ConfigurePlaywrightBrowsersPathTests(unittest.TestCase):
+    def test_points_playwright_at_the_users_local_app_data_cache(self) -> None:
+        local_app_data = os.path.join("C:", "Users", "alguem", "AppData", "Local")
+        environ = {"LOCALAPPDATA": local_app_data}
+
+        result = configure_playwright_browsers_path(environ=environ)
+
+        expected = os.path.join(local_app_data, "ms-playwright")
+        self.assertEqual(result, expected)
+        self.assertEqual(environ["PLAYWRIGHT_BROWSERS_PATH"], expected)
+
+    def test_does_nothing_without_local_app_data(self) -> None:
+        environ: dict[str, str] = {}
+
+        result = configure_playwright_browsers_path(environ=environ)
+
+        self.assertIsNone(result)
+        self.assertNotIn("PLAYWRIGHT_BROWSERS_PATH", environ)
+
+    def test_overwrites_any_previously_configured_path(self) -> None:
+        local_app_data = os.path.join("C:", "Users", "alguem", "AppData", "Local")
+        environ = {
+            "LOCALAPPDATA": local_app_data,
+            "PLAYWRIGHT_BROWSERS_PATH": os.path.join("C:", "tmp", "pyinstaller"),
+        }
+
+        configure_playwright_browsers_path(environ=environ)
+
+        self.assertEqual(
+            environ["PLAYWRIGHT_BROWSERS_PATH"],
+            os.path.join(local_app_data, "ms-playwright"),
+        )
 
 
 if __name__ == "__main__":

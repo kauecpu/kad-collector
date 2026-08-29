@@ -6,6 +6,7 @@ import webbrowser
 from pathlib import Path
 from typing import Any
 
+from .browser_runtime import configure_playwright_browsers_path
 from .desktop_server import DesktopApplication, _resource_bytes, start_desktop_server
 
 
@@ -61,6 +62,11 @@ def _smoke_test(application: DesktopApplication) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Precisa rodar antes de qualquer chamada ao Patchright: garante que o
+    # app (inclusive quando iniciado fora do .exe empacotado, via o comando
+    # kad-collector-desktop) encontre o Chromium instalado pelo usuario em
+    # vez de uma pasta temporaria.
+    configure_playwright_browsers_path()
     args = build_parser().parse_args(argv)
     application = DesktopApplication(args.data_dir)
     if args.smoke_test:
