@@ -137,8 +137,28 @@ def parse_json_links(
 
 def _looks_blocked(title: str, content: str, url: str) -> str | None:
     page = f"{title}\n{content[:20_000]}".casefold()
-    if any(value in page for value in ("recaptcha", "hcaptcha", "cf-turnstile")):
+    if any(value in page for value in ("captcha", "cf-turnstile")):
         return "captcha"
+    if any(
+        value in page
+        for value in (
+            "just a moment...",
+            "checking your browser",
+            "cloudflare ray id",
+            "cf-chl-",
+        )
+    ):
+        return "cloudflare_challenge"
+    if any(
+        value in page
+        for value in (
+            "reference #18.",
+            "errors.edgesuite.net",
+            "akamai bot manager",
+            "akamai ghost",
+        )
+    ):
+        return "akamai_challenge"
     if any(value in page for value in ("access denied", "acesso negado", "request blocked")):
         return "access_denied"
     path = urlsplit(url).path.casefold()

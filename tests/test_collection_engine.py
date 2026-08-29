@@ -3,9 +3,11 @@ from __future__ import annotations
 import hashlib
 import json
 import random
+import sqlite3
 import tempfile
 import threading
 import unittest
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,8 +16,15 @@ import httpx
 from kad_collector.collection_state import CollectionStateStore
 from kad_collector.collection_transport import CollectionHttpClient
 from kad_collector.collector import extract_links
-from kad_collector.discovery import parse_feed, parse_json_links, parse_sitemap
+from kad_collector.discovery import (
+    detect_access_challenge,
+    parse_feed,
+    parse_json_links,
+    parse_sitemap,
+)
 from kad_collector.models import JsonDiscoveryEndpoint
+from kad_collector.security import FetchError
+from kad_collector.url_utils import canonicalize_url
 
 
 class CollectionEngineTests(unittest.TestCase):
@@ -27,25 +36,85 @@ class CollectionEngineTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.directory.cleanup()
 
-    def client(self, handler: httpx.MockTransport) -> CollectionHttpClient:
+    def client(
+        self,
+        handler: httpx.MockTransport,
+        *,
+        max_retries: int = 2,
+        development_cache: bool = False,
+    ) -> CollectionHttpClient:
         client = CollectionHttpClient(
             user_agent="KADCollector/Test",
             timeout=2,
             connect_timeout=1,
             interval_seconds=0,
             max_concurrency=4,
-            max_retries=2,
+            max_retries=max_retries,
             retry_max_delay_seconds=0.01,
             state_store=self.state,
             run_id="run-test",
             source_id="source-test",
             conditional_cache=True,
             disk_quota_bytes=10_000_000,
+            development_cache=development_cache,
             random_source=random.Random(1),
         )
         client.client.close()
         client.client = httpx.Client(transport=handler, follow_redirects=False)
         return client
+
+    @staticmethod
+    def fixture(name: str) -> bytes:
+        return (Path(__file__).parent / "fixtures" / "transport" / name).read_bytes()
+
+    def test_200_processes_local_fixture(self) -> None:
+        payload = self.fixture("ok.html")
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                content=payload,
+                headers={"Content-Type": "text/html"},
+                request=request,
+            )
+
+        client = self.client(httpx.MockTransport(respond))
+        with patch(
+            "kad_collector.collection_transport.validate_public_url",
+            side_effect=lambda url, _hosts: url,
+        ):
+            result = client.get("https://example.test/page", ["example.test"], 10_000)
+        client.close()
+
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.body, payload)
+        self.assertEqual(result.original_url, "https://example.test/page")
+        self.assertEqual(result.canonical_url, "https://example.test/page")
+
+    def test_403_is_not_retried_and_is_registered_as_access_denied(self) -> None:
+        attempts = 0
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            nonlocal attempts
+            attempts += 1
+            return httpx.Response(403, request=request)
+
+        client = self.client(httpx.MockTransport(respond))
+        with (
+            patch(
+                "kad_collector.collection_transport.validate_public_url",
+                side_effect=lambda url, _hosts: url,
+            ),
+            self.assertRaises(FetchError) as raised,
+        ):
+            client.get("https://example.test/denied", ["example.test"], 1_000)
+        client.close()
+
+        self.assertEqual(raised.exception.status_code, 403)
+        self.assertEqual(attempts, 1)
+        events = self.state.events("run-test")
+        self.assertEqual(events[-1].outcome, "access_denied")
+        self.assertEqual(events[-1].status_code, 403)
 
     def test_retry_after_retries_429_and_records_attempt(self) -> None:
         attempts = 0
@@ -63,7 +132,7 @@ class CollectionEngineTests(unittest.TestCase):
                 "kad_collector.collection_transport.validate_public_url",
                 side_effect=lambda url, _hosts: url,
             ),
-            patch("kad_collector.collection_transport.time.sleep"),
+            patch("kad_collector.collection_transport.time.sleep") as sleep,
         ):
             result = client.get(
                 "https://example.test/page",
@@ -76,6 +145,64 @@ class CollectionEngineTests(unittest.TestCase):
         self.assertEqual(result.body, b"ok")
         self.assertEqual(result.attempt, 2)
         self.assertEqual(attempts, 2)
+        sleep.assert_called_once_with(0.0)
+
+    def test_retryable_http_and_network_errors_use_bounded_retries(self) -> None:
+        for first_response in (408, 425, 500, 599, "network"):
+            with self.subTest(first_response=first_response):
+                attempts = 0
+
+                def respond(
+                    request: httpx.Request,
+                    response_fixture: int | str = first_response,
+                ) -> httpx.Response:
+                    nonlocal attempts
+                    attempts += 1
+                    if attempts == 1:
+                        if response_fixture == "network":
+                            raise httpx.ConnectError("fixture offline", request=request)
+                        assert isinstance(response_fixture, int)
+                        return httpx.Response(response_fixture, request=request)
+                    return httpx.Response(200, content=b"ok", request=request)
+
+                client = self.client(httpx.MockTransport(respond))
+                with (
+                    patch(
+                        "kad_collector.collection_transport.validate_public_url",
+                        side_effect=lambda url, _hosts: url,
+                    ),
+                    patch("kad_collector.collection_transport.time.sleep"),
+                ):
+                    result = client.get(
+                        f"https://example.test/{first_response}", ["example.test"], 1_000
+                    )
+                client.close()
+                self.assertEqual(result.body, b"ok")
+                self.assertEqual(attempts, 2)
+
+    def test_retry_exhaustion_stops_after_configured_attempts(self) -> None:
+        attempts = 0
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            nonlocal attempts
+            attempts += 1
+            return httpx.Response(503, request=request)
+
+        client = self.client(httpx.MockTransport(respond), max_retries=2)
+        with (
+            patch(
+                "kad_collector.collection_transport.validate_public_url",
+                side_effect=lambda url, _hosts: url,
+            ),
+            patch("kad_collector.collection_transport.time.sleep"),
+            self.assertRaises(FetchError) as raised,
+        ):
+            client.get("https://example.test/unavailable", ["example.test"], 1_000)
+        client.close()
+
+        self.assertEqual(raised.exception.status_code, 503)
+        self.assertEqual(attempts, 3)
+        self.assertEqual(self.state.events("run-test")[-1].outcome, "retry_exhausted")
 
     def test_conditional_cache_reuses_verified_body_after_304(self) -> None:
         requests: list[httpx.Request] = []
@@ -119,6 +246,124 @@ class CollectionEngineTests(unittest.TestCase):
         self.assertEqual(second.body, b"conteudo estavel")
         self.assertEqual(second.cache_status, "revalidated")
         self.assertEqual(len(requests), 2)
+
+    def test_url_canonicalization_preserves_resource_query_and_removes_tracking(self) -> None:
+        original = (
+            "HTTPS://Example.Test:443//provas/arquivo.pdf?utm_source=newsletter&"
+            "version=2&download=1&fbclid=tracking#pagina-2"
+        )
+        self.assertEqual(
+            canonicalize_url(original),
+            "https://example.test/provas/arquivo.pdf?download=1&version=2",
+        )
+
+    def test_development_cache_replays_by_canonical_url_without_network(self) -> None:
+        original = "https://example.test/page?item=1&utm_source=primeira#topo"
+        equivalent = "https://EXAMPLE.TEST:443/page?utm_medium=email&item=1#rodape"
+        calls = 0
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            nonlocal calls
+            calls += 1
+            return httpx.Response(
+                200,
+                content=self.fixture("ok.html"),
+                headers={"Content-Type": "text/html"},
+                request=request,
+            )
+
+        client = self.client(httpx.MockTransport(respond), development_cache=True)
+        with patch(
+            "kad_collector.collection_transport.validate_public_url",
+            side_effect=lambda url, _hosts: url,
+        ):
+            first = client.get(original, ["example.test"], 10_000)
+            client.remember_body(
+                original_url=original,
+                result=first,
+                cache_dir=self.root / "cache",
+                strategy="html",
+            )
+            second = client.get(equivalent, ["example.test"], 10_000)
+        client.close()
+
+        self.assertEqual(calls, 1)
+        self.assertEqual(second.cache_status, "hit")
+        self.assertEqual(second.body, self.fixture("ok.html"))
+        entry = self.state.cache_entry(equivalent)
+        self.assertIsNotNone(entry)
+        assert entry is not None
+        self.assertEqual(entry["url"], "https://example.test/page?item=1")
+        self.assertEqual(entry["original_url"], original)
+        self.assertEqual(self.state.cache_summary()["entries"], 1)
+
+    def test_state_store_migrates_v1_cache_to_canonical_identity(self) -> None:
+        legacy_path = self.root / "legacy.sqlite3"
+        cached = self.root / "legacy-body"
+        cached.write_bytes(b"legacy")
+        original = "https://EXAMPLE.TEST:443/page?utm_source=old&item=1#top"
+        with closing(sqlite3.connect(legacy_path)) as connection:
+            connection.executescript(
+                """
+                CREATE TABLE engine_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                INSERT INTO engine_meta(key, value) VALUES ('schema_version', '1');
+                CREATE TABLE http_cache (
+                    url TEXT PRIMARY KEY, final_url TEXT NOT NULL, etag TEXT,
+                    last_modified TEXT, sha256 TEXT NOT NULL, content_type TEXT NOT NULL,
+                    size_bytes INTEGER NOT NULL, local_path TEXT NOT NULL,
+                    downloaded_at TEXT NOT NULL, checked_at TEXT NOT NULL,
+                    status_code INTEGER NOT NULL, strategy TEXT NOT NULL
+                );
+                CREATE TABLE collection_checkpoints (
+                    checkpoint_key TEXT PRIMARY KEY, source_id TEXT NOT NULL,
+                    status TEXT NOT NULL, payload_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+                );
+                CREATE TABLE collection_telemetry (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL,
+                    occurred_at TEXT NOT NULL, source_id TEXT NOT NULL, url TEXT NOT NULL,
+                    strategy TEXT NOT NULL, outcome TEXT NOT NULL, status_code INTEGER,
+                    duration_ms INTEGER NOT NULL, bytes_received INTEGER NOT NULL,
+                    attempt INTEGER NOT NULL, wait_seconds REAL NOT NULL,
+                    cache_status TEXT NOT NULL, detail TEXT
+                );
+                """
+            )
+            connection.execute(
+                "INSERT INTO http_cache VALUES (?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    original,
+                    original,
+                    hashlib.sha256(b"legacy").hexdigest(),
+                    "text/html",
+                    6,
+                    str(cached),
+                    "2026-08-29T00:00:00+00:00",
+                    "2026-08-29T00:00:00+00:00",
+                    200,
+                    "html",
+                ),
+            )
+            connection.commit()
+
+        migrated = CollectionStateStore(legacy_path)
+        entry = migrated.cache_entry("https://example.test/page?item=1")
+        self.assertIsNotNone(entry)
+        assert entry is not None
+        self.assertEqual(entry["url"], "https://example.test/page?item=1")
+        self.assertEqual(entry["original_url"], original)
+        with closing(sqlite3.connect(legacy_path)) as connection:
+            version = connection.execute(
+                "SELECT value FROM engine_meta WHERE key = 'schema_version'"
+            ).fetchone()
+        self.assertEqual(version, ("2",))
+
+    def test_local_challenge_fixture_requires_manual_action(self) -> None:
+        html = self.fixture("challenge.html").decode("utf-8")
+        self.assertEqual(
+            detect_access_challenge("Verificação de segurança", html, "https://example.test"),
+            "captcha",
+        )
 
     def test_range_download_resumes_partial_file(self) -> None:
         url = "https://example.test/prova.pdf"

@@ -20,6 +20,7 @@ import httpx
 from .collection_state import CollectionStateStore
 from .models import CollectionTelemetryEvent
 from .security import FetchError, validate_public_url
+from .url_utils import canonicalize_url
 
 _REDIRECTS = {301, 302, 303, 307, 308}
 _RETRYABLE = {408, 425, 429, 500, 502, 503, 504}
@@ -53,6 +54,10 @@ def _retry_after(value: str | None) -> float | None:
         return max(0.0, (target - datetime.now(UTC)).total_seconds())
 
 
+def _is_retryable_status(status_code: int | None) -> bool:
+    return status_code in _RETRYABLE or bool(status_code and 500 <= status_code <= 599)
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -70,6 +75,8 @@ class EngineHttpResult:
     cache_status: str
     attempt: int
     duration_ms: int
+    original_url: str | None = None
+    canonical_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -84,6 +91,8 @@ class EngineDownload:
     resumed: bool
     attempt: int
     duration_ms: int
+    original_url: str | None = None
+    canonical_url: str | None = None
 
 
 class HostScheduler:
@@ -138,6 +147,7 @@ class CollectionHttpClient:
         source_id: str,
         conditional_cache: bool,
         disk_quota_bytes: int | None,
+        development_cache: bool = False,
         random_source: random.Random | None = None,
     ) -> None:
         self.scheduler = HostScheduler(interval_seconds, max_concurrency)
@@ -147,6 +157,7 @@ class CollectionHttpClient:
         self.run_id = run_id
         self.source_id = source_id
         self.conditional_cache = conditional_cache
+        self.development_cache = development_cache
         self.disk_quota_bytes = disk_quota_bytes
         self.random = random_source or random.Random()
         self.client = httpx.Client(
@@ -207,7 +218,7 @@ class CollectionHttpClient:
         )
 
     def _cache_headers(self, url: str) -> tuple[dict[str, str], dict[str, object] | None]:
-        if not self.conditional_cache:
+        if not self.conditional_cache and not self.development_cache:
             return {}, None
         entry = self.state_store.cache_entry(url)
         if entry is None:
@@ -227,6 +238,19 @@ class CollectionHttpClient:
             headers["If-Modified-Since"] = str(entry["last_modified"])
         return headers, entry
 
+    @staticmethod
+    def _cached_path(entry: dict[str, object]) -> Path | None:
+        path = Path(str(entry["local_path"]))
+        try:
+            valid = (
+                path.is_file()
+                and path.stat().st_size == int(str(entry["size_bytes"]))
+                and sha256_file(path) == str(entry["sha256"])
+            )
+        except (OSError, ValueError):
+            valid = False
+        return path if valid else None
+
     def get(
         self,
         url: str,
@@ -238,6 +262,31 @@ class CollectionHttpClient:
         extra_headers: dict[str, str] | None = None,
     ) -> EngineHttpResult:
         conditional, entry = self._cache_headers(url)
+        canonical_url = canonicalize_url(url)
+        if self.development_cache and entry is not None:
+            path = self._cached_path(entry)
+            if path is not None:
+                if int(str(entry["size_bytes"])) > max_bytes:
+                    raise FetchError("resposta em cache excede o limite configurado")
+                self.state_store.touch_cache(url, status_code=200)
+                return EngineHttpResult(
+                    url=str(entry["final_url"]),
+                    status_code=200,
+                    headers=_message(
+                        httpx.Headers(
+                            {
+                                "Content-Type": str(entry["content_type"]),
+                                "Content-Length": str(entry["size_bytes"]),
+                            }
+                        )
+                    ),
+                    body=path.read_bytes(),
+                    cache_status="hit",
+                    attempt=0,
+                    duration_ms=0,
+                    original_url=url,
+                    canonical_url=canonical_url,
+                )
         result = self._request_bytes(
             url,
             allowed_hosts,
@@ -263,6 +312,8 @@ class CollectionHttpClient:
                 cache_status="revalidated",
                 attempt=result.attempt,
                 duration_ms=result.duration_ms,
+                original_url=url,
+                canonical_url=canonical_url,
             )
         return result
 
@@ -276,6 +327,7 @@ class CollectionHttpClient:
         headers: dict[str, str],
         interval_seconds: float | None,
     ) -> EngineHttpResult:
+        canonical_url = canonicalize_url(url)
         for attempt in range(1, self.max_retries + 2):
             started = time.monotonic()
             current_url = url
@@ -307,6 +359,8 @@ class CollectionHttpClient:
                             cache_status="revalidated",
                             attempt=attempt,
                             duration_ms=int((time.monotonic() - started) * 1000),
+                            original_url=url,
+                            canonical_url=canonical_url,
                         )
                     if response.status_code >= 400:
                         raise FetchError(
@@ -333,19 +387,32 @@ class CollectionHttpClient:
                         status_code=response.status_code,
                         headers=_message(response.headers),
                         body=body,
-                        cache_status="miss" if self.conditional_cache else "disabled",
+                        cache_status=(
+                            "miss"
+                            if self.conditional_cache or self.development_cache
+                            else "disabled"
+                        ),
                         attempt=attempt,
                         duration_ms=duration,
+                        original_url=url,
+                        canonical_url=canonical_url,
                     )
                 raise FetchError("numero maximo de redirecionamentos excedido")
-            except (httpx.TimeoutException, httpx.NetworkError, FetchError) as exc:
+            except (httpx.TransportError, FetchError) as exc:
                 status = exc.status_code if isinstance(exc, FetchError) else None
-                retryable = not isinstance(exc, FetchError) or status in _RETRYABLE
+                retryable = not isinstance(exc, FetchError) or _is_retryable_status(status)
                 if not retryable or attempt > self.max_retries:
+                    outcome = (
+                        "access_denied"
+                        if status == 403
+                        else "retry_exhausted"
+                        if retryable
+                        else "failed"
+                    )
                     self._event(
                         url=url,
                         strategy=strategy,
-                        outcome="failed",
+                        outcome=outcome,
                         status_code=status,
                         duration_ms=int((time.monotonic() - started) * 1000),
                         bytes_received=0,
@@ -381,14 +448,48 @@ class CollectionHttpClient:
         resume: bool = True,
     ) -> EngineDownload:
         destination_dir.mkdir(parents=True, exist_ok=True)
-        token = hashlib.sha256(url.encode("utf-8")).hexdigest()[:24]
+        canonical_url = canonicalize_url(url)
+        token = hashlib.sha256(canonical_url.encode("utf-8")).hexdigest()[:24]
         partial = destination_dir / f".{token}.part"
+        legacy_token = hashlib.sha256(url.encode("utf-8")).hexdigest()[:24]
+        legacy_partial = destination_dir / f".{legacy_token}.part"
+        if not partial.exists() and legacy_partial.exists() and legacy_token != token:
+            partial = legacy_partial
         other_disk_usage = (
             sum(path.stat().st_size for path in destination_dir.iterdir() if path != partial)
             if self.disk_quota_bytes is not None
             else 0
         )
         conditional, entry = self._cache_headers(url)
+
+        if self.development_cache and entry is not None:
+            cached = self._cached_path(entry)
+            if cached is not None:
+                if int(str(entry["size_bytes"])) > max_bytes:
+                    raise FetchError("download em cache excede o limite configurado")
+                partial.write_bytes(cached.read_bytes())
+                self.state_store.touch_cache(url, status_code=200)
+                return EngineDownload(
+                    url=str(entry["final_url"]),
+                    status_code=200,
+                    headers=_message(
+                        httpx.Headers(
+                            {
+                                "Content-Type": str(entry["content_type"]),
+                                "Content-Length": str(entry["size_bytes"]),
+                            }
+                        )
+                    ),
+                    path=partial,
+                    sha256=str(entry["sha256"]),
+                    size_bytes=int(str(entry["size_bytes"])),
+                    cache_status="hit",
+                    resumed=False,
+                    attempt=0,
+                    duration_ms=0,
+                    original_url=url,
+                    canonical_url=canonical_url,
+                )
 
         for attempt in range(1, self.max_retries + 2):
             started = time.monotonic()
@@ -439,6 +540,8 @@ class CollectionHttpClient:
                                     resumed=False,
                                     attempt=attempt,
                                     duration_ms=int((time.monotonic() - started) * 1000),
+                                    original_url=url,
+                                    canonical_url=canonical_url,
                                 )
                             if status >= 400:
                                 raise FetchError(f"HTTP {status} ao acessar {current_url}", status)
@@ -490,11 +593,32 @@ class CollectionHttpClient:
                                 resumed=resumed,
                                 attempt=attempt,
                                 duration_ms=duration,
+                                original_url=url,
+                                canonical_url=canonical_url,
                             )
                 raise FetchError("numero maximo de redirecionamentos excedido")
-            except (httpx.TimeoutException, httpx.NetworkError, FetchError, OSError) as exc:
-                retryable = not isinstance(exc, FetchError) or status in _RETRYABLE
+            except (httpx.TransportError, FetchError, OSError) as exc:
+                retryable = not isinstance(exc, FetchError) or _is_retryable_status(status)
                 if not retryable or attempt > self.max_retries:
+                    outcome = (
+                        "access_denied"
+                        if status == 403
+                        else "retry_exhausted"
+                        if retryable
+                        else "failed"
+                    )
+                    self._event(
+                        url=url,
+                        strategy=strategy,
+                        outcome=outcome,
+                        status_code=status,
+                        duration_ms=int((time.monotonic() - started) * 1000),
+                        bytes_received=0,
+                        attempt=attempt,
+                        wait_seconds=waited,
+                        cache_status="miss",
+                        detail=str(exc),
+                    )
                     raise FetchError(str(exc), status) from exc
                 parsed_delay = _retry_after(
                     None if response_headers is None else response_headers.get("Retry-After")
@@ -515,7 +639,7 @@ class CollectionHttpClient:
         final_path: Path,
         strategy: str,
     ) -> None:
-        if not self.conditional_cache:
+        if not self.conditional_cache and not self.development_cache:
             return
         self.state_store.store_cache(
             url=original_url,
@@ -538,7 +662,10 @@ class CollectionHttpClient:
         cache_dir: Path,
         strategy: str,
     ) -> None:
-        if not self.conditional_cache or result.cache_status == "revalidated":
+        if (not self.conditional_cache and not self.development_cache) or result.cache_status in {
+            "hit",
+            "revalidated",
+        }:
             return
         cache_dir.mkdir(parents=True, exist_ok=True)
         digest = hashlib.sha256(result.body).hexdigest()

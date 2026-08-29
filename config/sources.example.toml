@@ -12,6 +12,8 @@ max_concurrency = 4
 max_retries = 4
 retry_max_delay_seconds = 120.0
 conditional_cache = true
+# Replay local opt-in for development only; keep false in production configs.
+development_cache = false
 resume_downloads = true
 disk_quota_bytes = 5000000000
 
