@@ -698,5 +698,109 @@ class CollectionEngineTests(unittest.TestCase):
         self.assertEqual(len(calls), 4)
 
 
+    def test_download_falls_back_to_scrapling_when_turnstile_html_is_returned(self) -> None:
+        url = "https://pci.example.test/prova.pdf"
+        pdf_payload = b"%PDF-1.4\nresolvido-pelo-solver\n%%EOF"
+        challenge_html = (
+            "<html><title>Just a moment...</title>"
+            '<div class="cf-turnstile"></div></html>'
+        ).encode("utf-8")
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                content=challenge_html,
+                headers={"Content-Type": "text/html; charset=utf-8"},
+                request=request,
+            )
+
+        session = FakeScraplingSession(
+            [
+                SimpleNamespace(
+                    url=url,
+                    status=200,
+                    headers={"Content-Type": "application/pdf"},
+                    body=pdf_payload,
+                )
+            ]
+        )
+
+        def factory(**options: object) -> FakeScraplingSession:
+            return session
+
+        client = self.client(
+            httpx.MockTransport(respond),
+            page_transport="scrapling",
+            scrapling_session_factory=factory,
+        )
+        with patch(
+            "kad_collector.collection_transport.validate_public_url",
+            side_effect=lambda value, _hosts: value,
+        ):
+            result = client.download(
+                url,
+                ["pci.example.test"],
+                1_000,
+                self.root,
+                strategy="download",
+            )
+        client.close()
+
+        self.assertEqual(result.path.read_bytes(), pdf_payload)
+        self.assertEqual(result.sha256, hashlib.sha256(pdf_payload).hexdigest())
+        self.assertEqual(len(session.fetches), 1)
+
+    def test_download_reports_clear_error_when_scrapling_also_blocked(self) -> None:
+        url = "https://pci.example.test/prova.pdf"
+        challenge_html = (
+            "<html><title>Just a moment...</title>"
+            '<div class="cf-turnstile"></div></html>'
+        ).encode("utf-8")
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                content=challenge_html,
+                headers={"Content-Type": "text/html; charset=utf-8"},
+                request=request,
+            )
+
+        session = FakeScraplingSession(
+            [
+                SimpleNamespace(
+                    url=url,
+                    status=200,
+                    headers={"Content-Type": "text/html; charset=utf-8"},
+                    body=challenge_html,
+                )
+            ]
+        )
+
+        def factory(**options: object) -> FakeScraplingSession:
+            return session
+
+        client = self.client(
+            httpx.MockTransport(respond),
+            page_transport="scrapling",
+            scrapling_session_factory=factory,
+        )
+        with (
+            patch(
+                "kad_collector.collection_transport.validate_public_url",
+                side_effect=lambda value, _hosts: value,
+            ),
+            self.assertRaisesRegex(FetchError, "solve_cloudflare"),
+        ):
+            client.download(
+                url,
+                ["pci.example.test"],
+                1_000,
+                self.root,
+                strategy="download",
+            )
+        client.close()
+
+
+
 if __name__ == "__main__":
     unittest.main()

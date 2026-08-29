@@ -19,6 +19,7 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 import httpx
 
 from .collection_state import CollectionStateStore
+from .discovery import detect_access_challenge
 from .models import CollectionTelemetryEvent
 from .scrapling_transport import (
     PersistentScraplingSession,
@@ -32,6 +33,18 @@ from .url_utils import canonicalize_url
 _REDIRECTS = {301, 302, 303, 307, 308}
 _RETRYABLE = {408, 425, 429, 500, 502, 503, 504}
 _CONTENT_RANGE = re.compile(r"^bytes\s+(\d+)-(\d+)/(\d+|\*)$", re.IGNORECASE)
+
+
+class _ChallengePageDetected(Exception):
+    """A download returned an HTML challenge page instead of the real file."""
+
+    def __init__(self, content_type: str) -> None:
+        super().__init__(content_type)
+        self.content_type = content_type
+
+
+def _content_type_of(headers: httpx.Headers) -> str:
+    return headers.get("Content-Type", "").split(";", 1)[0].strip().casefold()
 
 
 def _message(headers: httpx.Headers) -> Message:
@@ -604,6 +617,10 @@ class CollectionHttpClient:
                                 )
                             if status >= 400:
                                 raise FetchError(f"HTTP {status} ao acessar {current_url}", status)
+                            if self.scrapling is not None and "html" in _content_type_of(
+                                response.headers
+                            ):
+                                raise _ChallengePageDetected(_content_type_of(response.headers))
                             resumed = existing > 0 and status == 206
                             if resumed:
                                 content_range = response.headers.get("Content-Range", "")
@@ -656,6 +673,78 @@ class CollectionHttpClient:
                                 canonical_url=canonical_url,
                             )
                 raise FetchError("numero maximo de redirecionamentos excedido")
+            except _ChallengePageDetected as exc:
+                if self.scrapling is None:
+                    raise FetchError(
+                        f"resposta bloqueada por desafio ({exc.content_type}) ao acessar "
+                        f"{current_url}",
+                        status,
+                    ) from exc
+                scrapling_response = self._scrapling_response(current_url, headers)
+                body = scrapling_response.content
+                scrapling_content_type = _content_type_of(scrapling_response.headers)
+                if "html" in scrapling_content_type:
+                    challenge = detect_access_challenge(
+                        "",
+                        body[:20_000].decode("utf-8", errors="ignore"),
+                        str(scrapling_response.url),
+                    )
+                    detail = challenge or "conteudo HTML inesperado"
+                    duration = int((time.monotonic() - started) * 1000)
+                    self._event(
+                        url=url,
+                        strategy=strategy,
+                        outcome="access_denied",
+                        status_code=scrapling_response.status_code,
+                        duration_ms=duration,
+                        bytes_received=0,
+                        attempt=attempt,
+                        wait_seconds=waited,
+                        cache_status="miss",
+                        detail=(
+                            "desafio Cloudflare/Turnstile persistiu mesmo com "
+                            f"solve_cloudflare habilitado: {detail}"
+                        ),
+                    )
+                    raise FetchError(
+                        "PCI/Cloudflare bloqueou o download mesmo com solve_cloudflare "
+                        f"habilitado ({detail})",
+                        scrapling_response.status_code,
+                    ) from exc
+                if len(body) > max_bytes:
+                    raise FetchError("resposta excede o limite configurado") from exc
+                partial.write_bytes(body)
+                digest = sha256_file(partial)
+                duration = int((time.monotonic() - started) * 1000)
+                self._event(
+                    url=url,
+                    strategy=strategy,
+                    outcome="downloaded",
+                    status_code=scrapling_response.status_code,
+                    duration_ms=duration,
+                    bytes_received=len(body),
+                    attempt=attempt,
+                    wait_seconds=waited,
+                    cache_status="miss",
+                    detail=(
+                        "baixado via Scrapling (solve_cloudflare) apos desafio "
+                        "detectado na resposta HTTP direta"
+                    ),
+                )
+                return EngineDownload(
+                    url=str(scrapling_response.url),
+                    status_code=scrapling_response.status_code,
+                    headers=_message(scrapling_response.headers),
+                    path=partial,
+                    sha256=digest,
+                    size_bytes=len(body),
+                    cache_status="miss",
+                    resumed=False,
+                    attempt=attempt,
+                    duration_ms=duration,
+                    original_url=url,
+                    canonical_url=canonical_url,
+                )
             except (httpx.TransportError, FetchError, OSError) as exc:
                 retryable = not isinstance(exc, FetchError) or _is_retryable_status(status)
                 if not retryable or attempt > self.max_retries:
