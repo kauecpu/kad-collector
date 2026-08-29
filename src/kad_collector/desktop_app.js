@@ -666,6 +666,10 @@ function renderSourceCatalog() {
   }
 
   byId('source-count').textContent = `${sources.filter((source) => source.collectable).length} fontes prontas`;
+  if (!state.cloudflareBypassInitialized) {
+    byId('source-cloudflare-bypass').checked = state.bootstrap.collectionEngine?.cloudflareBypassEnabled !== false;
+    state.cloudflareBypassInitialized = true;
+  }
   const cache = state.bootstrap.collectionEngine?.cache || {};
   byId('engine-cache-summary').textContent = `CACHE ${formatBytes(cache.bytes || 0)} · ${cache.entries || 0} item(ns)`;
   const grid = byId('source-grid');
@@ -1014,6 +1018,7 @@ async function submitSourceCollection(event) {
         requestIntervalSeconds: Number(byId('source-request-interval').value),
         robotsPolicy: byId('source-robots-policy').value,
         crawlDelayPolicy: byId('source-crawl-delay-policy').value,
+        cloudflareBypass: byId('source-cloudflare-bypass').checked,
       }),
     });
     toast(`Coleta ${result.collectionId.slice(0, 8)} iniciada. A janela pode continuar sendo usada.`);
@@ -1023,6 +1028,22 @@ async function submitSourceCollection(event) {
   } finally {
     const source = sourceById(byId('source-select').value);
     button.disabled = !source?.collectable;
+  }
+}
+
+async function persistCloudflareBypass(event) {
+  const enabled = event.target.checked;
+  try {
+    await request('/api/settings/cloudflare-bypass', {
+      method: 'POST',
+      body: JSON.stringify({enabled}),
+    });
+    if (state.bootstrap.collectionEngine) {
+      state.bootstrap.collectionEngine.cloudflareBypassEnabled = enabled;
+    }
+  } catch (error) {
+    event.target.checked = !enabled;
+    toast(error.message, 'error');
   }
 }
 
@@ -2254,6 +2275,7 @@ byId('import-form').addEventListener('submit', submitImport);
 byId('source-form').addEventListener('submit', submitSourceCollection);
 byId('source-select').addEventListener('change', (event) => selectSource(event.target.value));
 byId('source-capacity-profile').addEventListener('change', applyCapacityProfile);
+byId('source-cloudflare-bypass').addEventListener('change', persistCloudflareBypass);
 byId('facet-search').addEventListener('input', filterFacetOptions);
 byId('clear-filters').addEventListener('click', async () => {
   state.filters = emptyFilters();

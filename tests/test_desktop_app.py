@@ -1225,6 +1225,57 @@ class DesktopSmokeTests(unittest.TestCase):
             self.assertNotIn('"raw_value"', encoded)
             self.assertLess(len(encoded), 20_000)
 
+    def test_cloudflare_bypass_setting_round_trips_through_the_http_api(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            application = DesktopApplication(root / "data")
+            server, thread, url = start_desktop_server(application)
+            try:
+                origin = url.rstrip("/")
+                bootstrap_request = Request(
+                    f"{url}api/bootstrap",
+                    headers={"X-KAD-Desktop-Token": application.token},
+                )
+                with urlopen(bootstrap_request, timeout=3) as response:
+                    bootstrap_payload = json.loads(response.read())
+                self.assertTrue(bootstrap_payload["collectionEngine"]["cloudflareBypassEnabled"])
+
+                toggle_off = Request(
+                    f"{url}api/settings/cloudflare-bypass",
+                    data=json.dumps({"enabled": False}).encode(),
+                    method="POST",
+                    headers={
+                        "Content-Type": "application/json",
+                        "Origin": origin,
+                        "X-KAD-Desktop-Token": application.token,
+                    },
+                )
+                with urlopen(toggle_off, timeout=3) as response:
+                    toggle_payload = json.loads(response.read())
+                self.assertEqual(toggle_payload, {"ok": True, "cloudflareBypassEnabled": False})
+
+                invalid = Request(
+                    f"{url}api/settings/cloudflare-bypass",
+                    data=json.dumps({"enabled": "nope"}).encode(),
+                    method="POST",
+                    headers={
+                        "Content-Type": "application/json",
+                        "Origin": origin,
+                        "X-KAD-Desktop-Token": application.token,
+                    },
+                )
+                with self.assertRaises(HTTPError) as context:
+                    urlopen(invalid, timeout=3)
+                self.assertEqual(context.exception.code, 400)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
+            # o novo estado sobrevive a reabertura do banco (equivalente a reiniciar o app).
+            reopened = DesktopApplication(root / "data")
+            self.assertFalse(reopened.bootstrap()["collectionEngine"]["cloudflareBypassEnabled"])
+
     def test_identity_endpoint_preserves_evidence_for_an_uncertain_document(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)

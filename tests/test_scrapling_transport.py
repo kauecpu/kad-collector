@@ -182,6 +182,70 @@ class PersistentScraplingSessionTests(unittest.TestCase):
         )
         self.assertEqual(session_longer.timeout_ms, 120_000)
 
+    def test_bypass_disabled_uses_thirty_second_timeout_with_no_floor(self) -> None:
+        session = PersistentScraplingSession(
+            user_agent="KADCollector/Test",
+            timeout_seconds=30,
+            session_factory=lambda **_o: None,
+            solve_cloudflare=False,
+        )
+        self.assertEqual(session.timeout_ms, 30_000)
+
+    def test_bypass_disabled_sends_solve_cloudflare_false_and_stays_headless(self) -> None:
+        response = SimpleNamespace(url="https://x.test", status=200, headers={}, body=b"ok")
+        manager = _FakeManager([response])
+        factory, calls = _factory([manager])
+
+        session = PersistentScraplingSession(
+            user_agent="KADCollector/Test",
+            timeout_seconds=30,
+            session_factory=factory,
+            solve_cloudflare=False,
+        )
+        result = session.fetch("https://x.test")
+        session.close()
+
+        self.assertIs(result, response)
+        self.assertTrue(session.headless)
+        self.assertEqual(len(calls), 1)
+        self.assertIs(calls[0]["solve_cloudflare"], False)
+        self.assertEqual(calls[0]["timeout"], 30_000)
+
+    def test_bypass_disabled_does_not_retry_headful_when_blocked(self) -> None:
+        blocked = SimpleNamespace(url="https://x.test", status=403, headers={}, body=b"denied")
+        manager = _FakeManager([blocked])
+        factory, calls = _factory([manager])
+
+        session = PersistentScraplingSession(
+            user_agent="KADCollector/Test",
+            timeout_seconds=30,
+            session_factory=factory,
+            solve_cloudflare=False,
+        )
+        result = session.fetch("https://x.test")
+        session.close()
+
+        # sem bypass, a resposta bloqueada eh devolvida como esta (sem checagem
+        # de _looks_blocked nem segunda tentativa headful) -- mais rapido, e a
+        # camada de cima (CollectionHttpClient) decide o que fazer com o 403.
+        self.assertIs(result, blocked)
+        self.assertTrue(session.headless)
+        self.assertEqual(len(calls), 1)
+
+    def test_bypass_disabled_launch_failure_does_not_fall_back_to_headful(self) -> None:
+        factory, calls = _factory([_FakeManager([], fail_start=True)])
+
+        session = PersistentScraplingSession(
+            user_agent="KADCollector/Test",
+            timeout_seconds=30,
+            session_factory=factory,
+            solve_cloudflare=False,
+        )
+        with self.assertRaisesRegex(ScraplingSessionError, "headless"):
+            session.fetch("https://x.test")
+        session.close()
+        self.assertEqual(len(calls), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

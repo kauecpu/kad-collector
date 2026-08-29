@@ -149,11 +149,14 @@ class DesktopCollectionTests(unittest.TestCase):
         self.assertIn('id="source-browser-enabled"', html)
         self.assertIn('id="source-robots-policy"', html)
         self.assertIn('id="source-crawl-delay-policy"', html)
+        self.assertIn('id="source-cloudflare-bypass"', html)
         self.assertIn("/api/collections", javascript)
         self.assertIn("capacityProfile", javascript)
         self.assertIn("collectionAction", javascript)
         self.assertIn("robotsPolicy", javascript)
         self.assertIn("crawlDelayPolicy", javascript)
+        self.assertIn("cloudflareBypass", javascript)
+        self.assertIn("/api/settings/cloudflare-bypass", javascript)
         self.assertNotIn("byId('source-robots-policy').value = 'ignore'", javascript)
         self.assertNotIn("byId('source-crawl-delay-policy').value = 'ignore'", javascript)
 
@@ -1246,6 +1249,78 @@ C D""",
         config = captured[0]
         self.assertEqual(config.collector.max_files_per_source, 40)  # type: ignore[attr-defined]
         self.assertEqual(config.collector.max_concurrency, 8)  # type: ignore[attr-defined]
+
+    def test_cloudflare_bypass_defaults_to_enabled_and_reaches_collector_settings(self) -> None:
+        captured: list[object] = []
+
+        def collect(config: object, **_kwargs: object) -> tuple[DownloadManifest, Path]:
+            captured.append(config)
+            path = self.root / "manifest.json"
+            path.write_text("{}", encoding="utf-8")
+            return DownloadManifest(created_at=datetime.now(UTC)), path
+
+        with patch("kad_collector.desktop_collection.collect_documents", side_effect=collect):
+            collection_id = self.manager.start(
+                {
+                    "sourceId": "fgv_conhecimento",
+                    "url": "https://conhecimento.fgv.br/concursos/rfb22",
+                }
+            )
+            for _ in range(100):
+                job = next(item for item in self.manager.list_jobs() if item["id"] == collection_id)
+                if job["status"] not in {"queued", "running", "processing"}:
+                    break
+                threading.Event().wait(0.01)
+
+        self.assertTrue(captured)
+        config = captured[0]
+        self.assertIs(config.collector.cloudflare_bypass_enabled, True)  # type: ignore[attr-defined]
+
+    def test_cloudflare_bypass_toggle_off_reaches_collector_settings(self) -> None:
+        captured: list[object] = []
+
+        def collect(config: object, **_kwargs: object) -> tuple[DownloadManifest, Path]:
+            captured.append(config)
+            path = self.root / "manifest.json"
+            path.write_text("{}", encoding="utf-8")
+            return DownloadManifest(created_at=datetime.now(UTC)), path
+
+        with patch("kad_collector.desktop_collection.collect_documents", side_effect=collect):
+            collection_id = self.manager.start(
+                {
+                    "sourceId": "fgv_conhecimento",
+                    "url": "https://conhecimento.fgv.br/concursos/rfb22",
+                    "cloudflareBypass": False,
+                }
+            )
+            for _ in range(100):
+                job = next(item for item in self.manager.list_jobs() if item["id"] == collection_id)
+                if job["status"] not in {"queued", "running", "processing"}:
+                    break
+                threading.Event().wait(0.01)
+
+        self.assertTrue(captured)
+        config = captured[0]
+        self.assertIs(config.collector.cloudflare_bypass_enabled, False)  # type: ignore[attr-defined]
+
+    def test_cloudflare_bypass_rejects_non_boolean_payload(self) -> None:
+        with self.assertRaisesRegex(ValueError, "cloudflareBypass"):
+            self.manager.start(
+                {
+                    "sourceId": "fgv_conhecimento",
+                    "url": "https://conhecimento.fgv.br/concursos/rfb22",
+                    "cloudflareBypass": "nope",
+                }
+            )
+
+    def test_cloudflare_bypass_setting_persists_across_manager_instances(self) -> None:
+        self.assertTrue(self.manager.cloudflare_bypass_enabled())
+        self.assertFalse(self.manager.set_cloudflare_bypass_enabled(False))
+
+        reopened = DesktopCollectionManager(self.root, self.store, self.processor)
+        self.assertFalse(reopened.cloudflare_bypass_enabled())
+        self.assertIn("cloudflareBypassEnabled", reopened.engine_summary())
+        self.assertFalse(reopened.engine_summary()["cloudflareBypassEnabled"])
 
     def test_fgv_metadata_groups_contest_role_and_variant(self) -> None:
         source = self.manager._source("fgv_conhecimento")

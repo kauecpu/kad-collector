@@ -29,6 +29,7 @@ class CollectorSettings(StrictModel):
     development_cache: bool = False
     resume_downloads: bool = True
     disk_quota_bytes: int | None = Field(default=5_000_000_000, ge=1_000_000)
+    cloudflare_bypass_enabled: bool = True
 
 
 DiscoveryStrategy = Literal["html", "sitemap", "feed", "json", "browser"]

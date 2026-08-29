@@ -897,6 +897,7 @@ def collect_documents(
                 disk_quota_bytes=settings.disk_quota_bytes,
                 development_cache=settings.development_cache,
                 page_transport=source.page_transport,
+                cloudflare_bypass_enabled=settings.cloudflare_bypass_enabled,
             )
         else:
             client = _LegacyClientAdapter(
