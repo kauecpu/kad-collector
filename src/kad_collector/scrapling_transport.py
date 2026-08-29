@@ -79,6 +79,13 @@ class PersistentScraplingSession:
     other launch parameter (``real_chrome``, ``solve_cloudflare``, the
     timeout, ``block_webrtc`` and ``hide_canvas``) stays identical between
     both attempts -- only ``headless`` changes.
+
+    This entire bypass strategy (``solve_cloudflare``, the headless->headful
+    retry, and the 90s timeout floor) is controlled by a single
+    ``solve_cloudflare`` flag -- this mirrors the "Usar bypass Cloudflare"
+    toggle on the desktop app's Coletar screen. When it is ``False`` the
+    session does a single headless fetch with no retry, using the timeout
+    as configured (no 90s floor) for a faster, non-bypassing collection.
     """
 
     def __init__(
@@ -87,9 +94,15 @@ class PersistentScraplingSession:
         user_agent: str,
         timeout_seconds: float,
         session_factory: ScraplingSessionFactory | None = None,
+        solve_cloudflare: bool = True,
     ) -> None:
         self.user_agent = user_agent
-        self.timeout_ms = max(90_000, int(timeout_seconds * 1000))
+        self._solve_cloudflare = solve_cloudflare
+        self.timeout_ms = (
+            max(90_000, int(timeout_seconds * 1000))
+            if solve_cloudflare
+            else int(timeout_seconds * 1000)
+        )
         self._session_factory = session_factory or _default_session_factory
         self._manager: ScraplingSession | None = None
         self._session: ScraplingSession | None = None
@@ -109,7 +122,7 @@ class PersistentScraplingSession:
             manager = self._session_factory(
                 headless=headless,
                 real_chrome=True,
-                solve_cloudflare=True,
+                solve_cloudflare=self._solve_cloudflare,
                 timeout=self.timeout_ms,
                 block_webrtc=True,
                 hide_canvas=True,
@@ -141,6 +154,9 @@ class PersistentScraplingSession:
         except ScraplingUnavailableError:
             raise
         except ScraplingSessionError:
+            if not self._solve_cloudflare:
+                # bypass desativado: sem fallback para headful, propaga o erro.
+                raise
             # headless=True falhou ao iniciar: tenta novamente sem headless antes
             # de desistir, mantendo os demais parametros identicos.
             self._manager, self._session = self._launch(headless=False)
@@ -176,6 +192,16 @@ class PersistentScraplingSession:
                 extra_headers=headers,
                 timeout=self.timeout_ms,
             )
+
+        if not self._solve_cloudflare:
+            # bypass desativado: uma unica tentativa, sem checagem de bloqueio
+            # nem fallback headful (comportamento mais rapido).
+            try:
+                return _do_fetch()
+            except Exception as exc:
+                raise ScraplingSessionError(
+                    f"falha do Scrapling ao carregar {url}: {exc}"
+                ) from exc
 
         try:
             response = _do_fetch()

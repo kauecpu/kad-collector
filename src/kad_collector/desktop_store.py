@@ -449,6 +449,11 @@ class DesktopStore:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS desktop_preferences (
+                    key TEXT PRIMARY KEY,
+                    value_json TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS classification_review_batches (
                     id TEXT PRIMARY KEY,
                     confirmation_token TEXT NOT NULL,
@@ -3573,6 +3578,29 @@ class DesktopStore:
         with closing(self._connect()) as connection:
             connection.execute("DELETE FROM saved_filters WHERE id = ?", (filter_id,))
             connection.commit()
+
+    def set_preference(self, key: str, value: Any) -> None:
+        now = _now()
+        with closing(self._connect()) as connection:
+            connection.execute(
+                """
+                INSERT INTO desktop_preferences (key, value_json, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json,
+                    updated_at = excluded.updated_at
+                """,
+                (key, _json(value), now),
+            )
+            connection.commit()
+
+    def get_preference(self, key: str, default: Any = None) -> Any:
+        with closing(self._connect()) as connection:
+            row = connection.execute(
+                "SELECT value_json FROM desktop_preferences WHERE key = ?", (key,)
+            ).fetchone()
+        if row is None:
+            return default
+        return json.loads(cast(str, row["value_json"]))
 
     def mark_exported(self, question_ids: list[str]) -> None:
         if not question_ids:

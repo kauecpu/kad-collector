@@ -261,6 +261,10 @@
                     <input id="source-browser-enabled" type="checkbox">
                     <span><strong>Renderizar JavaScript</strong><small>Usa Edge/Chromium quando o HTML não expõe os links.</small></span>
                   </label>
+                  <label class="engine-toggle">
+                    <input id="source-cloudflare-bypass" type="checkbox" checked>
+                    <span><strong>Usar bypass Cloudflare</strong><small>Resolve desafios Cloudflare/Turnstile com fallback headful, mas é mais lento (timeout 90s). Desative para uma coleta mais rápida (timeout 30s, sem bypass).</small></span>
+                  </label>
                 </div>
                 <details class="engine-advanced">
                   <summary>Ajustes avançados</summary>

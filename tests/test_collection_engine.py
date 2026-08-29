@@ -65,6 +65,7 @@ class CollectionEngineTests(unittest.TestCase):
         development_cache: bool = False,
         page_transport: str = "http",
         scrapling_session_factory: Any = None,
+        cloudflare_bypass_enabled: bool = True,
     ) -> CollectionHttpClient:
         client = CollectionHttpClient(
             user_agent="KADCollector/Test",
@@ -83,6 +84,7 @@ class CollectionEngineTests(unittest.TestCase):
             random_source=random.Random(1),
             page_transport=page_transport,
             scrapling_session_factory=scrapling_session_factory,
+            cloudflare_bypass_enabled=cloudflare_bypass_enabled,
         )
         client.client.close()
         client.client = httpx.Client(transport=handler, follow_redirects=False)
@@ -135,6 +137,46 @@ class CollectionEngineTests(unittest.TestCase):
         self.assertIs(factory_options[0]["real_chrome"], True)
         self.assertIs(factory_options[0]["solve_cloudflare"], True)
         self.assertFalse(session.fetches[0][1]["google_search"])
+
+    def test_cloudflare_bypass_disabled_reaches_scrapling_session_and_skips_retry(self) -> None:
+        # Toggle "Usar bypass Cloudflare" desligado no app: solve_cloudflare=False
+        # chega ate o PersistentScraplingSession, que faz uma unica tentativa
+        # mesmo diante de um 403 (sem fallback headful) -- ao contrario do caso
+        # com bypass ligado (test_scrapling_403_keeps_existing_access_denied_handling),
+        # que consome duas chamadas de fetch internamente.
+        blocked = SimpleNamespace(
+            url="https://example.test/denied",
+            status=403,
+            headers={"Content-Type": "text/html"},
+            body=b"denied",
+        )
+        session = FakeScraplingSession([blocked])
+        factory_options: list[dict[str, object]] = []
+
+        def factory(**options: object) -> FakeScraplingSession:
+            factory_options.append(options)
+            return session
+
+        client = self.client(
+            httpx.MockTransport(lambda request: httpx.Response(500, request=request)),
+            page_transport="scrapling",
+            scrapling_session_factory=factory,
+            cloudflare_bypass_enabled=False,
+        )
+        with (
+            patch(
+                "kad_collector.collection_transport.validate_public_url",
+                side_effect=lambda url, _hosts: url,
+            ),
+            self.assertRaises(FetchError) as raised,
+        ):
+            client.get("https://example.test/denied", ["example.test"], 10_000)
+        client.close()
+
+        self.assertEqual(raised.exception.status_code, 403)
+        self.assertEqual(len(factory_options), 1)
+        self.assertIs(factory_options[0]["solve_cloudflare"], False)
+        self.assertEqual(len(session.fetches), 1)
 
     def test_scrapling_403_keeps_existing_access_denied_handling(self) -> None:
         # scrapling_transport.PersistentScraplingSession agora tenta de novo com

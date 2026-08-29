@@ -256,7 +256,16 @@ class DesktopCollectionManager:
             "cache": state.cache_summary(),
             "profiles": ["conservative", "balanced", "high_performance", "custom"],
             "policyModes": ["enforce", "observe", "ignore"],
+            "cloudflareBypassEnabled": self.cloudflare_bypass_enabled(),
         }
+
+    def cloudflare_bypass_enabled(self) -> bool:
+        return bool(self.store.get_preference("cloudflare_bypass_enabled", True))
+
+    def set_cloudflare_bypass_enabled(self, enabled: bool) -> bool:
+        value = bool(enabled)
+        self.store.set_preference("cloudflare_bypass_enabled", value)
+        return value
 
     def start(self, payload: dict[str, Any]) -> str:
         source_id = payload.get("sourceId")
@@ -306,6 +315,9 @@ class DesktopCollectionManager:
         policy_modes = {"enforce", "observe", "ignore"}
         if robots_policy not in policy_modes or crawl_delay_policy not in policy_modes:
             raise ValueError("politica de robots ou Crawl-delay invalida")
+        cloudflare_bypass = payload.get("cloudflareBypass", self.cloudflare_bypass_enabled())
+        if not isinstance(cloudflare_bypass, bool):
+            raise ValueError("cloudflareBypass deve ser booleano")
         engine_options = {
             "capacityProfile": profile,
             "browserEnabled": browser_enabled,
@@ -313,6 +325,7 @@ class DesktopCollectionManager:
             "requestIntervalSeconds": custom_interval,
             "robotsPolicy": robots_policy,
             "crawlDelayPolicy": crawl_delay_policy,
+            "cloudflareBypass": cloudflare_bypass,
         }
 
         job_id = str(uuid.uuid4())
@@ -516,6 +529,7 @@ class DesktopCollectionManager:
                     profile_updates["request_interval_seconds"] = engine_options[
                         "requestIntervalSeconds"
                     ]
+            profile_updates["cloudflare_bypass_enabled"] = bool(engine_options["cloudflareBypass"])
             run_settings = self.config.collector.model_copy(update=profile_updates)
             run_config = AppConfig(
                 collector=run_settings,

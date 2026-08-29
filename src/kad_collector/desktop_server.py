@@ -262,6 +262,12 @@ class DesktopApplication:
     def collection_action(self, collection_id: str, action: str) -> None:
         self.collection_manager.action(collection_id, action)
 
+    def set_cloudflare_bypass_enabled(self, payload: dict[str, Any]) -> bool:
+        enabled = payload.get("enabled")
+        if not isinstance(enabled, bool):
+            raise ValueError("enabled deve ser booleano")
+        return self.collection_manager.set_cloudflare_bypass_enabled(enabled)
+
     def update_question(self, question_id: str, payload: dict[str, Any]) -> None:
         question = QuestionRecord.model_validate(payload.get("question"))
         classification_payload = payload.get("classification")
@@ -480,6 +486,10 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                 if path == "/api/collections":
                     collection_id = application.collect_from_link(payload)
                     self._send_json({"collectionId": collection_id}, HTTPStatus.CREATED)
+                    return
+                if path == "/api/settings/cloudflare-bypass":
+                    enabled = application.set_cloudflare_bypass_enabled(payload)
+                    self._send_json({"ok": True, "cloudflareBypassEnabled": enabled})
                     return
                 collection_action = re.fullmatch(
                     r"/api/collections/([a-f0-9-]+)/(pause|resume|cancel)", path

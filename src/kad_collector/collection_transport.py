@@ -171,6 +171,7 @@ class CollectionHttpClient:
         random_source: random.Random | None = None,
         page_transport: Literal["http", "scrapling"] = "http",
         scrapling_session_factory: ScraplingSessionFactory | None = None,
+        cloudflare_bypass_enabled: bool = True,
     ) -> None:
         self.scheduler = HostScheduler(interval_seconds, max_concurrency)
         self.max_retries = max_retries
@@ -190,6 +191,7 @@ class CollectionHttpClient:
                 user_agent=user_agent,
                 timeout_seconds=timeout,
                 session_factory=scrapling_session_factory,
+                solve_cloudflare=cloudflare_bypass_enabled,
             )
             if page_transport == "scrapling"
             else None
