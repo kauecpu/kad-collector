@@ -157,6 +157,12 @@ def _looks_blocked(title: str, content: str, url: str) -> str | None:
     return None
 
 
+def detect_access_challenge(title: str, content: str, url: str) -> str | None:
+    """Return a manual-action reason without attempting to bypass the challenge."""
+
+    return _looks_blocked(title, content, url)
+
+
 def browser_discover(
     page_url: str,
     source: SourceDefinition,
