@@ -18,8 +18,10 @@ aplicativo/frontend neste repositório e não copie código do repositório priv
   administrativos de cada fonte. `robots.txt` e `Crawl-delay` são políticas
   configuráveis por fonte: use `enforce` como padrão, e permita `observe` ou
   `ignore` somente por escolha explícita do responsável, registrada no
-  manifesto e na telemetria. Não contorne autenticação, CAPTCHA ou bloqueios
-  de acesso.
+  manifesto e na telemetria. Não contorne autenticação, paywalls ou bloqueios
+  de acesso que exijam login. Bypass de Cloudflare via Scrapling
+  (solve_cloudflare=True) é permitido por decisão administrativa explícita
+  do responsável, registrada no manifesto e na telemetria.
 - Nunca inclua `.env`, senhas, tokens, cookies, chaves privadas ou a chave
   `service_role` em commits, logs, testes ou Pull Requests. Use variáveis de
   ambiente e GitHub Secrets.
