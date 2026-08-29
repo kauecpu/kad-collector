@@ -47,8 +47,39 @@ def _default_session_factory(**options: object) -> ScraplingSession:
     return factory(**options)
 
 
+_CHALLENGE_BODY_MARKERS = (
+    b"cf-turnstile",
+    b"captcha",
+    b"just a moment",
+    b"checking your browser",
+    b"cloudflare ray id",
+    b"cf-chl-",
+)
+
+
+def _looks_blocked(response: ScraplingResponse) -> bool:
+    """Heuristic for a Cloudflare/captcha challenge still present in the response."""
+    try:
+        status = int(response.status)
+    except (TypeError, ValueError):
+        status = 0
+    if status == 403:
+        return True
+    body = bytes(response.body)[:20_000].lower()
+    return any(marker in body for marker in _CHALLENGE_BODY_MARKERS)
+
+
 class PersistentScraplingSession:
-    """Own one browser session for an entire collection source."""
+    """Own one browser session for an entire collection source.
+
+    The session starts in headless mode. If the headless browser fails to
+    start, or the first fetch still comes back blocked (HTTP 403 or a
+    Cloudflare/captcha challenge in the body), the session is restarted in
+    headful mode (``headless=False``) and the fetch is retried once. Every
+    other launch parameter (``real_chrome``, ``solve_cloudflare``, the
+    timeout, ``block_webrtc`` and ``hide_canvas``) stays identical between
+    both attempts -- only ``headless`` changes.
+    """
 
     def __init__(
         self,
@@ -58,25 +89,30 @@ class PersistentScraplingSession:
         session_factory: ScraplingSessionFactory | None = None,
     ) -> None:
         self.user_agent = user_agent
-        self.timeout_ms = max(60_000, int(timeout_seconds * 1000))
+        self.timeout_ms = max(90_000, int(timeout_seconds * 1000))
         self._session_factory = session_factory or _default_session_factory
         self._manager: ScraplingSession | None = None
         self._session: ScraplingSession | None = None
+        self._headless = True
 
     @property
     def started(self) -> bool:
         return self._session is not None
 
-    def start(self) -> PersistentScraplingSession:
-        if self._session is not None:
-            return self
+    @property
+    def headless(self) -> bool:
+        return self._headless
+
+    def _launch(self, *, headless: bool) -> tuple[ScraplingSession, ScraplingSession]:
         manager: ScraplingSession | None = None
         try:
             manager = self._session_factory(
-                headless=True,
+                headless=headless,
                 real_chrome=True,
                 solve_cloudflare=True,
                 timeout=self.timeout_ms,
+                block_webrtc=True,
+                hide_canvas=True,
                 useragent=self.user_agent,
             )
             session = manager.__enter__()
@@ -89,13 +125,39 @@ class PersistentScraplingSession:
                     manager.__exit__(type(exc), exc, exc.__traceback__)
                 except Exception as cleanup_exc:
                     cleanup_detail = f"; falha adicional ao limpar a sessao: {cleanup_exc}"
+            modo = "headless" if headless else "headful (headless=False)"
             raise ScraplingSessionError(
-                "nao foi possivel iniciar a sessao persistente do Scrapling: "
+                f"nao foi possivel iniciar a sessao persistente do Scrapling em modo {modo}: "
                 f"{exc}{cleanup_detail}"
             ) from exc
-        self._manager = manager
-        self._session = session
+        return manager, session
+
+    def start(self) -> PersistentScraplingSession:
+        if self._session is not None:
+            return self
+        try:
+            self._manager, self._session = self._launch(headless=True)
+            self._headless = True
+        except ScraplingUnavailableError:
+            raise
+        except ScraplingSessionError:
+            # headless=True falhou ao iniciar: tenta novamente sem headless antes
+            # de desistir, mantendo os demais parametros identicos.
+            self._manager, self._session = self._launch(headless=False)
+            self._headless = False
         return self
+
+    def _restart(self, *, headless: bool) -> None:
+        manager = self._manager
+        self._manager = None
+        self._session = None
+        if manager is not None:
+            try:
+                manager.__exit__(None, None, None)
+            except Exception:
+                pass  # a sessao anterior ja estava com problema; seguimos com a nova tentativa
+        self._manager, self._session = self._launch(headless=headless)
+        self._headless = headless
 
     def fetch(
         self,
@@ -104,16 +166,43 @@ class PersistentScraplingSession:
         extra_headers: Mapping[str, str] | None = None,
     ) -> ScraplingResponse:
         self.start()
-        assert self._session is not None
-        try:
+        headers = dict(extra_headers or {})
+
+        def _do_fetch() -> ScraplingResponse:
+            assert self._session is not None
             return self._session.fetch(
                 url,
                 google_search=False,
-                extra_headers=dict(extra_headers or {}),
+                extra_headers=headers,
                 timeout=self.timeout_ms,
             )
+
+        try:
+            response = _do_fetch()
         except Exception as exc:
-            raise ScraplingSessionError(f"falha do Scrapling ao carregar {url}: {exc}") from exc
+            first_failure = str(exc)
+        else:
+            if not _looks_blocked(response):
+                return response
+            first_failure = f"status {response.status} / desafio ainda presente na resposta"
+
+        if not self._headless:
+            # ja estavamos em modo headful (headless=False) e ainda assim falhou ou
+            # continua bloqueado; nao ha mais nada para tentar.
+            raise ScraplingSessionError(
+                f"falha do Scrapling ao carregar {url} mesmo com headless=False: {first_failure}"
+            )
+
+        # headless=True falhou ou ainda mostra 403/captcha: tenta novamente sem headless,
+        # mantendo os demais parametros (real_chrome, solve_cloudflare, timeout,
+        # block_webrtc, hide_canvas) identicos.
+        self._restart(headless=False)
+        try:
+            return _do_fetch()
+        except Exception as exc:
+            raise ScraplingSessionError(
+                f"falha do Scrapling ao carregar {url} mesmo com headless=False: {exc}"
+            ) from exc
 
     def close(self) -> None:
         manager = self._manager

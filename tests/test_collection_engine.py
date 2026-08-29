@@ -137,6 +137,10 @@ class CollectionEngineTests(unittest.TestCase):
         self.assertFalse(session.fetches[0][1]["google_search"])
 
     def test_scrapling_403_keeps_existing_access_denied_handling(self) -> None:
+        # scrapling_transport.PersistentScraplingSession agora tenta de novo com
+        # headless=False quando a primeira tentativa (headless=True) volta com 403;
+        # aqui a segunda tentativa tambem bate em 403, entao o resultado final
+        # continua sendo tratado como access_denied por este cliente.
         session = FakeScraplingSession(
             [
                 SimpleNamespace(
@@ -144,7 +148,13 @@ class CollectionEngineTests(unittest.TestCase):
                     status=403,
                     headers={"Content-Type": "text/html"},
                     body=b"denied",
-                )
+                ),
+                SimpleNamespace(
+                    url="https://example.test/denied",
+                    status=403,
+                    headers={"Content-Type": "text/html"},
+                    body=b"denied",
+                ),
             ]
         )
         client = self.client(
@@ -163,7 +173,7 @@ class CollectionEngineTests(unittest.TestCase):
         client.close()
 
         self.assertEqual(raised.exception.status_code, 403)
-        self.assertEqual(len(session.fetches), 1)
+        self.assertEqual(len(session.fetches), 2)
         self.assertEqual(self.state.events("run-test")[-1].outcome, "access_denied")
 
     def test_scrapling_429_uses_existing_retry_after_policy(self) -> None:
@@ -765,6 +775,10 @@ class CollectionEngineTests(unittest.TestCase):
                 request=request,
             )
 
+        # PersistentScraplingSession agora tenta headless=True e depois
+        # headless=False internamente antes de devolver a resposta; como as duas
+        # tentativas continuam bloqueadas aqui, sao necessarias duas respostas na
+        # fila para simular o desafio persistindo em ambos os modos.
         session = FakeScraplingSession(
             [
                 SimpleNamespace(
@@ -772,7 +786,13 @@ class CollectionEngineTests(unittest.TestCase):
                     status=200,
                     headers={"Content-Type": "text/html; charset=utf-8"},
                     body=challenge_html,
-                )
+                ),
+                SimpleNamespace(
+                    url=url,
+                    status=200,
+                    headers={"Content-Type": "text/html; charset=utf-8"},
+                    body=challenge_html,
+                ),
             ]
         )
 
