@@ -41,6 +41,7 @@ from .models import (
     SourceDefinition,
 )
 from .security import FetchError, HttpResult, SafeHttpClient, UnsafeUrlError, validate_public_url
+from .url_utils import canonicalize_url
 
 _ORIGINAL_SAFE_HTTP_CLIENT = SafeHttpClient
 
@@ -81,6 +82,8 @@ class _LegacyClientAdapter:
             cache_status="disabled",
             attempt=1,
             duration_ms=0,
+            original_url=url,
+            canonical_url=canonicalize_url(url),
         )
 
     def remember_body(self, **_options: object) -> None:
@@ -109,6 +112,8 @@ class _LegacyClientAdapter:
             resumed=False,
             attempt=1,
             duration_ms=0,
+            original_url=url,
+            canonical_url=canonicalize_url(url),
         )
 
     def remember_download(self, **_options: object) -> None:
@@ -275,9 +280,7 @@ class _DatedStageParser(HTMLParser):
 
     def stages(self) -> dict[str, str]:
         return {
-            href: stage
-            for href, (_score, stage) in self._candidates.items()
-            if stage is not None
+            href: stage for href, (_score, stage) in self._candidates.items() if stage is not None
         }
 
 
@@ -307,9 +310,7 @@ class _DatedAnswerKeyVariantParser(HTMLParser):
     def _variant(href: str, title: str) -> str | None:
         matches = {
             int(number)
-            for number in re.findall(
-                r"(?i)(?:tipo|prova)[-_ ]*([1-9]\d*)(?!\d)", f"{href} {title}"
-            )
+            for number in re.findall(r"(?i)(?:tipo|prova)[-_ ]*([1-9]\d*)(?!\d)", f"{href} {title}")
         }
         return f"Tipo {next(iter(matches))}" if len(matches) == 1 else None
 
@@ -664,6 +665,8 @@ def _store_document(
     content_type = result.headers.get_content_type()
     if content_type != "application/pdf":
         content_type = "application/pdf"
+    metadata = dict(source.metadata)
+    metadata.setdefault("canonical_url", canonicalize_url(result.url))
     return DocumentRecord(
         source_id=source.id,
         source_name=source.name,
@@ -678,7 +681,7 @@ def _store_document(
         downloaded_at=datetime.now(UTC),
         authorization_basis=source.authorization_basis,
         terms_url=source.terms_url,
-        metadata=source.metadata,
+        metadata=metadata,
     )
 
 
@@ -708,6 +711,8 @@ def _store_engine_document(
         final_path=destination,
         strategy="download",
     )
+    metadata = dict(source.metadata)
+    metadata.setdefault("canonical_url", canonicalize_url(result.url))
     return DocumentRecord(
         source_id=source.id,
         source_name=source.name,
@@ -722,7 +727,7 @@ def _store_engine_document(
         downloaded_at=datetime.now(UTC),
         authorization_basis=source.authorization_basis,
         terms_url=source.terms_url,
-        metadata=source.metadata,
+        metadata=metadata,
     )
 
 
@@ -747,6 +752,8 @@ def _store_engine_body_document(
         temporary = raw_dir / f".{digest}.tmp"
         temporary.write_bytes(result.body)
         temporary.replace(destination)
+    metadata = dict(source.metadata)
+    metadata.setdefault("canonical_url", canonicalize_url(result.url))
     return DocumentRecord(
         source_id=source.id,
         source_name=source.name,
@@ -761,7 +768,7 @@ def _store_engine_body_document(
         downloaded_at=datetime.now(UTC),
         authorization_basis=source.authorization_basis,
         terms_url=source.terms_url,
-        metadata=source.metadata,
+        metadata=metadata,
     )
 
 
@@ -885,6 +892,7 @@ def collect_documents(
                 source_id=source.id,
                 conditional_cache=settings.conditional_cache,
                 disk_quota_bytes=settings.disk_quota_bytes,
+                development_cache=settings.development_cache,
             )
         else:
             client = _LegacyClientAdapter(
@@ -908,6 +916,7 @@ def collect_documents(
         seen_links: set[str] = set()
         source_items = 0
         pagination_truncated = False
+        source_access_denied = False
         checkpoint_key = _checkpoint_key(source)
 
         def check_paused(
@@ -950,14 +959,20 @@ def collect_documents(
             nonlocal filtered_out_documents
             for candidate in safe_discovered_links(candidates, _source):
                 selected = _matches_source_link(candidate, _source)
-                if selected is None or selected[0] in _seen_links:
+                if selected is None:
+                    continue
+                try:
+                    canonical_url = canonicalize_url(selected[0])
+                except ValueError:
+                    continue
+                if canonical_url in _seen_links:
                     continue
                 if not document_might_match_filters(
                     selected[1], selected[0], _source.metadata, active_filters
                 ):
                     filtered_out_documents += 1
                     continue
-                _seen_links.add(selected[0])
+                _seen_links.add(canonical_url)
                 _source_links.append(selected)
 
         try:
@@ -969,7 +984,7 @@ def collect_documents(
                     value = (str(item[0]), str(item[1]), str(item[2]))
                     if value[2] in {"exam", "answer_key", "other"}:
                         source_links.append(value)  # type: ignore[arg-type]
-                        seen_links.add(value[0])
+                        seen_links.add(canonicalize_url(value[0]))
             restored_link_years = checkpoint_payload.get("link_years", {})
             if isinstance(restored_link_years, dict):
                 for item_url, item_year in restored_link_years.items():
@@ -1150,9 +1165,7 @@ def collect_documents(
                                 )
                             )
                             continue
-                        for document_url, year in extract_dated_link_years(
-                            html, page.url
-                        ).items():
+                        for document_url, year in extract_dated_link_years(html, page.url).items():
                             previous = link_years.get(document_url)
                             if document_url not in link_years:
                                 link_years[document_url] = year
@@ -1216,10 +1229,15 @@ def collect_documents(
                                 retryable=_is_retryable(exc),
                             )
                         )
+                        if isinstance(exc, FetchError) and exc.status_code == 403:
+                            source_access_denied = True
+                            seen_pages.discard(page_url)
+                            if page_url not in pending_pages:
+                                pending_pages.insert(0, page_url)
                     state.save_checkpoint(
                         checkpoint_key,
                         source.id,
-                        "running",
+                        "access_denied" if source_access_denied else "running",
                         {
                             "pending_pages": pending_pages,
                             "seen_pages": sorted(seen_pages),
@@ -1230,6 +1248,11 @@ def collect_documents(
                             "link_metadata": link_metadata,
                         },
                     )
+                    if source_access_denied:
+                        break
+
+            if source_access_denied:
+                continue
 
             if pagination_truncated:
                 warnings.append(
@@ -1426,9 +1449,7 @@ def collect_documents(
                     metadata["etapa"] = stage
                 if variant is not None:
                     metadata["variant"] = variant
-                return document.model_copy(
-                    update={"metadata": metadata}
-                )
+                return document.model_copy(update={"metadata": metadata})
 
             with ThreadPoolExecutor(max_workers=concurrency) as pool:
                 futures = {pool.submit(download_one, item): item for item in downloadable}
@@ -1455,7 +1476,25 @@ def collect_documents(
                                 retryable=_is_retryable(exc),
                             )
                         )
-            state.delete_checkpoint(checkpoint_key)
+                        if isinstance(exc, FetchError) and exc.status_code == 403:
+                            source_access_denied = True
+            if source_access_denied:
+                state.save_checkpoint(
+                    checkpoint_key,
+                    source.id,
+                    "access_denied",
+                    {
+                        "pending_pages": [],
+                        "seen_pages": [],
+                        "source_links": source_links,
+                        "link_years": link_years,
+                        "link_stages": link_stages,
+                        "link_variants": link_variants,
+                        "link_metadata": link_metadata,
+                    },
+                )
+            else:
+                state.delete_checkpoint(checkpoint_key)
         finally:
             warnings.extend(f"{source.id}: {item}" for item in robots.observations)
             client.close()
@@ -1479,6 +1518,7 @@ def collect_documents(
             "max_files_per_source": settings.max_files_per_source,
             "max_retries": settings.max_retries,
             "conditional_cache": settings.conditional_cache,
+            "development_cache": settings.development_cache,
             "resume_downloads": settings.resume_downloads,
             "source_policies": {
                 source.id: {

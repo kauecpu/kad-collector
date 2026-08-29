@@ -9,6 +9,9 @@ from pathlib import Path
 from typing import Any
 
 from .models import CollectionTelemetryEvent
+from .url_utils import canonicalize_url
+
+_SCHEMA_VERSION = "2"
 
 
 def _now() -> str:
@@ -39,10 +42,11 @@ class CollectionStateStore:
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL
                 );
-                INSERT OR IGNORE INTO engine_meta(key, value) VALUES ('schema_version', '1');
+                INSERT OR IGNORE INTO engine_meta(key, value) VALUES ('schema_version', '2');
 
                 CREATE TABLE IF NOT EXISTS http_cache (
                     url TEXT PRIMARY KEY,
+                    original_url TEXT NOT NULL,
                     final_url TEXT NOT NULL,
                     etag TEXT,
                     last_modified TEXT,
@@ -88,7 +92,53 @@ class CollectionStateStore:
             version = connection.execute(
                 "SELECT value FROM engine_meta WHERE key = 'schema_version'"
             ).fetchone()
-            if version is None or version["value"] != "1":
+            if version is None:
+                raise RuntimeError("versao desconhecida do banco do motor de coleta")
+            if version["value"] == "1":
+                columns = {
+                    str(row[1])
+                    for row in connection.execute("PRAGMA table_info(http_cache)").fetchall()
+                }
+                if "original_url" not in columns:
+                    connection.execute(
+                        "ALTER TABLE http_cache ADD COLUMN original_url TEXT NOT NULL DEFAULT ''"
+                    )
+                    connection.execute(
+                        "UPDATE http_cache SET original_url = url WHERE original_url = ''"
+                    )
+                rows = connection.execute(
+                    "SELECT url, original_url FROM http_cache ORDER BY checked_at DESC"
+                ).fetchall()
+                retained: set[str] = set()
+                for row in rows:
+                    original_url = str(row["original_url"] or row["url"])
+                    try:
+                        canonical_url = canonicalize_url(str(row["url"]))
+                    except ValueError:
+                        canonical_url = str(row["url"])
+                    if canonical_url in retained:
+                        connection.execute("DELETE FROM http_cache WHERE url = ?", (row["url"],))
+                        continue
+                    if canonical_url != row["url"]:
+                        connection.execute(
+                            "DELETE FROM http_cache WHERE url = ? AND url != ?",
+                            (canonical_url, row["url"]),
+                        )
+                        connection.execute(
+                            "UPDATE http_cache SET url = ?, original_url = ? WHERE url = ?",
+                            (canonical_url, original_url, row["url"]),
+                        )
+                    else:
+                        connection.execute(
+                            "UPDATE http_cache SET original_url = ? WHERE url = ?",
+                            (original_url, row["url"]),
+                        )
+                    retained.add(canonical_url)
+                connection.execute(
+                    "UPDATE engine_meta SET value = ? WHERE key = 'schema_version'",
+                    (_SCHEMA_VERSION,),
+                )
+            elif version["value"] != _SCHEMA_VERSION:
                 raise RuntimeError("versao desconhecida do banco do motor de coleta")
             integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
             if integrity != "ok":
@@ -96,8 +146,11 @@ class CollectionStateStore:
             connection.commit()
 
     def cache_entry(self, url: str) -> dict[str, Any] | None:
+        canonical_url = canonicalize_url(url)
         with self._lock, closing(self._connect()) as connection:
-            row = connection.execute("SELECT * FROM http_cache WHERE url = ?", (url,)).fetchone()
+            row = connection.execute(
+                "SELECT * FROM http_cache WHERE url = ?", (canonical_url,)
+            ).fetchone()
         return dict(row) if row is not None else None
 
     def store_cache(
@@ -114,15 +167,20 @@ class CollectionStateStore:
         status_code: int,
         strategy: str,
     ) -> None:
+        canonical_url = canonicalize_url(url)
         timestamp = _now()
         with self._lock, closing(self._connect()) as connection:
             connection.execute(
                 """
                 INSERT INTO http_cache(
-                    url, final_url, etag, last_modified, sha256, content_type,
+                    url, original_url, final_url, etag, last_modified, sha256, content_type,
                     size_bytes, local_path, downloaded_at, checked_at, status_code, strategy
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(url) DO UPDATE SET
+                    original_url=CASE
+                        WHEN http_cache.original_url = '' THEN excluded.original_url
+                        ELSE http_cache.original_url
+                    END,
                     final_url=excluded.final_url,
                     etag=excluded.etag,
                     last_modified=excluded.last_modified,
@@ -136,7 +194,8 @@ class CollectionStateStore:
                     strategy=excluded.strategy
                 """,
                 (
-                    url,
+                    canonical_url,
+                    url.strip(),
                     final_url,
                     etag,
                     last_modified,
@@ -153,16 +212,18 @@ class CollectionStateStore:
             connection.commit()
 
     def touch_cache(self, url: str, *, status_code: int = 304) -> None:
+        canonical_url = canonicalize_url(url)
         with self._lock, closing(self._connect()) as connection:
             connection.execute(
                 "UPDATE http_cache SET checked_at = ?, status_code = ? WHERE url = ?",
-                (_now(), status_code, url),
+                (_now(), status_code, canonical_url),
             )
             connection.commit()
 
     def invalidate_cache(self, url: str) -> None:
+        canonical_url = canonicalize_url(url)
         with self._lock, closing(self._connect()) as connection:
-            connection.execute("DELETE FROM http_cache WHERE url = ?", (url,))
+            connection.execute("DELETE FROM http_cache WHERE url = ?", (canonical_url,))
             connection.commit()
 
     def save_checkpoint(

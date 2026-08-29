@@ -7,8 +7,10 @@ from email.message import Message
 from pathlib import Path
 from unittest.mock import patch
 
+from kad_collector.collection_state import CollectionStateStore
 from kad_collector.collector import (
     RobotsPolicy,
+    _checkpoint_key,
     classify_document,
     collect_documents,
     extract_dated_link_stages,
@@ -213,6 +215,82 @@ class LinkParsingTests(unittest.TestCase):
         self.assertEqual(len(manifest.failures), 1)
         self.assertIn("acao manual necessaria", manifest.failures[0].message)
 
+    def test_http_403_pauses_only_the_affected_source_checkpoint(self) -> None:
+        denied_url = "https://blocked.example.gov.br/lista"
+        healthy_url = "https://healthy.example.gov.br/lista"
+        pdf_url = "https://healthy.example.gov.br/prova.pdf"
+
+        class FixtureClient:
+            deny_access = True
+
+            def __init__(self, user_agent: str, timeout: float, interval_seconds: float) -> None:
+                pass
+
+            def get(self, url: str, allowed_hosts: list[str], max_bytes: int) -> HttpResult:
+                if url == denied_url and self.deny_access:
+                    raise FetchError("HTTP 403 ao acessar fonte", 403)
+                headers = Message()
+                if url == denied_url:
+                    headers["Content-Type"] = "text/html; charset=utf-8"
+                    return HttpResult(
+                        url=url, status_code=200, headers=headers, body=b"<html></html>"
+                    )
+                if url == healthy_url:
+                    headers["Content-Type"] = "text/html; charset=utf-8"
+                    return HttpResult(
+                        url=url,
+                        status_code=200,
+                        headers=headers,
+                        body=b'<a href="/prova.pdf">Prova</a>',
+                    )
+                if url == pdf_url:
+                    headers["Content-Type"] = "application/pdf"
+                    return HttpResult(
+                        url=url,
+                        status_code=200,
+                        headers=headers,
+                        body=b"%PDF-1.4\nfixture\n%%EOF",
+                    )
+                raise AssertionError(f"URL inesperada: {url}")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            blocked = source_definition(
+                id="fonte_bloqueada",
+                start_urls=[denied_url],
+                allowed_hosts=["blocked.example.gov.br"],
+                robots_policy="ignore",
+                crawl_delay_policy="ignore",
+            )
+            healthy = source_definition(
+                id="fonte_saudavel_403",
+                start_urls=[healthy_url],
+                allowed_hosts=["healthy.example.gov.br"],
+                robots_policy="ignore",
+                crawl_delay_policy="ignore",
+            )
+            config = AppConfig(
+                collector=CollectorSettings(data_dir=temporary),
+                sources=[blocked, healthy],
+            )
+            with patch("kad_collector.collector.SafeHttpClient", FixtureClient):
+                manifest, _ = collect_documents(config)
+            state = CollectionStateStore(Path(temporary) / "collection-engine.sqlite3")
+            checkpoint = state.load_checkpoint(_checkpoint_key(blocked))
+            FixtureClient.deny_access = False
+            with patch("kad_collector.collector.SafeHttpClient", FixtureClient):
+                resumed_manifest, _ = collect_documents(config)
+            resumed_checkpoint = state.load_checkpoint(_checkpoint_key(blocked))
+
+        self.assertEqual([item.original_url for item in manifest.documents], [pdf_url])
+        self.assertIsNotNone(checkpoint)
+        assert checkpoint is not None
+        self.assertEqual(checkpoint["status"], "access_denied")
+        self.assertEqual(checkpoint["payload"]["pending_pages"], [denied_url])
+        self.assertEqual(len(manifest.failures), 1)
+        self.assertEqual(manifest.failures[0].url, denied_url)
+        self.assertIsNone(resumed_checkpoint)
+        self.assertEqual([item.original_url for item in resumed_manifest.documents], [pdf_url])
+
     def test_answer_key_has_priority_when_classifying(self) -> None:
         source = source_definition()
         kind = classify_document(
@@ -387,6 +465,7 @@ class LinkParsingTests(unittest.TestCase):
                 "ano_publicacao": "2023",
                 "orgao": "Banco do Brasil",
                 "banca": "CESGRANRIO",
+                "canonical_url": manifest.documents[0].resolved_url,
             },
         )
 
@@ -480,9 +559,7 @@ class LinkParsingTests(unittest.TestCase):
         </div>
         """
 
-        stages = extract_dated_link_stages(
-            html, "https://provas.example.gov.br/concurso"
-        )
+        stages = extract_dated_link_stages(html, "https://provas.example.gov.br/concurso")
 
         self.assertEqual(
             stages["https://provas.example.gov.br/auditor.pdf"],
@@ -500,9 +577,7 @@ class LinkParsingTests(unittest.TestCase):
         </div>
         """
 
-        variants = extract_dated_link_variants(
-            html, "https://provas.example.gov.br/concurso"
-        )
+        variants = extract_dated_link_variants(html, "https://provas.example.gov.br/concurso")
 
         self.assertEqual(
             variants["https://provas.example.gov.br/gabarito.pdf"],
@@ -519,9 +594,7 @@ class LinkParsingTests(unittest.TestCase):
         </div>
         """
 
-        variants = extract_dated_link_variants(
-            html, "https://provas.example.gov.br/concurso"
-        )
+        variants = extract_dated_link_variants(html, "https://provas.example.gov.br/concurso")
 
         self.assertNotIn("https://provas.example.gov.br/gabarito.pdf", variants)
 
@@ -541,9 +614,7 @@ class LinkParsingTests(unittest.TestCase):
         </div>
         """
 
-        variants = extract_dated_link_variants(
-            html, "https://provas.example.gov.br/concurso"
-        )
+        variants = extract_dated_link_variants(html, "https://provas.example.gov.br/concurso")
 
         self.assertEqual(
             variants["https://provas.example.gov.br/gabarito.pdf"],
@@ -682,9 +753,7 @@ class SecurityTests(unittest.TestCase):
 
         comvest = next(source for source in config.sources if source.id == "comvest_unicamp")
         comvest_html = (FIXTURES / "comvest_archive.html").read_text(encoding="utf-8")
-        comvest_selected = select_document_links(
-            comvest_html, comvest.start_urls[0], comvest
-        )
+        comvest_selected = select_document_links(comvest_html, comvest.start_urls[0], comvest)
         self.assertEqual(
             [(Path(item[0]).name, item[2]) for item in comvest_selected],
             [

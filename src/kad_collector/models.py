@@ -26,6 +26,7 @@ class CollectorSettings(StrictModel):
     max_retries: int = Field(default=4, ge=0, le=10)
     retry_max_delay_seconds: float = Field(default=120.0, ge=0.1, le=3_600.0)
     conditional_cache: bool = True
+    development_cache: bool = False
     resume_downloads: bool = True
     disk_quota_bytes: int | None = Field(default=5_000_000_000, ge=1_000_000)
 

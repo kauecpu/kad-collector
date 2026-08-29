@@ -534,10 +534,16 @@ interrompidos usam `Range` e `If-Range` quando o servidor aceita retomada. Respo
 429, 500, 502, 503 e 504 entram em retentativa com backoff, jitter e `Retry-After` limitado pelo
 valor `retry_max_delay_seconds`.
 
-O cache persistente fica em `collection-engine.sqlite3`. Ele armazena ETag, Last-Modified,
-hash, tamanho, caminho e data de verificacao. Uma resposta 304 reutiliza o arquivo somente
-depois de confirmar tamanho e SHA-256. O banco tambem guarda checkpoints e telemetria sem
-cookies, tokens ou query strings.
+O cache persistente fica em `collection-engine.sqlite3`. Ele armazena URL canonica, URL
+original, ETag, Last-Modified, hash, tamanho, caminho e data de verificacao. Fragmentos e
+parametros de rastreamento sao removidos somente da identidade de cache; a URL original
+continua no manifesto para auditoria. Uma resposta 304 reutiliza o arquivo somente depois
+de confirmar tamanho e SHA-256. O banco tambem guarda checkpoints e telemetria sem cookies,
+tokens ou query strings.
+
+`development_cache = true` habilita replay local das respostas verificadas para testes de
+parsing sem novas requisicoes. O valor padrao e `false` e as configuracoes oficiais mantem
+essa opcao desativada; o cache condicional de producao continua funcionando normalmente.
 
 ### Perfis de capacidade
 
