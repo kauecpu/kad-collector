@@ -893,6 +893,7 @@ def collect_documents(
                 conditional_cache=settings.conditional_cache,
                 disk_quota_bytes=settings.disk_quota_bytes,
                 development_cache=settings.development_cache,
+                page_transport=source.page_transport,
             )
         else:
             client = _LegacyClientAdapter(

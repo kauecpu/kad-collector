@@ -336,6 +336,7 @@ start_urls = ["https://www.pciconcursos.com.br/provas/banco-do-brasil"]
 allowed_hosts = ["www.pciconcursos.com.br"]
 robots_policy = "ignore"
 crawl_delay_policy = "ignore"
+page_transport = "scrapling"
 include_patterns = ["(?i)\\.pdf(?:$|[?#])"]
 exclude_patterns = [
   "(?i)(apostila|edital|resultado|classificacao|inscricao|noticia|comentario|gabarito.?extraoficial)",

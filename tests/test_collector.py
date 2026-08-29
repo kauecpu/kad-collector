@@ -129,6 +129,7 @@ class LinkParsingTests(unittest.TestCase):
         self.assertEqual(source.robots_policy, "ignore")
         self.assertEqual(source.crawl_delay_policy, "ignore")
         self.assertFalse(source.browser_enabled)
+        self.assertEqual(source.page_transport, "scrapling")
         self.assertIn("publicos", source.authorization_basis)
 
     def test_pci_detail_page_metadata_is_captured_without_inference(self) -> None:
