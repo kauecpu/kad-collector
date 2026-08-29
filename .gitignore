@@ -154,6 +154,7 @@ __pycache__/
 /dist/
 
 # Collector runtime artifacts (may contain copyrighted source material)
+data/
 data/raw/
 data/manifests/
 data/extracted/

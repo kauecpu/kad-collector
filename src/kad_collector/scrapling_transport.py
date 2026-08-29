@@ -58,7 +58,7 @@ class PersistentScraplingSession:
         session_factory: ScraplingSessionFactory | None = None,
     ) -> None:
         self.user_agent = user_agent
-        self.timeout_ms = max(1, int(timeout_seconds * 1000))
+        self.timeout_ms = max(60_000, int(timeout_seconds * 1000))
         self._session_factory = session_factory or _default_session_factory
         self._manager: ScraplingSession | None = None
         self._session: ScraplingSession | None = None
@@ -75,7 +75,7 @@ class PersistentScraplingSession:
             manager = self._session_factory(
                 headless=True,
                 real_chrome=True,
-                solve_cloudflare=False,
+                solve_cloudflare=True,
                 timeout=self.timeout_ms,
                 useragent=self.user_agent,
             )

@@ -133,7 +133,7 @@ class CollectionEngineTests(unittest.TestCase):
         self.assertEqual(len(session.fetches), 2)
         self.assertEqual(len(factory_options), 1)
         self.assertIs(factory_options[0]["real_chrome"], True)
-        self.assertIs(factory_options[0]["solve_cloudflare"], False)
+        self.assertIs(factory_options[0]["solve_cloudflare"], True)
         self.assertFalse(session.fetches[0][1]["google_search"])
 
     def test_scrapling_403_keeps_existing_access_denied_handling(self) -> None:
