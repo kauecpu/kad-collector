@@ -16,9 +16,10 @@ habilita fontes. O arquivo opt-in `config/sources.official.toml` cadastra onze f
 conferidas: dez de conteudo e uma somente de referencias. Revise o contato do `user_agent`,
 termos, `robots.txt` e limites antes da primeira execucao no ambiente da equipe.
 
-O MVP processa paginas HTML estaticas que contenham links para PDFs. Paginas que dependem
-de JavaScript ainda nao usam Playwright. PDFs digitalizados sem camada de texto sao
-marcados como `needs_ocr` e nao seguem automaticamente para a IA.
+O MVP processa paginas HTML que contenham links para PDFs. Fontes selecionadas podem usar
+uma sessao persistente do Scrapling para renderizar JavaScript sem alterar o parsing existente.
+PDFs digitalizados sem camada de texto sao marcados como `needs_ocr` e nao seguem
+automaticamente para a IA.
 
 ## Requisitos
 
@@ -36,6 +37,18 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[database,dev]"
 copy config\sources.example.toml config\sources.toml
 ```
+
+Para coletar uma fonte configurada com `page_transport = "scrapling"`, instale tambem o
+extra de navegador e o runtime uma unica vez:
+
+```cmd
+python -m pip install -e ".[browser]"
+scrapling install
+```
+
+O transporte usa o Chrome instalado no Windows para evitar empacotar um perfil de navegador
+dentro do Collector. Se o Chrome nao estiver disponivel, a fonte informa que o runtime de
+navegador esta indisponivel e as demais fontes continuam independentes.
 
 Para a etapa geral `process`, defina a chave OpenAI somente na sessao atual do CMD:
 
@@ -505,9 +518,11 @@ SHA-256; o manifesto tambem guarda cargo, orgao, banca, ano, tipo/caderno e etap
 dados aparecem na pagina. Prova, gabarito preliminar e definitivo ficam separados por versao e
 o definitivo tem prioridade somente depois da conferencia de cobertura e alternativas.
 
-Use a pagina especifica do ano/cargo na aba **Coletar links** para limitar o piloto. O modo `html`
-le apenas links estaticos; se o PCI apresentar CAPTCHA, Cloudflare ou outro desafio, a rodada
-registra `acao manual necessaria` e segue para outras fontes. O Collector nao tenta contornar
+Use a pagina especifica do ano/cargo na aba **Coletar links** para limitar o piloto. No PCI,
+o modo `html` reutiliza uma unica `StealthySession` do Scrapling durante o lote e entrega o HTML
+renderizado ao mesmo parsing anterior. A resolucao automatica de Cloudflare permanece desativada.
+Se o PCI apresentar CAPTCHA, Cloudflare ou outro desafio, a rodada registra
+`acao manual necessaria` e segue para outras fontes. O Collector nao tenta contornar
 autenticacao, CAPTCHA, Cloudflare ou bloqueios. Por decisao administrativa explicita do
 responsavel em 2026-08-29, esta fonte usa `ignore` para `robots.txt` e `Crawl-delay`; essa
 decisao fica registrada no manifesto e na telemetria. Nao ha um
@@ -533,6 +548,11 @@ PDFs, SHA-256 incremental, gravacao temporaria e troca atomica do arquivo conclu
 interrompidos usam `Range` e `If-Range` quando o servidor aceita retomada. Respostas 408, 425,
 429, 500, 502, 503 e 504 entram em retentativa com backoff, jitter e `Retry-After` limitado pelo
 valor `retry_max_delay_seconds`.
+
+Cada fonte pode manter `page_transport = "http"` (padrao) ou escolher `"scrapling"` somente
+para paginas HTML. Nesse segundo modo, uma unica sessao de navegador e aberta sob demanda,
+reutilizada no lote e fechada junto com o cliente da fonte. JSON, feeds, sitemaps, `robots.txt`
+e downloads continuam no transporte HTTP existente, preservando cache, streaming e retomada.
 
 O cache persistente fica em `collection-engine.sqlite3`. Ele armazena URL canonica, URL
 original, ETag, Last-Modified, hash, tamanho, caminho e data de verificacao. Fragmentos e

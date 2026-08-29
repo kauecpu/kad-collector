@@ -13,12 +13,19 @@ from datetime import UTC, datetime
 from email.message import Message
 from email.utils import parsedate_to_datetime
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import httpx
 
 from .collection_state import CollectionStateStore
 from .models import CollectionTelemetryEvent
+from .scrapling_transport import (
+    PersistentScraplingSession,
+    ScraplingSessionError,
+    ScraplingSessionFactory,
+    ScraplingUnavailableError,
+)
 from .security import FetchError, validate_public_url
 from .url_utils import canonicalize_url
 
@@ -149,6 +156,8 @@ class CollectionHttpClient:
         disk_quota_bytes: int | None,
         development_cache: bool = False,
         random_source: random.Random | None = None,
+        page_transport: Literal["http", "scrapling"] = "http",
+        scrapling_session_factory: ScraplingSessionFactory | None = None,
     ) -> None:
         self.scheduler = HostScheduler(interval_seconds, max_concurrency)
         self.max_retries = max_retries
@@ -160,6 +169,18 @@ class CollectionHttpClient:
         self.development_cache = development_cache
         self.disk_quota_bytes = disk_quota_bytes
         self.random = random_source or random.Random()
+        if page_transport not in {"http", "scrapling"}:
+            raise ValueError(f"transporte de pagina desconhecido: {page_transport}")
+        self.page_transport = page_transport
+        self.scrapling = (
+            PersistentScraplingSession(
+                user_agent=user_agent,
+                timeout_seconds=timeout,
+                session_factory=scrapling_session_factory,
+            )
+            if page_transport == "scrapling"
+            else None
+        )
         self.client = httpx.Client(
             follow_redirects=False,
             http2=True,
@@ -177,7 +198,15 @@ class CollectionHttpClient:
         )
 
     def close(self) -> None:
+        scrapling_error: ScraplingSessionError | None = None
+        if self.scrapling is not None:
+            try:
+                self.scrapling.close()
+            except ScraplingSessionError as exc:
+                scrapling_error = exc
         self.client.close()
+        if scrapling_error is not None:
+            raise scrapling_error
 
     def __enter__(self) -> CollectionHttpClient:
         return self
@@ -287,18 +316,23 @@ class CollectionHttpClient:
                     original_url=url,
                     canonical_url=canonical_url,
                 )
+        headers = {
+            "Accept": "text/html,application/xhtml+xml,application/xml,application/json,"
+            "application/pdf;q=0.9,*/*;q=0.1",
+            **(extra_headers or {}),
+            **conditional,
+        }
+        is_robots_request = urlsplit(url).path.casefold().rstrip("/") == "/robots.txt"
         result = self._request_bytes(
             url,
             allowed_hosts,
             max_bytes,
             strategy=strategy,
-            headers={
-                "Accept": "text/html,application/xhtml+xml,application/xml,application/json,"
-                "application/pdf;q=0.9,*/*;q=0.1",
-                **(extra_headers or {}),
-                **conditional,
-            },
+            headers=headers,
             interval_seconds=interval_seconds,
+            use_scrapling=(
+                strategy == "html" and self.scrapling is not None and not is_robots_request
+            ),
         )
         if result.status_code == 304 and entry is not None:
             path = Path(str(entry["local_path"]))
@@ -317,6 +351,17 @@ class CollectionHttpClient:
             )
         return result
 
+    def _scrapling_response(self, url: str, headers: dict[str, str]) -> httpx.Response:
+        assert self.scrapling is not None
+        page = self.scrapling.fetch(url, extra_headers=headers)
+        final_url = str(page.url)
+        return httpx.Response(
+            status_code=int(page.status),
+            headers={str(name): str(value) for name, value in page.headers.items()},
+            content=bytes(page.body),
+            request=httpx.Request("GET", final_url),
+        )
+
     def _request_bytes(
         self,
         url: str,
@@ -326,6 +371,7 @@ class CollectionHttpClient:
         strategy: str,
         headers: dict[str, str],
         interval_seconds: float | None,
+        use_scrapling: bool = False,
     ) -> EngineHttpResult:
         canonical_url = canonicalize_url(url)
         for attempt in range(1, self.max_retries + 2):
@@ -340,7 +386,12 @@ class CollectionHttpClient:
                         current_url, interval_seconds=interval_seconds
                     ) as delay:
                         waited += delay
-                        response = self.client.get(current_url, headers=headers)
+                        response = (
+                            self._scrapling_response(current_url, headers)
+                            if use_scrapling
+                            else self.client.get(current_url, headers=headers)
+                        )
+                    validate_public_url(str(response.url), allowed_hosts)
                     if response.status_code in _REDIRECTS:
                         location = response.headers.get("Location")
                         if not location:
@@ -398,9 +449,17 @@ class CollectionHttpClient:
                         canonical_url=canonical_url,
                     )
                 raise FetchError("numero maximo de redirecionamentos excedido")
-            except (httpx.TransportError, FetchError) as exc:
+            except (
+                httpx.TransportError,
+                ScraplingSessionError,
+                ScraplingUnavailableError,
+                FetchError,
+            ) as exc:
                 status = exc.status_code if isinstance(exc, FetchError) else None
-                retryable = not isinstance(exc, FetchError) or _is_retryable_status(status)
+                retryable = (
+                    not isinstance(exc, (FetchError, ScraplingUnavailableError))
+                    or _is_retryable_status(status)
+                )
                 if not retryable or attempt > self.max_retries:
                     outcome = (
                         "access_denied"

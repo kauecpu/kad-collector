@@ -9,6 +9,8 @@ import threading
 import unittest
 from contextlib import closing
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 from unittest.mock import patch
 
 import httpx
@@ -27,6 +29,25 @@ from kad_collector.security import FetchError
 from kad_collector.url_utils import canonicalize_url
 
 
+class FakeScraplingSession:
+    def __init__(self, responses: list[SimpleNamespace]) -> None:
+        self.responses = responses
+        self.entered = 0
+        self.exited = 0
+        self.fetches: list[tuple[str, dict[str, object]]] = []
+
+    def __enter__(self) -> FakeScraplingSession:
+        self.entered += 1
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        self.exited += 1
+
+    def fetch(self, url: str, **options: object) -> SimpleNamespace:
+        self.fetches.append((url, options))
+        return self.responses.pop(0)
+
+
 class CollectionEngineTests(unittest.TestCase):
     def setUp(self) -> None:
         self.directory = tempfile.TemporaryDirectory()
@@ -42,6 +63,8 @@ class CollectionEngineTests(unittest.TestCase):
         *,
         max_retries: int = 2,
         development_cache: bool = False,
+        page_transport: str = "http",
+        scrapling_session_factory: Any = None,
     ) -> CollectionHttpClient:
         client = CollectionHttpClient(
             user_agent="KADCollector/Test",
@@ -58,10 +81,158 @@ class CollectionEngineTests(unittest.TestCase):
             disk_quota_bytes=10_000_000,
             development_cache=development_cache,
             random_source=random.Random(1),
+            page_transport=page_transport,
+            scrapling_session_factory=scrapling_session_factory,
         )
         client.client.close()
         client.client = httpx.Client(transport=handler, follow_redirects=False)
         return client
+
+    def test_scrapling_session_is_reused_and_preserves_response_contract(self) -> None:
+        payloads = [self.fixture("ok.html"), b"<html><body>segunda</body></html>"]
+        session = FakeScraplingSession(
+            [
+                SimpleNamespace(
+                    url=f"https://example.test/page/{index}",
+                    status=200,
+                    headers={"Content-Type": "text/html; charset=utf-8"},
+                    body=payload,
+                )
+                for index, payload in enumerate(payloads, start=1)
+            ]
+        )
+        factory_options: list[dict[str, object]] = []
+
+        def factory(**options: object) -> FakeScraplingSession:
+            factory_options.append(options)
+            return session
+
+        def unexpected_http(_request: httpx.Request) -> httpx.Response:
+            raise AssertionError("httpx nao deveria carregar paginas HTML desta fonte")
+
+        client = self.client(
+            httpx.MockTransport(unexpected_http),
+            page_transport="scrapling",
+            scrapling_session_factory=factory,
+        )
+        with patch(
+            "kad_collector.collection_transport.validate_public_url",
+            side_effect=lambda url, _hosts: url,
+        ):
+            first = client.get("https://example.test/page/1", ["example.test"], 10_000)
+            second = client.get("https://example.test/page/2", ["example.test"], 10_000)
+        client.close()
+
+        self.assertEqual(first.body, payloads[0])
+        self.assertEqual(second.body, payloads[1])
+        self.assertEqual(first.headers.get_content_type(), "text/html")
+        self.assertEqual(first.original_url, "https://example.test/page/1")
+        self.assertEqual(first.canonical_url, "https://example.test/page/1")
+        self.assertEqual(session.entered, 1)
+        self.assertEqual(session.exited, 1)
+        self.assertEqual(len(session.fetches), 2)
+        self.assertEqual(len(factory_options), 1)
+        self.assertIs(factory_options[0]["real_chrome"], True)
+        self.assertIs(factory_options[0]["solve_cloudflare"], False)
+        self.assertFalse(session.fetches[0][1]["google_search"])
+
+    def test_scrapling_403_keeps_existing_access_denied_handling(self) -> None:
+        session = FakeScraplingSession(
+            [
+                SimpleNamespace(
+                    url="https://example.test/denied",
+                    status=403,
+                    headers={"Content-Type": "text/html"},
+                    body=b"denied",
+                )
+            ]
+        )
+        client = self.client(
+            httpx.MockTransport(lambda request: httpx.Response(500, request=request)),
+            page_transport="scrapling",
+            scrapling_session_factory=lambda **_options: session,
+        )
+        with (
+            patch(
+                "kad_collector.collection_transport.validate_public_url",
+                side_effect=lambda url, _hosts: url,
+            ),
+            self.assertRaises(FetchError) as raised,
+        ):
+            client.get("https://example.test/denied", ["example.test"], 10_000)
+        client.close()
+
+        self.assertEqual(raised.exception.status_code, 403)
+        self.assertEqual(len(session.fetches), 1)
+        self.assertEqual(self.state.events("run-test")[-1].outcome, "access_denied")
+
+    def test_scrapling_429_uses_existing_retry_after_policy(self) -> None:
+        session = FakeScraplingSession(
+            [
+                SimpleNamespace(
+                    url="https://example.test/busy",
+                    status=429,
+                    headers={"Retry-After": "0", "Content-Type": "text/html"},
+                    body=b"busy",
+                ),
+                SimpleNamespace(
+                    url="https://example.test/busy",
+                    status=200,
+                    headers={"Content-Type": "text/html"},
+                    body=b"ok",
+                ),
+            ]
+        )
+        client = self.client(
+            httpx.MockTransport(lambda request: httpx.Response(500, request=request)),
+            page_transport="scrapling",
+            scrapling_session_factory=lambda **_options: session,
+        )
+        with (
+            patch(
+                "kad_collector.collection_transport.validate_public_url",
+                side_effect=lambda url, _hosts: url,
+            ),
+            patch("kad_collector.collection_transport.time.sleep") as sleep,
+        ):
+            result = client.get("https://example.test/busy", ["example.test"], 10_000)
+        client.close()
+
+        self.assertEqual(result.body, b"ok")
+        self.assertEqual(len(session.fetches), 2)
+        sleep.assert_called_once_with(0.0)
+
+    def test_non_html_strategies_keep_using_existing_http_client(self) -> None:
+        session = FakeScraplingSession([])
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                content=b'{"items": []}',
+                headers={"Content-Type": "application/json"},
+                request=request,
+            )
+
+        client = self.client(
+            httpx.MockTransport(respond),
+            page_transport="scrapling",
+            scrapling_session_factory=lambda **_options: session,
+        )
+        with patch(
+            "kad_collector.collection_transport.validate_public_url",
+            side_effect=lambda url, _hosts: url,
+        ):
+            result = client.get(
+                "https://example.test/api",
+                ["example.test"],
+                10_000,
+                strategy="json",
+            )
+        client.close()
+
+        self.assertEqual(result.body, b'{"items": []}')
+        self.assertEqual(session.entered, 0)
+        self.assertEqual(session.fetches, [])
 
     @staticmethod
     def fixture(name: str) -> bytes:

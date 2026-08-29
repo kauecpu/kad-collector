@@ -136,6 +136,7 @@ class SourceDefinition(StrictModel):
     feed_urls: list[str] = Field(default_factory=list)
     json_endpoints: list[JsonDiscoveryEndpoint] = Field(default_factory=list)
     browser_enabled: bool = False
+    page_transport: Literal["http", "scrapling"] = "http"
     max_concurrency: int | None = Field(default=None, ge=1, le=32)
     request_interval_seconds: float | None = Field(default=None, ge=0.0)
     robots_policy: Literal["enforce", "observe", "ignore"] = "enforce"
