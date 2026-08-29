@@ -494,13 +494,16 @@ class DesktopCollectionManager:
         self._update(job_id, status="running")
         try:
             strategies = list(source.discovery_strategies)
-            if engine_options["browserEnabled"] and "browser" not in strategies:
+            browser_required = source.browser_enabled and "browser" in strategies
+            browser_enabled = bool(engine_options["browserEnabled"]) or browser_required
+            if browser_enabled and "browser" not in strategies:
                 strategies.append("browser")
             selected_source = source.model_copy(
                 update={
                     "start_urls": [url],
-                    "browser_enabled": bool(engine_options["browserEnabled"]),
+                    "browser_enabled": browser_enabled,
                     "discovery_strategies": strategies,
+                    "page_transport": "scrapling" if browser_enabled else "http",
                     "max_concurrency": engine_options.get("maxConcurrency"),
                     "request_interval_seconds": engine_options.get("requestIntervalSeconds"),
                     "robots_policy": engine_options["robotsPolicy"],
