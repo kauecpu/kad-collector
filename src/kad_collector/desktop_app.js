@@ -598,6 +598,14 @@ function sourceById(sourceId) {
   return (state.bootstrap.sources || []).find((source) => source.id === sourceId) || null;
 }
 
+function updateBrowserTransportHint() {
+  const hint = byId('source-transport-hint');
+  if (!hint) return;
+  hint.textContent = byId('source-browser-enabled').checked
+    ? 'Ativado: usa Scrapling/Chromium para a página e os links.'
+    : 'Desativado: usa HTTP comum para a página.';
+}
+
 function selectSource(sourceId, {resetUrl = true} = {}) {
   const source = sourceById(sourceId);
   if (!source) return;
@@ -638,6 +646,7 @@ function selectSource(sourceId, {resetUrl = true} = {}) {
   byId('source-submit').textContent = source.collectable
     ? 'Coletar deste link'
     : 'Somente referências';
+  updateBrowserTransportHint();
   document.querySelectorAll('.source-card').forEach((card) => {
     card.classList.toggle('selected', card.dataset.sourceId === source.id);
   });
@@ -2275,6 +2284,7 @@ byId('import-form').addEventListener('submit', submitImport);
 byId('source-form').addEventListener('submit', submitSourceCollection);
 byId('source-select').addEventListener('change', (event) => selectSource(event.target.value));
 byId('source-capacity-profile').addEventListener('change', applyCapacityProfile);
+byId('source-browser-enabled').addEventListener('change', updateBrowserTransportHint);
 byId('source-cloudflare-bypass').addEventListener('change', persistCloudflareBypass);
 byId('facet-search').addEventListener('input', filterFacetOptions);
 byId('clear-filters').addEventListener('click', async () => {

@@ -26,7 +26,7 @@ from kad_collector.desktop_processor import (
 )
 from kad_collector.desktop_store import DesktopStore
 from kad_collector.document_pipeline import DocumentPipeline
-from kad_collector.models import DocumentRecord, DownloadManifest, QuestionRecord
+from kad_collector.models import AppConfig, DocumentRecord, DownloadManifest, QuestionRecord
 from kad_collector.semantic_identity import DocumentAssociationDecision
 
 
@@ -147,18 +147,74 @@ class DesktopCollectionTests(unittest.TestCase):
         self.assertIn('id="source-form"', html)
         self.assertIn('id="source-capacity-profile"', html)
         self.assertIn('id="source-browser-enabled"', html)
+        self.assertIn('id="source-transport-hint"', html)
         self.assertIn('id="source-robots-policy"', html)
         self.assertIn('id="source-crawl-delay-policy"', html)
         self.assertIn('id="source-cloudflare-bypass"', html)
         self.assertIn("/api/collections", javascript)
         self.assertIn("capacityProfile", javascript)
         self.assertIn("collectionAction", javascript)
+        self.assertIn("updateBrowserTransportHint", javascript)
         self.assertIn("robotsPolicy", javascript)
         self.assertIn("crawlDelayPolicy", javascript)
         self.assertIn("cloudflareBypass", javascript)
         self.assertIn("/api/settings/cloudflare-bypass", javascript)
         self.assertNotIn("byId('source-robots-policy').value = 'ignore'", javascript)
         self.assertNotIn("byId('source-crawl-delay-policy').value = 'ignore'", javascript)
+
+    def test_collection_uses_http_when_browser_is_disabled(self) -> None:
+        captured: list[AppConfig] = []
+        manifest_path = self.root / "manifest.json"
+        manifest_path.write_text("{}", encoding="utf-8")
+
+        def collect(config: AppConfig, **_kwargs: object) -> tuple[DownloadManifest, Path]:
+            captured.append(config)
+            return DownloadManifest(created_at=datetime.now(UTC), documents=[]), manifest_path
+
+        with patch("kad_collector.desktop_collection.collect_documents", side_effect=collect):
+            collection_id = self.manager.start(
+                {
+                    "sourceId": "pci_concursos",
+                    "url": "https://www.pciconcursos.com.br/provas/banco-do-brasil",
+                    "browserEnabled": False,
+                }
+            )
+            for _ in range(100):
+                job = next(item for item in self.manager.list_jobs() if item["id"] == collection_id)
+                if job["status"] not in {"queued", "running", "processing"}:
+                    break
+                threading.Event().wait(0.01)
+
+        self.assertEqual(job["status"], "completed")
+        self.assertEqual(len(captured), 1)
+        self.assertEqual(captured[0].sources[0].page_transport, "http")
+
+    def test_collection_uses_scrapling_when_browser_is_enabled(self) -> None:
+        captured: list[AppConfig] = []
+        manifest_path = self.root / "manifest-browser.json"
+        manifest_path.write_text("{}", encoding="utf-8")
+
+        def collect(config: AppConfig, **_kwargs: object) -> tuple[DownloadManifest, Path]:
+            captured.append(config)
+            return DownloadManifest(created_at=datetime.now(UTC), documents=[]), manifest_path
+
+        with patch("kad_collector.desktop_collection.collect_documents", side_effect=collect):
+            collection_id = self.manager.start(
+                {
+                    "sourceId": "pci_concursos",
+                    "url": "https://www.pciconcursos.com.br/provas/banco-do-brasil",
+                    "browserEnabled": True,
+                }
+            )
+            for _ in range(100):
+                job = next(item for item in self.manager.list_jobs() if item["id"] == collection_id)
+                if job["status"] not in {"queued", "running", "processing"}:
+                    break
+                threading.Event().wait(0.01)
+
+        self.assertEqual(job["status"], "completed")
+        self.assertEqual(len(captured), 1)
+        self.assertEqual(captured[0].sources[0].page_transport, "scrapling")
 
     def test_collection_downloads_then_creates_local_processing_job(self) -> None:
         pdf_path = self.root / "fgv_conhecimento-exam-fixture.pdf"
