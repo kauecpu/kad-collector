@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import threading
+import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
@@ -305,6 +306,38 @@ class DesktopCollectionTests(unittest.TestCase):
             imported["metadata"]["canonical_url"],
             "https://conhecimento.fgv.br/prova.pdf",
         )
+
+    def test_cancel_completes_when_collection_worker_is_blocked(self) -> None:
+        entered = threading.Event()
+        release = threading.Event()
+
+        def blocked_collection(*_args: object, **_kwargs: object) -> tuple[object, object]:
+            entered.set()
+            release.wait(5)
+            raise RuntimeError("worker liberado apenas pelo teste")
+
+        with patch(
+            "kad_collector.desktop_collection.collect_documents",
+            side_effect=blocked_collection,
+        ):
+            collection_id = self.manager.start(
+                {
+                    "sourceId": "comvest_unicamp",
+                    "url": "https://www.comvest.unicamp.br/vestibulares-anteriores/",
+                    "classifierProvider": "local",
+                }
+            )
+            self.assertTrue(entered.wait(1))
+            self.manager.action(collection_id, "cancel")
+            deadline = time.monotonic() + 1.0
+            job: dict[str, object] = {}
+            while time.monotonic() < deadline:
+                job = next(item for item in self.manager.list_jobs() if item["id"] == collection_id)
+                if job["status"] == "cancelled":
+                    break
+                time.sleep(0.02)
+            self.assertEqual(job["status"], "cancelled")
+            release.set()
 
     def test_acquisition_failure_starts_no_interpretation_job(self) -> None:
         class RecordingRunner:
