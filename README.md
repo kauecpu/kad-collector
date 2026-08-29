@@ -144,6 +144,13 @@ de um concurso, exame ou ano. A coleta roda em segundo plano, valida o host, res
 locais de no maximo 20 PDFs para processamento. O link informado fica registrado como origem;
 o lote continua pendente ate revisao humana.
 
+O inicio do transporte possui prazo de 60 segundos. Se nenhuma resposta for concluida nesse
+periodo, a atividade passa para **Falhou** com o motivo registrado. **Cancelar** sinaliza a
+parada imediatamente e, se o transporte nao encerrar em 5 segundos, o Collector fecha a sessao
+e marca a atividade como **Cancelada**, sem deixar a interface presa em **Cancelando**. As
+requisicoes concluidas atualizam os contadores durante a execucao; o manifesto final continua
+sendo gravado somente quando a coleta termina normalmente.
+
 Instale a interface e execute:
 
 ```cmd
@@ -628,7 +635,9 @@ Cabecalhos `Authorization`, `Cookie` e `Proxy-Authorization` sao rejeitados na c
 
 A tela **Coletar de um link** permite escolher o perfil, ativar JavaScript, ajustar concorrencia
 e intervalo, pausar, continuar ou cancelar. Cada atividade mostra requisicoes, bytes, cache e
-retentativas. O checkpoint preserva paginas pendentes e documentos ja descobertos.
+retentativas. O checkpoint preserva paginas pendentes e documentos ja descobertos. Com
+JavaScript desativado, a pagina usa HTTP comum; o navegador Scrapling so e selecionado quando
+ativado explicitamente.
 
 Para rollback, encerre o Collector, preserve os PDFs em `collected/raw`, restaure uma copia do
 banco principal quando houver migracao editorial e remova somente `collection-engine.sqlite3`

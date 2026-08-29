@@ -14,6 +14,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from kad_collector.desktop_collection import (
+    COLLECTION_CANCEL_GRACE_SECONDS,
     DesktopCollectionManager,
     _import_metadata,
 )
@@ -313,7 +314,7 @@ class DesktopCollectionTests(unittest.TestCase):
 
         def blocked_collection(*_args: object, **_kwargs: object) -> tuple[object, object]:
             entered.set()
-            release.wait(5)
+            release.wait(30)
             raise RuntimeError("worker liberado apenas pelo teste")
 
         with patch(
@@ -329,7 +330,7 @@ class DesktopCollectionTests(unittest.TestCase):
             )
             self.assertTrue(entered.wait(1))
             self.manager.action(collection_id, "cancel")
-            deadline = time.monotonic() + 1.0
+            deadline = time.monotonic() + COLLECTION_CANCEL_GRACE_SECONDS + 1.0
             job: dict[str, object] = {}
             while time.monotonic() < deadline:
                 job = next(item for item in self.manager.list_jobs() if item["id"] == collection_id)
@@ -337,6 +338,43 @@ class DesktopCollectionTests(unittest.TestCase):
                     break
                 time.sleep(0.02)
             self.assertEqual(job["status"], "cancelled")
+            release.set()
+
+    def test_startup_timeout_marks_job_failed_without_requests(self) -> None:
+        entered = threading.Event()
+        release = threading.Event()
+
+        def blocked_collection(*_args: object, **_kwargs: object) -> tuple[object, object]:
+            entered.set()
+            release.wait(30)
+            raise RuntimeError("worker liberado apenas pelo teste")
+
+        with (
+            patch(
+                "kad_collector.desktop_collection.COLLECTION_STARTUP_TIMEOUT_SECONDS",
+                0.05,
+            ),
+            patch(
+                "kad_collector.desktop_collection.collect_documents",
+                side_effect=blocked_collection,
+            ),
+        ):
+            collection_id = self.manager.start(
+                {
+                    "sourceId": "comvest_unicamp",
+                    "url": "https://www.comvest.unicamp.br/vestibulares-anteriores/",
+                    "classifierProvider": "local",
+                }
+            )
+            self.assertTrue(entered.wait(1))
+            deadline = time.monotonic() + 1
+            while time.monotonic() < deadline:
+                job = next(item for item in self.manager.list_jobs() if item["id"] == collection_id)
+                if job["status"] == "failed":
+                    break
+                time.sleep(0.01)
+            self.assertEqual(job["status"], "failed")
+            self.assertIn("primeira resposta", str(job["error"]))
             release.set()
 
     def test_acquisition_failure_starts_no_interpretation_job(self) -> None:
@@ -1338,6 +1376,73 @@ C D""",
         config = captured[0]
         self.assertEqual(config.collector.max_files_per_source, 40)  # type: ignore[attr-defined]
         self.assertEqual(config.collector.max_concurrency, 8)  # type: ignore[attr-defined]
+
+    def test_browser_disabled_uses_http_page_transport(self) -> None:
+        captured: list[object] = []
+
+        def collect(config: object, **_kwargs: object) -> tuple[DownloadManifest, Path]:
+            captured.append(config)
+            path = self.root / "manifest.json"
+            path.write_text("{}", encoding="utf-8")
+            return DownloadManifest(created_at=datetime.now(UTC)), path
+
+        with patch("kad_collector.desktop_collection.collect_documents", side_effect=collect):
+            collection_id = self.manager.start(
+                {
+                    "sourceId": "pci_concursos",
+                    "url": "https://www.pciconcursos.com.br/provas/banco-do-brasil",
+                    "browserEnabled": False,
+                }
+            )
+            for _ in range(100):
+                job = next(item for item in self.manager.list_jobs() if item["id"] == collection_id)
+                if job["status"] not in {"queued", "running", "processing"}:
+                    break
+                threading.Event().wait(0.01)
+
+        self.assertTrue(captured)
+        config = captured[0]
+        source = config.sources[0]  # type: ignore[attr-defined]
+        self.assertEqual(source.page_transport, "http")
+        self.assertNotIn("browser", source.discovery_strategies)
+
+    def test_progress_callback_updates_desktop_telemetry(self) -> None:
+        captured: list[object] = []
+
+        def collect(config: object, **kwargs: object) -> tuple[DownloadManifest, Path]:
+            captured.append(config)
+            callback = kwargs["progress_callback"]
+            event = type(
+                "Event",
+                (),
+                {
+                    "bytes_received": 123,
+                    "attempt": 2,
+                    "cache_status": "miss",
+                },
+            )()
+            callback(event)  # type: ignore[operator]
+            path = self.root / "manifest.json"
+            path.write_text("{}", encoding="utf-8")
+            return DownloadManifest(created_at=datetime.now(UTC)), path
+
+        with patch("kad_collector.desktop_collection.collect_documents", side_effect=collect):
+            collection_id = self.manager.start(
+                {
+                    "sourceId": "comvest_unicamp",
+                    "url": "https://www.comvest.unicamp.br/vestibulares-anteriores/",
+                }
+            )
+            for _ in range(100):
+                job = next(item for item in self.manager.list_jobs() if item["id"] == collection_id)
+                if job["status"] not in {"queued", "running", "processing"}:
+                    break
+                threading.Event().wait(0.01)
+
+        self.assertEqual(
+            job["telemetry"],
+            {"requests": 1, "bytes": 123, "retries": 1, "cacheHits": 0},
+        )
 
     def test_cloudflare_bypass_defaults_to_enabled_and_reaches_collector_settings(self) -> None:
         captured: list[object] = []

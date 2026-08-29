@@ -5,6 +5,7 @@ import re
 import threading
 import unicodedata
 import uuid
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -34,6 +35,7 @@ from .models import (
     AppConfig,
     CollectionFailure,
     CollectionFilters,
+    CollectionTelemetryEvent,
     CollectorSettings,
     DiscoveryRecord,
     DocumentRecord,
@@ -849,6 +851,8 @@ def collect_documents(
     *,
     run_id: str | None = None,
     stop_event: threading.Event | None = None,
+    progress_callback: Callable[[CollectionTelemetryEvent], None] | None = None,
+    transport_callback: Callable[[Callable[[], None] | None], None] | None = None,
 ) -> tuple[DownloadManifest, Path]:
     enabled_sources = [source for source in config.sources if source.enabled]
     if not enabled_sources:
@@ -898,7 +902,12 @@ def collect_documents(
                 development_cache=settings.development_cache,
                 page_transport=source.page_transport,
                 cloudflare_bypass_enabled=settings.cloudflare_bypass_enabled,
+                progress_callback=progress_callback,
             )
+            if transport_callback is not None:
+                transport_callback(
+                    client.close if isinstance(client, CollectionHttpClient) else None
+                )
         else:
             client = _LegacyClientAdapter(
                 SafeHttpClient(
@@ -1502,6 +1511,8 @@ def collect_documents(
                 state.delete_checkpoint(checkpoint_key)
         finally:
             warnings.extend(f"{source.id}: {item}" for item in robots.observations)
+            if transport_callback is not None:
+                transport_callback(None)
             client.close()
 
     telemetry = state.events(active_run_id)
