@@ -14,13 +14,40 @@ actionable error instead of letting the .exe crash silently or with a
 traceback the end user cannot act on.
 """
 
-from collections.abc import Callable
+import os
+from collections.abc import Callable, MutableMapping
 
 INSTALL_HINT = "python -m patchright install chromium"
 
 
 class BrowserRuntimeError(RuntimeError):
     """Patchright's Chromium runtime is missing or could not be started."""
+
+
+def configure_playwright_browsers_path(
+    *, environ: MutableMapping[str, str] | None = None
+) -> str | None:
+    """Point Playwright/Patchright at the browsers the user already installed.
+
+    The packaged .exe (PyInstaller) runs from a temporary extraction folder.
+    Without this, Patchright/Playwright would default to looking for Chromium
+    relative to that temporary folder instead of the real per-user cache under
+    ``%LOCALAPPDATA%\\ms-playwright``, which is where
+    ``python -m patchright install chromium`` actually installs it. Call this
+    once, as early as possible during the desktop app's startup -- before
+    anything imports or calls Patchright/Playwright.
+
+    Returns the browsers path that was set, or ``None`` when ``LOCALAPPDATA``
+    is not available (e.g. running outside Windows) and nothing was changed.
+    """
+
+    env = environ if environ is not None else os.environ
+    local_app_data = env.get("LOCALAPPDATA")
+    if not local_app_data:
+        return None
+    browsers_path = os.path.join(local_app_data, "ms-playwright")
+    env["PLAYWRIGHT_BROWSERS_PATH"] = browsers_path
+    return browsers_path
 
 
 def _default_launch_probe() -> None:

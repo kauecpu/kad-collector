@@ -18,7 +18,7 @@ from urllib.request import Request, urlopen
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 
-from kad_collector.desktop_app import _smoke_test, build_parser
+from kad_collector.desktop_app import _smoke_test, build_parser, main
 from kad_collector.desktop_classifier import LocalRuleClassifier
 from kad_collector.desktop_export import export_filtered_questions
 from kad_collector.desktop_limits import MAX_BATCH_PDFS
@@ -1546,6 +1546,29 @@ console.log(JSON.stringify(text(root).filter(Boolean)));
             application = DesktopApplication(Path(directory))
             self.assertEqual(_smoke_test(application), 0)
             self.assertTrue((Path(directory) / "collector.sqlite3").is_file())
+
+    def test_main_configures_playwright_browsers_path_before_anything_else(self) -> None:
+        # Precisa acontecer antes de qualquer chamada ao Patchright, para o
+        # .exe empacotado (PyInstaller) encontrar o Chromium instalado pelo
+        # usuario em vez da pasta temporaria de extracao.
+        call_order: list[str] = []
+        with TemporaryDirectory() as directory:
+            with (
+                patch(
+                    "kad_collector.desktop_app.configure_playwright_browsers_path",
+                    side_effect=lambda: call_order.append("configure"),
+                ),
+                patch(
+                    "kad_collector.desktop_app.DesktopApplication",
+                    side_effect=lambda *_a, **_k: call_order.append("application")
+                    or DesktopApplication(Path(directory)),
+                ),
+            ):
+                result = main(
+                    ["--smoke-test", "--data-dir", str(Path(directory) / "data")]
+                )
+        self.assertEqual(result, 0)
+        self.assertEqual(call_order, ["configure", "application"])
 
     def test_local_server_enforces_host_origin_and_session_token(self) -> None:
         with TemporaryDirectory() as directory:
