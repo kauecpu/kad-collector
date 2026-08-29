@@ -14,6 +14,7 @@ from typing import Protocol
 from urllib.parse import urljoin, urlsplit, urlunsplit
 from urllib.robotparser import RobotFileParser
 
+from .browser_runtime import check_patchright_chromium
 from .collection_state import CollectionStateStore
 from .collection_transport import CollectionHttpClient, EngineDownload, EngineHttpResult
 from .discovery import (
@@ -852,6 +853,8 @@ def collect_documents(
     enabled_sources = [source for source in config.sources if source.enabled]
     if not enabled_sources:
         raise CollectorError("nenhuma fonte esta habilitada na configuracao")
+    if any(source.page_transport == "scrapling" for source in enabled_sources):
+        check_patchright_chromium()
 
     settings = config.collector
     data_dir = Path(settings.data_dir)
