@@ -1552,21 +1552,21 @@ console.log(JSON.stringify(text(root).filter(Boolean)));
         # .exe empacotado (PyInstaller) encontrar o Chromium instalado pelo
         # usuario em vez da pasta temporaria de extracao.
         call_order: list[str] = []
-        with TemporaryDirectory() as directory:
-            with (
-                patch(
-                    "kad_collector.desktop_app.configure_playwright_browsers_path",
-                    side_effect=lambda: call_order.append("configure"),
-                ),
-                patch(
-                    "kad_collector.desktop_app.DesktopApplication",
-                    side_effect=lambda *_a, **_k: call_order.append("application")
-                    or DesktopApplication(Path(directory)),
-                ),
-            ):
-                result = main(
-                    ["--smoke-test", "--data-dir", str(Path(directory) / "data")]
-                )
+        with (
+            TemporaryDirectory() as directory,
+            patch(
+                "kad_collector.desktop_app.configure_playwright_browsers_path",
+                side_effect=lambda: call_order.append("configure"),
+            ),
+            patch(
+                "kad_collector.desktop_app.DesktopApplication",
+                side_effect=lambda *_a, **_k: call_order.append("application")
+                or DesktopApplication(Path(directory)),
+            ),
+        ):
+            result = main(
+                ["--smoke-test", "--data-dir", str(Path(directory) / "data")]
+            )
         self.assertEqual(result, 0)
         self.assertEqual(call_order, ["configure", "application"])
 

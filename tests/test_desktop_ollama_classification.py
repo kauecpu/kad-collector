@@ -9,6 +9,7 @@ from http import HTTPStatus
 from importlib import resources
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -32,6 +33,8 @@ from kad_collector.desktop_ollama_classification import (
     DESKTOP_OLLAMA_MODEL,
     DESKTOP_OLLAMA_QUANTIZATION,
     DesktopOllamaClassificationManager,
+    OllamaHardwareGateError,
+    _GatedProvider,
     inspect_qwen8b_desktop,
 )
 from kad_collector.desktop_server import DesktopApplication, start_desktop_server
@@ -240,6 +243,51 @@ class DesktopOllamaClassificationTests(unittest.TestCase):
         self.assertEqual(after["answer_status"], before["answer_status"])
         self.assertEqual(admin.unloads, [DESKTOP_OLLAMA_MODEL])
 
+    def test_manager_batches_checkpoints_and_hardware_rechecks(self) -> None:
+        fixture, rows = _seed_canonical(self.root, second_number=True)
+        for _, question_id in rows:
+            _clear_fields(fixture, question_id, {"level"})
+        provider = FakeProvider(_level_decision())
+        admin = FakeAdmin()
+        with patch.dict(
+            "os.environ",
+            {
+                "KAD_QWEN_CHECKPOINT_INTERVAL": "2",
+                "KAD_QWEN_HARDWARE_RECHECK_INTERVAL": "2",
+            },
+        ):
+            manager = self._manager(fixture, admin, provider)
+            preview = _preview(manager)
+            started = _start(manager, preview)
+            manager.wait()
+
+        status = manager.status(started["runId"])
+        self.assertEqual(status["state"], "completed")
+        self.assertEqual(status["processed"], 2)
+        self.assertEqual(status["performance"]["checkpointInterval"], 2)
+        self.assertEqual(status["performance"]["hardwareRecheckInterval"], 2)
+        self.assertEqual(status["performance"]["hardwareChecks"], 3)
+
+    def test_hardware_gate_can_run_before_a_checkpoint_block(self) -> None:
+        admin = FakeAdmin()
+        admin.running = [
+            {
+                "name": DESKTOP_OLLAMA_MODEL,
+                "digest": DESKTOP_OLLAMA_DIGEST,
+                "context_length": 4096,
+            }
+        ]
+        provider = FakeProvider(_level_decision())
+        provider.name = "ollama"
+        provider.model = DESKTOP_OLLAMA_MODEL
+        gate = _GatedProvider(provider, admin, _gpu_runner)
+
+        gate.check_hardware()
+        self.assertEqual(gate.hardware_checks, 1)
+        admin.running = [{"name": DESKTOP_OLLAMA_MODEL, "digest": "wrong"}]
+        with self.assertRaises(OllamaHardwareGateError):
+            gate.check_hardware()
+
     def test_gpu_loss_after_inference_pauses_without_creating_review(self) -> None:
         fixture, rows = _seed_canonical(self.root)
         _clear_fields(fixture, rows[0][1], {"level"})
@@ -274,7 +322,7 @@ class DesktopOllamaClassificationTests(unittest.TestCase):
         self.assertEqual(status["processed"], 0)
         self.assertEqual(status["failures"], 1)
         self.assertEqual(reviews, 0)
-        self.assertEqual(len(provider.requests), 1)
+        self.assertEqual(len(provider.requests), 0)
         self.assertEqual(admin.unloads, [DESKTOP_OLLAMA_MODEL])
 
     def test_wrong_digest_quantization_endpoint_or_loaded_model_blocks_preview(self) -> None:
