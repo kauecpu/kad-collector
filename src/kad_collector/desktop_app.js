@@ -216,6 +216,34 @@ function renderScopeItems(root, included = [], excluded = [], outsideIds = []) {
   }
 }
 
+function renderPreparationUnits(root, units = [], outsideIds = []) {
+  root.replaceChildren();
+  units.forEach((unit) => {
+    const row = document.createElement('article');
+    row.className = `scope-preview-item${unit.excludedCount ? ' excluded' : ''}`;
+    const title = document.createElement('strong');
+    title.textContent = unit.document || 'Documento sem título';
+    const detail = document.createElement('span');
+    detail.textContent = `${unit.questionCount || 0} questões · ${unit.action}`;
+    const reason = document.createElement('small');
+    reason.textContent = unit.reasons?.length
+      ? `Bloqueio do documento/grupo: ${unit.reasons.join('; ')}`
+      : 'Uma confirmação vale para todas as questões relacionadas.';
+    row.append(title, detail, reason);
+    root.append(row);
+  });
+  if (outsideIds.length) {
+    const warning = document.createElement('article');
+    warning.className = 'scope-preview-item excluded';
+    const title = document.createElement('strong');
+    title.textContent = `${outsideIds.length} cópia(s) equivalente(s) fora do filtro`;
+    const detail = document.createElement('small');
+    detail.textContent = 'A execução exige autorização explícita para incluir essas cópias.';
+    warning.append(title, detail);
+    root.append(warning);
+  }
+}
+
 async function request(path, options = {}) {
   const response = await fetch(path, {
     ...options,
@@ -454,8 +482,8 @@ function renderPreparationPreview(preview) {
   byId('preparation-scope-label').textContent = operationScopeLabel(
     preview.scope?.type || state.preparationScopeType, preview.selectedCount || 0
   );
-  renderScopeItems(
-    byId('preparation-preview-list'), preview.included, preview.excluded,
+  renderPreparationUnits(
+    byId('preparation-preview-list'), preview.confirmationUnits,
     preview.outsideScopeQuestionIds
   );
   byId('preparation-outside-authorization-row').hidden = !preview.requiresOutsideScopeAuthorization;

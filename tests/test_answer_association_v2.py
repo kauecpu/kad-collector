@@ -713,6 +713,86 @@ class AnswerAssociationRevalidationTests(unittest.TestCase):
         self.assertEqual(review["status"], "pending")
         self.assertIn("turn", review["reason"].casefold())
 
+    def test_pci_banco_brasil_exam_and_key_are_auto_linked(self) -> None:
+        pci_exam_metadata = DesktopImportMetadata(
+            document_type="exam",
+            document_title="Banco do Brasil 2023 — Escriturário – Agente Comercial",
+            provider="pci_concursos",
+            board="CESGRANRIO",
+            concurso="PCI Concursos - Banco do Brasil",
+            organization="Banco do Brasil",
+            year=2023,
+            role="Escriturário – Agente Comercial",
+            stage="Prova objetiva",
+            turn="Manhã",
+            variant="Caderno 1",
+        )
+        pci_key_metadata = pci_exam_metadata.model_copy(
+            update={
+                "document_type": "answer_key",
+                "document_title": "Gabarito Banco do Brasil 2023",
+            }
+        )
+        exam = self.add_document(
+            "pci-bb-2023-exam.pdf",
+            "Prova objetiva\nBanca: CESGRANRIO\nConcurso: PCI Concursos - Banco do Brasil\n"
+            "Ano: 2023\nCargo: Escriturário – Agente Comercial\nEtapa: Prova objetiva\n"
+            "Turno: Manhã\nTipo: Caderno 1\n" + "\n".join(
+                f"{number}. Assinale a alternativa correta.\nA) Uma\nB) Duas"
+                for number in range(1, 71)
+            ),
+            pci_exam_metadata,
+        )
+        for number in range(1, 71):
+            self.store.save_question(
+                str(exam["id"]),
+                QuestionRecord(
+                    number=number,
+                    statement=f"Questão sanitizada do Banco do Brasil número {number}.",
+                    alternatives=[
+                        Alternative(letter="A", text="Alternativa correta."),
+                        Alternative(letter="B", text="Alternativa incorreta."),
+                    ],
+                    answer_status="missing",
+                    matter=None,
+                    subject=None,
+                    board="CESGRANRIO",
+                    concurso="PCI Concursos - Banco do Brasil",
+                    organization="Banco do Brasil",
+                    year=2023,
+                    role="Escriturário – Agente Comercial",
+                    source_pages=[1],
+                ),
+                QuestionClassification(),
+            )
+        self.add_document(
+            "pci-bb-2023-key.pdf",
+            "Gabarito definitivo\nBanca: CESGRANRIO\n"
+            "Concurso: PCI Concursos - Banco do Brasil\n"
+            "Ano: 2023\nCargo: Escriturário – Agente Comercial\nEtapa: Prova objetiva\n"
+            "Turno: Manhã\nTipo: Caderno 1\n"
+            + "\n".join(f"{number} - A" for number in range(1, 71)),
+            pci_key_metadata,
+        )
+
+        with closing(self.store._connect()) as connection:
+            report = revalidate_answer_key_associations(
+                connection, apply=True, run_id="pci-bb-auto-link"
+            )
+            link = connection.execute(
+                "SELECT id,status FROM document_links WHERE exam_version_id=?",
+                (exam["document_version_id"],),
+            ).fetchone()
+            linked_questions = connection.execute(
+                "SELECT COUNT(*) FROM questions WHERE document_id=? AND answer_key_link_id=?",
+                (exam["id"], link["id"] if link is not None else None),
+            ).fetchone()[0]
+
+        self.assertEqual(report.examined, 1)
+        self.assertIsNotNone(link)
+        self.assertEqual(link["status"], "active")
+        self.assertEqual(linked_questions, 70)
+
     def test_initial_unlinked_non_fgv_exam_is_outside_revalidation_scope(self) -> None:
         exam = self.add_document(
             "exam-outra-banca.pdf",

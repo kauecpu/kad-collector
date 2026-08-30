@@ -9,6 +9,7 @@ from pathlib import Path
 from kad_collector.desktop_models import (
     ClassificationValue,
     DesktopFilterSet,
+    DesktopImportMetadata,
     DesktopOperationScope,
     QuestionClassification,
 )
@@ -74,6 +75,45 @@ def _question(*, noisy: bool = False) -> QuestionRecord:
         source_pages=[1],
         answer_status="matched",
         correct_answer="B",
+    )
+
+
+def _pci_question(number: int) -> QuestionRecord:
+    return QuestionRecord(
+        number=number,
+        statement=f"Questão sanitizada do Banco do Brasil número {number}.",
+        alternatives=[
+            Alternative(letter="A", text=f"Alternativa A da questão {number}."),
+            Alternative(letter="B", text=f"Alternativa B da questão {number}."),
+        ],
+        matter=None,
+        subject=None,
+        board="CESGRANRIO",
+        organization="Banco do Brasil",
+        concurso="PCI Concursos - Banco do Brasil",
+        role="Escriturário – Agente Comercial",
+        year=2023,
+        source_pages=[1],
+        answer_status="matched",
+        correct_answer="A",
+    )
+
+
+def _pci_classification() -> QuestionClassification:
+    def value(item: str | int) -> ClassificationValue:
+        return ClassificationValue(value=item, confidence=1, evidence="fixture sanitizada")
+
+    return QuestionClassification(
+        concurso=value("PCI Concursos - Banco do Brasil"),
+        board=value("CESGRANRIO"),
+        year=value(2023),
+        role=value("Escriturário – Agente Comercial"),
+        organization=value("Banco do Brasil"),
+        level=ClassificationValue(),
+        discipline=ClassificationValue(),
+        subject=ClassificationValue(),
+        topic=ClassificationValue(),
+        difficulty=ClassificationValue(),
     )
 
 
@@ -284,6 +324,74 @@ def _seed(
     return store
 
 
+def _seed_pci_70(root: Path) -> tuple[DesktopStore, list[str]]:
+    store = _seed(
+        root,
+        exam_turns=[],
+        candidate_turns=[],
+        answer_key_state="unknown",
+    )
+    decision = _decision(
+        "1",
+        year=2023,
+        exam_turns=[],
+        candidate_turns=[],
+    )
+    replacements = {
+        "board": ["cesgranrio"],
+        "concurso": ["pci concursos banco do brasil"],
+        "year": [2023],
+        "organization": ["banco do brasil"],
+        "role": ["escriturário agente comercial"],
+        "stage": ["prova objetiva"],
+        "variant": ["tipo 1"],
+        "interval": [1, 70],
+        "turn": [],
+    }
+    assessment = decision["assessments"][0]
+    for comparison in assessment["comparisons"]:
+        values = replacements[comparison["field"]]
+        comparison["exam_values"] = values
+        comparison["candidate_values"] = values
+    metadata = {
+        "provider": "pci_concursos",
+        "document_type": "exam",
+        "source_url": "https://www.pciconcursos.com.br/provas/download/fixture-sanitizada",
+        "document_title": "Banco do Brasil 2023 — Escriturário – Agente Comercial",
+        "variant": "Tipo 1",
+        "concurso": "PCI Concursos - Banco do Brasil",
+        "board": "CESGRANRIO",
+        "year": 2023,
+        "role": "Escriturário – Agente Comercial",
+        "stage": "Prova objetiva",
+        "organization": "Banco do Brasil",
+    }
+    with closing(store._connect()) as connection:
+        connection.execute("DELETE FROM questions")
+        connection.execute("DELETE FROM document_links WHERE id='link-2'")
+        connection.execute("DELETE FROM documents WHERE id='exam-document-2'")
+        connection.execute("DELETE FROM document_versions WHERE id='exam-version-2'")
+        connection.execute(
+            "UPDATE documents SET metadata_json=? WHERE id='exam-document-1'",
+            (_json(metadata),),
+        )
+        connection.execute(
+            "UPDATE document_links SET decision_json=? WHERE id='link-1'",
+            (_json(decision),),
+        )
+        connection.commit()
+    question_ids: list[str] = []
+    for number in range(1, 71):
+        question_id = store.save_question(
+            "exam-document-1", _pci_question(number), _pci_classification()
+        )
+        question_ids.append(question_id)
+    with closing(store._connect()) as connection:
+        connection.execute("UPDATE questions SET answer_key_link_id='link-1'")
+        connection.commit()
+    return store, question_ids
+
+
 class DesktopPreparationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.directory = tempfile.TemporaryDirectory()
@@ -321,6 +429,127 @@ class DesktopPreparationTests(unittest.TestCase):
         self.assertEqual(len(store.export_candidates(DesktopFilterSet())), 1)
         self.assertTrue(Path(result["backupPath"]).is_file())
 
+    def test_pci_document_confirmation_prepares_all_70_questions_once(self) -> None:
+        store, question_ids = _seed_pci_70(self.root)
+        manager = DesktopPreparationManager(store)
+        scope = DesktopOperationScope(
+            type="filter",
+            filter=DesktopFilterSet(
+                boards=["CESGRANRIO"],
+                concursos=["PCI Concursos - Banco do Brasil"],
+                years=[2023],
+            ),
+        )
+        with closing(store._connect()) as connection:
+            protected_before = connection.execute(
+                "SELECT id,payload_json,status,reviewer,review_notes,answer_key_link_id "
+                "FROM questions ORDER BY id"
+            ).fetchall()
+
+        preview = manager.preview(scope)
+        result = manager.run(str(preview["confirmationToken"]), scope)
+        repeated_preview = manager.preview(scope)
+        repeated = manager.run(str(repeated_preview["confirmationToken"]), scope)
+
+        self.assertEqual(preview["selectedCount"], 70)
+        self.assertEqual(preview["includedCount"], 70)
+        self.assertEqual(preview["excludedCount"], 0)
+        self.assertEqual(len(preview["confirmationUnits"]), 1)
+        self.assertEqual(preview["confirmationUnits"][0]["questionCount"], 70)
+        self.assertIn("uma vez", preview["confirmationUnits"][0]["action"])
+        self.assertEqual(result["includedCount"], 70)
+        self.assertEqual(result["canonicalQuestions"], 70)
+        self.assertEqual(repeated["canonicalQuestions"], 70)
+        self.assertEqual(repeated["includedCount"], 70)
+        with closing(store._connect()) as connection:
+            counts = {
+                table: connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                for table in (
+                    "question_occurrences",
+                    "question_equivalence_groups",
+                    "canonical_questions",
+                )
+            }
+            unresolved = connection.execute(
+                "SELECT COUNT(*) FROM question_occurrences "
+                "WHERE occurrence_status='unresolved_scope'"
+            ).fetchone()[0]
+            group_statuses = connection.execute(
+                "SELECT status,COUNT(*) AS count FROM question_equivalence_groups GROUP BY status"
+            ).fetchall()
+            contest = connection.execute(
+                "SELECT board,display_name,notice_year FROM canonical_contests"
+            ).fetchone()
+            protected_after = connection.execute(
+                "SELECT id,payload_json,status,reviewer,review_notes,answer_key_link_id "
+                "FROM questions ORDER BY id"
+            ).fetchall()
+        self.assertEqual(counts, {
+            "question_occurrences": 70,
+            "question_equivalence_groups": 70,
+            "canonical_questions": 70,
+        })
+        self.assertEqual(unresolved, 0)
+        self.assertEqual([tuple(row) for row in group_statuses], [("confirmed", 70)])
+        self.assertEqual(tuple(contest), ("cesgranrio", "pci concursos banco do brasil", 2023))
+        self.assertEqual(
+            [tuple(row) for row in protected_after],
+            [tuple(row) for row in protected_before],
+        )
+        self.assertEqual(set(question_ids), set(preview["scope"]["questionIds"]))
+
+    def test_packaged_preparation_ui_confirms_document_not_70_questions(self) -> None:
+        javascript = (
+            Path(__file__).parents[1] / "src" / "kad_collector" / "desktop_app.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("function renderPreparationUnits", javascript)
+        self.assertIn("Uma confirmação vale para todas as questões relacionadas.", javascript)
+        preparation_renderer = javascript.split("function renderPreparationPreview", 1)[1].split(
+            "async function refreshPreparationPreview", 1
+        )[0]
+        self.assertIn("renderPreparationUnits(", preparation_renderer)
+        self.assertNotIn("renderScopeItems(", preparation_renderer)
+
+    def test_pci_and_fgv_filters_do_not_mix_sources(self) -> None:
+        store, _question_ids = _seed_pci_70(self.root)
+        fgv_path = self.root / "fgv-fixture.pdf"
+        fgv_path.write_bytes(b"%PDF-1.4\nfixture sanitizada\n%%EOF")
+        fgv_job = store.create_job(
+            [fgv_path],
+            DesktopImportMetadata(
+                provider="fgv_conhecimento",
+                document_type="exam",
+                document_title="Prova FGV sanitizada",
+                board="FGV",
+                concurso="RFB22",
+                organization="Receita Federal",
+                year=2023,
+                role="Analista",
+                stage="Prova objetiva",
+                turn="Manhã",
+                variant="Tipo 1",
+            ),
+            "local",
+        )
+        fgv_document = store.documents_for_job(fgv_job)[0]
+        store.save_question(str(fgv_document["id"]), _question(), _classification())
+
+        pci = store.query(
+            DesktopFilterSet(
+                boards=["CESGRANRIO"],
+                concursos=["PCI Concursos - Banco do Brasil"],
+            )
+        )["questions"]
+        fgv = store.query(
+            DesktopFilterSet(boards=["FGV"], concursos=["RFB22"])
+        )["questions"]
+
+        self.assertEqual(len(pci), 70)
+        self.assertTrue(all(item["question"]["board"] == "CESGRANRIO" for item in pci))
+        self.assertEqual(len(fgv), 1)
+        self.assertTrue(all(item["question"]["board"] == "FGV" for item in fgv))
+
     def test_preparation_uses_turn_derived_from_unique_definitive_key(self) -> None:
         store = _seed(self.root, exam_turns=[], candidate_turns=["manhã"])
 
@@ -353,6 +582,25 @@ class DesktopPreparationTests(unittest.TestCase):
         self.assertEqual(shift["official_name"], "não se aplica")
         evidence = json.loads(shift["evidence_json"])
         self.assertEqual(evidence["turnResolution"]["source"], "not_applicable")
+
+    def test_preparation_accepts_unknown_key_without_turn_partition(self) -> None:
+        store = _seed(
+            self.root,
+            exam_turns=[],
+            candidate_turns=[],
+            answer_key_state="unknown",
+        )
+
+        result = _run_all(DesktopPreparationManager(store))
+
+        self.assertEqual(result["identifiedExams"], 2)
+        self.assertEqual(result["canonicalQuestions"], 1)
+        with closing(store._connect()) as connection:
+            unresolved = connection.execute(
+                "SELECT COUNT(*) FROM question_occurrences "
+                "WHERE occurrence_status='unresolved_scope'"
+            ).fetchone()[0]
+        self.assertEqual(unresolved, 0)
 
     def test_preparation_blocks_multiple_candidate_turns(self) -> None:
         manager = DesktopPreparationManager(
@@ -482,6 +730,16 @@ class DesktopPreparationTests(unittest.TestCase):
         self.assertTrue(preview["requiresOutsideScopeAuthorization"])
         with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
             manager.run(str(preview["confirmationToken"]), scope)
+
+        authorized_scope = DesktopOperationScope(
+            type="selected", questionIds=[selected_id], allowOutOfScope=True
+        )
+        authorized_preview = manager.preview(authorized_scope)
+        authorized = manager.run(
+            str(authorized_preview["confirmationToken"]), authorized_scope
+        )
+        self.assertEqual(authorized["outsideScopeCount"], 1)
+        self.assertTrue(authorized["outsideScopeAuthorized"])
 
     def test_filter_scope_is_explicit_and_token_cannot_be_reused(self) -> None:
         store = _seed(self.root)

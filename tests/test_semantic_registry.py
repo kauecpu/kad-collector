@@ -334,6 +334,58 @@ class SemanticRegistryMigrationTests(unittest.TestCase):
             self.assertEqual(json.loads(links[0][1])["selected_version_id"], "answer-version-1")
             self.assertEqual([row[0] for row in events], ["association_selected"])
 
+    def test_record_document_link_refreshes_stale_interval_evidence_in_place(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = _semantic_store(Path(directory) / "collector.sqlite3")
+            from kad_collector.semantic_identity import (
+                AssociationFieldComparison,
+                CandidateAssessment,
+                DocumentAssociationDecision,
+            )
+
+            def decision(status: str) -> DocumentAssociationDecision:
+                comparison = AssociationFieldComparison(
+                    field="interval",
+                    status=status,  # type: ignore[arg-type]
+                    exam_values=((1, 2) if status == "matched" else ()),
+                    candidate_values=((1, 2) if status == "matched" else ()),
+                    reason="fixture",
+                )
+                assessment = CandidateAssessment(
+                    version_id="answer-version-1",
+                    compatible=status == "matched",
+                    score=100,
+                    matched_fields=("interval",) if status == "matched" else (),
+                    incomplete_fields=() if status == "matched" else ("interval",),
+                    comparisons=(comparison,),
+                )
+                return DocumentAssociationDecision(
+                    outcome="selected",
+                    selected_version_id="answer-version-1",
+                    assessments=(assessment,),
+                    minimum_score=36,
+                    minimum_margin=8,
+                    achieved_margin=None,
+                    reason="fixture",
+                    algorithm_version="semantic-association-v1",
+                )
+
+            with closing(store._connect()) as connection:
+                first = semantic_registry.record_document_link(
+                    connection, "exam-version", "answer-version-1", decision("incomplete"), TIMESTAMP
+                )
+                refreshed = semantic_registry.record_document_link(
+                    connection, "exam-version", "answer-version-1", decision("matched"),
+                    "2026-08-20T00:00:01+00:00",
+                )
+                row = connection.execute(
+                    "SELECT decision_json FROM document_links WHERE id=?", (first,)
+                ).fetchone()
+
+            self.assertEqual(first, refreshed)
+            payload = json.loads(row["decision_json"])
+            self.assertEqual(payload["assessments"][0]["comparisons"][0]["status"], "matched")
+
     def test_record_document_link_preserves_each_active_period_across_a_b_a(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             store = _semantic_store(Path(directory) / "collector.sqlite3")

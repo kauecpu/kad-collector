@@ -141,9 +141,13 @@ def _resolved_turn(
         return str(exam_values[0]), "declared_on_exam"
     if exam_values:
         return None, None
-    if answer_key_state != "definitive":
-        return None, None
+    # An empty turn on both documents is explicit evidence that the exam
+    # does not partition candidates by shift.  This is distinct from a
+    # missing/ambiguous turn: the answer-key state may legitimately remain
+    # ``unknown`` for sources such as PCI even when the scope is complete.
     if len(candidate_values) == 1:
+        if answer_key_state != "definitive":
+            return None, None
         return str(candidate_values[0]), "derived_from_unique_definitive_answer_key"
     if not candidate_values:
         return _NOT_APPLICABLE_TURN, "not_applicable"
@@ -787,6 +791,40 @@ def _scoped_preparation_details(
             ).fetchall()
         }
     outside_ids = sorted(affected_ids - selected)
+    units_by_document: dict[str, dict[str, Any]] = {}
+    excluded_by_id = {cast(str, item["id"]): item for item in excluded}
+    for item in resolved.items:
+        document = cast(str, item.get("exam") or "Documento sem título")
+        unit = units_by_document.setdefault(
+            document,
+            {
+                "document": document,
+                "source": item.get("source"),
+                "questionCount": 0,
+                "includedCount": 0,
+                "excludedCount": 0,
+                "reasons": set(),
+            },
+        )
+        unit["questionCount"] += 1
+        blocked = excluded_by_id.get(cast(str, item["id"]))
+        if blocked is None:
+            unit["includedCount"] += 1
+        else:
+            unit["excludedCount"] += 1
+            unit["reasons"].add(cast(str, blocked["reason"]))
+    confirmation_units = [
+        {
+            **unit,
+            "reasons": sorted(unit["reasons"]),
+            "action": (
+                f"Confirmar uma vez para {unit['questionCount']} questões"
+                if unit["includedCount"]
+                else f"Resolver o documento uma vez para {unit['questionCount']} questões"
+            ),
+        }
+        for unit in units_by_document.values()
+    ]
     return {
         "scope": resolved.public(),
         "selectedCount": len(selected),
@@ -800,6 +838,7 @@ def _scoped_preparation_details(
         "outsideScopeQuestionIds": outside_ids,
         "outsideScopeCount": len(outside_ids),
         "requiresOutsideScopeAuthorization": bool(outside_ids),
+        "confirmationUnits": confirmation_units,
     }
 
 
