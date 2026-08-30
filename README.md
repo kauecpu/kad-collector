@@ -515,7 +515,7 @@ data de coleta, banca, orgao, cargo/exame e ano quando conhecido.
 | COMVEST/Unicamp | `comvest.unicamp.br`; acervo historico e provas comentadas | Ate 20 paginas | `content`; reproducao parcial com fonte e ano citados |
 | OBMEP | `obmep.org.br`; provas e solucoes de 2005 a 2025 | 20 paginas anuais | `reference_only`; arquivos recentes usam rota do Drive bloqueada pelo `robots.txt` |
 | UERJ | `sistema.vestibular.uerj.br`; provas, gabaritos e padroes desde 1997 | Ate 30 paginas | `content`; aba por pagina/PDF ou `sync` |
-| PCI Concursos - Banco do Brasil | `pciconcursos.com.br`; indice publico com provas e gabaritos por cargo, ano, caderno e versao | Ate 20 paginas do indice | `content`; aba por pagina do concurso ou `sync` |
+| PCI Concursos - Banco do Brasil | `www.pciconcursos.com.br` para as paginas e `arq.pciconcursos.com.br` para os PDFs publicos; provas e gabaritos por cargo, ano, caderno e versao | Ate 20 paginas do indice | `content`; aba por pagina do concurso ou `sync` |
 
 #### Piloto PCI Concursos (Banco do Brasil)
 

@@ -28,7 +28,13 @@ from kad_collector.desktop_processor import (
 )
 from kad_collector.desktop_store import DesktopStore
 from kad_collector.document_pipeline import DocumentPipeline
-from kad_collector.models import AppConfig, DocumentRecord, DownloadManifest, QuestionRecord
+from kad_collector.models import (
+    AppConfig,
+    CollectionFailure,
+    DocumentRecord,
+    DownloadManifest,
+    QuestionRecord,
+)
 from kad_collector.semantic_identity import DocumentAssociationDecision
 
 
@@ -217,6 +223,54 @@ class DesktopCollectionTests(unittest.TestCase):
         self.assertEqual(job["status"], "completed")
         self.assertEqual(len(captured), 1)
         self.assertEqual(captured[0].sources[0].page_transport, "scrapling")
+
+    def test_collection_fails_when_every_discovered_pdf_download_fails(self) -> None:
+        pdf_urls = [
+            "https://arq.pciconcursos.com.br/provas/prova.pdf",
+            "https://arq.pciconcursos.com.br/provas/gabarito.pdf",
+        ]
+        manifest = DownloadManifest(
+            created_at=datetime.now(UTC),
+            documents=[],
+            failures=[
+                CollectionFailure(
+                    source_id="pci_concursos",
+                    url=url,
+                    stage="download",
+                    message=f"pci_concursos: falha ao baixar {url}: indisponível",
+                )
+                for url in pdf_urls
+            ],
+        )
+        manifest_path = self.root / "manifest-download-failure.json"
+        manifest_path.write_text("{}", encoding="utf-8")
+
+        with patch(
+            "kad_collector.desktop_collection.collect_documents",
+            return_value=(manifest, manifest_path),
+        ):
+            collection_id = self.manager.start(
+                {
+                    "sourceId": "pci_concursos",
+                    "url": (
+                        "https://www.pciconcursos.com.br/provas/download/"
+                        "escriturario-agente-comercial-banco-do-brasil-cesgranrio-2023"
+                    ),
+                    "browserEnabled": True,
+                }
+            )
+            for _ in range(100):
+                job = next(item for item in self.manager.list_jobs() if item["id"] == collection_id)
+                if job["status"] not in {"queued", "running", "processing"}:
+                    break
+                threading.Event().wait(0.01)
+
+        self.assertEqual(job["status"], "failed")
+        self.assertEqual(job["discoveredDocuments"], 2)
+        self.assertEqual(job["downloadedDocuments"], 0)
+        self.assertEqual(job["failures"], 2)
+        self.assertIn("2 PDF(s) descoberto(s)", str(job["error"]))
+        self.assertNotIn("Nenhum PDF compativel", " ".join(job["warnings"]))
 
     def test_collection_downloads_then_creates_local_processing_job(self) -> None:
         pdf_path = self.root / "fgv_conhecimento-exam-fixture.pdf"

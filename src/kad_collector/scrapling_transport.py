@@ -58,7 +58,9 @@ _CHALLENGE_BODY_MARKERS = (
     b"cf-chl-",
 )
 _PUBLIC_PDF_LINK = re.compile(
-    rb"href\s*=\s*['\"][^'\"]+\.pdf(?:[?#][^'\"]*)?['\"]", re.IGNORECASE
+    rb"(?:href|data-url)\s*=\s*['\"](?!javascript:|data:)[^'\"]+"
+    rb"\.pdf(?:[?#][^'\"]*)?['\"]",
+    re.IGNORECASE,
 )
 
 
