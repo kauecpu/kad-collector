@@ -129,8 +129,9 @@ class _LegacyClientAdapter:
 
 
 class _LinkParser(HTMLParser):
-    def __init__(self) -> None:
+    def __init__(self, *, allow_data_url: bool = False) -> None:
         super().__init__(convert_charrefs=True)
+        self.allow_data_url = allow_data_url
         self.links: list[tuple[str, str]] = []
         self._href: str | None = None
         self._text: list[str] = []
@@ -147,6 +148,17 @@ class _LinkParser(HTMLParser):
             or "visibility:hidden" in style
         )
         href = attributes.get("href")
+        # Algumas fontes publicas mantem a URL navegavel em um atributo
+        # data-url enquanto deixam href como javascript:void(0) ate uma
+        # interacao de interface.  Trate apenas esse placeholder como
+        # fallback; links navegaveis continuam tendo precedencia.
+        placeholder = not href or href.strip().casefold() in {
+            "#",
+            "javascript:void(0)",
+            "javascript:void(0);",
+        }
+        if self.allow_data_url and placeholder and attributes.get("data-url"):
+            href = attributes["data-url"]
         if hidden:
             return
         if href:
@@ -381,8 +393,10 @@ class _DatedAnswerKeyVariantParser(HTMLParser):
         }
 
 
-def extract_links(html: str, page_url: str) -> list[tuple[str, str]]:
-    parser = _LinkParser()
+def extract_links(
+    html: str, page_url: str, *, allow_data_url: bool = False
+) -> list[tuple[str, str]]:
+    parser = _LinkParser(allow_data_url=allow_data_url)
     parser.feed(html)
     return [(urljoin(page_url, href), title) for href, title in parser.links]
 
@@ -478,7 +492,9 @@ def select_document_links(
 ) -> list[tuple[str, str, DocumentType]]:
     selected: list[tuple[str, str, DocumentType]] = []
     seen: set[str] = set()
-    for url, title in extract_links(html, page_url):
+    for url, title in extract_links(
+        html, page_url, allow_data_url=source.id == "pci_concursos"
+    ):
         candidate = f"{title}\n{url}"
         if source.exclude_patterns and any(
             re.search(pattern, candidate) for pattern in source.exclude_patterns
@@ -823,6 +839,17 @@ def _checkpoint_key(source: SourceDefinition) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _should_expand_collection_pages(source: SourceDefinition) -> bool:
+    """Keep a PCI detail-page collection scoped to the requested page."""
+
+    if source.id != "pci_concursos":
+        return True
+    return not all(
+        urlsplit(url).path.casefold().startswith("/provas/download/")
+        for url in source.start_urls
+    )
+
+
 def _matches_source_link(
     item: DiscoveredLink,
     source: SourceDefinition,
@@ -932,6 +959,7 @@ def collect_documents(
         pagination_truncated = False
         source_access_denied = False
         checkpoint_key = _checkpoint_key(source)
+        expand_collection_pages = _should_expand_collection_pages(source)
 
         def check_paused(
             pending_pages: list[str],
@@ -1217,20 +1245,23 @@ def collect_documents(
                                 **source.metadata,
                                 **page_metadata,
                             }
-                        for discovered_collection in select_collection_links(
-                            html, page.url, source
-                        ):
-                            if (
-                                discovered_collection not in seen_pages
-                                and discovered_collection not in pending_pages
+                        if expand_collection_pages:
+                            for discovered_collection in select_collection_links(
+                                html, page.url, source
                             ):
-                                pending_pages.append(discovered_collection)
-                        for discovered_page in select_pagination_links(html, page.url, source):
-                            if (
-                                discovered_page not in seen_pages
-                                and discovered_page not in pending_pages
+                                if (
+                                    discovered_collection not in seen_pages
+                                    and discovered_collection not in pending_pages
+                                ):
+                                    pending_pages.append(discovered_collection)
+                            for discovered_page in select_pagination_links(
+                                html, page.url, source
                             ):
-                                pending_pages.append(discovered_page)
+                                if (
+                                    discovered_page not in seen_pages
+                                    and discovered_page not in pending_pages
+                                ):
+                                    pending_pages.append(discovered_page)
                     except (FetchError, UnsafeUrlError, LookupError, OSError, ValueError) as exc:
                         message = f"{source.id}: falha ao ler {page_url}: {exc}"
                         warnings.append(message)

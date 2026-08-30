@@ -527,8 +527,11 @@ o definitivo tem prioridade somente depois da conferencia de cobertura e alterna
 
 Use a pagina especifica do ano/cargo na aba **Coletar links** para limitar o piloto. No PCI,
 o modo `html` reutiliza uma unica `StealthySession` do Scrapling durante o lote e entrega o HTML
-renderizado ao mesmo parsing anterior. A resolucao automatica de Cloudflare permanece desativada.
-Se o PCI apresentar CAPTCHA, Cloudflare ou outro desafio, a rodada registra
+renderizado ao mesmo parsing anterior. Depois que a propria pagina libera os arquivos, alguns
+controles ainda mantem `href="javascript:void(0)"`, mas passam a expor a URL publica do PDF em
+`data-url`; o parser do PCI usa esse atributo apenas quando o `href` e um placeholder. Se a
+resposta ainda contiver Turnstile ou outro desafio, o Collector nao clica no controle nem chama o
+endpoint de liberacao. Se o PCI apresentar CAPTCHA, Cloudflare ou outro desafio, a rodada registra
 `acao manual necessaria` e segue para outras fontes. O Collector nao tenta contornar
 autenticacao, CAPTCHA, Cloudflare ou bloqueios. Por decisao administrativa explicita do
 responsavel em 2026-08-29, esta fonte usa `ignore` para `robots.txt` e `Crawl-delay`; essa

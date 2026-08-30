@@ -137,6 +137,10 @@ class CollectionEngineTests(unittest.TestCase):
         self.assertIs(factory_options[0]["real_chrome"], True)
         self.assertIs(factory_options[0]["solve_cloudflare"], True)
         self.assertFalse(session.fetches[0][1]["google_search"])
+        self.assertEqual(
+            [event.detail for event in self.state.events("run-test")],
+            ["transport=scrapling", "transport=scrapling"],
+        )
 
     def test_scrapling_response_does_not_decode_browser_decoded_body_again(self) -> None:
         payload = b"<html><body>corpo ja decodificado</body></html>"

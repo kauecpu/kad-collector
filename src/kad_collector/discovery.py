@@ -136,10 +136,21 @@ def parse_json_links(
 
 
 def _looks_blocked(title: str, content: str, url: str) -> str | None:
-    page = f"{title}\n{content[:20_000]}".casefold()
-    if any(value in page for value in ("captcha", "cf-turnstile")):
+    # Anuncios e estilos podem empurrar o widget de seguranca para depois dos
+    # primeiros 20 KB. O HTML ja foi limitado pelo transporte; inspecionar ate
+    # 1 MB evita classificar uma pagina Turnstile como sucesso comum.
+    inspected = content[:1_000_000]
+    page = f"{title}\n{inspected}".casefold()
+    has_public_pdf_link = re.search(
+        r"href\s*=\s*['\"][^'\"]+\.pdf(?:[?#][^'\"]*)?['\"]",
+        inspected,
+        re.IGNORECASE,
+    )
+    if not has_public_pdf_link and any(
+        value in page for value in ("captcha", "cf-turnstile")
+    ):
         return "captcha"
-    if any(
+    if not has_public_pdf_link and any(
         value in page
         for value in (
             "just a moment...",

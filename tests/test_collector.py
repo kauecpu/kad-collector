@@ -11,6 +11,7 @@ from kad_collector.collection_state import CollectionStateStore
 from kad_collector.collector import (
     RobotsPolicy,
     _checkpoint_key,
+    _should_expand_collection_pages,
     classify_document,
     collect_documents,
     extract_dated_link_stages,
@@ -80,11 +81,55 @@ class LinkParsingTests(unittest.TestCase):
             "login",
         )
 
+    def test_challenge_after_twenty_kilobytes_is_detected(self) -> None:
+        html = "<style>" + ("x" * 25_000) + '</style><div class="cf-turnstile"></div>'
+
+        self.assertEqual(
+            detect_access_challenge(
+                "Provas",
+                html,
+                "https://provas.example.gov.br/concurso",
+            ),
+            "captcha",
+        )
+
+    def test_solved_challenge_with_public_pdf_link_is_not_blocked(self) -> None:
+        html = (
+            '<div class="cf-turnstile"></div>'
+            '<a href="https://provas.example.gov.br/prova.pdf">Prova</a>'
+        )
+
+        self.assertIsNone(
+            detect_access_challenge(
+                "Provas",
+                html,
+                "https://provas.example.gov.br/concurso",
+            )
+        )
+
     def test_extracts_nested_anchor_text(self) -> None:
         html = '<a href="/prova.pdf"><strong>Prova</strong> objetiva</a>'
         self.assertEqual(
             extract_links(html, "https://provas.example.gov.br/lista"),
             [("https://provas.example.gov.br/prova.pdf", "Prova objetiva")],
+        )
+
+    def test_extracts_public_data_url_when_anchor_has_javascript_placeholder(self) -> None:
+        html = (
+            '<a href="javascript:void(0);" data-url="/prova.pdf">'
+            "Compartilhar prova</a>"
+        )
+        self.assertEqual(
+            extract_links(
+                html,
+                "https://provas.example.gov.br/lista",
+                allow_data_url=True,
+            ),
+            [("https://provas.example.gov.br/prova.pdf", "Compartilhar prova")],
+        )
+        self.assertEqual(
+            extract_links(html, "https://provas.example.gov.br/lista"),
+            [("javascript:void(0);", "Compartilhar prova")],
         )
 
     def test_selects_only_allowed_non_excluded_documents(self) -> None:
@@ -121,6 +166,40 @@ class LinkParsingTests(unittest.TestCase):
                 "https://www.pciconcursos.com.br/provas/download/escriturario-banco-do-brasil-cesgranrio-2021",
             ],
         )
+
+    def test_pci_banco_brasil_selects_public_data_urls_without_security_bypass(self) -> None:
+        config = load_config(PROJECT_ROOT / "config" / "sources.official.toml")
+        source = next(item for item in config.sources if item.id == "pci_concursos")
+        html = (FIXTURES / "pci_banco_brasil_js_links.html").read_text(encoding="utf-8")
+
+        selected = select_document_links(
+            html,
+            "https://www.pciconcursos.com.br/provas/download/exemplo",
+            source,
+        )
+
+        self.assertEqual(
+            [(Path(url).name, kind) for url, _title, kind in selected],
+            [
+                ("escriturario_agente_comercial.pdf", "exam"),
+                ("gabarito.pdf", "answer_key"),
+            ],
+        )
+
+    def test_pci_detail_page_does_not_expand_to_index_or_pagination(self) -> None:
+        detail = "https://www.pciconcursos.com.br/provas/download/exemplo"
+        pci = source_definition(id="pci_concursos", start_urls=[detail])
+        self.assertFalse(_should_expand_collection_pages(pci))
+        self.assertTrue(_should_expand_collection_pages(source_definition()))
+
+    def test_pci_turnstile_fixture_requires_manual_action(self) -> None:
+        url = "https://www.pciconcursos.com.br/provas/download/exemplo"
+        html = (FIXTURES / "pci_banco_brasil_turnstile.html").read_text(encoding="utf-8")
+        config = load_config(PROJECT_ROOT / "config" / "sources.official.toml")
+        source = next(item for item in config.sources if item.id == "pci_concursos")
+
+        self.assertEqual(detect_access_challenge(source.name, html, url), "captcha")
+        self.assertEqual(select_document_links(html, url, source), [])
 
     def test_pci_source_metadata_and_access_policy_are_explicit(self) -> None:
         config = load_config(PROJECT_ROOT / "config" / "sources.official.toml")
@@ -469,6 +548,63 @@ class LinkParsingTests(unittest.TestCase):
                 "canonical_url": manifest.documents[0].resolved_url,
             },
         )
+
+    def test_pci_detail_page_downloads_public_data_urls_without_crawling_index(self) -> None:
+        detail_url = "https://www.pciconcursos.com.br/provas/download/exemplo"
+        exam_url = (
+            "https://www.pciconcursos.com.br/provas/29658981/2e4bb8b74228/"
+            "escriturario_agente_comercial.pdf"
+        )
+        key_url = (
+            "https://www.pciconcursos.com.br/provas/29658981/444cd7f0bc5d/gabarito.pdf"
+        )
+        fixture = (FIXTURES / "pci_banco_brasil_js_links.html").read_bytes()
+
+        class FixtureClient:
+            requested: list[str] = []
+
+            def __init__(self, user_agent: str, timeout: float, interval_seconds: float) -> None:
+                pass
+
+            def get(self, url: str, allowed_hosts: list[str], max_bytes: int) -> HttpResult:
+                self.requested.append(url)
+                headers = Message()
+                if url == detail_url:
+                    headers["Content-Type"] = "text/html; charset=utf-8"
+                    body = fixture
+                elif url in {exam_url, key_url}:
+                    headers["Content-Type"] = "application/pdf"
+                    body = f"%PDF-1.4\n{url}\n%%EOF".encode()
+                else:
+                    raise AssertionError(f"URL inesperada: {url}")
+                return HttpResult(url=url, status_code=200, headers=headers, body=body)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            source = source_definition(
+                id="pci_concursos",
+                start_urls=[detail_url],
+                allowed_hosts=["www.pciconcursos.com.br"],
+                collection_url_patterns=[
+                    r"^https://www\.pciconcursos\.com\.br/provas/"
+                    r"(?:banco-do-brasil|download/[a-z0-9-]+)$"
+                ],
+                pagination_patterns=[r"/provas/banco-do-brasil(?:/\d+)?$"],
+                robots_policy="ignore",
+                crawl_delay_policy="ignore",
+            )
+            config = AppConfig(
+                collector=CollectorSettings(data_dir=temporary),
+                sources=[source],
+            )
+            with patch("kad_collector.collector.SafeHttpClient", FixtureClient):
+                manifest, _ = collect_documents(config)
+
+        self.assertEqual(
+            {item.original_url for item in manifest.documents},
+            {exam_url, key_url},
+        )
+        self.assertEqual(FixtureClient.requested[0], detail_url)
+        self.assertEqual(set(FixtureClient.requested[1:]), {exam_url, key_url})
 
     def test_valid_html_served_as_text_plain_is_discovered(self) -> None:
         page_url = "https://provas.example.gov.br/concurso"
