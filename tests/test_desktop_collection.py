@@ -162,6 +162,8 @@ class DesktopCollectionTests(unittest.TestCase):
         self.assertIn("/api/collections", javascript)
         self.assertIn("capacityProfile", javascript)
         self.assertIn("collectionAction", javascript)
+        self.assertIn("awaiting_manual_action", javascript)
+        self.assertIn("Continuar após verificação", javascript)
         self.assertIn("updateBrowserTransportHint", javascript)
         self.assertIn("robotsPolicy", javascript)
         self.assertIn("crawlDelayPolicy", javascript)
@@ -197,13 +199,82 @@ class DesktopCollectionTests(unittest.TestCase):
         self.assertEqual(len(captured), 1)
         self.assertEqual(captured[0].sources[0].page_transport, "http")
 
+    def test_manual_action_callback_waits_for_resume_and_records_context(self) -> None:
+        job_id = "manual-action-test"
+        with self.manager._lock:
+            self.manager._jobs[job_id] = {
+                "id": job_id,
+                "status": "running",
+                "manualAction": None,
+                "message": None,
+                "createdAt": "2026-08-30T00:00:00+00:00",
+            }
+            self.manager._controls[job_id] = threading.Event()
+            self.manager._manual_actions[job_id] = threading.Event()
+
+        result: list[bool] = []
+        worker = threading.Thread(
+            target=lambda: result.append(
+                self.manager._manual_action_callback(
+                    job_id,
+                    "https://www.pciconcursos.com.br/provas/download/exemplo",
+                    "captcha",
+                )
+            )
+        )
+        worker.start()
+        for _ in range(100):
+            current = next(item for item in self.manager.list_jobs() if item["id"] == job_id)
+            if current["status"] == "awaiting_manual_action":
+                break
+            time.sleep(0.01)
+        self.assertEqual(
+            next(item for item in self.manager.list_jobs() if item["id"] == job_id)["status"],
+            "awaiting_manual_action",
+        )
+        self.manager._manual_actions[job_id].set()
+        worker.join(timeout=1)
+        self.assertEqual(result, [True])
+        job = next(item for item in self.manager.list_jobs() if item["id"] == job_id)
+        self.assertEqual(job["manualAction"]["reason"], "captcha")
+
+    def test_manual_action_can_be_cancelled_without_waiting_for_resume(self) -> None:
+        job_id = "manual-action-cancel-test"
+        with self.manager._lock:
+            self.manager._jobs[job_id] = {
+                "id": job_id,
+                "status": "running",
+                "manualAction": None,
+                "createdAt": "2026-08-30T00:00:00+00:00",
+            }
+            self.manager._controls[job_id] = threading.Event()
+            self.manager._manual_actions[job_id] = threading.Event()
+        result: list[bool] = []
+        worker = threading.Thread(
+            target=lambda: result.append(
+                self.manager._manual_action_callback(job_id, "https://example.test", "captcha")
+            )
+        )
+        worker.start()
+        for _ in range(100):
+            current = next(item for item in self.manager.list_jobs() if item["id"] == job_id)
+            if current["status"] == "awaiting_manual_action":
+                break
+            time.sleep(0.01)
+        self.manager._controls[job_id].set()
+        self.manager._manual_actions[job_id].set()
+        worker.join(timeout=1)
+        self.assertEqual(result, [False])
+
     def test_collection_uses_scrapling_when_browser_is_enabled(self) -> None:
         captured: list[AppConfig] = []
+        captured_options: list[dict[str, object]] = []
         manifest_path = self.root / "manifest-browser.json"
         manifest_path.write_text("{}", encoding="utf-8")
 
-        def collect(config: AppConfig, **_kwargs: object) -> tuple[DownloadManifest, Path]:
+        def collect(config: AppConfig, **kwargs: object) -> tuple[DownloadManifest, Path]:
             captured.append(config)
+            captured_options.append(kwargs)
             return DownloadManifest(created_at=datetime.now(UTC), documents=[]), manifest_path
 
         with patch("kad_collector.desktop_collection.collect_documents", side_effect=collect):
@@ -223,6 +294,7 @@ class DesktopCollectionTests(unittest.TestCase):
         self.assertEqual(job["status"], "completed")
         self.assertEqual(len(captured), 1)
         self.assertEqual(captured[0].sources[0].page_transport, "scrapling")
+        self.assertTrue(callable(captured_options[0]["manual_action_callback"]))
 
     def test_collection_fails_when_every_discovered_pdf_download_fails(self) -> None:
         pdf_urls = [

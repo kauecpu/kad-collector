@@ -712,7 +712,7 @@ function renderSourceCatalog() {
 
 function collectionStatusLabel(status) {
   return {
-    queued: 'Na fila', running: 'Baixando', processing: 'Processando',
+    queued: 'Na fila', running: 'Baixando', awaiting_manual_action: 'Aguardando ação manual', processing: 'Processando',
     pausing: 'Pausando', paused: 'Pausada', cancelling: 'Cancelando',
     cancelled: 'Cancelada', completed: 'Concluída', needs_attention: 'Requer atenção',
     failed: 'Falhou',
@@ -729,6 +729,9 @@ function collectionSummary(job, telemetry) {
     `${(job.failures || 0) + (job.failedDocuments || 0)} falhas`,
   ].join(' · ');
   if (job.status === 'failed') return job.error || 'Falha não detalhada.';
+  if (job.status === 'awaiting_manual_action') {
+    return 'Conclua a verificação no navegador e clique em continuar.';
+  }
   if (['queued', 'running'].includes(job.status) && !telemetry.requests) {
     return 'Aguardando a primeira resposta do transporte.';
   }
@@ -799,6 +802,11 @@ function renderCollections() {
     if (['queued', 'running'].includes(job.status)) {
       actions.append(
         collectionButton('Pausar', () => collectionAction(job.id, 'pause')),
+        collectionButton('Cancelar', () => collectionAction(job.id, 'cancel')),
+      );
+    } else if (job.status === 'awaiting_manual_action') {
+      actions.append(
+        collectionButton('Continuar após verificação', () => collectionAction(job.id, 'resume')),
         collectionButton('Cancelar', () => collectionAction(job.id, 'cancel')),
       );
     } else if (job.status === 'paused') {

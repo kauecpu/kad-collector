@@ -880,6 +880,7 @@ def collect_documents(
     stop_event: threading.Event | None = None,
     progress_callback: Callable[[CollectionTelemetryEvent], None] | None = None,
     transport_callback: Callable[[Callable[[], None] | None], None] | None = None,
+    manual_action_callback: Callable[[str, str], bool] | None = None,
 ) -> tuple[DownloadManifest, Path]:
     enabled_sources = [source for source in config.sources if source.enabled]
     if not enabled_sources:
@@ -1129,13 +1130,37 @@ def collect_documents(
                                 seen_digests.add(record.sha256)
                                 documents.append(record)
                             continue
-                        page = client.get(
-                            page_url,
-                            source.allowed_hosts,
-                            max(settings.max_html_bytes, settings.max_pdf_bytes),
-                            strategy="html",
-                            interval_seconds=effective_interval,
-                        )
+                        challenge: str | None = None
+                        for page_attempt in range(2):
+                            page = client.get(
+                                page_url,
+                                source.allowed_hosts,
+                                max(settings.max_html_bytes, settings.max_pdf_bytes),
+                                strategy="html",
+                                interval_seconds=effective_interval,
+                            )
+                            if _engine_is_pdf(page):
+                                break
+                            content_type = page.headers.get_content_type()
+                            if not _is_html_page(page):
+                                raise ValueError(
+                                    f"pagina ignorada por Content-Type {content_type}: {page_url}"
+                                )
+                            charset = page.headers.get_content_charset() or "utf-8"
+                            html = page.body.decode(charset, errors="replace")
+                            challenge = detect_access_challenge(
+                                source.name,
+                                html,
+                                page.url,
+                            )
+                            if (
+                                challenge
+                                and page_attempt == 0
+                                and manual_action_callback is not None
+                                and manual_action_callback(page.url, challenge)
+                            ):
+                                continue
+                            break
                         client.remember_body(
                             original_url=page_url,
                             result=page,
@@ -1179,18 +1204,6 @@ def collect_documents(
                                     seen_digests.add(record.sha256)
                                     documents.append(record)
                             continue
-                        content_type = page.headers.get_content_type()
-                        if not _is_html_page(page):
-                            raise ValueError(
-                                f"pagina ignorada por Content-Type {content_type}: {page_url}"
-                            )
-                        charset = page.headers.get_content_charset() or "utf-8"
-                        html = page.body.decode(charset, errors="replace")
-                        challenge = detect_access_challenge(
-                            source.name,
-                            html,
-                            page.url,
-                        )
                         if challenge:
                             message = (
                                 f"{source.id}: acao manual necessaria: {challenge} "
@@ -1406,9 +1419,12 @@ def collect_documents(
                                 browser_page_url,
                                 source,
                                 timeout_seconds=settings.timeout_seconds,
+                                manual_action_callback=manual_action_callback,
                             )
                         )
                     except ManualActionRequired as exc:
+                        if stop_event is not None and stop_event.is_set():
+                            check_paused([], set())
                         message = f"{source.id}: {exc}"
                         warnings.append(message)
                         failures.append(

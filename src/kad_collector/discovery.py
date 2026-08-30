@@ -5,6 +5,7 @@ import gzip
 import json
 import re
 import xml.etree.ElementTree as ET
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urljoin, urlsplit
@@ -200,6 +201,7 @@ def browser_discover(
     source: SourceDefinition,
     *,
     timeout_seconds: float,
+    manual_action_callback: Callable[[str, str], bool] | None = None,
 ) -> list[DiscoveredLink]:
     if not source.browser_enabled:
         raise BrowserUnavailableError("a fonte nao habilitou o navegador JavaScript")
@@ -213,17 +215,16 @@ def browser_discover(
 
     timeout_ms = int(timeout_seconds * 1000)
     with sync_playwright() as playwright:
-        browser = None
-        launch_errors: list[str] = []
-        for channel in ("msedge", None):
-            try:
-                browser = playwright.chromium.launch(headless=True, channel=channel)
-                break
-            except PlaywrightError as exc:
-                launch_errors.append(str(exc))
-        if browser is None:
+        def launch(headless: bool) -> Any:
+            launch_errors: list[str] = []
+            for channel in ("msedge", None):
+                try:
+                    return playwright.chromium.launch(headless=headless, channel=channel)
+                except PlaywrightError as exc:
+                    launch_errors.append(str(exc))
             raise BrowserUnavailableError("; ".join(launch_errors[-2:]))
-        try:
+
+        def open_page(browser: Any) -> tuple[Any, Any]:
             context = browser.new_context(
                 user_agent="KADCollector/0.3 (+https://github.com/kauecpu/kad-collector)",
                 locale="pt-BR",
@@ -247,10 +248,35 @@ def browser_discover(
             page.route("**/*", guard_route)
             page.goto(page_url, wait_until="domcontentloaded", timeout=timeout_ms)
             page.wait_for_timeout(min(2_000, timeout_ms // 4))
+            return context, page
+
+        browser = launch(headless=True)
+        context: Any | None = None
+        try:
+            context, page = open_page(browser)
             content = page.content()
             reason = _looks_blocked(page.title(), content, page.url)
             if reason:
-                raise ManualActionRequired(f"acao manual necessaria: {reason}")
+                if manual_action_callback is None:
+                    raise ManualActionRequired(f"acao manual necessaria: {reason}")
+                context.close()
+                context = None
+                browser.close()
+                browser = launch(headless=False)
+                context, page = open_page(browser)
+                reason = _looks_blocked(page.title(), page.content(), page.url)
+                if reason:
+                    if not manual_action_callback(page.url, reason):
+                        raise ManualActionRequired(
+                            f"acao manual necessaria: {reason}; verificacao nao concluida"
+                        )
+                    page.reload(wait_until="domcontentloaded", timeout=timeout_ms)
+                    page.wait_for_timeout(min(2_000, timeout_ms // 4))
+                    reason = _looks_blocked(page.title(), page.content(), page.url)
+                    if reason:
+                        raise ManualActionRequired(
+                            f"acao manual necessaria: {reason}; pagina continua bloqueada"
+                        )
             result: list[DiscoveredLink] = []
             for locator in page.locator("a:visible[href]").all():
                 href = locator.get_attribute("href")
@@ -261,9 +287,10 @@ def browser_discover(
             unique: dict[str, DiscoveredLink] = {}
             for item in result:
                 unique.setdefault(item.url, item)
-            context.close()
             return list(unique.values())
         finally:
+            if context is not None:
+                context.close()
             browser.close()
 
 

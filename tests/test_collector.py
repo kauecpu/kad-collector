@@ -312,6 +312,65 @@ class LinkParsingTests(unittest.TestCase):
         self.assertEqual(len(manifest.failures), 1)
         self.assertIn("acao manual necessaria", manifest.failures[0].message)
 
+    def test_manual_action_resumes_the_same_page_after_confirmation(self) -> None:
+        page_url = "https://provas.example.gov.br/bloqueado"
+        pdf_url = "https://provas.example.gov.br/prova.pdf"
+
+        class FixtureClient:
+            page_requests = 0
+
+            def __init__(self, user_agent: str, timeout: float, interval_seconds: float) -> None:
+                pass
+
+            def get(self, url: str, allowed_hosts: list[str], max_bytes: int) -> HttpResult:
+                headers = Message()
+                if url.endswith("/robots.txt"):
+                    headers["Content-Type"] = "text/plain; charset=utf-8"
+                    return HttpResult(
+                        url=url,
+                        status_code=200,
+                        headers=headers,
+                        body=b"User-agent: *\nAllow: /\n",
+                    )
+                if url == page_url:
+                    type(self).page_requests += 1
+                    headers["Content-Type"] = "text/html; charset=utf-8"
+                    body = (
+                        b'<div class="cf-turnstile"></div>'
+                        if self.page_requests == 1
+                        else b'<a href="/prova.pdf">Prova</a>'
+                    )
+                    return HttpResult(url=url, status_code=200, headers=headers, body=body)
+                if url == pdf_url:
+                    headers["Content-Type"] = "application/pdf"
+                    return HttpResult(
+                        url=url,
+                        status_code=200,
+                        headers=headers,
+                        body=b"%PDF-1.4\nfixture\n%%EOF",
+                    )
+                raise AssertionError(f"URL inesperada: {url}")
+
+        confirmations: list[tuple[str, str]] = []
+        with tempfile.TemporaryDirectory() as temporary:
+            source = source_definition(start_urls=[page_url])
+            config = AppConfig(
+                collector=CollectorSettings(data_dir=temporary),
+                sources=[source],
+            )
+            with patch("kad_collector.collector.SafeHttpClient", FixtureClient):
+                manifest, _ = collect_documents(
+                    config,
+                    manual_action_callback=lambda url, reason: (
+                        confirmations.append((url, reason)) or True
+                    ),
+                )
+
+        self.assertEqual(confirmations, [(page_url, "captcha")])
+        self.assertEqual(FixtureClient.page_requests, 2)
+        self.assertEqual([item.original_url for item in manifest.documents], [pdf_url])
+        self.assertEqual(manifest.failures, [])
+
     def test_http_403_pauses_only_the_affected_source_checkpoint(self) -> None:
         denied_url = "https://blocked.example.gov.br/lista"
         healthy_url = "https://healthy.example.gov.br/lista"

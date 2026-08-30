@@ -531,9 +531,12 @@ renderizado ao mesmo parsing anterior. Depois que a propria pagina libera os arq
 controles ainda mantem `href="javascript:void(0)"`, mas passam a expor a URL publica do PDF em
 `data-url`; o parser do PCI usa esse atributo apenas quando o `href` e um placeholder. Se a
 resposta ainda contiver Turnstile ou outro desafio, o Collector nao clica no controle nem chama o
-endpoint de liberacao. Se o PCI apresentar CAPTCHA, Cloudflare ou outro desafio, a rodada registra
-`acao manual necessaria` e segue para outras fontes. O Collector nao tenta contornar
-autenticacao, CAPTCHA, Cloudflare ou bloqueios. Por decisao administrativa explicita do
+endpoint de liberacao. Se o PCI apresentar CAPTCHA, Cloudflare ou outro desafio durante uma
+coleta pela interface, o Collector pausa somente a atividade, abre um Chromium visivel e marca
+`awaiting_manual_action`. Depois de concluir a verificacao, clique em **Continuar após verificação**
+para que o Collector recarregue a pagina e retome do checkpoint. Sem essa acao, a atividade expira
+apos cinco minutos e fica em `needs_attention`. O Collector nao tenta contornar autenticacao,
+CAPTCHA, Cloudflare ou bloqueios. Por decisao administrativa explicita do
 responsavel em 2026-08-29, esta fonte usa `ignore` para `robots.txt` e `Crawl-delay`; essa
 decisao fica registrada no manifesto e na telemetria. Nao ha um
 limitador artificial adicional criado para o PCI.
@@ -616,8 +619,10 @@ browser_enabled = true
 - `browser` executa JavaScript com Playwright e Edge/Chromium sem modo stealth.
 
 O navegador bloqueia navegacao fora dos hosts da fonte e identifica CAPTCHA, login e acesso
-negado como `manual_action_required`. Ele nao resolve desafios nem importa cookies do navegador
-pessoal. No Windows, o adaptador tenta usar Microsoft Edge; uma instalacao Playwright Chromium
+negado como `manual_action_required`. Na interface desktop, o desafio muda a atividade para
+`awaiting_manual_action`; o usuario resolve o desafio no Chromium visivel e usa a acao de retomada.
+O Collector nao resolve desafios nem importa cookies do navegador pessoal. No Windows, o adaptador
+tenta usar Microsoft Edge; uma instalacao Playwright Chromium
 tambem pode ser usada quando `PLAYWRIGHT_BROWSERS_PATH` estiver configurada.
 
 Exemplo de JSON publico:
