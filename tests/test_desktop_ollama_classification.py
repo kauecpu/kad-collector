@@ -25,6 +25,7 @@ from kad_collector.canonical_classification import (
     CanonicalClassificationError,
     run_canonical_classification,
 )
+from kad_collector.desktop_models import DesktopOperationScope
 from kad_collector.desktop_ollama_classification import (
     DESKTOP_OLLAMA_DIGEST,
     DESKTOP_OLLAMA_ENDPOINT,
@@ -86,6 +87,20 @@ class FakeAdmin:
         self.running = [item for item in self.running if item.get("name") != model]
 
 
+def _all_scope() -> DesktopOperationScope:
+    return DesktopOperationScope(type="all")
+
+
+def _preview(manager: DesktopOllamaClassificationManager) -> dict[str, Any]:
+    return manager.preview(_all_scope(), 25)
+
+
+def _start(
+    manager: DesktopOllamaClassificationManager, preview: Mapping[str, Any]
+) -> dict[str, Any]:
+    return manager.start(str(preview["confirmationToken"]), _all_scope(), 25)
+
+
 def _gpu_runner(command: tuple[str, ...], environment: Mapping[str, str]) -> str:
     assert command == ("ollama", "ps")
     assert environment["OLLAMA_HOST"] == DESKTOP_OLLAMA_ENDPOINT
@@ -130,7 +145,7 @@ class DesktopOllamaClassificationTests(unittest.TestCase):
                 "SELECT COUNT(*) FROM canonical_classification_runs"
             ).fetchone()[0]
 
-        preview = manager.preview(25)
+        preview = _preview(manager)
 
         with closing(fixture.store._connect()) as connection:
             after_runs = connection.execute(
@@ -156,8 +171,8 @@ class DesktopOllamaClassificationTests(unittest.TestCase):
         admin = FakeAdmin()
         manager = self._manager(fixture, admin, provider)
 
-        preview = manager.preview(25)
-        started = manager.start(preview["confirmationToken"], 25)
+        preview = _preview(manager)
+        started = _start(manager, preview)
         manager.wait()
         status = manager.status(started["runId"])
 
@@ -174,7 +189,7 @@ class DesktopOllamaClassificationTests(unittest.TestCase):
         admin = FakeAdmin()
         manager = self._manager(fixture, admin)
 
-        manager.preview(25)
+        _preview(manager)
 
         with closing(fixture.store._connect()) as connection:
             jobs = connection.execute(
@@ -187,9 +202,9 @@ class DesktopOllamaClassificationTests(unittest.TestCase):
         fixture, _ = _seed_canonical(self.root)
         admin = FakeAdmin()
         manager = self._manager(fixture, admin)
-        preview = manager.preview(25)
+        preview = _preview(manager)
 
-        status = manager.start(preview["confirmationToken"], 25)
+        status = _start(manager, preview)
 
         self.assertEqual(status["state"], "completed")
         self.assertEqual(status["target"], 0)
@@ -204,12 +219,13 @@ class DesktopOllamaClassificationTests(unittest.TestCase):
         provider = FakeProvider(_level_decision())
         admin = FakeAdmin()
         manager = self._manager(fixture, admin, provider)
-        preview = manager.preview(25)
+        preview = _preview(manager)
 
-        started = manager.start(preview["confirmationToken"], 25)
+        started = _start(manager, preview)
         manager.wait()
         status = manager.status(started["runId"])
-        repeated = manager.start(preview["confirmationToken"], 25)
+        with self.assertRaisesRegex(ValueError, "já foi utilizado"):
+            _start(manager, preview)
         after = fixture.store.question(question_id)["question"]
 
         self.assertEqual(status["state"], "completed")
@@ -217,7 +233,6 @@ class DesktopOllamaClassificationTests(unittest.TestCase):
         self.assertEqual(status["aiCalls"], 1)
         self.assertEqual(status["acceptedSuggestions"], 1)
         self.assertEqual(status["hardware"]["processor"], "100% GPU")
-        self.assertEqual(repeated["runId"], started["runId"])
         self.assertEqual(len(provider.requests), 1)
         self.assertEqual(provider.requests[0].requested_fields, ("level",))
         self.assertEqual(after["level"], "Superior")
@@ -244,8 +259,8 @@ class DesktopOllamaClassificationTests(unittest.TestCase):
             )
 
         manager = self._manager(fixture, admin, provider, runner=changing_runner)
-        preview = manager.preview(25)
-        started = manager.start(preview["confirmationToken"], 25)
+        preview = _preview(manager)
+        started = _start(manager, preview)
         manager.wait()
         status = manager.status(started["runId"])
         with closing(fixture.store._connect()) as connection:
@@ -273,7 +288,7 @@ class DesktopOllamaClassificationTests(unittest.TestCase):
             with self.subTest(admin=admin.__dict__):
                 manager = self._manager(fixture, admin)
                 with self.assertRaises(CanonicalClassificationError):
-                    manager.preview(25)
+                    _preview(manager)
                 self.assertEqual(admin.chat_calls, 0)
         endpoint = FakeAdmin()
         endpoint.base_url = "http://192.168.1.20:11434"
@@ -292,8 +307,8 @@ class DesktopOllamaClassificationTests(unittest.TestCase):
             return "qwen3:8b 50% GPU 50% CPU"
 
         manager = self._manager(fixture, admin, provider, runner=partial_runner)
-        preview = manager.preview(25)
-        started = manager.start(preview["confirmationToken"], 25)
+        preview = _preview(manager)
+        started = _start(manager, preview)
         manager.wait()
         status = manager.status(started["runId"])
 
@@ -347,7 +362,7 @@ class DesktopOllamaClassificationTests(unittest.TestCase):
         _clear_fields(fixture, rows[0][1], {"level"})
         admin = FakeAdmin()
         manager = self._manager(fixture, admin)
-        preview = manager.preview(25)
+        preview = _preview(manager)
         with closing(fixture.store._connect()) as connection:
             connection.execute(
                 "INSERT INTO desktop_ollama_classification_jobs "
@@ -367,14 +382,14 @@ class DesktopOllamaClassificationTests(unittest.TestCase):
             connection.commit()
 
         with self.assertRaisesRegex(RuntimeError, "já existe"):
-            manager.start(preview["confirmationToken"], 25)
+            _start(manager, preview)
         self.assertEqual(admin.chat_calls, 0)
 
     def test_restart_changes_active_job_to_paused_without_changing_run_id(self) -> None:
         fixture, _ = _seed_canonical(self.root)
         admin = FakeAdmin()
         manager = self._manager(fixture, admin)
-        preview = manager.preview(25)
+        preview = _preview(manager)
         token_hash = __import__("hashlib").sha256(
             preview["confirmationToken"].encode("utf-8")
         ).hexdigest()
@@ -449,6 +464,25 @@ class DesktopOllamaClassificationTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             thread.join(timeout=3)
+
+    def test_qwen_preview_is_bound_to_scope_and_limit(self) -> None:
+        fixture, rows = _seed_canonical(self.root, second_number=True)
+        _clear_fields(fixture, rows[0][1], {"level"})
+        manager = self._manager(fixture, FakeAdmin(), FakeProvider(_level_decision()))
+        scope = DesktopOperationScope(type="selected", questionIds=[rows[0][1]])
+
+        preview = manager.preview(scope, 25)
+
+        self.assertEqual(preview["scope"]["questionIds"], [rows[0][1]])
+        self.assertEqual(preview["counts"]["scope"]["count"], 1)
+        self.assertLessEqual(preview["counts"]["eligible"], 1)
+        with closing(fixture.store._connect()) as connection:
+            connection.execute(
+                "UPDATE questions SET updated_at='changed' WHERE id=?", (rows[0][1],)
+            )
+            connection.commit()
+        with self.assertRaisesRegex(RuntimeError, "mudou desde a prévia"):
+            manager.start(str(preview["confirmationToken"]), scope, 25)
 
 
 if __name__ == "__main__":

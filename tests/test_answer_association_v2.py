@@ -18,6 +18,7 @@ from kad_collector.cli import main
 from kad_collector.desktop_models import (
     DesktopFilterSet,
     DesktopImportMetadata,
+    DesktopOperationScope,
     QuestionClassification,
 )
 from kad_collector.desktop_preparation import DesktopPreparationManager
@@ -1099,7 +1100,10 @@ class AnswerAssociationAuditTests(AnswerAssociationRevalidationTests):
             self.processor._reconcile_answer_key(str(key["document_version_id"])),
             1,
         )
-        DesktopPreparationManager(self.store).run()
+        manager = DesktopPreparationManager(self.store)
+        scope = DesktopOperationScope(type="all")
+        preview = manager.preview(scope)
+        manager.run(preview["confirmationToken"], scope)
 
         with closing(self.store._connect()) as connection:
             context, decision = decide_runtime_association(

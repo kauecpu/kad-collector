@@ -31,6 +31,7 @@ from .desktop_models import (
     ClassifierProviderName,
     DesktopFilterSet,
     DesktopImportMetadata,
+    DesktopOperationScope,
     QuestionClassification,
 )
 from .desktop_ollama_classification import (
@@ -214,11 +215,21 @@ class DesktopApplication:
     def reclassify_questions(self) -> dict[str, Any]:
         return self.processor.reclassify_existing_questions()
 
-    def preview_preparation(self) -> dict[str, Any]:
-        return self.preparation.preview()
+    @staticmethod
+    def _operation_scope(payload: dict[str, Any]) -> DesktopOperationScope:
+        raw_scope = payload.get("scope")
+        if not isinstance(raw_scope, dict):
+            raise ValueError("scope explícito deve ser informado")
+        return DesktopOperationScope.model_validate(raw_scope)
 
-    def prepare_questions(self) -> dict[str, Any]:
-        return self.preparation.run()
+    def preview_preparation(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.preparation.preview(self._operation_scope(payload))
+
+    def prepare_questions(self, payload: dict[str, Any]) -> dict[str, Any]:
+        token = payload.get("confirmationToken")
+        if not isinstance(token, str) or not token:
+            raise ValueError("confirmationToken deve ser informado")
+        return self.preparation.run(token, self._operation_scope(payload))
 
     def preview_answer_key_audit(self) -> dict[str, Any]:
         return self.store.preview_answer_key_audit()
@@ -245,7 +256,8 @@ class DesktopApplication:
 
     def preview_ollama_classification(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self.ollama_classification.preview(
-            payload.get("limit", DEFAULT_BATCH_LIMIT)
+            self._operation_scope(payload),
+            payload.get("limit", DEFAULT_BATCH_LIMIT),
         )
 
     def start_ollama_classification(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -253,7 +265,9 @@ class DesktopApplication:
         if not isinstance(token, str) or not token:
             raise ValueError("confirmationToken deve ser informado")
         return self.ollama_classification.start(
-            token, payload.get("limit", DEFAULT_BATCH_LIMIT)
+            token,
+            self._operation_scope(payload),
+            payload.get("limit", DEFAULT_BATCH_LIMIT),
         )
 
     def collect_from_link(self, payload: dict[str, Any]) -> str:
@@ -536,10 +550,10 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                     self._send_json(application.reclassify_questions())
                     return
                 if path == "/api/preparation/preview":
-                    self._send_json(application.preview_preparation())
+                    self._send_json(application.preview_preparation(payload))
                     return
                 if path == "/api/preparation/run":
-                    self._send_json(application.prepare_questions())
+                    self._send_json(application.prepare_questions(payload))
                     return
                 if path == "/api/answer-key-audit/preview":
                     self._send_json(application.preview_answer_key_audit())

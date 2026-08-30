@@ -580,9 +580,28 @@ def _event(
     )
 
 
-def _canonical_rows(connection: sqlite3.Connection, contest_id: str | None) -> list[sqlite3.Row]:
-    clause = "" if contest_id is None else "AND g.contest_id = ?"
-    parameters: tuple[str, ...] = () if contest_id is None else (contest_id,)
+def _canonical_rows(
+    connection: sqlite3.Connection,
+    contest_id: str | None,
+    question_ids: set[str] | None = None,
+) -> list[sqlite3.Row]:
+    conditions: list[str] = []
+    parameters: list[str] = []
+    if contest_id is not None:
+        conditions.append("g.contest_id = ?")
+        parameters.append(contest_id)
+    if question_ids is not None:
+        if not question_ids:
+            return []
+        placeholders = ",".join("?" for _ in question_ids)
+        conditions.append(
+            "EXISTS (SELECT 1 FROM question_group_occurrences scoped_go "
+            "JOIN question_occurrences scoped_o ON scoped_o.id=scoped_go.occurrence_id "
+            "WHERE scoped_go.group_id=g.id AND scoped_go.status='active' "
+            f"AND scoped_o.question_id IN ({placeholders}))"  # noqa: S608
+        )
+        parameters.extend(sorted(question_ids))
+    clause = "" if not conditions else "AND " + " AND ".join(conditions)
     return list(
         connection.execute(
             """
@@ -631,7 +650,7 @@ def _canonical_rows(connection: sqlite3.Connection, contest_id: str | None) -> l
             """
             + clause
             + " ORDER BY cq.id",
-            parameters,
+            tuple(parameters),
         ).fetchall()
     )
 
@@ -687,8 +706,9 @@ def canonical_classification_coverage(
     connection: sqlite3.Connection,
     *,
     eligibility_scope: EligibilityScope = "canonical",
+    question_ids: set[str] | None = None,
 ) -> dict[str, int]:
-    rows = _canonical_rows(connection, None)
+    rows = _canonical_rows(connection, None, question_ids)
     eligible = [row for row in rows if _eligible(row, eligibility_scope)]
     covered_question_ids: set[str] = set()
     for row in eligible:
@@ -706,13 +726,25 @@ def canonical_classification_coverage(
                 continue
             if question.answer_status == "matched" and question.correct_answer is not None:
                 covered_question_ids.add(cast(str, member["id"]))
-    official_answered = int(
-        connection.execute(
-            "SELECT COUNT(*) FROM questions "
-            "WHERE json_extract(payload_json,'$.answer_status')='matched' "
-            "AND json_extract(payload_json,'$.correct_answer') IS NOT NULL"
-        ).fetchone()[0]
-    )
+    official_parameters: tuple[str, ...] = ()
+    official_scope = ""
+    if question_ids is not None:
+        if not question_ids:
+            official_answered = 0
+        else:
+            placeholders = ",".join("?" for _ in question_ids)
+            official_scope = f" AND id IN ({placeholders})"  # noqa: S608
+            official_parameters = tuple(sorted(question_ids))
+    if question_ids is None or question_ids:
+        official_answered = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM questions "
+                "WHERE json_extract(payload_json,'$.answer_status')='matched' "
+                "AND json_extract(payload_json,'$.correct_answer') IS NOT NULL"
+                + official_scope,
+                official_parameters,
+            ).fetchone()[0]
+        )
     units = len(eligible)
     covered = len(covered_question_ids)
     return {
@@ -1855,12 +1887,25 @@ def _context_report(
     connection: sqlite3.Connection,
     contest_id: str | None,
     eligibility_scope: EligibilityScope,
+    question_ids: set[str] | None = None,
 ) -> dict[str, dict[str, int]]:
     conditions = ["g.status = 'confirmed'"] if eligibility_scope == "canonical" else []
     if contest_id is not None:
         conditions.append("g.contest_id = ?")
+    if question_ids is not None:
+        if not question_ids:
+            return {}
+        placeholders = ",".join("?" for _ in question_ids)
+        conditions.append(
+            "EXISTS (SELECT 1 FROM question_group_occurrences scoped_go "
+            "JOIN question_occurrences scoped_o ON scoped_o.id=scoped_go.occurrence_id "
+            "WHERE scoped_go.group_id=g.id AND scoped_go.status='active' "
+            f"AND scoped_o.question_id IN ({placeholders}))"  # noqa: S608
+        )
     clause = "" if not conditions else "WHERE " + " AND ".join(conditions)
-    parameters: tuple[str, ...] = () if contest_id is None else (contest_id,)
+    parameters = ([] if contest_id is None else [contest_id]) + (
+        [] if question_ids is None else sorted(question_ids)
+    )
     rows = connection.execute(
         """
         SELECT COALESCE(r.display_name,'[cargo desconhecido]') AS role,
@@ -1879,7 +1924,7 @@ def _context_report(
         + clause
         + " GROUP BY r.display_name,sh.official_name,discipline "
         "ORDER BY r.display_name,sh.official_name,discipline",
-        parameters,
+        tuple(parameters),
     ).fetchall()
     return {
         f"{row['role']} | {row['shift']} | {row['discipline']}": {
@@ -1906,6 +1951,7 @@ def run_canonical_classification(
     progress_callback: Callable[[CanonicalClassificationReport], None] | None = None,
     queue_ineligible: bool = True,
     eligibility_scope: EligibilityScope = "canonical",
+    question_ids: set[str] | None = None,
 ) -> CanonicalClassificationReport:
     if limit is not None and limit < 1:
         raise CanonicalClassificationError("limit deve ser positivo")
@@ -1996,7 +2042,7 @@ def run_canonical_classification(
             raise CanonicalClassificationError("run_id pertence a outra configuração")
         resume_cursor = cast(str | None, existing["cursor_canonical_question_id"])
         run_config_validated = True
-        rows = _canonical_rows(connection, contest_id)
+        rows = _canonical_rows(connection, contest_id, question_ids)
         if queue_ineligible:
             _queue_ineligible(
                 connection,
@@ -2039,7 +2085,9 @@ def run_canonical_classification(
             report.processed = len(selected)
             report.remaining = len(eligible) - len(selected)
             report.status = "paused" if report.remaining else "completed"
-            report.by_context = _context_report(connection, contest_id, eligibility_scope)
+            report.by_context = _context_report(
+                connection, contest_id, eligibility_scope, question_ids
+            )
             connection.rollback()
             return report
 
@@ -2082,7 +2130,9 @@ def run_canonical_classification(
                 report.processed = processed
                 report.remaining = len(eligible) - processed
                 report.status = "paused"
-                report.by_context = _context_report(connection, contest_id, eligibility_scope)
+                report.by_context = _context_report(
+                    connection, contest_id, eligibility_scope, question_ids
+                )
                 connection.execute(
                     "UPDATE canonical_classification_runs SET status = 'paused',"
                     "cursor_canonical_question_id = ?,report_json = ?,finished_at = NULL "
@@ -2097,7 +2147,9 @@ def run_canonical_classification(
                 report.processed = processed
                 report.remaining = len(eligible) - processed
                 report.status = "paused"
-                report.by_context = _context_report(connection, contest_id, eligibility_scope)
+                report.by_context = _context_report(
+                    connection, contest_id, eligibility_scope, question_ids
+                )
                 connection.execute(
                     "UPDATE canonical_classification_runs SET status = 'paused',"
                     "cursor_canonical_question_id = ?,report_json = ?,finished_at = NULL "
@@ -2110,7 +2162,9 @@ def run_canonical_classification(
         report.processed = processed
         report.remaining = len(eligible) - processed
         report.status = "paused" if report.remaining else "completed"
-        report.by_context = _context_report(connection, contest_id, eligibility_scope)
+        report.by_context = _context_report(
+            connection, contest_id, eligibility_scope, question_ids
+        )
         connection.execute(
             "UPDATE canonical_classification_runs SET status = ?,"
             "cursor_canonical_question_id = ?,report_json = ?,finished_at = ? WHERE id = ?",
