@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from contextlib import suppress
 from importlib import import_module
 from typing import Protocol, cast
 
@@ -127,6 +128,9 @@ class PersistentScraplingSession:
                 block_webrtc=True,
                 hide_canvas=True,
                 useragent=self.user_agent,
+                # O cliente externo já controla as tentativas; limitar o
+                # retry interno evita multiplicar uma navegação bloqueada.
+                retries=1,
             )
             session = manager.__enter__()
         except ScraplingUnavailableError:
@@ -168,10 +172,8 @@ class PersistentScraplingSession:
         self._manager = None
         self._session = None
         if manager is not None:
-            try:
+            with suppress(Exception):
                 manager.__exit__(None, None, None)
-            except Exception:
-                pass  # a sessao anterior ja estava com problema; seguimos com a nova tentativa
         self._manager, self._session = self._launch(headless=headless)
         self._headless = headless
 
@@ -206,7 +208,12 @@ class PersistentScraplingSession:
         try:
             response = _do_fetch()
         except Exception as exc:
-            first_failure = str(exc)
+            # Falha de rede/driver não é evidência de desafio. Reabrir uma
+            # segunda sessão headful aqui apenas duplica uma chamada que pode
+            # estar bloqueada indefinidamente no driver.
+            raise ScraplingSessionError(
+                f"falha do Scrapling ao carregar {url}: {exc}"
+            ) from exc
         else:
             if not _looks_blocked(response):
                 return response

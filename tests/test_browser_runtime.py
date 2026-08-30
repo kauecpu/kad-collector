@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import os
 import unittest
+from unittest.mock import patch
 
 from kad_collector.browser_runtime import (
+    BROWSER_STARTUP_TIMEOUT_SECONDS,
     INSTALL_HINT,
     BrowserRuntimeError,
     check_patchright_chromium,
@@ -61,6 +63,12 @@ class BrowserRuntimeTests(unittest.TestCase):
                 "uma falha ao iniciar o Patchright deve virar BrowserRuntimeError, "
                 f"nao {type(exc).__name__}: {exc}"
             )
+
+    def test_default_probe_uses_process_watchdog(self) -> None:
+        with patch("kad_collector.browser_runtime._run_default_probe_with_timeout") as watchdog:
+            check_patchright_chromium()
+
+        watchdog.assert_called_once_with(BROWSER_STARTUP_TIMEOUT_SECONDS)
 
 
 class ConfigurePlaywrightBrowsersPathTests(unittest.TestCase):

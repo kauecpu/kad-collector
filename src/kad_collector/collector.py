@@ -1357,6 +1357,11 @@ def collect_documents(
                             break
 
             if "browser" in source.discovery_strategies:
+                if isinstance(client, CollectionHttpClient):
+                    # Scrapling/Patchright leaves an asyncio loop associated
+                    # with this worker thread. Close it before browser_discover
+                    # starts Playwright's synchronous API.
+                    client.disable_scrapling()
                 for browser_page_url in source.start_urls:
                     check_paused([], set())
                     if not robots.can_fetch(browser_page_url, source.allowed_hosts):
@@ -1382,6 +1387,17 @@ def collect_documents(
                         )
                     except (BrowserUnavailableError, UnsafeUrlError, OSError, ValueError) as exc:
                         warnings.append(f"{source.id}: navegador indisponivel: {exc}")
+                    except Exception as exc:  # noqa: BLE001 - isolamento por fonte
+                        message = f"{source.id}: falha inesperada no navegador: {exc}"
+                        warnings.append(message)
+                        failures.append(
+                            CollectionFailure(
+                                source_id=source.id,
+                                url=browser_page_url,
+                                stage="discovery",
+                                message=message,
+                            )
+                        )
 
             remaining = (
                 None

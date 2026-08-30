@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Startup checks for the Patchright/Chromium browser runtime.
 
 The desktop executable (built via ``KADCollector.spec`` with PyInstaller)
@@ -14,10 +12,15 @@ actionable error instead of letting the .exe crash silently or with a
 traceback the end user cannot act on.
 """
 
+from __future__ import annotations
+
+import multiprocessing
 import os
 from collections.abc import Callable, MutableMapping
+from multiprocessing.connection import Connection
 
 INSTALL_HINT = "python -m patchright install chromium"
+BROWSER_STARTUP_TIMEOUT_SECONDS = 20.0
 
 
 class BrowserRuntimeError(RuntimeError):
@@ -58,6 +61,59 @@ def _default_launch_probe() -> None:
         browser.close()
 
 
+def _launch_probe_worker(channel: Connection) -> None:
+    """Run the browser probe in a child process that can be terminated."""
+
+    try:
+        _default_launch_probe()
+    except BaseException as exc:  # pragma: no cover - executed in child process
+        channel.send(("error", type(exc).__name__, str(exc)))
+    else:
+        channel.send(("ok", "", ""))
+    finally:
+        channel.close()
+
+
+def _run_default_probe_with_timeout(timeout_seconds: float) -> None:
+    """Run Patchright preflight with a hard process-level timeout."""
+
+    multiprocessing.freeze_support()
+    context = multiprocessing.get_context("spawn")
+    receiver, sender = context.Pipe(duplex=False)
+    process = context.Process(target=_launch_probe_worker, args=(sender,))
+    try:
+        process.start()
+    except Exception:
+        receiver.close()
+        sender.close()
+        raise
+    sender.close()
+    try:
+        if not receiver.poll(timeout_seconds):
+            process.terminate()
+            process.join(timeout=2)
+            raise BrowserRuntimeError(
+                "tempo esgotado ao iniciar o Chromium do Patchright "
+                f"({timeout_seconds:.0f}s); o processo foi encerrado. "
+                f'Rode "{INSTALL_HINT}" e tente novamente.'
+            )
+        result, error_type, detail = receiver.recv()
+    finally:
+        receiver.close()
+        if process.is_alive():
+            process.join(timeout=2)
+            if process.is_alive():
+                process.terminate()
+                process.join(timeout=2)
+        else:
+            process.join(timeout=2)
+    if result == "error":
+        raise BrowserRuntimeError(
+            "Nao foi possivel iniciar o Chromium do Patchright "
+            f"({error_type}: {detail}). Rode \"{INSTALL_HINT}\" e tente novamente."
+        )
+
+
 def check_patchright_chromium(*, launch_probe: Callable[[], None] | None = None) -> None:
     """Raise :class:`BrowserRuntimeError` if Chromium cannot be launched.
 
@@ -71,9 +127,14 @@ def check_patchright_chromium(*, launch_probe: Callable[[], None] | None = None)
     such failure is captured and re-raised legibly.
     """
 
-    probe = launch_probe or _default_launch_probe
+    probe = launch_probe
     try:
-        probe()
+        if probe is None:
+            _run_default_probe_with_timeout(BROWSER_STARTUP_TIMEOUT_SECONDS)
+        else:
+            probe()
+    except BrowserRuntimeError:
+        raise
     except ImportError as exc:
         raise BrowserRuntimeError(
             "Patchright nao esta instalado. Instale o extra 'browser' do "
