@@ -612,6 +612,7 @@ class CollectionEngineTests(unittest.TestCase):
 
         def respond(request: httpx.Request) -> httpx.Response:
             self.assertEqual(request.headers["Range"], "bytes=8-")
+            self.assertEqual(request.headers["Accept-Encoding"], "identity")
             return httpx.Response(
                 206,
                 content=payload[8:],
@@ -769,9 +770,9 @@ class CollectionEngineTests(unittest.TestCase):
         url = "https://pci.example.test/prova.pdf"
         pdf_payload = b"%PDF-1.4\nresolvido-pelo-solver\n%%EOF"
         challenge_html = (
-            "<html><title>Just a moment...</title>"
-            '<div class="cf-turnstile"></div></html>'
-        ).encode("utf-8")
+            b"<html><title>Just a moment...</title>"
+            b'<div class="cf-turnstile"></div></html>'
+        )
 
         def respond(request: httpx.Request) -> httpx.Response:
             return httpx.Response(
@@ -820,9 +821,9 @@ class CollectionEngineTests(unittest.TestCase):
     def test_download_reports_clear_error_when_scrapling_also_blocked(self) -> None:
         url = "https://pci.example.test/prova.pdf"
         challenge_html = (
-            "<html><title>Just a moment...</title>"
-            '<div class="cf-turnstile"></div></html>'
-        ).encode("utf-8")
+            b"<html><title>Just a moment...</title>"
+            b'<div class="cf-turnstile"></div></html>'
+        )
 
         def respond(request: httpx.Request) -> httpx.Response:
             return httpx.Response(
