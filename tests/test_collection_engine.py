@@ -138,6 +138,50 @@ class CollectionEngineTests(unittest.TestCase):
         self.assertIs(factory_options[0]["solve_cloudflare"], True)
         self.assertFalse(session.fetches[0][1]["google_search"])
 
+    def test_scrapling_response_does_not_decode_browser_decoded_body_again(self) -> None:
+        payload = b"<html><body>corpo ja decodificado</body></html>"
+
+        for encoding in ("gzip", "br"):
+            with self.subTest(encoding=encoding):
+                session = FakeScraplingSession(
+                    [
+                        SimpleNamespace(
+                            url="https://example.test/page",
+                            status=200,
+                            headers={
+                                "Content-Type": "text/html; charset=utf-8",
+                                "Content-Encoding": encoding,
+                                "Content-Length": "9999",
+                                "X-Fixture": "preserved",
+                            },
+                            body=payload,
+                        )
+                    ]
+                )
+
+                def unexpected_http(_request: httpx.Request) -> httpx.Response:
+                    raise AssertionError("httpx nao deveria carregar a pagina")
+
+                client = self.client(
+                    httpx.MockTransport(unexpected_http),
+                    page_transport="scrapling",
+                    scrapling_session_factory=lambda _session=session, **_options: _session,
+                )
+                with patch(
+                    "kad_collector.collection_transport.validate_public_url",
+                    side_effect=lambda url, _hosts: url,
+                ):
+                    result = client.get(
+                        "https://example.test/page", ["example.test"], 10_000
+                    )
+                client.close()
+
+                self.assertEqual(result.body, payload)
+                self.assertEqual(result.headers.get("Content-Type"), "text/html; charset=utf-8")
+                self.assertEqual(result.headers.get("X-Fixture"), "preserved")
+                self.assertIsNone(result.headers.get("Content-Encoding"))
+                self.assertEqual(result.headers.get("Content-Length"), str(len(payload)))
+
     def test_disable_scrapling_closes_session_before_sync_browser_phase(self) -> None:
         session = FakeScraplingSession([])
 
