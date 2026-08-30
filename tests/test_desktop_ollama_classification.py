@@ -9,6 +9,7 @@ from http import HTTPStatus
 from importlib import resources
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -239,6 +240,31 @@ class DesktopOllamaClassificationTests(unittest.TestCase):
         self.assertEqual(after["correct_answer"], before["correct_answer"])
         self.assertEqual(after["answer_status"], before["answer_status"])
         self.assertEqual(admin.unloads, [DESKTOP_OLLAMA_MODEL])
+
+    def test_manager_batches_checkpoints_and_hardware_rechecks(self) -> None:
+        fixture, rows = _seed_canonical(self.root, second_number=True)
+        for _, question_id in rows:
+            _clear_fields(fixture, question_id, {"level"})
+        provider = FakeProvider(_level_decision())
+        admin = FakeAdmin()
+        with patch.dict(
+            "os.environ",
+            {
+                "KAD_QWEN_CHECKPOINT_INTERVAL": "2",
+                "KAD_QWEN_HARDWARE_RECHECK_INTERVAL": "2",
+            },
+        ):
+            manager = self._manager(fixture, admin, provider)
+            preview = _preview(manager)
+            started = _start(manager, preview)
+            manager.wait()
+
+        status = manager.status(started["runId"])
+        self.assertEqual(status["state"], "completed")
+        self.assertEqual(status["processed"], 2)
+        self.assertEqual(status["performance"]["checkpointInterval"], 2)
+        self.assertEqual(status["performance"]["hardwareRecheckInterval"], 2)
+        self.assertEqual(status["performance"]["hardwareChecks"], 2)
 
     def test_gpu_loss_after_inference_pauses_without_creating_review(self) -> None:
         fixture, rows = _seed_canonical(self.root)

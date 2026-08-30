@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
 import threading
+import time
 import uuid
 from collections.abc import Callable, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -51,6 +53,29 @@ DESKTOP_OLLAMA_ENDPOINT = "http://127.0.0.1:11434"
 DESKTOP_OLLAMA_JOB_VERSION = "desktop-qwen8b-classification-v2"
 DEFAULT_BATCH_LIMIT = 25
 MAX_BATCH_LIMIT = 250
+DEFAULT_CHECKPOINT_INTERVAL = 5
+DEFAULT_HARDWARE_RECHECK_INTERVAL = 5
+
+
+def _configured_positive_int(name: str, default: int, maximum: int) -> int:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    try:
+        parsed = int(value)
+    except ValueError:
+        return default
+    return parsed if 1 <= parsed <= maximum else default
+
+
+def configured_checkpoint_interval() -> int:
+    return _configured_positive_int("KAD_QWEN_CHECKPOINT_INTERVAL", DEFAULT_CHECKPOINT_INTERVAL, 50)
+
+
+def configured_hardware_recheck_interval() -> int:
+    return _configured_positive_int(
+        "KAD_QWEN_HARDWARE_RECHECK_INTERVAL", DEFAULT_HARDWARE_RECHECK_INTERVAL, 50
+    )
 
 
 def _now() -> str:
@@ -201,21 +226,30 @@ class _GatedProvider:
         provider: CanonicalAIProvider,
         admin: OllamaAdminClient,
         command_runner: OllamaCommandRunner | None,
+        hardware_recheck_interval: int = DEFAULT_HARDWARE_RECHECK_INTERVAL,
     ) -> None:
+        if hardware_recheck_interval < 1:
+            raise ValueError("hardware_recheck_interval deve ser positivo")
         if provider.name != self.name or provider.model != self.model:
             raise CanonicalClassificationError("o provedor desktop diverge de qwen3:8b local")
         self._provider = provider
         self._admin = admin
         self._command_runner = command_runner
+        self._hardware_recheck_interval = hardware_recheck_interval
+        self._request_count = 0
+        self.hardware_checks = 0
 
     def enrich(self, request: CanonicalAIRequest) -> CanonicalAIResult:
         result = self._provider.enrich(request)
-        try:
-            require_qwen8b_full_gpu(
-                self._admin, command_runner=self._command_runner
-            )
-        except CanonicalClassificationError as exc:
-            raise OllamaHardwareGateError(str(exc)) from exc
+        self._request_count += 1
+        if self._request_count == 1 or self._request_count % self._hardware_recheck_interval == 0:
+            try:
+                require_qwen8b_full_gpu(
+                    self._admin, command_runner=self._command_runner
+                )
+            except CanonicalClassificationError as exc:
+                raise OllamaHardwareGateError(str(exc)) from exc
+            self.hardware_checks += 1
         return result
 
     def close(self) -> None:
@@ -251,6 +285,8 @@ class DesktopOllamaClassificationManager:
         self._command_runner = command_runner
         self._taxonomy = taxonomy
         self._preparation = DesktopPreparationManager(store)
+        self._checkpoint_interval = configured_checkpoint_interval()
+        self._hardware_recheck_interval = configured_hardware_recheck_interval()
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="kad-qwen8b")
         self._future: Future[None] | None = None
         self._lock = threading.Lock()
@@ -338,6 +374,7 @@ class DesktopOllamaClassificationManager:
             connection.commit()
 
     def _passive_counts(self, resolved: ResolvedDesktopScope) -> dict[str, Any]:
+        started = time.perf_counter()
         source = sqlite3.connect(self.store.path, timeout=30)
         memory = sqlite3.connect(":memory:")
         memory.row_factory = sqlite3.Row
@@ -408,6 +445,7 @@ class DesktopOllamaClassificationManager:
             "qwenRequired": report.ai_candidates,
             "missingFields": dict(sorted(report.requested_fields.items())),
             "exclusionReasons": exclusion_reasons,
+            "performance": {"previewMs": (time.perf_counter() - started) * 1000},
             **details,
         }
 
@@ -643,6 +681,7 @@ class DesktopOllamaClassificationManager:
         row = self._job_row(run_id)
         if row is None:
             return {"state": "idle"}
+        report = json.loads(cast(str, row["report_json"]))
         return {
             "runId": row["id"],
             "state": row["status"],
@@ -665,6 +704,7 @@ class DesktopOllamaClassificationManager:
             "createdAt": row["created_at"],
             "updatedAt": row["updated_at"],
             "finishedAt": row["finished_at"],
+            "performance": report.get("performance", {}),
         }
 
     def pause(self, run_id: str) -> dict[str, Any]:
@@ -785,7 +825,10 @@ class DesktopOllamaClassificationManager:
                 )
                 connection.commit()
             provider = _GatedProvider(
-                self._provider_factory(), admin, self._command_runner
+                self._provider_factory(),
+                admin,
+                self._command_runner,
+                hardware_recheck_interval=self._hardware_recheck_interval,
             )
             with closing(self.store._connect()) as connection:
                 report = run_canonical_classification(
@@ -800,11 +843,19 @@ class DesktopOllamaClassificationManager:
                     progress_callback=lambda item: self._update_progress(
                         run_id, base_processed, base_metrics, item
                     ),
+                    checkpoint_interval=self._checkpoint_interval,
                     taxonomy=self._taxonomy,
                     queue_ineligible=False,
                     eligibility_scope="answered",
                     question_ids=scoped_question_ids,
                 )
+            report.performance.update(
+                {
+                    "checkpointInterval": self._checkpoint_interval,
+                    "hardwareRecheckInterval": self._hardware_recheck_interval,
+                    "hardwareChecks": provider.hardware_checks,
+                }
+            )
             self._update_progress(run_id, base_processed, base_metrics, report)
             current = self._job_row(run_id)
             processed = int(current["processed"]) if current is not None else base_processed

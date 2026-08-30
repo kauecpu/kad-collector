@@ -1092,7 +1092,7 @@ function schedulePoll() {
     ['queued', 'running', 'pausing', 'cancelling', 'processing'].includes(job.status));
   const active = activeProcessing || activeCollection;
   if (active) {
-    state.polling = setTimeout(() => loadBootstrap({preserveQuery: true}).catch(() => {}), 1400);
+    state.polling = setTimeout(() => loadBootstrap({preserveQuery: true}).catch(() => {}), 2000);
   }
 }
 
@@ -2310,7 +2310,13 @@ function renderLocalAIStatus() {
     `Sugestões aceitas ${status.acceptedSuggestions}`,
     `Para revisão ${status.reviewRequired}`,
     `Falhas ${status.failures}`,
-  ].forEach((copy) => {
+    status.performance?.classificationMs
+      ? `Tempo de classificação ${(status.performance.classificationMs / 1000).toFixed(1)}s`
+      : null,
+    status.performance?.hardwareChecks
+      ? `Verificações de GPU ${status.performance.hardwareChecks}`
+      : null,
+  ].filter(Boolean).forEach((copy) => {
     const item = document.createElement('span');
     item.textContent = copy;
     metrics.append(item);

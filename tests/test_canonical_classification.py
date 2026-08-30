@@ -923,6 +923,48 @@ class CanonicalClassificationTests(unittest.TestCase):
         self.assertEqual(resumed.remaining, 0)
         self.assertEqual(final_item_count, 2)
 
+    def test_provider_failure_rolls_back_unconfirmed_checkpoint_block(self) -> None:
+        fixture, rows = _seed_canonical(self.root, second_number=True)
+        for _, question_id in rows:
+            _clear_fields(fixture, question_id, {"level"})
+        first_provider = FailsAfterOneProvider(_level_decision())
+
+        with closing(fixture.store._connect()) as connection:
+            paused = run_canonical_classification(
+                connection,
+                apply=True,
+                enable_ai=True,
+                provider=first_provider,
+                run_id="provider-block-paused",
+                taxonomy=self.taxonomy,
+                checkpoint_interval=2,
+            )
+            paused_item_count = connection.execute(
+                "SELECT COUNT(*) FROM canonical_classification_run_items "
+                "WHERE run_id = 'provider-block-paused'"
+            ).fetchone()[0]
+            resumed = run_canonical_classification(
+                connection,
+                apply=True,
+                enable_ai=True,
+                provider=FakeProvider(_level_decision()),
+                run_id="provider-block-paused",
+                taxonomy=self.taxonomy,
+                checkpoint_interval=2,
+            )
+            final_item_count = connection.execute(
+                "SELECT COUNT(*) FROM canonical_classification_run_items "
+                "WHERE run_id = 'provider-block-paused'"
+            ).fetchone()[0]
+
+        self.assertEqual(paused.status, "paused")
+        self.assertEqual(paused.processed, 0)
+        self.assertEqual(paused.remaining, 2)
+        self.assertEqual(paused_item_count, 0)
+        self.assertEqual(resumed.status, "completed")
+        self.assertEqual(resumed.processed, 2)
+        self.assertEqual(final_item_count, 2)
+
     def test_keyboard_interrupt_preserves_checkpoint_for_resume(self) -> None:
         fixture, rows = _seed_canonical(self.root, second_number=True)
         for _, question_id in rows:

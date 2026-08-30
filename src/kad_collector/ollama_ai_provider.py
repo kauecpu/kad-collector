@@ -20,7 +20,24 @@ from .canonical_classification import (
 
 DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 DEFAULT_CONTEXT_LENGTH = 4096
-DEFAULT_OUTPUT_TOKENS = 512
+DEFAULT_OUTPUT_TOKENS = 192
+
+
+def _positive_int_from_env(name: str, default: int, maximum: int) -> int:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    try:
+        parsed = int(value)
+    except ValueError:
+        return default
+    return parsed if 1 <= parsed <= maximum else default
+
+
+def configured_output_tokens() -> int:
+    """Return the bounded response budget used by local Ollama requests."""
+    configured = _positive_int_from_env("KAD_OLLAMA_NUM_PREDICT", DEFAULT_OUTPUT_TOKENS, 512)
+    return configured if configured >= 128 else DEFAULT_OUTPUT_TOKENS
 
 
 class OllamaBlockingError(CanonicalAIProviderUnavailableError):
@@ -129,7 +146,7 @@ class OllamaCanonicalEnrichmentProvider:
             "options": {
                 "temperature": 0,
                 "num_ctx": DEFAULT_CONTEXT_LENGTH,
-                "num_predict": DEFAULT_OUTPUT_TOKENS,
+                "num_predict": configured_output_tokens(),
                 "seed": 0,
             },
         }

@@ -195,6 +195,21 @@ decisão editorial e o modelo é descarregado ao
 parar ou concluir. Respostas, gabaritos, vínculos, classificações existentes e decisões
 humanas não são alterados. O desktop não carrega o 14B nem usa provedor externo nesse fluxo.
 
+### Desempenho do Qwen local
+
+O desktop mantém o `qwen3:8b` aquecido durante a execução e limita a resposta a 192
+tokens por padrão (`KAD_OLLAMA_NUM_PREDICT`, aceitando valores de 128 a 512). O resultado
+é persistido em checkpoints de cinco questões (`KAD_QWEN_CHECKPOINT_INTERVAL`, de 1 a 50),
+e a verificação completa de GPU é repetida no início e a cada cinco chamadas
+(`KAD_QWEN_HARDWARE_RECHECK_INTERVAL`, de 1 a 50). Esses intervalos reduzem I/O e chamadas
+administrativas sem liberar uma execução que perdeu o requisito de `100% GPU`.
+
+O relatório e o status da execução exibem tempos de classificação, chamada ao Qwen e persistência,
+além da quantidade de verificações de hardware. O processamento continua serial por padrão: várias
+chamadas simultâneas podem saturar a VRAM e piorar o tempo total. Pausar durante um bloco confirma
+o trecho já processado e atualiza o cursor; uma falha do provedor reverte somente o bloco ainda não
+confirmado. Ao retomar, o cursor impede duplicação.
+
 O contexto de vizinhanca so e propagado quando as questoes anterior, atual e seguinte possuem
 o mesmo identificador explicito de bloco. Ausencia de bloco nunca significa bloco compartilhado.
 As regras locais pontuam palavras e expressoes completas; uma palavra isolada so especializa
