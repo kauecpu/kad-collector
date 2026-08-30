@@ -114,6 +114,47 @@ class PersistentScraplingSessionTests(unittest.TestCase):
         self.assertIs(result, ok)
         self.assertEqual(len(calls), 2)
 
+    def test_captcha_marker_after_twenty_kilobytes_triggers_headful_retry(self) -> None:
+        blocked = SimpleNamespace(
+            url="https://x.test",
+            status=200,
+            headers={},
+            body=b"<style>" + (b"x" * 25_000) + b'</style><div class="cf-turnstile"></div>',
+        )
+        ok = SimpleNamespace(url="https://x.test", status=200, headers={}, body=b"ok")
+        factory, calls = _factory([_FakeManager([blocked]), _FakeManager([ok])])
+
+        session = PersistentScraplingSession(
+            user_agent="KADCollector/Test", timeout_seconds=30, session_factory=factory
+        )
+        result = session.fetch("https://x.test")
+        session.close()
+
+        self.assertIs(result, ok)
+        self.assertEqual(len(calls), 2)
+
+    def test_solved_challenge_with_public_pdf_link_needs_no_retry(self) -> None:
+        solved = SimpleNamespace(
+            url="https://x.test",
+            status=200,
+            headers={},
+            body=(
+                b'<div class="cf-turnstile"></div>'
+                b'<a href="https://x.test/prova.pdf">Prova</a>'
+            ),
+        )
+        manager = _FakeManager([solved])
+        factory, calls = _factory([manager])
+
+        session = PersistentScraplingSession(
+            user_agent="KADCollector/Test", timeout_seconds=30, session_factory=factory
+        )
+        result = session.fetch("https://x.test")
+        session.close()
+
+        self.assertIs(result, solved)
+        self.assertEqual(len(calls), 1)
+
     def test_headless_launch_failure_falls_back_to_headful(self) -> None:
         ok = SimpleNamespace(url="https://x.test", status=200, headers={}, body=b"ok")
         failing_manager = _FakeManager([], fail_start=True)

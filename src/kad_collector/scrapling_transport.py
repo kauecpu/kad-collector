@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Mapping
 from contextlib import suppress
 from importlib import import_module
@@ -56,6 +57,9 @@ _CHALLENGE_BODY_MARKERS = (
     b"cloudflare ray id",
     b"cf-chl-",
 )
+_PUBLIC_PDF_LINK = re.compile(
+    rb"href\s*=\s*['\"][^'\"]+\.pdf(?:[?#][^'\"]*)?['\"]", re.IGNORECASE
+)
 
 
 def _looks_blocked(response: ScraplingResponse) -> bool:
@@ -66,8 +70,10 @@ def _looks_blocked(response: ScraplingResponse) -> bool:
         status = 0
     if status == 403:
         return True
-    body = bytes(response.body)[:20_000].lower()
-    return any(marker in body for marker in _CHALLENGE_BODY_MARKERS)
+    body = bytes(response.body)[:1_000_000].lower()
+    return not _PUBLIC_PDF_LINK.search(body) and any(
+        marker in body for marker in _CHALLENGE_BODY_MARKERS
+    )
 
 
 class PersistentScraplingSession:

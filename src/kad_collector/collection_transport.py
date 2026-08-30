@@ -497,6 +497,7 @@ class CollectionHttpClient:
                         attempt=attempt,
                         wait_seconds=waited,
                         cache_status="miss",
+                        detail=f"transport={'scrapling' if use_scrapling else 'http'}",
                     )
                     return EngineHttpResult(
                         url=str(response.url),
