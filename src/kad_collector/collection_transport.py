@@ -411,9 +411,18 @@ class CollectionHttpClient:
         assert self.scrapling is not None
         page = self.scrapling.fetch(url, extra_headers=headers)
         final_url = str(page.url)
+        # Scrapling exposes the body after the browser has decoded the
+        # response.  The original Content-Encoding and Content-Length headers
+        # therefore describe different bytes and must not be forwarded to
+        # httpx, whose response decoder would try to decode the body again.
+        response_headers = {
+            str(name): str(value)
+            for name, value in page.headers.items()
+            if str(name).casefold() not in {"content-encoding", "content-length"}
+        }
         return httpx.Response(
             status_code=int(page.status),
-            headers={str(name): str(value) for name, value in page.headers.items()},
+            headers=response_headers,
             content=bytes(page.body),
             request=httpx.Request("GET", final_url),
         )
