@@ -212,9 +212,23 @@ def _generic_parse(
     current: _QuestionBuilder | None = None
     for page in pages:
         page_number = int(page["page_number"])
-        for raw_line in str(page["text"]).splitlines():
+        page_lines = str(page["text"]).splitlines()
+        has_pdf_header = any(
+            line.strip().casefold() == "www.pciconcursos.com.br"
+            or line.strip().casefold().startswith("pcimarkpci ")
+            or re.fullmatch(r"GABARITO(?:\s+[1-9]\d*)?", line.strip(), re.IGNORECASE)
+            for line in page_lines[:8]
+        )
+        for line_index, raw_line in enumerate(page_lines):
             line = raw_line.strip()
             if not line:
+                continue
+            if line_index < 8 and (
+                (has_pdf_header and line == str(page_number))
+                or re.fullmatch(r"GABARITO(?:\s+[1-9]\d*)?", line, re.IGNORECASE)
+                or line.casefold() == "www.pciconcursos.com.br"
+                or line.casefold().startswith("pcimarkpci ")
+            ):
                 continue
             question_match = _QUESTION_LINE.match(line)
             if question_match is not None:
@@ -223,6 +237,12 @@ def _generic_parse(
                     continue
                 explicit = _EXPLICIT_QUESTION.match(line) is not None
                 punctuation = bool(re.search(rf"{number}\s*[).:\-]", line))
+                nested_number = (
+                    current is not None
+                    and not explicit
+                    and number <= current.number
+                    and punctuation
+                )
                 standalone = not question_match.group("text").strip()
                 standalone_allowed = (
                     allow_standalone_numbers
@@ -230,7 +250,9 @@ def _generic_parse(
                     and number <= 200
                     and (current is None or current.collecting_content)
                 )
-                if explicit or (allow_punctuated_numbers and punctuation) or standalone_allowed:
+                if not nested_number and (
+                    explicit or (allow_punctuated_numbers and punctuation) or standalone_allowed
+                ):
                     _flush(current, questions, warnings)
                     current = _QuestionBuilder(number=number, pages={page_number})
                     inline = question_match.group("text").strip()

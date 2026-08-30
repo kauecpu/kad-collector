@@ -1605,6 +1605,54 @@ C D""",
         self.assertEqual(metadata.role, "Cuidador")
         self.assertEqual(metadata.variant, "Tipo 2")
 
+    def test_pci_metadata_uses_registered_board_from_detail_url(self) -> None:
+        source = self.manager._source("pci_concursos")
+        pdf_path = self.root / "escriturario.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4\nfixture\n%%EOF")
+        document = DocumentRecord(
+            source_id=source.id,
+            source_name=source.name,
+            document_type="exam",
+            title="Baixar escriturario-agente-comercial.pdf",
+            original_url="https://www.pciconcursos.com.br/provas/123/prova.pdf",
+            resolved_url="https://arq.pciconcursos.com.br/provas/123/prova.pdf",
+            local_path=str(pdf_path),
+            sha256="e" * 64,
+            content_type="application/pdf",
+            size_bytes=pdf_path.stat().st_size,
+            downloaded_at=datetime.now(UTC),
+            authorization_basis="Fonte pública.",
+            metadata={
+                "orgao": "Banco do Brasil",
+                "cargo": "Escriturário - Agente Comercial",
+                "ano_publicacao": "2023",
+            },
+        )
+
+        metadata = _import_metadata(
+            source,
+            (
+                "https://www.pciconcursos.com.br/provas/download/"
+                "escriturario-agente-comercial-banco-do-brasil-cesgranrio-2023"
+            ),
+            document,
+        )
+
+        self.assertEqual(metadata.board, "CESGRANRIO")
+        self.assertEqual(metadata.concurso, "PCI Concursos - Banco do Brasil")
+        self.assertEqual(metadata.year, 2023)
+        self.assertEqual(metadata.role, "Escriturário - Agente Comercial")
+
+    def test_pci_metadata_does_not_guess_unregistered_board_slug(self) -> None:
+        source = self.manager._source("pci_concursos")
+
+        metadata = _import_metadata(
+            source,
+            "https://www.pciconcursos.com.br/provas/download/cargo-banco-do-brasil-outra-2023",
+        )
+
+        self.assertIsNone(metadata.board)
+
     def test_fgv_filename_codes_are_removed_from_editorial_role(self) -> None:
         source = self.manager._source("fgv_conhecimento")
         pdf_path = self.root / "auditor.pdf"

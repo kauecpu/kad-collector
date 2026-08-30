@@ -1387,7 +1387,10 @@ def collect_documents(
                             warnings.append(f"{source.id}: endpoint JSON interrompido: {exc}")
                             break
 
-            if "browser" in source.discovery_strategies:
+            # A estrategia de navegador e um fallback de descoberta. Se o HTML
+            # renderizado pelo transporte ja revelou PDFs validos, uma segunda
+            # navegacao apenas repete o acesso e pode apresentar outro desafio.
+            if "browser" in source.discovery_strategies and not source_links:
                 if isinstance(client, CollectionHttpClient):
                     # Scrapling/Patchright leaves an asyncio loop associated
                     # with this worker thread. Close it before browser_discover

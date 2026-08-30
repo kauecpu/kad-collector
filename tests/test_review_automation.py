@@ -121,6 +121,21 @@ class ReviewAutomationTests(unittest.TestCase):
         self.assertEqual(second[1].answer, "C")
         self.assertEqual(second[4].answer, "C")
 
+    def test_gabarito_blocks_are_selected_by_requested_number(self) -> None:
+        text = """
+BANCO DO BRASIL - PROVA A
+GABARITO 1
+1 - B 2 - C 3 - D
+GABARITO 2
+1 - E 2 - A 3 - B
+"""
+
+        entries = parse_answer_key(text, variant="Tipo 1")
+
+        self.assertEqual(
+            [entries[number].answer for number in range(1, 4)], ["B", "C", "D"]
+        )
+
     def test_fgv_grid_is_selected_by_role_and_type(self) -> None:
         text = """
 Cuidador – Tipo 1

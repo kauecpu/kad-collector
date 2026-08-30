@@ -595,21 +595,54 @@ def _field_from_sources(
                     for locator, role in answer_grid_roles
                 )
             )
-    if name == "variants" and not strong_groups:
-        for page_number, text in pages:
-            matches = re.findall(
-                r"(?i)(?:prova|tipo|variant|vers[aã]o)\s*V?\s*(\d+)", text
+    if name == "stage" and not strong_groups and document.source_id == "pci_concursos":
+        combined_text = "\n".join(text for _, text in pages)
+        if re.search(
+            r"(?i)\bquest(?:ões|oes)\s+objetivas\b|\bgabarito\s+[1-9]\d*\b",
+            combined_text,
+        ):
+            strong_groups.append(
+                (SemanticEvidence.pdf_text("pci:stage", "prova objetiva"),)
             )
-            if len(matches) > MAX_SEMANTIC_VALUES or any(
-                int(number) > MAX_SEMANTIC_NUMERIC_VALUE for number in matches
+    if name == "variants" and not strong_groups:
+        if document.source_id == "pci_concursos":
+            pci_variants = sorted(
+                {
+                    int(match.group("number"))
+                    for _, text in pages
+                    for match in re.finditer(
+                        r"(?im)^\s*gabarito\s+(?P<number>[1-9]\d*)\s*$", text
+                    )
+                }
+            )
+            if len(pci_variants) > MAX_SEMANTIC_VALUES or any(
+                number > MAX_SEMANTIC_NUMERIC_VALUE for number in pci_variants
             ):
                 return SemanticField.unknown(f"{name} excede limite semântico seguro")
-            values = tuple(f"tipo {int(number)}" for number in matches)
-            if values:
-                strong_groups.append(tuple(
-                    SemanticEvidence.pdf_text(f"page:{page_number}:variant", value)
-                    for value in values
-                ))
+            if pci_variants:
+                strong_groups.append(
+                    tuple(
+                        SemanticEvidence.pdf_text(
+                            "pci:gabarito-headers", f"tipo {number}"
+                        )
+                        for number in pci_variants
+                    )
+                )
+        if not strong_groups:
+            for page_number, text in pages:
+                matches = re.findall(
+                    r"(?i)(?:prova|tipo|variant|vers[aã]o)\s*V?\s*(\d+)", text
+                )
+                if len(matches) > MAX_SEMANTIC_VALUES or any(
+                    int(number) > MAX_SEMANTIC_NUMERIC_VALUE for number in matches
+                ):
+                    return SemanticField.unknown(f"{name} excede limite semântico seguro")
+                values = tuple(f"tipo {int(number)}" for number in matches)
+                if values:
+                    strong_groups.append(tuple(
+                        SemanticEvidence.pdf_text(f"page:{page_number}:variant", value)
+                        for value in values
+                    ))
         if document.declared_type == "answer_key" and not strong_groups:
             numbered_variants = tuple(
                 f"tipo {int(match.group('variant'))}"

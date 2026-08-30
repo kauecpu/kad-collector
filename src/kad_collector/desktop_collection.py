@@ -122,6 +122,24 @@ def _contest_name(source: SourceDefinition, url: str) -> str:
     return source.name
 
 
+def _registered_board_from_url(source: SourceDefinition, url: str) -> str | None:
+    """Return a board only when an official source URL carries registered evidence."""
+
+    if source.id != "pci_concursos":
+        return None
+    path_parts = [unquote(part) for part in urlsplit(url).path.split("/") if part]
+    if len(path_parts) < 3 or path_parts[-2].casefold() != "download":
+        return None
+    slug = path_parts[-1].casefold()
+    registered = {
+        "cesgranrio": "CESGRANRIO",
+    }
+    for token, board in registered.items():
+        if re.search(rf"(?:^|-){re.escape(token)}-(?:19|20)\d{{2}}$", slug):
+            return board
+    return None
+
+
 def _document_role(document: DocumentRecord | None) -> str | None:
     if document is None:
         return None
@@ -175,7 +193,7 @@ def _import_metadata(
         variant=_document_variant(document) if document is not None else None,
         document_type=document_type,
         concurso=metadata.get("concurso") or _contest_name(source, url),
-        board=metadata.get("banca"),
+        board=metadata.get("banca") or _registered_board_from_url(source, url),
         year=year,
         role=metadata.get("cargo") or _document_role(document),
         stage=metadata.get("etapa") or metadata.get("fase"),

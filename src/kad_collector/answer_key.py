@@ -31,6 +31,9 @@ _TABULAR_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _VARIANT_PATTERN = re.compile(r"\bV[1-9]\d*\b", re.IGNORECASE)
+_GABARITO_HEADING = re.compile(
+    r"^\s*GABARITO\s+(?P<number>[1-9]\d*)\s*$", re.IGNORECASE | re.MULTILINE
+)
 _GRID_HEADING = re.compile(
     r"^\s*(?P<label>.+?)\s*[-–—]\s*(?:(?:TIPO|PROVA)\s*)?"
     r"(?P<variant>[1-9]\d*)(?:\s*[-–—]\s*(?P<turn>Turno\s+[^()]+))?"
@@ -207,8 +210,27 @@ def parse_answer_key(
     if grid_entries is not None:
         return grid_entries
     entries: dict[int, AnswerEntry] = {}
-    variants = list(dict.fromkeys(item.upper() for item in _VARIANT_PATTERN.findall(text)))
     requested_variant_number = _variant_number(variant)
+    if requested_variant_number is not None:
+        headings = list(_GABARITO_HEADING.finditer(text))
+        selected_heading = next(
+            (
+                heading
+                for heading in headings
+                if int(heading.group("number")) == requested_variant_number
+            ),
+            None,
+        )
+        if selected_heading is not None:
+            next_heading = next(
+                (heading for heading in headings if heading.start() > selected_heading.start()),
+                None,
+            )
+            text = text[
+                selected_heading.end() :
+                next_heading.start() if next_heading is not None else None
+            ]
+    variants = list(dict.fromkeys(item.upper() for item in _VARIANT_PATTERN.findall(text)))
     normalized_variant = (
         f"V{requested_variant_number}"
         if requested_variant_number is not None

@@ -159,6 +159,56 @@ Instruções ao candidato.
         self.assertEqual(result.status, "completed")
         self.assertIn("1. item interno", result.objective_questions[0].statement)
 
+    def test_generic_parser_keeps_numbered_assertions_inside_question(self) -> None:
+        result = parse_question_document(
+            [
+                _page(
+                    1,
+                    "16\n"
+                    "Considere as assertivas a seguir.\n"
+                    "1) Primeira assertiva.\n"
+                    "2) Segunda assertiva.\n"
+                    "2023) Ultima assertiva.\n"
+                    "(A) Primeira resposta.\n"
+                    "(B) Segunda resposta.\n"
+                    "17\n"
+                    "Outro enunciado completo.\n"
+                    "(A) Primeira alternativa.\n"
+                    "(B) Segunda alternativa.\n",
+                )
+            ],
+            BankParsingContext(
+                document_id="generic-exam",
+                board="CESGRANRIO",
+                contest="TEST",
+                role="Cargo",
+            ),
+        )
+
+        self.assertEqual(
+            [question.number for question in result.objective_questions], [16, 17]
+        )
+
+    def test_generic_parser_ignores_repeated_pdf_page_headers(self) -> None:
+        result = parse_question_document(
+            [
+                _page(
+                    7,
+                    "7\nGABARITO 1\nBANCO DO BRASIL\n"
+                    "1\nEnunciado completo da questao.\n"
+                    "(A) Primeira alternativa.\n(B) Segunda alternativa.\n",
+                )
+            ],
+            BankParsingContext(
+                document_id="generic-exam",
+                board="CESGRANRIO",
+                contest="TEST",
+                role="Cargo",
+            ),
+        )
+
+        self.assertEqual([question.number for question in result.objective_questions], [1])
+
     def test_discursive_subitems_never_become_objective_alternatives(self) -> None:
         result = _parse(
             [
