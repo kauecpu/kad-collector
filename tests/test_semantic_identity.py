@@ -21,6 +21,61 @@ except ImportError:
 
 
 class SemanticContractTests(unittest.TestCase):
+    def test_pci_exam_derives_stage_and_variant_from_pdf_headers(self) -> None:
+        document = normalized_document(
+            Path("pci-exam.pdf"),
+            metadata={
+                "board": "CESGRANRIO",
+                "concurso": "Banco do Brasil",
+                "organization": "Banco do Brasil",
+                "role": "Escriturario - Agente Comercial",
+                "year": 2023,
+            },
+        ).model_copy(update={"source_id": "pci_concursos"})
+
+        profile = extract_semantic_profile(
+            document,
+            [
+                (
+                    1,
+                    "BANCO DO BRASIL - PROVA A GABARITO\n"
+                    "SELECAO EXTERNA 2022 / 001\n"
+                    "70 questoes objetivas\nGabarito 1",
+                )
+            ],
+        )
+
+        self.assertEqual(profile.identity.stage.normalized_values, ("prova objetiva",))
+        self.assertEqual(profile.identity.variants.normalized_values, ("tipo 1",))
+
+    def test_pci_answer_key_derives_all_gabarito_variants(self) -> None:
+        document = normalized_document(
+            Path("pci-answer-key.pdf"),
+            declared_type="answer_key",
+            metadata={
+                "board": "CESGRANRIO",
+                "concurso": "Banco do Brasil",
+                "organization": "Banco do Brasil",
+                "role": "Escriturario - Agente Comercial",
+                "year": 2023,
+            },
+        ).model_copy(update={"source_id": "pci_concursos"})
+
+        profile = extract_semantic_profile(
+            document,
+            [
+                (1, "BANCO DO BRASIL - Prova A\nGABARITO 1\n1 - B"),
+                (2, "GABARITO 2\n1 - C"),
+                (3, "GABARITO 3\n1 - D"),
+            ],
+        )
+
+        self.assertEqual(profile.identity.stage.normalized_values, ("prova objetiva",))
+        self.assertEqual(
+            profile.identity.variants.normalized_values,
+            ("tipo 1", "tipo 2", "tipo 3"),
+        )
+
     def test_fgv_exam_uses_structural_pdf_shift_when_manifest_omits_it(self) -> None:
         profile = extract_semantic_profile(
             normalized_document(

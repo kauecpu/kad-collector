@@ -75,7 +75,7 @@ def _variant_number(document: dict[str, Any]) -> int | None:
         if value
     )
     match = re.search(
-        r"(?<![A-Z0-9])(?:V|TIPO|PROVA)[-_ ]*(?P<number>[1-9]\d*)(?!\d)",
+        r"(?<![A-Z0-9])(?:V|TIPO|PROVA|GABARITO)[-_ ]*(?P<number>[1-9]\d*)(?!\d)",
         candidate,
         re.IGNORECASE,
     )

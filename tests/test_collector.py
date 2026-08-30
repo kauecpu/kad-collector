@@ -601,6 +601,8 @@ class LinkParsingTests(unittest.TestCase):
                 id="pci_concursos",
                 start_urls=[detail_url],
                 allowed_hosts=["www.pciconcursos.com.br", "arq.pciconcursos.com.br"],
+                discovery_strategies=["html", "browser"],
+                browser_enabled=True,
                 collection_url_patterns=[
                     r"^https://www\.pciconcursos\.com\.br/provas/"
                     r"(?:banco-do-brasil|download/[a-z0-9-]+)$"
@@ -613,7 +615,10 @@ class LinkParsingTests(unittest.TestCase):
                 collector=CollectorSettings(data_dir=temporary),
                 sources=[source],
             )
-            with patch("kad_collector.collector.SafeHttpClient", FixtureClient):
+            with (
+                patch("kad_collector.collector.SafeHttpClient", FixtureClient),
+                patch("kad_collector.collector.browser_discover") as browser_discovery,
+            ):
                 manifest, _ = collect_documents(config)
 
         self.assertEqual(
@@ -622,6 +627,8 @@ class LinkParsingTests(unittest.TestCase):
         )
         self.assertEqual(FixtureClient.requested[0], detail_url)
         self.assertEqual(set(FixtureClient.requested[1:]), {exam_url, key_url})
+        browser_discovery.assert_not_called()
+        self.assertEqual(manifest.failures, [])
 
     def test_valid_html_served_as_text_plain_is_discovered(self) -> None:
         page_url = "https://provas.example.gov.br/concurso"
