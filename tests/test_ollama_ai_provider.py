@@ -17,6 +17,7 @@ from kad_collector.canonical_classification import (
 from kad_collector.ollama_ai_provider import (
     OllamaCanonicalEnrichmentProvider,
     OllamaUnavailableError,
+    configured_output_tokens,
     validate_ollama_base_url,
 )
 
@@ -76,6 +77,15 @@ def _ollama_response() -> dict[str, Any]:
 
 
 class OllamaAIProviderTests(unittest.TestCase):
+    def test_output_token_budget_is_bounded_and_configurable(self) -> None:
+        self.assertEqual(configured_output_tokens(), 192)
+        with patch.dict(os.environ, {"KAD_OLLAMA_NUM_PREDICT": "128"}):
+            self.assertEqual(configured_output_tokens(), 128)
+        with patch.dict(os.environ, {"KAD_OLLAMA_NUM_PREDICT": "9999"}):
+            self.assertEqual(configured_output_tokens(), 192)
+        with patch.dict(os.environ, {"KAD_OLLAMA_NUM_PREDICT": "64"}):
+            self.assertEqual(configured_output_tokens(), 192)
+
     def test_defaults_to_loopback_without_api_key_or_background_call(self) -> None:
         with (
             patch.dict(os.environ, {}, clear=True),
@@ -127,7 +137,7 @@ class OllamaAIProviderTests(unittest.TestCase):
         self.assertEqual(sent["keep_alive"], "5m")
         self.assertEqual(
             sent["options"],
-            {"temperature": 0, "num_ctx": 4096, "num_predict": 512, "seed": 0},
+            {"temperature": 0, "num_ctx": 4096, "num_predict": 192, "seed": 0},
         )
         self.assertFalse(sent["format"]["additionalProperties"])
         path_schema = sent["format"]["properties"]["taxonomy"]["properties"][

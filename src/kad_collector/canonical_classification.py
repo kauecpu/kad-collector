@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 import uuid
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
@@ -374,6 +375,7 @@ class CanonicalClassificationReport:
     requested_fields: Counter[str] = field(default_factory=Counter)
     by_context: dict[str, dict[str, int]] = field(default_factory=dict)
     review_items: list[dict[str, Any]] = field(default_factory=list)
+    performance: dict[str, int | float] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -408,6 +410,7 @@ class CanonicalClassificationReport:
             "requestedFields": dict(sorted(self.requested_fields.items())),
             "byContext": dict(sorted(self.by_context.items())),
             "reviewItems": self.review_items,
+            "performance": dict(sorted(self.performance.items())),
         }
 
 
@@ -1721,7 +1724,11 @@ def _process_row(
     report.ai_sent += 1
     provider_succeeded = False
     try:
+        qwen_started = time.perf_counter()
         provider_result = provider.enrich(request)
+        report.performance["qwenMs"] = report.performance.get("qwenMs", 0) + (
+            time.perf_counter() - qwen_started
+        ) * 1000
         provider_succeeded = True
         report.input_tokens += provider_result.input_tokens or 0
         report.output_tokens += provider_result.output_tokens or 0
@@ -1949,12 +1956,16 @@ def run_canonical_classification(
     pending_only: bool = False,
     should_pause: Callable[[], bool] | None = None,
     progress_callback: Callable[[CanonicalClassificationReport], None] | None = None,
+    before_block_callback: Callable[[], None] | None = None,
     queue_ineligible: bool = True,
     eligibility_scope: EligibilityScope = "canonical",
     question_ids: set[str] | None = None,
+    checkpoint_interval: int = 1,
 ) -> CanonicalClassificationReport:
     if limit is not None and limit < 1:
         raise CanonicalClassificationError("limit deve ser positivo")
+    if checkpoint_interval < 1:
+        raise CanonicalClassificationError("checkpoint_interval deve ser positivo")
     if enable_ai and provider is None:
         raise CanonicalClassificationError("IA habilitada sem provedor explícito")
     if enable_ai and provider is not None and provider.name not in SUPPORTED_CANONICAL_AI_PROVIDERS:
@@ -1987,6 +1998,7 @@ def run_canonical_classification(
         ai_enabled=enable_ai,
     )
     changed_at = _now()
+    run_started = time.perf_counter()
     run_config_validated = False
     connection.execute("BEGIN IMMEDIATE")
     try:
@@ -2071,6 +2083,7 @@ def run_canonical_classification(
         selected = eligible[:limit] if limit is not None else eligible
         if not apply:
             for row in selected:
+                row_started = time.perf_counter()
                 _process_row(
                     connection,
                     row,
@@ -2082,24 +2095,55 @@ def run_canonical_classification(
                     report=report,
                     changed_at=changed_at,
                 )
+                report.performance["classificationMs"] = report.performance.get(
+                    "classificationMs", 0
+                ) + (time.perf_counter() - row_started) * 1000
             report.processed = len(selected)
             report.remaining = len(eligible) - len(selected)
             report.status = "paused" if report.remaining else "completed"
             report.by_context = _context_report(
                 connection, contest_id, eligibility_scope, question_ids
             )
+            report.performance["totalMs"] = (time.perf_counter() - run_started) * 1000
             connection.rollback()
             return report
 
         connection.commit()
         processed = 0
+        committed_processed = 0
         cursor = resume_cursor
-        for row in selected:
+        committed_cursor = resume_cursor
+        block_processed = 0
+        block_report = deepcopy(report)
+        for index, row in enumerate(selected, start=1):
             if should_pause is not None and should_pause():
+                if block_processed:
+                    persist_started = time.perf_counter()
+                    connection.execute(
+                        "UPDATE canonical_classification_runs "
+                        "SET cursor_canonical_question_id = ? WHERE id = ?",
+                        (cursor, effective_run_id),
+                    )
+                    connection.commit()
+                    report.performance["persistenceMs"] = report.performance.get(
+                        "persistenceMs", 0
+                    ) + (time.perf_counter() - persist_started) * 1000
+                    committed_processed = processed
+                    committed_cursor = cursor
+                    report.processed = committed_processed
+                    report.remaining = len(eligible) - committed_processed
+                    if progress_callback is not None:
+                        progress_callback(deepcopy(report))
+                    block_processed = 0
                 break
-            report_checkpoint = deepcopy(report)
-            connection.execute("BEGIN IMMEDIATE")
+            if block_processed == 0:
+                block_report = deepcopy(report)
             try:
+                if block_processed == 0:
+                    if before_block_callback is not None:
+                        before_block_callback()
+                    connection.execute("BEGIN IMMEDIATE")
+                row_started = time.perf_counter()
                 _process_row(
                     connection,
                     row,
@@ -2111,50 +2155,68 @@ def run_canonical_classification(
                     report=report,
                     changed_at=changed_at,
                 )
+                report.performance["classificationMs"] = report.performance.get(
+                    "classificationMs", 0
+                ) + (time.perf_counter() - row_started) * 1000
                 processed += 1
+                block_processed += 1
                 cursor = cast(str, row["id"])
-                connection.execute(
-                    "UPDATE canonical_classification_runs "
-                    "SET cursor_canonical_question_id = ? WHERE id = ?",
-                    (cursor, effective_run_id),
-                )
-                connection.commit()
-                report.processed = processed
-                report.remaining = len(eligible) - processed
-                if progress_callback is not None:
-                    progress_callback(deepcopy(report))
+                if block_processed >= checkpoint_interval or index == len(selected):
+                    persist_started = time.perf_counter()
+                    connection.execute(
+                        "UPDATE canonical_classification_runs "
+                        "SET cursor_canonical_question_id = ? WHERE id = ?",
+                        (cursor, effective_run_id),
+                    )
+                    connection.commit()
+                    report.performance["persistenceMs"] = report.performance.get(
+                        "persistenceMs", 0
+                    ) + (time.perf_counter() - persist_started) * 1000
+                    committed_processed = processed
+                    committed_cursor = cursor
+                    report.processed = committed_processed
+                    report.remaining = len(eligible) - committed_processed
+                    if progress_callback is not None:
+                        progress_callback(deepcopy(report))
+                    block_processed = 0
             except CanonicalAIProviderUnavailableError:
                 connection.rollback()
-                report = report_checkpoint
+                report = block_report
                 report.provider_failures += 1
-                report.processed = processed
-                report.remaining = len(eligible) - processed
+                processed = committed_processed
+                cursor = committed_cursor
+                report.processed = committed_processed
+                report.remaining = len(eligible) - committed_processed
                 report.status = "paused"
                 report.by_context = _context_report(
                     connection, contest_id, eligibility_scope, question_ids
                 )
+                report.performance["totalMs"] = (time.perf_counter() - run_started) * 1000
                 connection.execute(
                     "UPDATE canonical_classification_runs SET status = 'paused',"
                     "cursor_canonical_question_id = ?,report_json = ?,finished_at = NULL "
                     "WHERE id = ?",
-                    (cursor, canonical_json(report.as_dict()), effective_run_id),
+                    (committed_cursor, canonical_json(report.as_dict()), effective_run_id),
                 )
                 connection.commit()
                 return report
             except KeyboardInterrupt:
                 connection.rollback()
-                report = report_checkpoint
-                report.processed = processed
-                report.remaining = len(eligible) - processed
+                report = block_report
+                processed = committed_processed
+                cursor = committed_cursor
+                report.processed = committed_processed
+                report.remaining = len(eligible) - committed_processed
                 report.status = "paused"
                 report.by_context = _context_report(
                     connection, contest_id, eligibility_scope, question_ids
                 )
+                report.performance["totalMs"] = (time.perf_counter() - run_started) * 1000
                 connection.execute(
                     "UPDATE canonical_classification_runs SET status = 'paused',"
                     "cursor_canonical_question_id = ?,report_json = ?,finished_at = NULL "
                     "WHERE id = ?",
-                    (cursor, canonical_json(report.as_dict()), effective_run_id),
+                    (committed_cursor, canonical_json(report.as_dict()), effective_run_id),
                 )
                 connection.commit()
                 raise
@@ -2165,6 +2227,7 @@ def run_canonical_classification(
         report.by_context = _context_report(
             connection, contest_id, eligibility_scope, question_ids
         )
+        report.performance["totalMs"] = (time.perf_counter() - run_started) * 1000
         connection.execute(
             "UPDATE canonical_classification_runs SET status = ?,"
             "cursor_canonical_question_id = ?,report_json = ?,finished_at = ? WHERE id = ?",
@@ -2182,6 +2245,7 @@ def run_canonical_classification(
         connection.rollback()
         report.status = "failed"
         if apply and run_config_validated:
+            report.performance["totalMs"] = (time.perf_counter() - run_started) * 1000
             connection.execute(
                 "UPDATE canonical_classification_runs SET status = 'failed',"
                 "report_json = ?,finished_at = ? WHERE id = ?",
