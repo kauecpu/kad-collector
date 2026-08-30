@@ -25,6 +25,7 @@ from .security import UnsafeUrlError, validate_public_url
 
 COLLECTION_CANCEL_GRACE_SECONDS = 5.0
 COLLECTION_STARTUP_TIMEOUT_SECONDS = 60.0
+COLLECTION_MANUAL_ACTION_TIMEOUT_SECONDS = 300.0
 
 _SOURCE_PRESENTATION: dict[str, tuple[str, str]] = {
     "fuvest_vestibular": (
@@ -219,6 +220,7 @@ class DesktopCollectionManager:
         self._jobs: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
         self._controls: dict[str, threading.Event] = {}
+        self._manual_actions: dict[str, threading.Event] = {}
         self._requests: dict[
             str,
             tuple[SourceDefinition, str, Literal["local", "openai"], dict[str, Any]],
@@ -381,6 +383,7 @@ class DesktopCollectionManager:
             "failureDetails": [],
             "importJobIds": [],
             "error": None,
+            "manualAction": None,
             "capacityProfile": profile,
             "robotsPolicy": robots_policy,
             "crawlDelayPolicy": crawl_delay_policy,
@@ -402,6 +405,7 @@ class DesktopCollectionManager:
         with self._lock:
             self._jobs[job_id] = job
             self._controls[job_id] = threading.Event()
+            self._manual_actions[job_id] = threading.Event()
             self._requests[job_id] = (
                 source,
                 normalized_url,
@@ -434,12 +438,16 @@ class DesktopCollectionManager:
             control = self._controls[job_id]
             request = self._requests[job_id]
             if action in {"pause", "cancel"}:
-                if job["status"] not in {"queued", "running"}:
+                allowed_statuses = {"queued", "running"}
+                if action == "cancel":
+                    allowed_statuses.add("awaiting_manual_action")
+                if job["status"] not in allowed_statuses:
                     raise ValueError("esta coleta nao pode ser interrompida neste estado")
                 job["requestedAction"] = action
                 job["status"] = "pausing" if action == "pause" else "cancelling"
                 control.set()
                 if action == "cancel":
+                    self._manual_actions[job_id].set()
                     timer = threading.Timer(
                         COLLECTION_CANCEL_GRACE_SECONDS,
                         self._force_cancel,
@@ -448,8 +456,14 @@ class DesktopCollectionManager:
                     timer.daemon = True
                     timer.start()
                 return
-            if action != "resume" or job["status"] != "paused":
+            if action != "resume" or job["status"] not in {"paused", "awaiting_manual_action"}:
                 raise ValueError("esta coleta nao pode ser retomada neste estado")
+            if job["status"] == "awaiting_manual_action":
+                self._manual_actions[job_id].set()
+                job["requestedAction"] = None
+                job["manualAction"] = None
+                job["status"] = "running"
+                return
             control.clear()
             job["requestedAction"] = None
             job["status"] = "queued"
@@ -479,6 +493,32 @@ class DesktopCollectionManager:
                 self._transport_closers.pop(job_id, None)
             else:
                 self._transport_closers[job_id] = closer
+
+    def _manual_action_callback(self, job_id: str, url: str, reason: str) -> bool:
+        event = self._manual_actions[job_id]
+        event.clear()
+        self._update(
+            job_id,
+            status="awaiting_manual_action",
+            message="Conclua a verificação no navegador e clique em continuar.",
+            manualAction={
+                "url": url,
+                "reason": reason,
+                "startedAt": datetime.now(UTC).isoformat(),
+            },
+        )
+        deadline = time.monotonic() + COLLECTION_MANUAL_ACTION_TIMEOUT_SECONDS
+        while time.monotonic() < deadline:
+            if self._controls[job_id].is_set():
+                return False
+            if event.wait(timeout=0.25):
+                return not self._controls[job_id].is_set()
+        self._update(
+            job_id,
+            status="needs_attention",
+            message="A verificação manual expirou sem confirmação.",
+        )
+        return False
 
     def _clear_startup_timer(self, job_id: str) -> None:
         with self._lock:
@@ -646,6 +686,9 @@ class DesktopCollectionManager:
                 stop_event=self._controls[job_id],
                 progress_callback=self._progress_callback(job_id),
                 transport_callback=lambda closer: self._set_transport_closer(job_id, closer),
+                manual_action_callback=lambda url, reason: self._manual_action_callback(
+                    job_id, url, reason
+                ),
             )
             paths = [Path(document.local_path).resolve() for document in manifest.documents]
             known_hashes = self.store.processed_sha256s(
@@ -768,9 +811,13 @@ class DesktopCollectionManager:
                     ),
                 )
             else:
+                manual_action_required = any(
+                    "acao manual necessaria" in failure.message.casefold()
+                    for failure in manifest.failures
+                )
                 self._update(
                     job_id,
-                    status="completed",
+                    status="needs_attention" if manual_action_required else "completed",
                     completedAt=datetime.now(UTC).isoformat(),
                 )
         except CollectionPaused:
@@ -794,6 +841,8 @@ class DesktopCollectionManager:
         finally:
             self._clear_startup_timer(job_id)
             self._set_transport_closer(job_id, None)
+            with self._lock:
+                self._manual_actions.pop(job_id, None)
 
     def _progress_callback(self, job_id: str) -> Any:
         def update(event: Any) -> None:
