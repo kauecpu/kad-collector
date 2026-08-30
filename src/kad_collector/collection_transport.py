@@ -616,7 +616,15 @@ class CollectionHttpClient:
                 for _redirect in range(6):
                     validate_public_url(current_url, allowed_hosts)
                     existing = partial.stat().st_size if resume and partial.exists() else 0
-                    headers = {"Accept": "application/pdf,*/*;q=0.1", **conditional}
+                    # PDF bytes must remain byte-for-byte stable when a .part
+                    # file is resumed.  Do not let a proxy/CDN negotiate a
+                    # compressed 206 response that could be appended to the
+                    # partial file or decoded inconsistently by httpx.
+                    headers = {
+                        "Accept": "application/pdf,*/*;q=0.1",
+                        "Accept-Encoding": "identity",
+                        **conditional,
+                    }
                     if existing:
                         headers["Range"] = f"bytes={existing}-"
                         validator = (
