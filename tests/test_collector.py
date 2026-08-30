@@ -185,6 +185,19 @@ class LinkParsingTests(unittest.TestCase):
                 ("gabarito.pdf", "answer_key"),
             ],
         )
+        self.assertTrue(
+            all(
+                url.startswith("https://arq.pciconcursos.com.br/")
+                for url, _title, _kind in selected
+            )
+        )
+
+    def test_pci_public_data_urls_mark_rendered_challenge_as_released(self) -> None:
+        url = "https://www.pciconcursos.com.br/provas/download/exemplo"
+        html = (FIXTURES / "pci_banco_brasil_js_links.html").read_text(encoding="utf-8")
+        html = html.replace("<body>", '<body><div class="cf-turnstile"></div>')
+
+        self.assertIsNone(detect_access_challenge("PCI Concursos", html, url))
 
     def test_pci_detail_page_does_not_expand_to_index_or_pagination(self) -> None:
         detail = "https://www.pciconcursos.com.br/provas/download/exemplo"
@@ -207,6 +220,10 @@ class LinkParsingTests(unittest.TestCase):
         self.assertEqual(source.metadata, {"orgao": "Banco do Brasil"})
         self.assertEqual(source.robots_policy, "ignore")
         self.assertEqual(source.crawl_delay_policy, "ignore")
+        self.assertEqual(
+            source.allowed_hosts,
+            ["www.pciconcursos.com.br", "arq.pciconcursos.com.br"],
+        )
         self.assertFalse(source.browser_enabled)
         self.assertEqual(source.page_transport, "scrapling")
         self.assertIn("publicos", source.authorization_basis)
@@ -552,11 +569,11 @@ class LinkParsingTests(unittest.TestCase):
     def test_pci_detail_page_downloads_public_data_urls_without_crawling_index(self) -> None:
         detail_url = "https://www.pciconcursos.com.br/provas/download/exemplo"
         exam_url = (
-            "https://www.pciconcursos.com.br/provas/29658981/2e4bb8b74228/"
+            "https://arq.pciconcursos.com.br/provas/29658981/2e4bb8b74228/"
             "escriturario_agente_comercial.pdf"
         )
         key_url = (
-            "https://www.pciconcursos.com.br/provas/29658981/444cd7f0bc5d/gabarito.pdf"
+            "https://arq.pciconcursos.com.br/provas/29658981/444cd7f0bc5d/gabarito.pdf"
         )
         fixture = (FIXTURES / "pci_banco_brasil_js_links.html").read_bytes()
 
@@ -583,7 +600,7 @@ class LinkParsingTests(unittest.TestCase):
             source = source_definition(
                 id="pci_concursos",
                 start_urls=[detail_url],
-                allowed_hosts=["www.pciconcursos.com.br"],
+                allowed_hosts=["www.pciconcursos.com.br", "arq.pciconcursos.com.br"],
                 collection_url_patterns=[
                     r"^https://www\.pciconcursos\.com\.br/provas/"
                     r"(?:banco-do-brasil|download/[a-z0-9-]+)$"

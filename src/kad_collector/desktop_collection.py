@@ -677,9 +677,13 @@ class DesktopCollectionManager:
                 )
             import_job_ids = self.pipeline.submit(normalized_documents, classifier_provider)
             warnings = list(manifest.warnings)
+            download_failures = [
+                failure for failure in manifest.failures if failure.stage == "download"
+            ]
+            all_downloads_failed = bool(download_failures) and not manifest.documents
             if skipped_documents:
                 warnings.append(f"{len(skipped_documents)} PDF(s): já processado — ignorado.")
-            if not paths:
+            if not paths and not download_failures:
                 warnings.append("Nenhum PDF compativel foi encontrado neste link.")
             files = [
                 {
@@ -735,6 +739,16 @@ class DesktopCollectionManager:
             )
             if import_job_ids:
                 self._wait_for_processing(job_id, import_job_ids)
+            elif all_downloads_failed:
+                self._update(
+                    job_id,
+                    status="failed",
+                    completedAt=datetime.now(UTC).isoformat(),
+                    error=(
+                        f"{len(download_failures)} PDF(s) descoberto(s), mas nenhum pôde "
+                        "ser baixado. Consulte os detalhes da atividade."
+                    ),
+                )
             else:
                 self._update(
                     job_id,

@@ -155,6 +155,29 @@ class PersistentScraplingSessionTests(unittest.TestCase):
         self.assertIs(result, solved)
         self.assertEqual(len(calls), 1)
 
+    def test_solved_challenge_with_public_pdf_data_url_needs_no_retry(self) -> None:
+        solved = SimpleNamespace(
+            url="https://www.pciconcursos.com.br/provas/download/exemplo",
+            status=200,
+            headers={},
+            body=(
+                b'<div class="cf-turnstile"></div>'
+                b'<a href="javascript:void(0)" '
+                b'data-url="https://arq.pciconcursos.com.br/provas/prova.pdf">Prova</a>'
+            ),
+        )
+        manager = _FakeManager([solved])
+        factory, calls = _factory([manager])
+
+        session = PersistentScraplingSession(
+            user_agent="KADCollector/Test", timeout_seconds=30, session_factory=factory
+        )
+        result = session.fetch(str(solved.url))
+        session.close()
+
+        self.assertIs(result, solved)
+        self.assertEqual(len(calls), 1)
+
     def test_headless_launch_failure_falls_back_to_headful(self) -> None:
         ok = SimpleNamespace(url="https://x.test", status=200, headers={}, body=b"ok")
         failing_manager = _FakeManager([], fail_start=True)

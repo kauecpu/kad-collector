@@ -142,7 +142,8 @@ def _looks_blocked(title: str, content: str, url: str) -> str | None:
     inspected = content[:1_000_000]
     page = f"{title}\n{inspected}".casefold()
     has_public_pdf_link = re.search(
-        r"href\s*=\s*['\"][^'\"]+\.pdf(?:[?#][^'\"]*)?['\"]",
+        r"(?:href|data-url)\s*=\s*['\"](?!javascript:|data:)[^'\"]+"
+        r"\.pdf(?:[?#][^'\"]*)?['\"]",
         inspected,
         re.IGNORECASE,
     )
