@@ -749,7 +749,7 @@ class DesktopCollectionManager:
                 status="cancelled" if requested == "cancel" else "paused",
                 completedAt=(datetime.now(UTC).isoformat() if requested == "cancel" else None),
             )
-        except (OSError, RuntimeError, ValueError) as exc:
+        except Exception as exc:  # noqa: BLE001 - nenhum job pode ficar em running
             with self._lock:
                 if job_id in self._forced_terminal:
                     return

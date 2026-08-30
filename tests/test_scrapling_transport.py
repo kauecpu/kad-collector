@@ -155,21 +155,30 @@ class PersistentScraplingSessionTests(unittest.TestCase):
         self.assertFalse(session.headless)
         self.assertEqual(len(calls), 2)
 
-    def test_both_attempts_raising_reports_clear_error(self) -> None:
-        factory, calls = _factory(
-            [
-                _FakeManager([OSError("spawn UNKNOWN")]),
-                _FakeManager([OSError("spawn UNKNOWN")]),
-            ]
-        )
+    def test_fetch_disables_retries_internalizados_do_scrapling(self) -> None:
+        response = SimpleNamespace(url="https://x.test", status=200, headers={}, body=b"ok")
+        manager = _FakeManager([response])
+        factory, calls = _factory([manager])
 
         session = PersistentScraplingSession(
             user_agent="KADCollector/Test", timeout_seconds=30, session_factory=factory
         )
-        with self.assertRaisesRegex(ScraplingSessionError, "headless=False"):
+        session.fetch("https://x.test")
+        session.close()
+
+        self.assertEqual(calls[0]["retries"], 1)
+
+    def test_fetch_failure_does_not_open_second_headful_session(self) -> None:
+        manager = _FakeManager([OSError("net::ERR_NETWORK_ACCESS_DENIED")])
+        factory, calls = _factory([manager])
+
+        session = PersistentScraplingSession(
+            user_agent="KADCollector/Test", timeout_seconds=30, session_factory=factory
+        )
+        with self.assertRaisesRegex(ScraplingSessionError, "falha do Scrapling ao carregar"):
             session.fetch("https://x.test")
         session.close()
-        self.assertEqual(len(calls), 2)
+        self.assertEqual(len(calls), 1)
 
     def test_timeout_floor_is_ninety_seconds(self) -> None:
         session = PersistentScraplingSession(

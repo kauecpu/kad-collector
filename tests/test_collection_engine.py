@@ -138,6 +138,21 @@ class CollectionEngineTests(unittest.TestCase):
         self.assertIs(factory_options[0]["solve_cloudflare"], True)
         self.assertFalse(session.fetches[0][1]["google_search"])
 
+    def test_disable_scrapling_closes_session_before_sync_browser_phase(self) -> None:
+        session = FakeScraplingSession([])
+
+        client = self.client(
+            httpx.MockTransport(lambda request: httpx.Response(200, request=request)),
+            page_transport="scrapling",
+            scrapling_session_factory=lambda **_options: session,
+        )
+        client.scrapling.start()  # type: ignore[union-attr]
+        client.disable_scrapling()
+
+        self.assertEqual(session.exited, 1)
+        self.assertIsNone(client.scrapling)
+        client.close()
+
     def test_cloudflare_bypass_disabled_reaches_scrapling_session_and_skips_retry(self) -> None:
         # Toggle "Usar bypass Cloudflare" desligado no app: solve_cloudflare=False
         # chega ate o PersistentScraplingSession, que faz uma unica tentativa

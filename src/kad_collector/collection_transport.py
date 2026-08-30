@@ -219,6 +219,23 @@ class CollectionHttpClient:
 
         self.close()
 
+    def disable_scrapling(self) -> None:
+        """Close the Patchright loop before another sync browser is started.
+
+        Scrapling's persistent session owns a Patchright asyncio loop in the
+        current thread. Starting Playwright's synchronous API in that same
+        thread raises ``Sync API inside the asyncio loop``. HTML discovery has
+        already completed by the time the optional browser discovery phase
+        runs, so the session can be closed safely before that phase.
+        """
+
+        if self.scrapling is None:
+            return
+        try:
+            self.scrapling.close()
+        finally:
+            self.scrapling = None
+
     def close(self) -> None:
         scrapling_error: ScraplingSessionError | None = None
         if self.scrapling is not None:
