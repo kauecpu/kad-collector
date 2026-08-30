@@ -23,7 +23,9 @@ from .canonical_classification import (
     canonical_classification_coverage,
     run_canonical_classification,
 )
+from .desktop_models import DesktopOperationScope
 from .desktop_preparation import DesktopPreparationManager, apply_desktop_preparation
+from .desktop_scope import ResolvedDesktopScope, resolve_desktop_scope
 from .desktop_store import DesktopStore
 from .editorial_taxonomy import EditorialTaxonomy
 from .ollama_ai_provider import (
@@ -228,6 +230,7 @@ class _PreviewApproval:
     limit: int
     preflight: dict[str, Any]
     counts: dict[str, Any]
+    scope: ResolvedDesktopScope
 
 
 class DesktopOllamaClassificationManager:
@@ -293,6 +296,8 @@ class DesktopOllamaClassificationManager:
                     preflight_json TEXT NOT NULL,
                     hardware_json TEXT NOT NULL DEFAULT '{}',
                     report_json TEXT NOT NULL DEFAULT '{}',
+                    scope_json TEXT NOT NULL DEFAULT '{}',
+                    scope_snapshot_hash TEXT NOT NULL DEFAULT '',
                     pause_reason TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
@@ -314,6 +319,16 @@ class DesktopOllamaClassificationManager:
                     "ALTER TABLE desktop_ollama_classification_jobs "
                     "ADD COLUMN hardware_json TEXT NOT NULL DEFAULT '{}'"
                 )
+            if "scope_json" not in columns:
+                connection.execute(
+                    "ALTER TABLE desktop_ollama_classification_jobs "
+                    "ADD COLUMN scope_json TEXT NOT NULL DEFAULT '{}'"
+                )
+            if "scope_snapshot_hash" not in columns:
+                connection.execute(
+                    "ALTER TABLE desktop_ollama_classification_jobs "
+                    "ADD COLUMN scope_snapshot_hash TEXT NOT NULL DEFAULT ''"
+                )
             connection.execute(
                 "UPDATE desktop_ollama_classification_jobs "
                 "SET status='paused',pause_reason='aplicativo reiniciado',updated_at=? "
@@ -322,14 +337,16 @@ class DesktopOllamaClassificationManager:
             )
             connection.commit()
 
-    def _passive_counts(self) -> dict[str, Any]:
+    def _passive_counts(self, resolved: ResolvedDesktopScope) -> dict[str, Any]:
         source = sqlite3.connect(self.store.path, timeout=30)
         memory = sqlite3.connect(":memory:")
         memory.row_factory = sqlite3.Row
         try:
             source.backup(memory)
             preparation = apply_desktop_preparation(
-                memory, run_id=f"qwen-preview-{uuid.uuid4().hex}"
+                memory,
+                run_id=f"qwen-preview-{uuid.uuid4().hex}",
+                question_ids=set(resolved.question_ids),
             )
             report = run_canonical_classification(
                 memory,
@@ -337,10 +354,14 @@ class DesktopOllamaClassificationManager:
                 enable_ai=False,
                 taxonomy=self._taxonomy,
                 eligibility_scope="answered",
+                question_ids=set(resolved.question_ids),
             )
             coverage = canonical_classification_coverage(
-                memory, eligibility_scope="answered"
+                memory,
+                eligibility_scope="answered",
+                question_ids=set(resolved.question_ids),
             )
+            details = self._scope_details(memory, resolved)
         finally:
             memory.close()
             source.close()
@@ -387,19 +408,80 @@ class DesktopOllamaClassificationManager:
             "qwenRequired": report.ai_candidates,
             "missingFields": dict(sorted(report.requested_fields.items())),
             "exclusionReasons": exclusion_reasons,
+            **details,
         }
 
-    def preview(self, limit: int = DEFAULT_BATCH_LIMIT) -> dict[str, Any]:
+    @staticmethod
+    def _scope_details(
+        connection: sqlite3.Connection, resolved: ResolvedDesktopScope
+    ) -> dict[str, Any]:
+        selected = set(resolved.question_ids)
+        placeholders = ",".join("?" for _ in selected)
+        rows = connection.execute(
+            "SELECT q.id,g.id AS group_id,g.status AS group_status,cq.id AS canonical_id "
+            "FROM questions q LEFT JOIN question_occurrences o ON o.question_id=q.id "
+            "LEFT JOIN question_group_occurrences go ON go.occurrence_id=o.id "
+            "AND go.status='active' "
+            "LEFT JOIN question_equivalence_groups g ON g.id=go.group_id "
+            "LEFT JOIN canonical_questions cq ON cq.group_id=g.id "
+            f"WHERE q.id IN ({placeholders})",  # noqa: S608
+            tuple(sorted(selected)),
+        ).fetchall()
+        by_id = {cast(str, row["id"]): row for row in rows}
+        included: list[dict[str, Any]] = []
+        excluded: list[dict[str, Any]] = []
+        group_ids: set[str] = set()
+        for item in resolved.items:
+            row = by_id.get(cast(str, item["id"]))
+            if row is not None and row["group_status"] == "confirmed" and row["canonical_id"]:
+                included.append({**item, "canonicalId": row["canonical_id"]})
+                group_ids.add(cast(str, row["group_id"]))
+            else:
+                excluded.append({**item, "reason": "questão sem unidade canônica elegível"})
+        affected: set[str] = set()
+        if group_ids:
+            group_placeholders = ",".join("?" for _ in group_ids)
+            affected = {
+                cast(str, row["question_id"])
+                for row in connection.execute(
+                    "SELECT DISTINCT o.question_id FROM question_group_occurrences go "
+                    "JOIN question_occurrences o ON o.id=go.occurrence_id "
+                    f"WHERE go.status='active' AND go.group_id IN ({group_placeholders})",  # noqa: S608
+                    tuple(sorted(group_ids)),
+                ).fetchall()
+            }
+        return {
+            "scope": resolved.public(),
+            "included": included,
+            "excluded": excluded,
+            "includedCount": len(included),
+            "excludedCount": len(excluded),
+            "canonicalUnitIds": sorted(group_ids),
+            "outsideScopeQuestionIds": sorted(affected - selected),
+            "outsideScopeCount": len(affected - selected),
+            "requiresOutsideScopeAuthorization": bool(affected - selected),
+        }
+
+    def preview(
+        self,
+        scope: DesktopOperationScope,
+        limit: int = DEFAULT_BATCH_LIMIT,
+    ) -> dict[str, Any]:
         selected_limit = _validate_limit(limit)
+        resolved = resolve_desktop_scope(self.store, scope)
         admin = self._admin_factory()
         try:
             preflight = inspect_qwen8b_desktop(admin)
         finally:
             _close_admin(admin)
-        counts = self._passive_counts()
+        counts = self._passive_counts(resolved)
         token = uuid.uuid4().hex
         approval = _PreviewApproval(
-            token=token, limit=selected_limit, preflight=preflight, counts=counts
+            token=token,
+            limit=selected_limit,
+            preflight=preflight,
+            counts=counts,
+            scope=resolved,
         )
         with self._lock:
             self._approvals = {token: approval}
@@ -408,6 +490,7 @@ class DesktopOllamaClassificationManager:
             "limit": selected_limit,
             "maximumLimit": MAX_BATCH_LIMIT,
             "counts": counts,
+            "scope": resolved.public(),
             "preflight": preflight,
             "warning": (
                 "Somente disciplina, matéria, assunto e nível ausentes podem mudar. "
@@ -415,7 +498,12 @@ class DesktopOllamaClassificationManager:
             ),
         }
 
-    def start(self, confirmation_token: str, limit: int) -> dict[str, Any]:
+    def start(
+        self,
+        confirmation_token: str,
+        scope: DesktopOperationScope,
+        limit: int,
+    ) -> dict[str, Any]:
         confirmation_hash = hashlib.sha256(confirmation_token.encode("utf-8")).hexdigest()
         with self._start_lock:
             with closing(self.store._connect()) as connection:
@@ -425,24 +513,42 @@ class DesktopOllamaClassificationManager:
                     (confirmation_hash,),
                 ).fetchone()
             if existing is not None:
-                return self.status(cast(str, existing["id"]))
-            return self._start(confirmation_token, limit, confirmation_hash)
+                raise ValueError("o token de confirmação já foi utilizado")
+            return self._start(confirmation_token, scope, limit, confirmation_hash)
 
     def _start(
-        self, confirmation_token: str, limit: int, confirmation_hash: str
+        self,
+        confirmation_token: str,
+        scope: DesktopOperationScope,
+        limit: int,
+        confirmation_hash: str,
     ) -> dict[str, Any]:
         selected_limit = _validate_limit(limit)
         with self._lock:
-            approval = self._approvals.get(confirmation_token)
+            approval = self._approvals.pop(confirmation_token, None)
         if approval is None or approval.limit != selected_limit:
             raise ValueError("confirmação da prévia ausente, expirada ou divergente")
+        resolved = resolve_desktop_scope(self.store, scope)
+        if (
+            resolved.snapshot_hash != approval.scope.snapshot_hash
+            or resolved.contract.model_dump(mode="json", by_alias=True)
+            != approval.scope.contract.model_dump(mode="json", by_alias=True)
+        ):
+            raise RuntimeError("o banco ou o escopo mudou desde a prévia")
+        if (
+            approval.counts.get("requiresOutsideScopeAuthorization")
+            and not scope.allow_out_of_scope
+        ):
+            raise RuntimeError(
+                "a classificação afetaria cópias fora do escopo; autorize o impacto na prévia"
+            )
         with closing(self.store._connect()) as connection:
             existing = connection.execute(
                 "SELECT id FROM desktop_ollama_classification_jobs WHERE confirmation_hash=?",
                 (confirmation_hash,),
             ).fetchone()
             if existing is not None:
-                return self.status(cast(str, existing["id"]))
+                raise ValueError("o token de confirmação já foi utilizado")
             current = connection.execute(
                 "SELECT id FROM desktop_ollama_classification_jobs "
                 "WHERE status IN ('starting','running','pause_requested') LIMIT 1"
@@ -458,10 +564,12 @@ class DesktopOllamaClassificationManager:
                 approval.preflight
             ):
                 raise RuntimeError("o ambiente Ollama mudou desde a prévia")
-            self._preparation.run()
-            current_counts = self._passive_counts()
-            if current_counts != approval.counts:
-                raise RuntimeError("o acervo mudou desde a prévia; atualize antes de confirmar")
+            self.store.backup_before_preparation()
+            apply_desktop_preparation(
+                connection,
+                run_id=f"qwen-start-{uuid.uuid4().hex}",
+                question_ids=set(resolved.question_ids),
+            )
             run_id = str(uuid.uuid4())
             now = _now()
             pending = int(approval.counts["deterministic"]) + int(
@@ -471,8 +579,9 @@ class DesktopOllamaClassificationManager:
             connection.execute(
                 "INSERT INTO desktop_ollama_classification_jobs "
                 "(id,confirmation_hash,status,requested_limit,batch_limit,remaining,model,digest,quantization,"
-                "endpoint,algorithm_version,preflight_json,report_json,created_at,updated_at) "
-                "VALUES (?,?,'starting',?,?,?,?,?,?,?,?,?, '{}',?,?)",
+                "endpoint,algorithm_version,preflight_json,report_json,scope_json,"
+                "scope_snapshot_hash,created_at,updated_at) "
+                "VALUES (?,?,'starting',?,?,?,?,?,?,?,?,?, '{}',?,?,?,?)",
                 (
                     run_id,
                     confirmation_hash,
@@ -485,6 +594,18 @@ class DesktopOllamaClassificationManager:
                     DESKTOP_OLLAMA_ENDPOINT,
                     DESKTOP_OLLAMA_JOB_VERSION,
                     canonical_json(current_preflight),
+                    canonical_json(
+                        {
+                            "type": scope.type,
+                            "questionIds": list(resolved.question_ids),
+                            "filter": (
+                                scope.filter.model_dump(mode="json")
+                                if scope.filter is not None
+                                else None
+                            ),
+                        }
+                    ),
+                    resolved.snapshot_hash,
                     now,
                     now,
                 ),
@@ -540,6 +661,7 @@ class DesktopOllamaClassificationManager:
             "endpoint": row["endpoint"],
             "algorithmVersion": row["algorithm_version"],
             "hardware": json.loads(cast(str, row["hardware_json"])),
+            "scope": json.loads(cast(str, row["scope_json"])),
             "createdAt": row["created_at"],
             "updatedAt": row["updated_at"],
             "finishedAt": row["finished_at"],
@@ -642,6 +764,10 @@ class DesktopOllamaClassificationManager:
             int(base_row["failures"]),
         )
         remaining_capacity = max(0, int(base_row["batch_limit"]) - base_processed)
+        stored_scope = json.loads(cast(str, base_row["scope_json"]))
+        scoped_question_ids = {
+            str(question_id) for question_id in stored_scope.get("questionIds", [])
+        }
         if remaining_capacity == 0:
             self._finish(run_id, "completed")
             _close_admin(admin)
@@ -677,6 +803,7 @@ class DesktopOllamaClassificationManager:
                     taxonomy=self._taxonomy,
                     queue_ineligible=False,
                     eligibility_scope="answered",
+                    question_ids=scoped_question_ids,
                 )
             self._update_progress(run_id, base_processed, base_metrics, report)
             current = self._job_row(run_id)

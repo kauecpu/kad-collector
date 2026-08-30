@@ -1042,3 +1042,4 @@ estruturadas e impede que o documento seja marcado como processado.
 
 Artefatos dentro de `data/` podem conter material protegido e nao devem ser enviados ao
 GitHub. Nunca contorne autenticacao, CAPTCHA, bloqueios, paywalls ou restricoes tecnicas.
+Veja também [Preparação e Qwen por escopo](docs/scoped-preparation-qwen.md) para o contrato de seleção, prévias auditáveis e testes locais.

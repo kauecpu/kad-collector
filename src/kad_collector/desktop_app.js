@@ -161,7 +161,10 @@ const state = {
   currentQuestion: null,
   currentAudit: [],
   batchClassificationPreview: null,
+  preparationPreview: null,
+  preparationScopeType: 'filter',
   localAIPreview: null,
+  localAIScopeType: 'filter',
   localAIStatus: null,
   localAIPolling: null,
   polling: null,
@@ -175,6 +178,43 @@ const numberOrNull = (id) => {
   const value = byId(id).value.trim();
   return value ? Number(value) : null;
 };
+
+function operationScope(type, allowOutOfScope = false) {
+  if (type === 'selected') {
+    return {type, questionIds: [...state.selectedQuestionIds], allowOutOfScope};
+  }
+  if (type === 'filter') {
+    return {type, filter: JSON.parse(JSON.stringify(state.filters)), allowOutOfScope};
+  }
+  return {type: 'all', allowOutOfScope};
+}
+
+function operationScopeLabel(type, count) {
+  if (type === 'selected') return `${count} questão(ões) selecionada(s)`;
+  if (type === 'filter') return `${count} questão(ões) do filtro atual`;
+  return `${count} questão(ões) do banco inteiro`;
+}
+
+function renderScopeItems(root, included = [], excluded = [], outsideIds = []) {
+  root.replaceChildren();
+  [...included.map((item) => [item, false]), ...excluded.map((item) => [item, true])]
+    .forEach(([item, excludedItem]) => {
+      const row = document.createElement('span');
+      row.className = `scope-preview-item${excludedItem ? ' excluded' : ''}`;
+      const title = document.createElement('strong');
+      title.textContent = `Questão ${item.number ?? '—'} · ${item.exam || 'prova sem nome'}`;
+      const detail = document.createElement('small');
+      detail.textContent = `${item.source || 'arquivo local'} · ID ${item.id}${item.reason ? ` · ${item.reason}` : ''}`;
+      row.append(title, detail);
+      root.append(row);
+    });
+  if (outsideIds.length) {
+    const warning = document.createElement('span');
+    warning.className = 'scope-preview-item excluded';
+    warning.textContent = `${outsideIds.length} cópia(s) equivalente(s) fora do escopo: ${outsideIds.join(', ')}`;
+    root.append(warning);
+  }
+}
 
 async function request(path, options = {}) {
   const response = await fetch(path, {
@@ -343,7 +383,8 @@ function renderOperationalOverview() {
   byId('next-action-detail').textContent = next.detail || '';
   byId('next-action-button').textContent = next.action || 'Ver fluxo';
   byId('next-action-button').dataset.step = next.step || 'collect';
-  byId('prepare-questions-open').disabled = (operational.rawQuestions || 0) === 0;
+  byId('prepare-questions-open').disabled = (state.query?.total || 0) === 0;
+  byId('prepare-all-open').disabled = (operational.rawQuestions || 0) === 0;
   renderPreparationReviews(preparation.reviews || []);
 }
 
@@ -388,14 +429,12 @@ function renderPreparationPreview(preview) {
   const grid = document.createElement('div');
   grid.className = 'qwen-count-grid';
   [
-    ['Questões coletadas', preview.rawQuestions || 0],
-    ['Questões principais', preview.mainQuestions || preview.canonicalQuestions || 0],
-    ['Cópias repetidas', preview.duplicateQuestions || 0],
-    ['Separadas por conflito', preview.conflictQuestions || 0],
-    ['Unidades para o Qwen', preview.qwenEligible || 0],
-    ['Questões cobertas', preview.qwenEligibleQuestions || 0],
-    ['Cópias que herdam', preview.qwenInheritedCopies || 0],
-    ['Pendentes', preview.pendingQuestions || 0],
+    ['No escopo', preview.selectedCount || 0],
+    ['Incluídas', preview.includedCount || 0],
+    ['Excluídas', preview.excludedCount || 0],
+    ['Grupos canônicos', preview.canonicalGroups || 0],
+    ['Cópias equivalentes', preview.equivalentCopies || 0],
+    ['Fora do escopo', preview.outsideScopeCount || 0],
   ].forEach(([label, value]) => {
     const item = document.createElement('span');
     const number = document.createElement('strong');
@@ -408,19 +447,40 @@ function renderPreparationPreview(preview) {
   root.append(grid);
   const detail = document.createElement('p');
   detail.className = 'qwen-zero-reason';
-  detail.textContent = preview.pendingCases
-    ? `${preview.pendingCases} caso(s) continuarão na revisão por falta de evidência suficiente.`
-    : 'Nenhum caso duvidoso foi encontrado.';
+  detail.textContent = preview.requiresOutsideScopeAuthorization
+    ? 'A execução está bloqueada até o impacto fora do escopo ser autorizado.'
+    : 'A execução ficará restrita ao escopo exibido nesta prévia.';
   root.append(detail);
+  byId('preparation-scope-label').textContent = operationScopeLabel(
+    preview.scope?.type || state.preparationScopeType, preview.selectedCount || 0
+  );
+  renderScopeItems(
+    byId('preparation-preview-list'), preview.included, preview.excluded,
+    preview.outsideScopeQuestionIds
+  );
+  byId('preparation-outside-authorization-row').hidden = !preview.requiresOutsideScopeAuthorization;
 }
 
-async function openPreparation() {
-  const button = byId('prepare-questions-open');
+async function refreshPreparationPreview() {
+  const allowOutOfScope = byId('preparation-outside-authorization').checked;
+  const scope = operationScope(state.preparationScopeType, allowOutOfScope);
+  const preview = await request('/api/preparation/preview', {
+    method: 'POST', body: JSON.stringify({scope}),
+  });
+  state.preparationPreview = preview;
+  renderPreparationPreview(preview);
+  byId('preparation-submit').disabled = (preview.includedCount || 0) === 0
+    || (preview.requiresOutsideScopeAuthorization && !allowOutOfScope);
+}
+
+async function openPreparation(scopeType = 'filter', trigger = null) {
+  const button = trigger || byId('prepare-questions-open');
   button.disabled = true;
   try {
-    const preview = await request('/api/preparation/preview', {method: 'POST', body: '{}'});
-    renderPreparationPreview(preview);
-    byId('preparation-submit').disabled = (preview.identifiedExams || 0) === 0;
+    state.preparationScopeType = scopeType;
+    state.preparationPreview = null;
+    byId('preparation-outside-authorization').checked = false;
+    await refreshPreparationPreview();
     byId('preparation-dialog').showModal();
   } catch (error) {
     toast(error.message, 'error');
@@ -434,10 +494,19 @@ async function runPreparation(event) {
   const button = byId('preparation-submit');
   button.disabled = true;
   try {
-    const result = await request('/api/preparation/run', {method: 'POST', body: '{}'});
+    const preview = state.preparationPreview;
+    if (!preview) throw new Error('Atualize a prévia antes de confirmar.');
+    const scope = operationScope(
+      state.preparationScopeType, byId('preparation-outside-authorization').checked
+    );
+    const result = await request('/api/preparation/run', {
+      method: 'POST',
+      body: JSON.stringify({confirmationToken: preview.confirmationToken, scope}),
+    });
     byId('preparation-dialog').close();
-    toast(`${result.qwenEligible || 0} questão(ões) ficaram prontas para classificação.`);
-    await loadBootstrap({preserveQuery: false});
+    toast(`${result.includedCount || 0} questão(ões) foram preparadas neste escopo.`);
+    await loadBootstrap({preserveQuery: true});
+    await runQuery();
   } catch (error) {
     toast(error.message, 'error');
   } finally {
@@ -1343,6 +1412,12 @@ function renderBatchToolbar() {
   byId('selection-summary').textContent = `${selected} selecionada${selected === 1 ? '' : 's'}`;
   byId('batch-approve-open').disabled = selected === 0;
   byId('batch-classification-open').disabled = selected === 0;
+  byId('prepare-selected-open').disabled = selected === 0;
+  byId('prepare-selected-open').textContent = `Preparar ${selected} selecionada${selected === 1 ? '' : 's'}`;
+  byId('qwen-selected-open').disabled = selected === 0;
+  byId('qwen-selected-open').textContent = `Classificar ${selected} selecionada${selected === 1 ? '' : 's'} com Qwen`;
+  byId('prepare-questions-open').textContent = `Preparar ${state.query?.total || 0} do filtro atual`;
+  byId('qwen-classify-open').textContent = `Classificar ${state.query?.total || 0} do filtro atual com Qwen`;
   const selectAll = byId('select-all-pending');
   selectAll.checked = pending.length > 0 && selected === pending.length;
   selectAll.indeterminate = selected > 0 && selected < pending.length;
@@ -2112,6 +2187,14 @@ function renderQwenPreview(preview) {
   appendContractRow(contract, 'Quantização', preview.preflight.quantization);
   appendContractRow(contract, 'Endpoint', preview.preflight.endpoint);
   appendContractRow(contract, 'Ollama', preview.preflight.ollamaVersion);
+  byId('qwen-scope-label').textContent = operationScopeLabel(
+    preview.scope?.type || state.localAIScopeType, preview.scope?.count || 0
+  );
+  renderScopeItems(
+    byId('qwen-classification-list'), preview.counts?.included,
+    preview.counts?.excluded, preview.counts?.outsideScopeQuestionIds
+  );
+  byId('qwen-outside-authorization-row').hidden = !preview.counts?.requiresOutsideScopeAuthorization;
   byId('qwen-classification-warning').textContent = preview.warning;
   byId('qwen-classification-submit').disabled = (preview.counts?.eligible || 0) === 0;
 }
@@ -2126,8 +2209,11 @@ async function refreshQwenPreview() {
   button.disabled = true;
   submit.disabled = true;
   try {
+    const scope = operationScope(
+      state.localAIScopeType, byId('qwen-outside-authorization').checked
+    );
     const preview = await request('/api/local-ai/classification/preview', {
-      method: 'POST', body: JSON.stringify({limit}),
+      method: 'POST', body: JSON.stringify({limit, scope}),
     });
     state.localAIPreview = preview;
     renderQwenPreview(preview);
@@ -2136,10 +2222,12 @@ async function refreshQwenPreview() {
   }
 }
 
-async function openQwenClassification() {
-  const button = byId('qwen-classify-open');
+async function openQwenClassification(scopeType = 'filter', trigger = null) {
+  const button = trigger || byId('qwen-classify-open');
   button.disabled = true;
   try {
+    state.localAIScopeType = scopeType;
+    byId('qwen-outside-authorization').checked = false;
     await refreshQwenPreview();
     byId('qwen-classification-dialog').showModal();
   } catch (error) {
@@ -2177,7 +2265,13 @@ async function startQwenClassification(event) {
   try {
     const status = await request('/api/local-ai/classification/start', {
       method: 'POST',
-      body: JSON.stringify({confirmationToken: preview.confirmationToken, limit}),
+      body: JSON.stringify({
+        confirmationToken: preview.confirmationToken,
+        limit,
+        scope: operationScope(
+          state.localAIScopeType, byId('qwen-outside-authorization').checked
+        ),
+      }),
     });
     state.localAIStatus = status;
     state.localAIPreview = null;
@@ -2272,12 +2366,21 @@ document.querySelectorAll('.modal-close').forEach((button) => {
 });
 byId('import-open').addEventListener('click', () => byId('import-dialog').showModal());
 byId('reclassify-open').addEventListener('click', reclassifyCollection);
-byId('qwen-classify-open').addEventListener('click', openQwenClassification);
-byId('prepare-questions-open').addEventListener('click', openPreparation);
+byId('qwen-selected-open').addEventListener('click', (event) => openQwenClassification('selected', event.currentTarget));
+byId('qwen-classify-open').addEventListener('click', (event) => openQwenClassification('filter', event.currentTarget));
+byId('prepare-selected-open').addEventListener('click', (event) => openPreparation('selected', event.currentTarget));
+byId('prepare-questions-open').addEventListener('click', (event) => openPreparation('filter', event.currentTarget));
+byId('prepare-all-open').addEventListener('click', (event) => openPreparation('all', event.currentTarget));
 byId('preparation-form').addEventListener('submit', runPreparation);
+byId('preparation-outside-authorization').addEventListener('change', () => {
+  refreshPreparationPreview().catch((error) => toast(error.message, 'error'));
+});
 byId('answer-key-audit-open').addEventListener('click', openAnswerKeyAudit);
 byId('answer-key-audit-form').addEventListener('submit', runAnswerKeyAudit);
 byId('qwen-preview-refresh').addEventListener('click', () => refreshQwenPreview().catch((error) => toast(error.message, 'error')));
+byId('qwen-outside-authorization').addEventListener('change', () => {
+  refreshQwenPreview().catch((error) => toast(error.message, 'error'));
+});
 byId('qwen-classification-limit').addEventListener('input', () => {
   state.localAIPreview = null;
   byId('qwen-classification-submit').disabled = true;

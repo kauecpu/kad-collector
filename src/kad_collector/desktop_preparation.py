@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 import uuid
 from collections.abc import Mapping
 from contextlib import closing
@@ -11,6 +12,8 @@ from typing import Any, cast
 
 from .canonical_classification import canonical_classification_coverage
 from .canonical_identity import initialize_canonical_identity_schema
+from .desktop_models import DesktopOperationScope
+from .desktop_scope import ResolvedDesktopScope, resolve_desktop_scope
 from .question_equivalence import (
     initialize_question_equivalence_schema,
     run_question_equivalence_migration,
@@ -18,7 +21,7 @@ from .question_equivalence import (
 )
 from .semantic_identity import canonical_json
 
-DESKTOP_PREPARATION_ALGORITHM_VERSION = "desktop-preparation-v4"
+DESKTOP_PREPARATION_ALGORITHM_VERSION = "desktop-preparation-v5-scoped"
 
 _NOT_APPLICABLE_TURN = "não se aplica"
 
@@ -643,12 +646,33 @@ def _summary(connection: sqlite3.Connection) -> dict[str, Any]:
 
 
 def apply_desktop_preparation(
-    connection: sqlite3.Connection, *, run_id: str
+    connection: sqlite3.Connection,
+    *,
+    run_id: str,
+    question_ids: set[str] | None = None,
 ) -> dict[str, Any]:
     initialize_canonical_identity_schema(connection)
     initialize_question_equivalence_schema(connection)
     changed_at = _now()
     rows = _linked_exam_rows(connection)
+    selected_documents: set[str] | None = None
+    if question_ids is not None:
+        if question_ids:
+            placeholders = ",".join("?" for _ in question_ids)
+            selected_documents = {
+                cast(str, row["document_id"])
+                for row in connection.execute(
+                    f"SELECT DISTINCT document_id FROM questions WHERE id IN ({placeholders})",  # noqa: S608
+                    tuple(sorted(question_ids)),
+                ).fetchall()
+            }
+        else:
+            selected_documents = set()
+        rows = [
+            row
+            for row in rows
+            if cast(str, row["exam_document_id"]) in selected_documents
+        ]
     contexts: list[_ExamContext] = []
     skipped: list[dict[str, Any]] = []
     seen_exams: set[str] = set()
@@ -675,12 +699,19 @@ def apply_desktop_preparation(
         exam_document_ids = sorted({context.exam_document_id for context in contexts})
         if exam_document_ids:
             placeholders = ",".join("?" for _ in exam_document_ids)
-            question_ids = connection.execute(
-                f"SELECT id FROM questions WHERE document_id IN ({placeholders}) "  # noqa: S608
-                "ORDER BY id",
-                exam_document_ids,
+            parameters: list[str] = list(exam_document_ids)
+            selected_clause = ""
+            if question_ids is not None:
+                selected_placeholders = ",".join("?" for _ in question_ids)
+                selected_clause = f" AND id IN ({selected_placeholders})"  # noqa: S608
+                parameters.extend(sorted(question_ids))
+            selected_questions = connection.execute(
+                f"SELECT id FROM questions WHERE document_id IN ({placeholders})"  # noqa: S608
+                + selected_clause
+                + " ORDER BY id",
+                tuple(parameters),
             ).fetchall()
-            for question in question_ids:
+            for question in selected_questions:
                 sync_question_occurrence(
                     connection, cast(str, question["id"]), changed_at=changed_at
                 )
@@ -692,6 +723,7 @@ def apply_desktop_preparation(
         connection,
         apply=True,
         run_id=f"{run_id}-equivalence",
+        question_ids=question_ids,
     )
     result = _summary(connection)
     result.update(
@@ -706,9 +738,76 @@ def apply_desktop_preparation(
     return result
 
 
+@dataclass(frozen=True)
+class _PreparationApproval:
+    token: str
+    scope: ResolvedDesktopScope
+    outside_ids: tuple[str, ...]
+
+
+def _scoped_preparation_details(
+    connection: sqlite3.Connection,
+    resolved: ResolvedDesktopScope,
+) -> dict[str, Any]:
+    selected = set(resolved.question_ids)
+    placeholders = ",".join("?" for _ in selected)
+    rows = connection.execute(
+        "SELECT q.id,qo.occurrence_status,g.id AS group_id,g.status AS group_status,"
+        "g.reason FROM questions q "
+        "LEFT JOIN question_occurrences qo ON qo.question_id=q.id "
+        "LEFT JOIN question_group_occurrences go ON go.occurrence_id=qo.id AND go.status='active' "
+        "LEFT JOIN question_equivalence_groups g ON g.id=go.group_id "
+        f"WHERE q.id IN ({placeholders}) ORDER BY q.id",  # noqa: S608
+        tuple(sorted(selected)),
+    ).fetchall()
+    by_id = {cast(str, row["id"]): row for row in rows}
+    included: list[dict[str, Any]] = []
+    excluded: list[dict[str, Any]] = []
+    group_ids: set[str] = set()
+    for item in resolved.items:
+        row = by_id.get(cast(str, item["id"]))
+        if row is not None and row["group_status"] == "confirmed":
+            included.append(dict(item))
+            group_ids.add(cast(str, row["group_id"]))
+            continue
+        reason = "prova ou vínculo ainda sem identidade suficiente"
+        if row is not None:
+            reason = cast(str, row["reason"] or row["occurrence_status"] or reason)
+        excluded.append({**item, "reason": reason})
+    affected_ids: set[str] = set()
+    if group_ids:
+        group_placeholders = ",".join("?" for _ in group_ids)
+        affected_ids = {
+            cast(str, row["question_id"])
+            for row in connection.execute(
+                "SELECT DISTINCT o.question_id FROM question_group_occurrences go "
+                "JOIN question_occurrences o ON o.id=go.occurrence_id "
+                f"WHERE go.status='active' AND go.group_id IN ({group_placeholders})",  # noqa: S608
+                tuple(sorted(group_ids)),
+            ).fetchall()
+        }
+    outside_ids = sorted(affected_ids - selected)
+    return {
+        "scope": resolved.public(),
+        "selectedCount": len(selected),
+        "included": included,
+        "excluded": excluded,
+        "includedCount": len(included),
+        "excludedCount": len(excluded),
+        "canonicalGroupIds": sorted(group_ids),
+        "canonicalGroups": len(group_ids),
+        "equivalentCopies": max(len(affected_ids) - len(group_ids), 0),
+        "outsideScopeQuestionIds": outside_ids,
+        "outsideScopeCount": len(outside_ids),
+        "requiresOutsideScopeAuthorization": bool(outside_ids),
+    }
+
+
 class DesktopPreparationManager:
     def __init__(self, store: Any) -> None:
         self.store = store
+        self._approvals: dict[str, _PreparationApproval] = {}
+        self._approval_lock = threading.Lock()
         with closing(self.store._connect()) as connection:
             connection.execute(
                 """
@@ -728,20 +827,56 @@ class DesktopPreparationManager:
         with closing(self.store._connect()) as connection:
             return _summary(connection)
 
-    def preview(self) -> dict[str, Any]:
+    def preview(self, scope: DesktopOperationScope) -> dict[str, Any]:
+        resolved = resolve_desktop_scope(self.store, scope)
         source = sqlite3.connect(self.store.path, timeout=30)
         memory = sqlite3.connect(":memory:")
         memory.row_factory = sqlite3.Row
         try:
             source.backup(memory)
-            report = apply_desktop_preparation(memory, run_id=f"preview-{uuid.uuid4().hex}")
+            report = apply_desktop_preparation(
+                memory,
+                run_id=f"preview-{uuid.uuid4().hex}",
+                question_ids=set(resolved.question_ids),
+            )
+            details = _scoped_preparation_details(memory, resolved)
             report["mode"] = "preview"
+            report.update(details)
+            token = uuid.uuid4().hex
+            report["confirmationToken"] = token
+            with self._approval_lock:
+                self._approvals = {
+                    token: _PreparationApproval(
+                        token=token,
+                        scope=resolved,
+                        outside_ids=tuple(details["outsideScopeQuestionIds"]),
+                    )
+                }
             return report
         finally:
             memory.close()
             source.close()
 
-    def run(self) -> dict[str, Any]:
+    def run(
+        self,
+        confirmation_token: str,
+        scope: DesktopOperationScope,
+    ) -> dict[str, Any]:
+        with self._approval_lock:
+            approval = self._approvals.pop(confirmation_token, None)
+        if approval is None:
+            raise ValueError("confirmação da prévia ausente, expirada ou já utilizada")
+        resolved = resolve_desktop_scope(self.store, scope)
+        if (
+            resolved.snapshot_hash != approval.scope.snapshot_hash
+            or resolved.contract.model_dump(mode="json", by_alias=True)
+            != approval.scope.contract.model_dump(mode="json", by_alias=True)
+        ):
+            raise RuntimeError("o banco ou o escopo mudou desde a prévia")
+        if approval.outside_ids and not scope.allow_out_of_scope:
+            raise RuntimeError(
+                "a preparação atingiria questões fora do escopo; autorize o impacto na prévia"
+            )
         backup_path = self.store.backup_before_preparation()
         run_id = str(uuid.uuid4())
         started_at = _now()
@@ -754,8 +889,16 @@ class DesktopPreparationManager:
             )
             connection.commit()
             try:
-                report = apply_desktop_preparation(connection, run_id=run_id)
+                report = apply_desktop_preparation(
+                    connection,
+                    run_id=run_id,
+                    question_ids=set(resolved.question_ids),
+                )
                 report["backupPath"] = str(backup_path)
+                report.update(_scoped_preparation_details(connection, resolved))
+                report["outsideScopeAuthorized"] = bool(
+                    approval.outside_ids and scope.allow_out_of_scope
+                )
                 finished_at = _now()
                 connection.execute(
                     "UPDATE desktop_preparation_runs SET status='completed',report_json=?,"

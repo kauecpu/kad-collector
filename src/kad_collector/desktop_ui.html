@@ -47,7 +47,8 @@
             <p class="header-copy">Da coleta à exportação, cada etapa mostra seu estado e a próxima ação.</p>
           </div>
           <div class="header-actions">
-            <button id="qwen-classify-open" class="button ghost" type="button">Classificar pendentes com Qwen 8B</button>
+            <button id="qwen-selected-open" class="button ghost" type="button">Classificar selecionadas com Qwen</button>
+            <button id="qwen-classify-open" class="button ghost" type="button">Classificar filtro atual com Qwen</button>
             <button id="reclassify-open" class="button ghost" type="button">Reclassificar acervo</button>
             <button id="export-open" class="button ghost" type="button">Exportar filtro</button>
             <button id="import-open" class="button primary" type="button"><span>＋</span>Novo lote</button>
@@ -122,7 +123,7 @@
         </section>
 
         <section id="preparation-overview" class="flow-section">
-          <header><div><p class="eyebrow">ETAPA 2 · PREPARAR</p><h2>Da extração à questão canônica</h2></div><div class="preparation-heading-action"><p>Uma <abbr title="Versão editorial única escolhida para representar ocorrências equivalentes da mesma questão.">questão canônica</abbr> só existe depois que a prova é identificada e o <abbr title="Conjunto de ocorrências da mesma questão em cadernos ou versões diferentes.">grupo equivalente</abbr> é confirmado.</p><button id="prepare-questions-open" class="button primary" type="button">Preparar questões para classificação</button></div></header>
+          <header><div><p class="eyebrow">ETAPA 2 · PREPARAR</p><h2>Da extração à questão canônica</h2></div><div class="preparation-heading-action"><p>Uma <abbr title="Versão editorial única escolhida para representar ocorrências equivalentes da mesma questão.">questão canônica</abbr> só existe depois que a prova é identificada e o <abbr title="Conjunto de ocorrências da mesma questão em cadernos ou versões diferentes.">grupo equivalente</abbr> é confirmado.</p><div class="header-actions"><button id="prepare-selected-open" class="button ghost" type="button">Preparar selecionadas</button><button id="prepare-questions-open" class="button primary" type="button">Preparar filtro atual</button></div><details class="advanced-operation"><summary>Operação avançada</summary><button id="prepare-all-open" class="button danger" type="button">Preparar banco inteiro</button></details></div></header>
           <div class="preparation-steps">
             <article><strong id="prep-raw">0</strong><span>Aparições brutas</span><small>todas as cópias extraídas dos PDFs</small></article>
             <i>→</i><article><strong id="prep-occurrences">0</strong><span>Ocorrências preparadas</span><small>ligadas à prova</small></article>
@@ -494,7 +495,10 @@
           <button class="icon-button modal-close" type="button" aria-label="Fechar">×</button>
         </header>
         <p class="modal-copy">O Collector relacionará provas e gabaritos já reconhecidos, reunirá cópias da mesma questão e escolherá uma cópia principal. Nenhum PDF será baixado e o Qwen não será executado.</p>
+        <strong id="preparation-scope-label" class="scope-label"></strong>
         <div id="preparation-preview" class="preview-summary" aria-live="polite"></div>
+        <div id="preparation-preview-list" class="preview-list" aria-live="polite"></div>
+        <label id="preparation-outside-authorization-row" class="scope-authorization" hidden><input id="preparation-outside-authorization" type="checkbox"> Autorizar explicitamente as cópias equivalentes fora do escopo listadas acima</label>
         <p class="batch-warning">Casos sem evidência suficiente continuarão pendentes para revisão.</p>
         <footer class="modal-footer">
           <button class="button ghost modal-close" type="button">Cancelar</button>
@@ -528,11 +532,14 @@
         </header>
         <p class="modal-copy">A prévia não executa inferência nem altera o banco. Regras determinísticas serão aplicadas antes da IA.</p>
         <p class="qwen-fixed-explanation">O Qwen pode sugerir Disciplina, Matéria, Assunto e Nível. Ele não altera gabaritos, respostas oficiais, identidade da prova ou decisões humanas.</p>
+        <strong id="qwen-scope-label" class="scope-label"></strong>
         <label>Limite deste lote
           <input id="qwen-classification-limit" type="number" min="1" max="250" value="25" required>
         </label>
         <button id="qwen-preview-refresh" class="button ghost" type="button">Atualizar prévia</button>
         <div id="qwen-classification-preview" class="preview-summary" aria-live="polite"></div>
+        <div id="qwen-classification-list" class="preview-list" aria-live="polite"></div>
+        <label id="qwen-outside-authorization-row" class="scope-authorization" hidden><input id="qwen-outside-authorization" type="checkbox"> Autorizar explicitamente o impacto fora do escopo listado acima</label>
         <dl id="qwen-classification-contract" class="qwen-contract"></dl>
         <p id="qwen-classification-warning" class="batch-warning"></p>
         <footer class="modal-footer">

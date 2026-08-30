@@ -1088,12 +1088,62 @@ def rebuild_equivalence_groups(
     run_id: str,
     contest_id: str | None,
     changed_at: str,
+    question_ids: set[str] | None = None,
 ) -> tuple[Counter[str], list[dict[str, Any]]]:
-    parameters: tuple[str, ...] = () if contest_id is None else (contest_id,)
-    clause = "" if contest_id is None else "WHERE contest_id = ?"
-    occurrences = connection.execute(
-        "SELECT * FROM question_occurrences " + clause + " ORDER BY id", parameters
-    ).fetchall()
+    parameters: list[str] = []
+    conditions: list[str] = []
+    if contest_id is not None:
+        conditions.append("contest_id = ?")
+        parameters.append(contest_id)
+    if question_ids is not None:
+        if not question_ids:
+            occurrences = []
+        else:
+            placeholders = ",".join("?" for _ in question_ids)
+            seed_rows = connection.execute(
+                f"SELECT * FROM question_occurrences WHERE question_id IN ({placeholders})",  # noqa: S608
+                tuple(sorted(question_ids)),
+            ).fetchall()
+            boundary_names = (
+                "contest_id",
+                "application_id",
+                "role_id",
+                "stage_id",
+                "shift_id",
+                "content_kind",
+            )
+            complete_boundaries = {
+                tuple(cast(str, row[name]) for name in boundary_names)
+                for row in seed_rows
+                if all(row[name] is not None for name in boundary_names)
+            }
+            boundary_clauses: list[str] = []
+            boundary_parameters: list[str] = []
+            for scope_boundary in sorted(complete_boundaries):
+                boundary_clauses.append(
+                    "(" + " AND ".join(f"{name}=?" for name in boundary_names) + ")"
+                )
+                boundary_parameters.extend(scope_boundary)
+            direct_clause = f"question_id IN ({placeholders})"  # noqa: S608
+            scope_clause = direct_clause
+            if boundary_clauses:
+                scope_clause += " OR " + " OR ".join(boundary_clauses)
+            scoped_parameters = [*sorted(question_ids), *boundary_parameters]
+            if contest_id is not None:
+                scope_clause = f"contest_id=? AND ({scope_clause})"
+                scoped_parameters.insert(0, contest_id)
+            occurrences = connection.execute(
+                "SELECT * FROM question_occurrences WHERE "
+                + scope_clause
+                + " ORDER BY id",
+                tuple(scoped_parameters),
+            ).fetchall()
+    else:
+        clause = "" if not conditions else "WHERE " + " AND ".join(conditions)
+        occurrences = connection.execute(
+            "SELECT * FROM question_occurrences " + clause + " ORDER BY id",
+            tuple(parameters),
+        ).fetchall()
     occurrence_ids = [cast(str, item["id"]) for item in occurrences]
     if occurrence_ids:
         placeholders = ",".join("?" for _ in occurrence_ids)
@@ -1246,6 +1296,7 @@ def run_question_equivalence_migration(
     apply: bool = False,
     run_id: str | None = None,
     limit: int | None = None,
+    question_ids: set[str] | None = None,
 ) -> QuestionEquivalenceReport:
     if limit is not None and limit < 1:
         raise QuestionEquivalenceError("limit deve ser positivo")
@@ -1289,16 +1340,21 @@ def run_question_equivalence_migration(
         if existing["mode"] != mode or existing["contest_id"] != contest_id:
             raise QuestionEquivalenceError("run_id pertence a outro modo ou concurso")
         pending = _pending_questions(connection, contest_id)
+        if question_ids is not None:
+            pending = [question_id for question_id in pending if question_id in question_ids]
         selected = pending[:limit] if limit is not None else pending
         for question_id in selected:
             sync_question_occurrence(connection, question_id, changed_at=changed_at)
         report.occurrences_analyzed = len(selected)
         remaining = _pending_questions(connection, contest_id)
+        if question_ids is not None:
+            remaining = [question_id for question_id in remaining if question_id in question_ids]
         totals, conflicts = rebuild_equivalence_groups(
             connection,
             run_id=effective_run_id,
             contest_id=contest_id,
             changed_at=changed_at,
+            question_ids=question_ids,
         )
         occurrence_parameters: tuple[str, ...] = () if contest_id is None else (contest_id,)
         occurrence_clause = "" if contest_id is None else " WHERE contest_id = ?"

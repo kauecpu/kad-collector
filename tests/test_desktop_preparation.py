@@ -9,6 +9,7 @@ from pathlib import Path
 from kad_collector.desktop_models import (
     ClassificationValue,
     DesktopFilterSet,
+    DesktopOperationScope,
     QuestionClassification,
 )
 from kad_collector.desktop_preparation import DesktopPreparationManager
@@ -17,6 +18,20 @@ from kad_collector.desktop_store import DesktopStore
 from kad_collector.models import Alternative, QuestionRecord
 
 NOW = "2026-08-26T12:00:00+00:00"
+
+
+def _all_scope() -> DesktopOperationScope:
+    return DesktopOperationScope(type="all")
+
+
+def _preview_all(manager: DesktopPreparationManager) -> dict[str, object]:
+    return manager.preview(_all_scope())
+
+
+def _run_all(manager: DesktopPreparationManager) -> dict[str, object]:
+    scope = _all_scope()
+    preview = manager.preview(scope)
+    return manager.run(str(preview["confirmationToken"]), scope)
 
 
 def _json(value: object) -> str:
@@ -281,11 +296,11 @@ class DesktopPreparationTests(unittest.TestCase):
         store = _seed(self.root)
         manager = DesktopPreparationManager(store)
 
-        preview = manager.preview()
+        preview = _preview_all(manager)
         with closing(store._connect()) as connection:
             before = connection.execute("SELECT COUNT(*) FROM canonical_questions").fetchone()[0]
-        result = manager.run()
-        repeated = manager.run()
+        result = manager.run(str(preview["confirmationToken"]), _all_scope())
+        repeated = _run_all(manager)
 
         self.assertEqual(before, 0)
         self.assertEqual(preview["qwenEligible"], 1)
@@ -309,7 +324,7 @@ class DesktopPreparationTests(unittest.TestCase):
     def test_preparation_uses_turn_derived_from_unique_definitive_key(self) -> None:
         store = _seed(self.root, exam_turns=[], candidate_turns=["manhã"])
 
-        result = DesktopPreparationManager(store).run()
+        result = _run_all(DesktopPreparationManager(store))
 
         self.assertEqual(result["identifiedExams"], 2)
         self.assertEqual(result["canonicalQuestions"], 1)
@@ -328,7 +343,7 @@ class DesktopPreparationTests(unittest.TestCase):
     def test_preparation_uses_not_applicable_without_turn_partition(self) -> None:
         store = _seed(self.root, exam_turns=[], candidate_turns=[])
 
-        result = DesktopPreparationManager(store).run()
+        result = _run_all(DesktopPreparationManager(store))
 
         self.assertEqual(result["skipped"], [])
         with closing(store._connect()) as connection:
@@ -344,7 +359,7 @@ class DesktopPreparationTests(unittest.TestCase):
             _seed(self.root, exam_turns=[], candidate_turns=["manhã", "tarde"])
         )
 
-        result = manager.run()
+        result = _run_all(manager)
 
         self.assertEqual(result["identifiedExams"], 0)
         self.assertEqual(result["skipped"][0]["missingFields"], ["turn"])
@@ -360,7 +375,7 @@ class DesktopPreparationTests(unittest.TestCase):
             )
         )
 
-        result = manager.run()
+        result = _run_all(manager)
 
         self.assertEqual(result["identifiedExams"], 0)
         self.assertEqual(result["skipped"][0]["missingFields"], ["turn"])
@@ -368,7 +383,7 @@ class DesktopPreparationTests(unittest.TestCase):
     def test_newly_resolved_scope_refreshes_existing_occurrences(self) -> None:
         store = _seed(self.root, exam_turns=[], candidate_turns=["manhã", "tarde"])
         manager = DesktopPreparationManager(store)
-        first = manager.run()
+        first = _run_all(manager)
         with closing(store._connect()) as connection:
             unresolved_before = connection.execute(
                 "SELECT COUNT(*) FROM question_occurrences WHERE scope_id IS NULL"
@@ -389,7 +404,7 @@ class DesktopPreparationTests(unittest.TestCase):
                 )
             connection.commit()
 
-        second = manager.run()
+        second = _run_all(manager)
 
         self.assertEqual(first["canonicalQuestions"], 0)
         self.assertEqual(unresolved_before, 2)
@@ -405,7 +420,7 @@ class DesktopPreparationTests(unittest.TestCase):
         store = _seed(
             self.root, exam_turns=[], candidate_turns=["manhã", "tarde"]
         )
-        DesktopPreparationManager(store).run()
+        _run_all(DesktopPreparationManager(store))
         with closing(store._connect()) as connection:
             connection.execute("UPDATE questions SET flags_json='[\"duplicate\"]'")
             connection.commit()
@@ -432,7 +447,7 @@ class DesktopPreparationTests(unittest.TestCase):
     def test_preparation_accepts_numeric_year_stored_as_text(self) -> None:
         manager = DesktopPreparationManager(_seed(self.root, decision_year="2023"))
 
-        result = manager.run()
+        result = _run_all(manager)
 
         self.assertEqual(result["canonicalQuestions"], 1)
         self.assertEqual(result["qwenEligible"], 1)
@@ -441,12 +456,46 @@ class DesktopPreparationTests(unittest.TestCase):
         _seed(self.root)
         application = DesktopApplication(self.root)
 
-        preview = application.preview_preparation()
-        result = application.prepare_questions()
+        scope = {"type": "all"}
+        preview = application.preview_preparation({"scope": scope})
+        result = application.prepare_questions(
+            {"scope": scope, "confirmationToken": preview["confirmationToken"]}
+        )
 
         self.assertEqual(preview["mode"], "preview")
         self.assertEqual(result["qwenEligible"], 1)
         self.assertEqual(application.bootstrap()["preparationSummary"]["canonicalQuestions"], 1)
+
+    def test_selected_scope_lists_exact_records_and_rejects_outside_copy_impact(self) -> None:
+        store = _seed(self.root)
+        manager = DesktopPreparationManager(store)
+        _run_all(manager)
+        all_views = store.query(DesktopFilterSet(), include_equivalent_copies=True)["questions"]
+        selected_id = str(all_views[0]["id"])
+        scope = DesktopOperationScope(type="selected", questionIds=[selected_id])
+
+        preview = manager.preview(scope)
+
+        self.assertEqual(preview["scope"]["questionIds"], [selected_id])
+        self.assertEqual(preview["selectedCount"], 1)
+        self.assertEqual(preview["outsideScopeCount"], 1)
+        self.assertTrue(preview["requiresOutsideScopeAuthorization"])
+        with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
+            manager.run(str(preview["confirmationToken"]), scope)
+
+    def test_filter_scope_is_explicit_and_token_cannot_be_reused(self) -> None:
+        store = _seed(self.root)
+        manager = DesktopPreparationManager(store)
+        scope = DesktopOperationScope(
+            type="filter", filter=DesktopFilterSet(boards=["FGV"])
+        )
+
+        preview = manager.preview(scope)
+        result = manager.run(str(preview["confirmationToken"]), scope)
+
+        self.assertEqual(result["selectedCount"], 2)
+        with self.assertRaisesRegex(ValueError, "já utilizada"):
+            manager.run(str(preview["confirmationToken"]), scope)
 
 
 if __name__ == "__main__":

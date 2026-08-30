@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from .models import StrictModel
 
@@ -118,6 +118,30 @@ class DesktopFilterSet(StrictModel):
                 seen.add(key)
                 normalized.append(item)
         return normalized
+
+
+class DesktopOperationScope(StrictModel):
+    type: Literal["selected", "filter", "all"]
+    question_ids: list[str] = Field(default_factory=list, alias="questionIds")
+    filter: DesktopFilterSet | None = None
+    allow_out_of_scope: bool = Field(default=False, alias="allowOutOfScope")
+
+    @field_validator("question_ids")
+    @classmethod
+    def normalize_question_ids(cls, values: list[str]) -> list[str]:
+        return list(dict.fromkeys(value.strip() for value in values if value.strip()))
+
+    @model_validator(mode="after")
+    def validate_contract(self) -> DesktopOperationScope:
+        if self.type == "selected" and not self.question_ids:
+            raise ValueError("o escopo selecionado exige ao menos uma questão")
+        if self.type == "filter" and self.filter is None:
+            raise ValueError("o escopo por filtro exige o filtro normalizado")
+        if self.type != "selected" and self.question_ids:
+            raise ValueError("questionIds só pode ser usado no escopo selecionado")
+        if self.type != "filter" and self.filter is not None:
+            raise ValueError("filter só pode ser usado no escopo por filtro")
+        return self
 
 
 class ClassificationValue(StrictModel):
