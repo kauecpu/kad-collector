@@ -972,6 +972,11 @@ def record_document_link(
             and current["answer_key_version_id"] == answer_key_version_id
             and current["algorithm_version"] == decision.algorithm_version
         ):
+            if _decision_enriches_interval(current["decision_json"], decision_json):
+                connection.execute(
+                    "UPDATE document_links SET decision_json=?, updated_at=? WHERE id=?",
+                    (decision_json, recorded_at, current["id"]),
+                )
             if own_transaction:
                 connection.commit()
             return cast(str, current["id"])
@@ -1038,6 +1043,34 @@ def record_document_link(
         if own_transaction:
             connection.rollback()
         raise
+
+
+def _decision_enriches_interval(old_json: str | None, new_json: str) -> bool:
+    """Detect a deterministic interval enrichment without rewriting human data."""
+    if not old_json:
+        return False
+    try:
+        old_payload = json.loads(old_json)
+        new_payload = json.loads(new_json)
+    except (TypeError, ValueError):
+        return False
+
+    def has_matched_interval(payload: object) -> bool:
+        if not isinstance(payload, dict):
+            return False
+        assessments = payload.get("assessments")
+        if not isinstance(assessments, list):
+            return False
+        return any(
+            isinstance(comparison, dict)
+            and comparison.get("field") == "interval"
+            and comparison.get("status") == "matched"
+            for assessment in assessments
+            if isinstance(assessment, dict)
+            for comparison in (assessment.get("comparisons") or [])
+        )
+
+    return not has_matched_interval(old_payload) and has_matched_interval(new_payload)
 
 
 def record_corrected_document_link(

@@ -1135,11 +1135,23 @@ def _pending_exam_versions(connection: sqlite3.Connection) -> list[str]:
         cast(str, row["id"])
         for row in rows
         if bool(row["has_legacy_link"])
-        or (not bool(row["has_any_link"]) and _version_is_fgv(connection, row["id"]))
+        or (
+            not bool(row["has_any_link"])
+            and _version_is_supported_auto_link_source(connection, row["id"])
+        )
     ]
 
 
-def _version_is_fgv(connection: sqlite3.Connection, version_id: str) -> bool:
+def _version_is_supported_auto_link_source(
+    connection: sqlite3.Connection, version_id: str
+) -> bool:
+    """Return whether a source is safe for automatic first-time association.
+
+    FGV was the original source covered by the revalidation pass.  PCI
+    Concursos publishes the same complete identity fields and answer-key
+    evidence locally, so it belongs to the same deterministic path.  Other
+    boards remain opt-in until their source-specific evidence is modeled.
+    """
     version = connection.execute(
         "SELECT profile_json FROM document_versions WHERE id = ?",
         (version_id,),
@@ -1163,10 +1175,11 @@ def _version_is_fgv(connection: sqlite3.Connection, version_id: str) -> bool:
     normalized = NormalizedDocument.model_validate_json(
         cast(str, document["normalized_json"])
     )
-    return is_fgv_source(
-        board=str(normalized.metadata.get("board") or normalized.metadata.get("banca") or ""),
-        provider=str(normalized.metadata.get("provider") or normalized.source_id or ""),
-    )
+    board = str(normalized.metadata.get("board") or normalized.metadata.get("banca") or "")
+    provider = str(normalized.metadata.get("provider") or normalized.source_id or "")
+    if is_fgv_source(board=board, provider=provider):
+        return True
+    return provider.casefold().strip() in {"pci", "pci_concursos", "pci-concursos"}
 
 
 def _review_reason(decision: DocumentAssociationDecision) -> str:
