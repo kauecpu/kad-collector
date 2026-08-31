@@ -1525,6 +1525,7 @@ console.log(JSON.stringify(text(root).filter(Boolean)));
             "defer-question",
             "review-context",
             "automation-start",
+            "automation-progress-bar",
             "metric-answer-suggestion-summary",
             "answer-suggestion",
         ):
@@ -1536,6 +1537,9 @@ console.log(JSON.stringify(text(root).filter(Boolean)));
         self.assertIn("Arquivo já conhecido; nenhuma nova tarefa foi criada.", javascript)
         self.assertIn("Sugerir resposta com Qwen", javascript)
         self.assertIn("Retomar processamento", javascript)
+        self.assertIn(
+            "const suggestions = state.bootstrap.answerSuggestionSummary || {};", javascript
+        )
         for removed_control in (
             "edit-review-notes",
             "edit-actor",

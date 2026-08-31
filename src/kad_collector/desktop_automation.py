@@ -142,6 +142,35 @@ class DesktopAutomationManager:
             report = json.loads(row["report_json"] or "{}")
         except json.JSONDecodeError:
             report = {}
+        progress = report.get("automationProgress")
+        if not isinstance(progress, dict):
+            progress = {}
+        try:
+            qwen = self.ollama.status()
+        except Exception:
+            qwen = {"state": "unavailable"}
+        if row["status"] == "classifying_qwen":
+            total = max(
+                int(qwen.get("target", 0) or 0),
+                int(progress.get("total", 0) or 0),
+            )
+            completed = min(int(qwen.get("processed", 0) or 0), total) if total else 0
+            progress = {
+                "stage": "qwen_processing",
+                "completed": completed,
+                "total": total,
+                "percent": round(completed / total * 100) if total else 0,
+            }
+        elif row["status"] in {"completed", "idle"}:
+            progress = {"stage": "ready", "completed": 1, "total": 1, "percent": 100}
+        try:
+            stale = (
+                row["status"] in {"running", "classifying_qwen"}
+                and datetime.fromisoformat(str(row["updated_at"]))
+                < datetime.now(UTC) - timedelta(seconds=90)
+            )
+        except (TypeError, ValueError):
+            stale = False
         return {
             "status": row["status"],
             "phase": row["phase"],
@@ -153,6 +182,14 @@ class DesktopAutomationManager:
             "finishedAt": row["finished_at"],
             "retryAttempt": int(row["retry_attempt"]),
             "nextRetryAt": row["next_retry_at"],
+            "progress": progress,
+            "stale": stale,
+            "qwen": {
+                "state": qwen.get("state", "unavailable"),
+                "processed": int(qwen.get("processed", 0) or 0),
+                "target": int(qwen.get("target", 0) or 0),
+                "remaining": int(qwen.get("remaining", 0) or 0),
+            },
         }
 
     def _acquire_lease(self) -> None:
@@ -294,6 +331,12 @@ class DesktopAutomationManager:
                 "preparation": preparation,
                 "deterministic": deterministic.as_dict(),
                 "autoApproved": approved,
+                "automationProgress": {
+                    "stage": "qwen_pending",
+                    "completed": 0,
+                    "total": max(int(preparation.get("qwenEligible", 0) or 0), 0),
+                    "percent": 0,
+                },
             }
             qwen_status = self.ollama.status()
             if qwen_status.get("state") in {"starting", "running", "pause_requested"}:
@@ -301,7 +344,11 @@ class DesktopAutomationManager:
                     "classifying_qwen", "qwen", "Classificando novas questões com Qwen", report
                 )
                 return self.status()
-            qwen_needed = int(getattr(deterministic, "ai_candidates", 0)) > 0
+            # The rules pass deliberately runs with AI disabled, so its
+            # ``ai_candidates`` value is always zero.  The preparation report
+            # is the source of truth because it counts canonical units that
+            # are actually eligible for Qwen.
+            qwen_needed = int(preparation.get("qwenEligible", 0) or 0) > 0
             if qwen_needed and time.monotonic() - self._last_qwen_attempt >= 30:
                 self._last_qwen_attempt = time.monotonic()
                 return self._start_qwen(report)

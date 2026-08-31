@@ -613,6 +613,8 @@ label { display: grid; gap: 6px; color: #5f596b; font-size: 10px; font-weight: 7
 .automation-status-card p:last-child { margin:0; color:var(--muted); font-size:12px; }
 .automation-status-card .eyebrow { color:var(--purple); }
 .automation-status-progress { flex:0 0 auto; padding:7px 10px; color:var(--purple-dark); background:var(--surface-2); border-radius:999px; font:700 11px "Cascadia Mono", "Consolas", monospace; }
+.automation-progress-wrap { display:flex; align-items:center; gap:8px; }
+.automation-progress-wrap progress { width:132px; height:8px; accent-color:var(--purple); }
 .automation-status-actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
 .answer-suggestion { margin:14px 0; padding:14px 16px; background:var(--surface-2); border:1px solid var(--line); border-radius:12px; }
 .answer-suggestion h3 { margin:0 0 6px; color:var(--purple-dark); font-size:14px; }

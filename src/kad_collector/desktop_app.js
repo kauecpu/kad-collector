@@ -428,6 +428,7 @@ function renderOperationalOverview() {
   const operational = state.bootstrap.operationalSummary || {};
   const preparation = state.bootstrap.preparationSummary || {};
   const answerAudit = state.bootstrap.answerKeyAuditSummary || {};
+  const suggestions = state.bootstrap.answerSuggestionSummary || {};
   const config = state.bootstrap.config || {};
   const automation = state.bootstrap.automation || {};
   byId('database-environment').textContent = config.environmentLabel || 'Banco operacional';
@@ -435,18 +436,29 @@ function renderOperationalOverview() {
   byId('database-path').textContent = config.databasePath || config.dataDirectory || '—';
   byId('automation-status-title').textContent = automation.message || 'Aguardando o banco local';
   const automationPhaseLabels = {
-    waiting: 'aguardando novas questões', collection: 'aguardando a coleta terminar',
+    starting: 'iniciando a automação', waiting: 'aguardando novas questões', collection: 'aguardando a coleta terminar',
     preparing: 'preparando provas e duplicatas', qwen: 'classificando com Qwen',
+    qwen_pending: 'aguardando unidades para o Qwen', qwen_processing: 'classificando com Qwen',
     pending: 'pendências prontas para iniciar', ready: 'pronto para exportação',
     retry: 'aguardando nova tentativa', resume: 'retomando',
   };
-  byId('automation-status-detail').textContent = automation.error
-    ? `A automação tentará novamente. Detalhe: ${automation.error}`
-    : `Etapa atual: ${automationPhaseLabels[automation.phase] || 'em andamento'}. O Collector preserva todas as ocorrências no banco.`;
+  const progress = automation.progress || {};
+  const progressPercent = Math.max(0, Math.min(100, Number(progress.percent) || 0));
+  const progressBar = byId('automation-progress-bar');
+  if (progressBar) {
+    progressBar.value = progressPercent;
+    progressBar.setAttribute('aria-valuenow', String(progressPercent));
+  }
+  const stale = Boolean(automation.stale);
+  byId('automation-status-detail').textContent = stale
+    ? 'Sem atualização recente. O processamento parece ter parado; você pode iniciar novamente.'
+    : automation.error
+      ? `A automação tentará novamente. Detalhe: ${automation.error}`
+      : `Etapa atual: ${automationPhaseLabels[progress.stage] || automationPhaseLabels[automation.phase] || 'em andamento'} · ${progressPercent}%`;
   byId('automation-status-progress').textContent = automation.status === 'completed'
-    ? 'Tudo processado' : automation.status === 'classifying_qwen' ? 'Qwen em execução' : automation.status === 'waiting_qwen' ? 'Aguardando Qwen' : automation.status === 'running' ? 'Processando' : 'Aguardando';
+    ? 'Tudo processado' : stale ? 'Parado' : automation.status === 'classifying_qwen' ? `Qwen em execução · ${progressPercent}%` : automation.status === 'waiting_qwen' ? 'Aguardando Qwen' : automation.status === 'running' ? `Processando · ${progressPercent}%` : automation.status === 'waiting' && automation.phase === 'retry' ? 'Aguardando nova tentativa' : 'Aguardando';
   const automationButton = byId('automation-start');
-  const automationActive = ['running', 'classifying_qwen'].includes(automation.status);
+  const automationActive = !stale && ['running', 'classifying_qwen'].includes(automation.status);
   const resumable = automation.status === 'waiting' && automation.phase === 'resume';
   const hasPending = automation.status === 'waiting' && automation.phase === 'pending';
   const automationWaiting = ['waiting', 'waiting_qwen'].includes(automation.status) && !resumable && !hasPending;
