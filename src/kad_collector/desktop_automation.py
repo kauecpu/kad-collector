@@ -6,7 +6,7 @@ import time
 import uuid
 from collections.abc import Callable
 from contextlib import closing
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from .canonical_classification import run_canonical_classification
@@ -39,6 +39,8 @@ class DesktopAutomationManager:
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._last_qwen_attempt = 0.0
+        self._retry_attempt = 0
+        self._instance_id = str(uuid.uuid4())
         with closing(self.store._connect()) as connection:
             connection.execute(
                 """
@@ -54,6 +56,25 @@ class DesktopAutomationManager:
                     finished_at TEXT
                 )
                 """
+            )
+            columns = {
+                str(row["name"])
+                for row in connection.execute(
+                    "PRAGMA table_info(desktop_automation_state)"
+                ).fetchall()
+            }
+            if "retry_attempt" not in columns:
+                connection.execute(
+                    "ALTER TABLE desktop_automation_state ADD COLUMN "
+                    "retry_attempt INTEGER NOT NULL DEFAULT 0"
+                )
+            if "next_retry_at" not in columns:
+                connection.execute(
+                    "ALTER TABLE desktop_automation_state ADD COLUMN next_retry_at TEXT"
+                )
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS desktop_automation_lease ("
+                "id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,expires_at TEXT NOT NULL)"
             )
             row = connection.execute(
                 "SELECT status FROM desktop_automation_state WHERE id='singleton'"
@@ -72,6 +93,11 @@ class DesktopAutomationManager:
                     "WHERE id='singleton'",
                     (_now(),),
                 )
+            retry_row = connection.execute(
+                "SELECT retry_attempt FROM desktop_automation_state WHERE id='singleton'"
+            ).fetchone()
+            if retry_row is not None:
+                self._retry_attempt = int(retry_row["retry_attempt"] or 0)
             connection.commit()
 
     def _write(
@@ -83,11 +109,14 @@ class DesktopAutomationManager:
         *,
         error: str | None = None,
         finished: bool = False,
+        retry_attempt: int | None = None,
+        next_retry_at: str | None = None,
     ) -> None:
         with closing(self.store._connect()) as connection:
             connection.execute(
                 "UPDATE desktop_automation_state SET status=?,phase=?,message=?,"
-                "report_json=?,error=?,updated_at=?,finished_at=? WHERE id='singleton'",
+                "report_json=?,error=?,updated_at=?,finished_at=?,"
+                "retry_attempt=?,next_retry_at=? WHERE id='singleton'",
                 (
                     status,
                     phase,
@@ -96,6 +125,8 @@ class DesktopAutomationManager:
                     error,
                     _now(),
                     _now() if finished else None,
+                    self._retry_attempt if retry_attempt is None else retry_attempt,
+                    next_retry_at,
                 ),
             )
             connection.commit()
@@ -120,13 +151,60 @@ class DesktopAutomationManager:
             "updatedAt": row["updated_at"],
             "startedAt": row["started_at"],
             "finishedAt": row["finished_at"],
+            "retryAttempt": int(row["retry_attempt"]),
+            "nextRetryAt": row["next_retry_at"],
         }
+
+    def _acquire_lease(self) -> None:
+        now = datetime.now(UTC)
+        expires = (now + timedelta(minutes=2)).isoformat()
+        with closing(self.store._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT owner_id,expires_at FROM desktop_automation_lease WHERE id='singleton'"
+            ).fetchone()
+            if row is not None and row["owner_id"] != self._instance_id:
+                try:
+                    active = datetime.fromisoformat(str(row["expires_at"])) > now
+                except ValueError:
+                    active = False
+                if active:
+                    connection.rollback()
+                    raise RuntimeError(
+                        "outra instância do Collector já está processando este banco"
+                    )
+            connection.execute(
+                "INSERT INTO desktop_automation_lease(id,owner_id,expires_at) VALUES "
+                "('singleton',?,?) ON CONFLICT(id) DO UPDATE SET "
+                "owner_id=excluded.owner_id,expires_at=excluded.expires_at",
+                (self._instance_id, expires),
+            )
+            connection.commit()
+
+    def _release_lease(self) -> None:
+        with closing(self.store._connect()) as connection:
+            connection.execute(
+                "DELETE FROM desktop_automation_lease WHERE id='singleton' AND owner_id=?",
+                (self._instance_id,),
+            )
+            connection.commit()
+
+    def _renew_lease(self) -> None:
+        expires = (datetime.now(UTC) + timedelta(minutes=2)).isoformat()
+        with closing(self.store._connect()) as connection:
+            connection.execute(
+                "UPDATE desktop_automation_lease SET expires_at=? "
+                "WHERE id='singleton' AND owner_id=?",
+                (expires, self._instance_id),
+            )
+            connection.commit()
 
     def start(self) -> None:
         with self._lock:
             if self._thread is not None and self._thread.is_alive():
                 self._wake.set()
                 return
+            self._acquire_lease()
             self._stop.clear()
             self._thread = threading.Thread(
                 target=self._run_loop,
@@ -144,10 +222,51 @@ class DesktopAutomationManager:
         self.start()
         self._wake.set()
 
+    def mark_pending(self) -> dict[str, Any]:
+        """Expose newly imported work without starting the processing loop."""
+        with self._lock:
+            if self._thread is not None and self._thread.is_alive():
+                self._wake.set()
+                return self.status()
+            self._retry_attempt = 0
+            self._write(
+                "waiting",
+                "pending",
+                "Novas questões aguardando; clique em Iniciar processamento",
+                retry_attempt=0,
+                next_retry_at=None,
+            )
+            return self.status()
+
     def run_once(self) -> dict[str, Any]:
         if self.collection_active():
             self._write("waiting", "collection", "Aguardando a coleta terminar")
             return self.status()
+        persisted = self.status()
+        qwen_status = self.ollama.status()
+        qwen_active = qwen_status.get("state") in {
+            "starting",
+            "running",
+            "pause_requested",
+        }
+        if persisted["status"] == "classifying_qwen" and qwen_active:
+            self._write(
+                "classifying_qwen",
+                "qwen",
+                "Classificando novas questões com Qwen",
+                persisted.get("report") or {},
+                retry_attempt=self._retry_attempt,
+            )
+            return self.status()
+        if persisted["status"] == "waiting_qwen":
+            next_retry_at = persisted.get("nextRetryAt")
+            if next_retry_at:
+                try:
+                    if datetime.fromisoformat(str(next_retry_at)) > datetime.now(UTC):
+                        return persisted
+                except ValueError:
+                    pass
+            return self._start_qwen(persisted.get("report") or {})
         summary = self.store.operational_presentation_summary()
         if not summary["rawQuestions"]:
             self._write("idle", "waiting", "Aguardando novas questões", summary, finished=True)
@@ -185,27 +304,7 @@ class DesktopAutomationManager:
             qwen_needed = int(getattr(deterministic, "ai_candidates", 0)) > 0
             if qwen_needed and time.monotonic() - self._last_qwen_attempt >= 30:
                 self._last_qwen_attempt = time.monotonic()
-                self._write(
-                    "classifying_qwen",
-                    "qwen",
-                    "Iniciando classificação automática com Qwen",
-                    report,
-                )
-                try:
-                    self.ollama.start_automatic(
-                        DesktopOperationScope(type="all", allowOutOfScope=True),
-                        limit=250,
-                    )
-                    return self.status()
-                except Exception as exc:
-                    self._write(
-                        "waiting_qwen",
-                        "qwen",
-                        "Qwen indisponível; a automação tentará novamente",
-                        report,
-                        error=str(exc),
-                    )
-                    return self.status()
+                return self._start_qwen(report)
             self._write(
                 "completed",
                 "ready",
@@ -221,6 +320,46 @@ class DesktopAutomationManager:
                 "A automação aguardará uma nova tentativa",
                 summary,
                 error=str(exc),
+            )
+            return self.status()
+
+    def _start_qwen(self, report: dict[str, Any]) -> dict[str, Any]:
+        self._last_qwen_attempt = time.monotonic()
+        self._write(
+            "classifying_qwen",
+            "qwen",
+            "Iniciando classificação automática com Qwen",
+            report,
+            retry_attempt=self._retry_attempt,
+            next_retry_at=None,
+        )
+        try:
+            self.ollama.start_automatic(
+                DesktopOperationScope(type="all", allowOutOfScope=True),
+                limit=250,
+            )
+            self._retry_attempt = 0
+            self._write(
+                "classifying_qwen",
+                "qwen",
+                "Classificando novas questões com Qwen",
+                report,
+                retry_attempt=0,
+                next_retry_at=None,
+            )
+            return self.status()
+        except Exception as exc:
+            self._retry_attempt += 1
+            delay = min(300, 15 * (2 ** (self._retry_attempt - 1)))
+            next_retry = (datetime.now(UTC) + timedelta(seconds=delay)).isoformat()
+            self._write(
+                "waiting_qwen",
+                "qwen",
+                "Qwen indisponível; a automação tentará novamente",
+                report,
+                error=str(exc),
+                retry_attempt=self._retry_attempt,
+                next_retry_at=next_retry,
             )
             return self.status()
 
@@ -242,12 +381,21 @@ class DesktopAutomationManager:
         )
 
     def _run_loop(self) -> None:
-        self.run_once()
-        while not self._stop.is_set():
-            self._wake.wait(self.interval_seconds)
-            self._wake.clear()
-            if not self._stop.is_set():
-                self.run_once()
+        try:
+            while not self._stop.is_set():
+                self._renew_lease()
+                result = self.run_once()
+                status = result.get("status")
+                if status in {"completed", "idle"}:
+                    return
+                if status == "waiting_qwen":
+                    delay = min(60.0, 15.0 * (2 ** max(self._retry_attempt - 1, 0)))
+                else:
+                    delay = self.interval_seconds
+                self._wake.wait(delay)
+                self._wake.clear()
+        finally:
+            self._release_lease()
 
     def shutdown(self) -> None:
         self._stop.set()
@@ -255,3 +403,4 @@ class DesktopAutomationManager:
         thread = self._thread
         if thread is not None and thread.is_alive():
             thread.join(timeout=10)
+        self._release_lease()

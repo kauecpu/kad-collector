@@ -121,8 +121,9 @@ Os mesmos estados aparecem na lista, na revisão e na prévia de exportação.
 O Qwen pode sugerir somente a classificação editorial; ele não cria, completa nem confirma
 respostas oficiais e por isso nunca aparece como ação para uma pendência de gabarito.
 
-Ao concluir uma coleta, o Collector prepara automaticamente as questões usando apenas evidências
-já salvas no banco. O botão **Preparar questões para classificação** permite repetir essa operação
+Ao concluir uma coleta, o Collector deixa as questões pendentes usando apenas evidências
+já salvas no banco. O botão **Iniciar processamento** executa a preparação, a equivalência e a
+classificação pendente; o botão **Preparar questões para classificação** permite repetir essa operação
 de forma segura. Ela identifica as provas com vínculo ativo de gabarito, separa os cadernos por
 cargo, etapa, turno e tipo, reúne cópias pelo conteúdo e escolhe uma ocorrência principal. A preparação
 mantém separados dois estados: uma unidade pode receber classificação mesmo quando sua
@@ -177,7 +178,7 @@ banco local sem baixar os PDFs e sem alterar gabaritos, decisoes humanas ou suge
 Qwen. Antes das regras locais, ele recupera para a questão principal qualquer classificação
 protegida que ainda esteja preservada em uma cópia equivalente.
 
-O botão **Classificar pendentes com Qwen 8B** oferece um lote local assistido. Ao abrir,
+O botão **Classificar pendentes com Qwen 8B** oferece um lote local assistido. Ao abrir essa etapa,
 o Collector prepara uma cópia em memória e conta questões com resposta oficial, unidades de
 classificação, cópias que herdam o resultado, campos completos, regras locais e chamadas de IA.
 Uma questão respondida não fica bloqueada por grupo incompleto ou conflitante: o Qwen classifica

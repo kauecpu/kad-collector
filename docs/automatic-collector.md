@@ -1,6 +1,7 @@
 # Automação local do KAD Collector
 
-Ao abrir o aplicativo operacional, o Collector inicia um processo local e
+Ao abrir o aplicativo operacional, o Collector apenas restaura o estado do
+banco. O botão **Iniciar processamento** inicia um processo local e
 retomável. Ele prepara a identidade das provas, agrupa equivalências,
 reaplica a classificação determinística e aprova somente representantes que
 já passaram por todos os diagnósticos de importação. As ocorrências e cópias
@@ -19,3 +20,19 @@ e exportação; não significa que um aplicativo externo importou o arquivo.
 As decisões humanas são preservadas: uma questão pendente que já tenha
 revisor ou observações nunca é aprovada automaticamente. O processo é
 idempotente e não apaga documentos, ocorrências, grupos ou proveniências.
+
+Depois de uma nova importação ou coleta, o cartão volta para **Iniciar
+processamento** sem iniciar nada sozinho. Durante a execução, ele informa a
+etapa, a última atualização, o erro e a próxima tentativa. Se o aplicativo
+for fechado, a próxima abertura mostra **Retomar processamento** e continua
+do estado persistido. A exportação continua sendo uma decisão manual.
+
+## Sugestão manual de resposta
+
+Questões **Sem gabarito oficial** exibem a ação **Sugerir resposta com Qwen**
+na revisão. A chamada retorna alternativa, explicação, confiança, modelo e
+data, sempre com o aviso de que não é oficial. O registro fica na tabela de
+sugestões, separado da questão e do gabarito. O operador pode confirmar,
+escolher outra alternativa ou rejeitar; nenhuma dessas ações altera
+`correct_answer`, transforma a sugestão em gabarito oficial ou inclui a
+questão automaticamente na exportação.

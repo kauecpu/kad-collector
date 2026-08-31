@@ -1524,6 +1524,9 @@ console.log(JSON.stringify(text(root).filter(Boolean)));
             "batch-approve-dialog",
             "defer-question",
             "review-context",
+            "automation-start",
+            "metric-answer-suggestion-summary",
+            "answer-suggestion",
         ):
             self.assertIn(f'id="{control_id}"', html)
         self.assertIn("/api/questions/batch-approve", javascript)
@@ -1531,6 +1534,8 @@ console.log(JSON.stringify(text(root).filter(Boolean)));
         self.assertIn("Com resposta oficial", html)
         self.assertIn("Resposta oficial (gabarito)", html)
         self.assertIn("Arquivo já conhecido; nenhuma nova tarefa foi criada.", javascript)
+        self.assertIn("Sugerir resposta com Qwen", javascript)
+        self.assertIn("Retomar processamento", javascript)
         for removed_control in (
             "edit-review-notes",
             "edit-actor",
@@ -1648,6 +1653,34 @@ console.log(JSON.stringify(text(root).filter(Boolean)));
                 )
                 with urlopen(authorized, timeout=3) as response:
                     self.assertEqual(response.status, HTTPStatus.OK)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
+    def test_processing_starts_only_from_explicit_button_endpoint(self) -> None:
+        with TemporaryDirectory() as directory:
+            application = DesktopApplication(Path(directory) / "data")
+            self.assertEqual(application.automation.status()["status"], "idle")
+            server, thread, url = start_desktop_server(application)
+            try:
+                origin = url.rstrip("/")
+                request = Request(
+                    f"{url}api/automation/start",
+                    data=b"{}",
+                    method="POST",
+                    headers={
+                        "Content-Type": "application/json",
+                        "Origin": origin,
+                        "X-KAD-Desktop-Token": application.token,
+                    },
+                )
+                with patch.object(application.automation, "start") as start:
+                    with urlopen(request, timeout=3) as response:
+                        self.assertEqual(response.status, HTTPStatus.OK)
+                        payload = json.loads(response.read())
+                    start.assert_called_once_with()
+                self.assertEqual(payload["status"], "idle")
             finally:
                 server.shutdown()
                 server.server_close()
