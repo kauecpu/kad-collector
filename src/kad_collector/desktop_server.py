@@ -64,7 +64,14 @@ def _desktop_environment(data_dir: Path) -> str:
     reference_parts = {"baseline", "fresh", "reference", "references"}
     if parts.intersection(reference_parts) or "benchmark" in joined:
         return "reference"
-    if parts.intersection({"test", "tests", "tmp", "temp"}) or "pytest" in joined:
+    temporary_directory = any(
+        re.fullmatch(r"(?:tmp|temp)[-_a-z0-9]*", part) is not None for part in parts
+    )
+    if (
+        parts.intersection({"test", "tests", "tmp", "temp"})
+        or temporary_directory
+        or "pytest" in joined
+    ):
         return "test"
     return "operational"
 
