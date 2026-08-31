@@ -80,7 +80,8 @@ class DesktopExperienceTests(unittest.TestCase):
         self.assertEqual(operational["rawQuestions"], 1540)
         self.assertEqual(operational["canonicalQuestions"], 0)
         self.assertEqual(action["step"], "prepare")
-        self.assertIn("preparação canônica", action["title"].casefold())
+        self.assertIn("valide as provas", action["title"].casefold())
+        self.assertEqual(action["action"], "Validar provas")
 
     def test_answer_fixture_preserves_1092_matched_28_annulled_and_420_pending(self) -> None:
         summary = DesktopStore._summary(
@@ -91,6 +92,22 @@ class DesktopExperienceTests(unittest.TestCase):
         self.assertEqual(summary["answer_matched"], 1092)
         self.assertEqual(summary["answer_annulled"], 28)
         self.assertEqual(summary["answer_missing"], 420)
+
+    def test_next_action_prioritizes_blocked_review_then_exportable_questions(self) -> None:
+        operational = {"rawQuestions": 70, "canonicalQuestions": 70}
+        blocked = _next_desktop_action(
+            {"unclassified": 0, "pending": 70, "exception": 3, "importable": 67},
+            operational,
+        )
+        ready = _next_desktop_action(
+            {"unclassified": 0, "pending": 70, "exception": 0, "importable": 70},
+            operational,
+        )
+
+        self.assertEqual(blocked["step"], "review")
+        self.assertIn("3 questão", blocked["detail"])
+        self.assertEqual(ready["step"], "export")
+        self.assertIn("70 questão", ready["detail"])
 
     def test_environment_labels_distinguish_operational_test_and_reference_banks(self) -> None:
         self.assertEqual(
@@ -156,25 +173,37 @@ console.log(JSON.stringify(output));
         self.assertEqual(completed.returncode, 0, completed.stderr)
         states = {item["label"]: item for item in json.loads(completed.stdout)}
         self.assertEqual(states["Gabarito"]["state"], "Diagnóstico pendente")
-        self.assertEqual(states["Preparação"]["state"], "Bruta")
+        self.assertEqual(states["Prova"]["state"], "Prova não validada")
+        self.assertEqual(states["Prova"]["action"], "Validar a prova")
         self.assertEqual(states["Classificação"]["state"], "Incompleta")
         self.assertEqual(states["Classificação"]["action"], "Resolver o gabarito primeiro")
         self.assertEqual(states["Importação"]["state"], "Bloqueada")
 
-    def test_packaged_ui_exposes_pipeline_accessibility_and_qwen_safety_copy(self) -> None:
+    def test_packaged_ui_exposes_guided_workspaces_accessibility_and_qwen_safety(self) -> None:
         package = resources.files("kad_collector")
         html = package.joinpath("desktop_ui.html").read_text(encoding="utf-8")
         css = package.joinpath("desktop_styles.css").read_text(encoding="utf-8")
         for value in (
             "Banco ativo neste aplicativo",
-            "Página consultada",
-            "Gabaritos associados",
-            "Preparação canônica",
-            "Preparar questões para classificação",
-            "QUESTÕES ÚNICAS",
-            "Aparições brutas",
-            "Auditoria dos vínculos",
+            "Coletar provas",
+            "Validar provas",
+            "Classificar questões",
+            "Revisar pendências",
+            "Exportar questões",
+            "Validar provas e questões",
+            "Questões no acervo",
+            "Questões encontradas",
+            "Auditar relações atuais",
             "concurso, cargo, turno, tipo, ano, quantidade de questões e alternativas",
+            'data-workspace="overview"',
+            'data-workspace="prepare"',
+            'data-workspace="complete"',
+            'data-workspace="review"',
+            'data-workspace="export"',
+            'data-workspace="collect"',
+            'aria-label="Navegação principal"',
+            "Filtros avançados",
+            "Ver detalhes técnicos",
             'id="answer-key-audit-open"',
             'id="audit-confirmed"',
             'id="audit-uncertain"',
@@ -185,11 +214,14 @@ console.log(JSON.stringify(output));
             'id="edit-stage"',
             'id="edit-turn"',
             'id="question-state-groups"',
-            "Ele não altera gabaritos, respostas oficiais",
+            "O Qwen não altera",
         ):
             self.assertIn(value, html)
+        self.assertEqual(html.count("<nav"), 1)
+        self.assertNotIn('class="journey"', html)
         self.assertIn(":focus-visible", css)
         self.assertIn("@media (max-width: 1180px)", css)
+        self.assertIn("@media (prefers-reduced-motion: reduce)", css)
 
 
 if __name__ == "__main__":

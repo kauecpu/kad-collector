@@ -78,12 +78,12 @@ def _next_desktop_action(summary: dict[str, Any], operational: dict[str, Any]) -
     if not operational["canonicalQuestions"]:
         return {
             "step": "prepare",
-            "title": "Preparação canônica pendente",
+            "title": "Valide as provas coletadas",
             "detail": (
-                "As questões foram coletadas, mas ainda precisam ser associadas e "
-                "agrupadas antes da classificação com Qwen."
+                "As questões foram encontradas. Confirme cada prova uma vez antes "
+                "da classificação com Qwen."
             ),
-            "action": "Ver preparação",
+            "action": "Validar provas",
         }
     if summary.get("unclassified", 0):
         return {
@@ -95,15 +95,12 @@ def _next_desktop_action(summary: dict[str, Any], operational: dict[str, Any]) -
             ),
             "action": "Ver pendências",
         }
-    if summary.get("pending", 0) or summary.get("exception", 0):
+    if summary.get("exception", 0):
         return {
             "step": "review",
-            "title": "Revisão humana necessária",
-            "detail": (
-                f"{summary.get('pending', 0) + summary.get('exception', 0)} "
-                "questão(ões) aguardam decisão."
-            ),
-            "action": "Abrir revisão",
+            "title": "Revise as questões com bloqueio",
+            "detail": f"{summary['exception']} questão(ões) precisam de decisão humana.",
+            "action": "Revisar pendências",
         }
     if summary.get("importable", 0):
         return {
@@ -111,6 +108,13 @@ def _next_desktop_action(summary: dict[str, Any], operational: dict[str, Any]) -
             "title": "Revise o lote pronto para exportação",
             "detail": f"{summary['importable']} questão(ões) estão prontas para o app.",
             "action": "Ver exportação",
+        }
+    if summary.get("pending", 0):
+        return {
+            "step": "review",
+            "title": "Confira as questões restantes",
+            "detail": f"{summary['pending']} questão(ões) ainda aguardam uma decisão.",
+            "action": "Abrir revisão",
         }
     return {
         "step": "review",
