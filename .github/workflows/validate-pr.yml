@@ -54,7 +54,12 @@ jobs:
 
       - name: Check patch whitespace
         shell: pwsh
-        run: git diff --check "${{ github.event.pull_request.base.sha }}...${{ github.sha }}"
+        run: |
+          if ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
+            git diff --check HEAD^1 HEAD
+          } else {
+            git diff --check HEAD^ HEAD
+          }
 
       - name: Run packaged-resource smoke test
         shell: pwsh
