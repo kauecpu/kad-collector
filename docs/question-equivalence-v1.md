@@ -43,9 +43,11 @@ O algoritmo normaliza Unicode e espaços, remove cabeçalhos de página conhecid
 2. fingerprint de equivalência com os textos das alternativas ordenados;
 3. fingerprint apenas do enunciado, usado para detectar colisões com alternativas diferentes.
 
-Não há IA, similaridade aproximada ou desempate silencioso. Um grupo só recebe `confirmed`
-quando cobre todos os cadernos declarados no catálogo, possui uma ocorrência por caderno, não
-tem conteúdo incompleto e todas as respostas vêm de vínculos ativos
+Não há IA nem desempate silencioso. O alinhamento de alternativas usa similaridade textual
+conservadora apenas para tolerar resíduos de extração; não transforma uma semelhança editorial
+em confirmação sem as demais evidências. Um grupo só recebe `confirmed` quando cobre todos os
+cadernos declarados no catálogo, possui uma ocorrência por caderno, não tem conteúdo incompleto
+e todas as respostas vêm de vínculos ativos
 `semantic-association-v3`. As letras podem variar entre cadernos; a consolidação compara o
 texto normalizado da alternativa correta.
 

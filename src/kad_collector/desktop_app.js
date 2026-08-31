@@ -441,7 +441,9 @@ function renderOperationalOverview() {
   byId('prep-canonical').textContent = operational.canonicalQuestions || 0;
   byId('prep-ready').textContent = preparation.qwenEligible || 0;
   byId('prep-duplicates').textContent = preparation.duplicateQuestions || 0;
-  byId('prep-pending').textContent = preparation.pendingQuestions || 0;
+  byId('prep-pending').textContent = preparation.pendingCases
+    ?? preparation.pendingQuestions
+    ?? 0;
   byId('classification-ready').textContent = preparation.qwenEligible || 0;
   byId('overview-validation').textContent = preparation.pendingQuestions
     || Math.max((operational.rawQuestions || 0) - (operational.canonicalQuestions || 0), 0);
@@ -1090,9 +1092,13 @@ async function collectionAction(collectionId, action) {
 
 function renderMetrics() {
   const summary = state.bootstrap.summary || {};
+  const operational = state.bootstrap.operationalSummary || {};
+  const preparation = state.bootstrap.preparationSummary || {};
   byId('metric-total').textContent = summary.total || 0;
   byId('metric-answer-summary').textContent =
     `${summary.answer_matched || 0} com resposta oficial · ${summary.answer_annulled || 0} anuladas · ${summary.answer_missing || 0} sem gabarito associado`;
+  byId('metric-duplicate-summary').textContent =
+    `${operational.occurrences || operational.rawQuestions || 0} ocorrências no banco · ${preparation.duplicateQuestions || 0} cópias preservadas`;
   byId('metric-pending').textContent = summary.pending || 0;
   byId('metric-exceptions').textContent = summary.exception || 0;
   byId('metric-missing-answers').textContent = `${summary.answer_missing || 0} sem resposta oficial`;

@@ -52,7 +52,7 @@
             </section>
 
             <section class="overview-grid" aria-label="Resumo do trabalho">
-              <article class="overview-stat"><span>Questões no acervo</span><strong id="metric-total">0</strong><small id="metric-answer-summary">Nenhuma questão coletada</small></article>
+              <article class="overview-stat"><span>Questões no acervo (principais)</span><strong id="metric-total">0</strong><small id="metric-answer-summary">Nenhuma questão coletada</small><small id="metric-duplicate-summary">0 ocorrências no banco · 0 cópias preservadas</small></article>
               <article class="overview-stat attention"><span>Questões por validar</span><strong id="overview-validation">0</strong><small>agrupadas por prova na confirmação</small></article>
               <article class="overview-stat"><span>Para revisão</span><strong id="overview-review-total">0</strong><small>decisões humanas pendentes</small></article>
               <article class="overview-stat ready"><span>Prontas para exportar</span><strong id="overview-ready-total">0</strong><small>sem bloqueios conhecidos</small></article>
@@ -82,10 +82,10 @@
 
             <section id="preparation-overview" class="stage-panel">
               <div class="preparation-result-grid" aria-label="Resumo da validação">
-                <article><span>Questões encontradas</span><strong id="prep-raw">0</strong></article>
-                <article><span>Prontas para classificar</span><strong id="prep-ready">0</strong></article>
-                <article><span>Questões repetidas</span><strong id="prep-duplicates">0</strong></article>
-                <article class="attention"><span>Provas com pendência</span><strong id="prep-pending">0</strong></article>
+                <article><span>Questões encontradas (ocorrências)</span><strong id="prep-raw">0</strong><small>todas preservadas no banco</small></article>
+                <article><span>Prontas para classificar (principais)</span><strong id="prep-ready">0</strong><small>uma por grupo canônico</small></article>
+                <article><span>Questões repetidas (Cópias preservadas)</span><strong id="prep-duplicates">0</strong><small>ocorrências mantidas para auditoria</small></article>
+                <article class="attention"><span>Casos para revisão</span><strong id="prep-pending">0</strong><small>aparentes duplicatas, conflitos ou provas incompletas</small></article>
               </div>
               <p id="canonical-empty-message" class="plain-warning" hidden>As provas foram coletadas e ainda precisam de validação antes da classificação.</p>
               <div id="validation-unit-list" class="preparation-review-list dossier-list" aria-live="polite"></div>
