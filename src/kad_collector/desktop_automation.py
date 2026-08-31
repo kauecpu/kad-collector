@@ -133,6 +133,11 @@ class DesktopAutomationManager:
                 name="kad-desktop-automation",
                 daemon=True,
             )
+            self._write(
+                "running",
+                "starting",
+                "Iniciando automação local",
+            )
             self._thread.start()
 
     def wake(self) -> None:
