@@ -70,7 +70,11 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     application = DesktopApplication(args.data_dir)
     if args.smoke_test:
-        return _smoke_test(application)
+        try:
+            return _smoke_test(application)
+        finally:
+            application.automation.shutdown()
+            application.ollama_classification.shutdown()
     server, server_thread, url = start_desktop_server(application, port=args.port)
     del server_thread
     try:
@@ -101,6 +105,7 @@ def main(argv: list[str] | None = None) -> int:
         webview.start(debug=False)
         return 0
     finally:
+        application.automation.shutdown()
         application.ollama_classification.shutdown()
         server.shutdown()
         server.server_close()

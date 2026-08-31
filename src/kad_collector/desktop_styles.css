@@ -608,6 +608,11 @@ label { display: grid; gap: 6px; color: #5f596b; font-size: 10px; font-weight: 7
 .next-action-card h2 { margin: 7px 0; font: 650 clamp(24px, 3vw, 34px)/1.08 "Bahnschrift SemiCondensed", "Aptos Display", sans-serif; }
 .next-action-card p:last-child { max-width: 720px; color: #d0d5dd; font-size: 14px; }
 .next-action-card .eyebrow { color: var(--lime); }
+.automation-status-card { display:flex; align-items:center; justify-content:space-between; gap:18px; margin-bottom:16px; padding:16px 20px; background:var(--surface); border:1px solid var(--line); border-radius:16px; }
+.automation-status-card h2 { margin:4px 0; color:var(--ink); font-size:18px; }
+.automation-status-card p:last-child { margin:0; color:var(--muted); font-size:12px; }
+.automation-status-card .eyebrow { color:var(--purple); }
+.automation-status-progress { flex:0 0 auto; padding:7px 10px; color:var(--purple-dark); background:var(--surface-2); border-radius:999px; font:700 11px "Cascadia Mono", "Consolas", monospace; }
 
 .overview-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
 .overview-stat { display: grid; gap: 5px; min-height: 130px; padding: 20px; background: var(--surface); border: 1px solid var(--line); border-top: 4px solid #98a2b3; border-radius: 12px; }

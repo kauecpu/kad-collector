@@ -571,6 +571,30 @@ class DesktopOllamaClassificationManager:
                 raise ValueError("o token de confirmação já foi utilizado")
             return self._start(confirmation_token, scope, limit, confirmation_hash)
 
+    def start_automatic(
+        self,
+        scope: DesktopOperationScope,
+        *,
+        limit: int = MAX_BATCH_LIMIT,
+    ) -> dict[str, Any]:
+        """Start a verified Qwen run for the background desktop automator."""
+        selected_limit = _validate_limit(limit)
+        current = self._job_row()
+        if current is not None and current["status"] in {
+            "starting",
+            "running",
+            "pause_requested",
+        }:
+            return self.status(cast(str, current["id"]))
+        preview = self.preview(scope, selected_limit)
+        counts = cast(dict[str, Any], preview.get("counts", {}))
+        if int(counts.get("eligible", 0)) == 0:
+            return self.status()
+        token = preview.get("confirmationToken")
+        if not isinstance(token, str) or not token:
+            raise CanonicalClassificationError("prévia automática do Qwen inválida")
+        return self.start(token, scope, selected_limit)
+
     def _start(
         self,
         confirmation_token: str,

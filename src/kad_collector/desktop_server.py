@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 
 from pydantic import ValidationError
 
+from .desktop_automation import DesktopAutomationManager
 from .desktop_collection import DesktopCollectionManager
 from .desktop_export import (
     DesktopExportPreview,
@@ -139,9 +140,32 @@ class DesktopApplication:
         )
         self.preparation = DesktopPreparationManager(self.store)
         self.ollama_classification = DesktopOllamaClassificationManager(self.store)
+        self.automation = DesktopAutomationManager(
+            self.store,
+            self.ollama_classification,
+            collection_active=self._collection_or_processing_active,
+        )
         self.token = secrets.token_urlsafe(32)
 
+    def _automation_enabled(self) -> bool:
+        return _desktop_environment(self.data_dir) == "operational"
+
+    def _collection_or_processing_active(self) -> bool:
+        collection = any(
+            job.get("status") in {"queued", "running", "processing", "cancelling"}
+            for job in self.collection_manager.list_jobs()
+        )
+        processing = any(
+            job.get("status") in {"queued", "running", "cancelling"}
+            for job in self.store.list_jobs()
+        )
+        return collection or processing
+
     def bootstrap(self) -> dict[str, Any]:
+        # Test/reference databases are deliberately inert: their callers own
+        # every mutation and must never receive a background writer.
+        if _desktop_environment(self.data_dir) == "operational":
+            self.automation.start()
         query = self.store.query(DesktopFilterSet())
         raw_summary = self.store.query(
             DesktopFilterSet(), include_equivalent_copies=True
@@ -159,6 +183,7 @@ class DesktopApplication:
             "semanticSummary": self.store.semantic_presentation_summary(),
             "preparationSummary": self.preparation.summary(),
             "answerKeyAuditSummary": self.store.answer_key_audit_summary(),
+            "automation": self.automation.status(),
             "operationalSummary": {
                 **operational,
                 "nextAction": _next_desktop_action(query["summary"], operational),
@@ -203,7 +228,10 @@ class DesktopApplication:
         classifier_provider = payload.get("classifierProvider", "local")
         if classifier_provider not in {"local", "openai"}:
             raise ValueError("classificador deve ser local ou openai")
-        return self.pipeline.import_paths(paths, metadata, classifier_provider)
+        result = self.pipeline.import_paths(paths, metadata, classifier_provider)
+        if self._automation_enabled():
+            self.automation.wake()
+        return result
 
     def reprocess_documents(
         self,
@@ -214,7 +242,10 @@ class DesktopApplication:
             raise ValueError("documentIds deve conter ao menos um identificador")
         if classifier_provider not in {"local", "openai"}:
             raise ValueError("classificador deve ser local ou openai")
-        return self.pipeline.reprocess(document_ids, classifier_provider)
+        result = self.pipeline.reprocess(document_ids, classifier_provider)
+        if self._automation_enabled():
+            self.automation.wake()
+        return result
 
     def reclassify_questions(self) -> dict[str, Any]:
         return self.processor.reclassify_existing_questions()
@@ -275,7 +306,10 @@ class DesktopApplication:
         )
 
     def collect_from_link(self, payload: dict[str, Any]) -> str:
-        return self.collection_manager.start(payload)
+        result = self.collection_manager.start(payload)
+        if self._automation_enabled():
+            self.automation.wake()
+        return result
 
     def collection_action(self, collection_id: str, action: str) -> None:
         self.collection_manager.action(collection_id, action)
@@ -439,6 +473,9 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                 return
             if path == "/api/local-ai/classification/status":
                 self._send_json(application.ollama_classification.status())
+                return
+            if path == "/api/automation/status":
+                self._send_json(application.automation.status())
                 return
             question_match = re.fullmatch(r"/api/questions/([a-f0-9-]+)", path)
             if question_match is not None:
