@@ -428,9 +428,21 @@ function renderOperationalOverview() {
   const preparation = state.bootstrap.preparationSummary || {};
   const answerAudit = state.bootstrap.answerKeyAuditSummary || {};
   const config = state.bootstrap.config || {};
+  const automation = state.bootstrap.automation || {};
   byId('database-environment').textContent = config.environmentLabel || 'Banco operacional';
   byId('database-environment').className = `environment-badge ${config.environment || 'operational'}`;
   byId('database-path').textContent = config.databasePath || config.dataDirectory || '—';
+  byId('automation-status-title').textContent = automation.message || 'Aguardando o banco local';
+  const automationPhaseLabels = {
+    waiting: 'aguardando novas questões', collection: 'aguardando a coleta terminar',
+    preparing: 'preparando provas e duplicatas', qwen: 'classificando com Qwen',
+    ready: 'pronto para exportação', retry: 'aguardando nova tentativa', resume: 'retomando',
+  };
+  byId('automation-status-detail').textContent = automation.error
+    ? `A automação tentará novamente. Detalhe: ${automation.error}`
+    : `Etapa atual: ${automationPhaseLabels[automation.phase] || 'em andamento'}. O Collector preserva todas as ocorrências no banco.`;
+  byId('automation-status-progress').textContent = automation.status === 'completed'
+    ? 'Pronto para exportar' : automation.status === 'classifying_qwen' ? 'Qwen em execução' : automation.status === 'waiting_qwen' ? 'Aguardando Qwen' : automation.status === 'running' ? 'Processando' : 'Aguardando';
   byId('overview-official').textContent = summary.answer_matched || 0;
   byId('overview-annulled').textContent = summary.answer_annulled || 0;
   byId('overview-unmatched').textContent = summary.answer_missing || 0;
@@ -1235,7 +1247,8 @@ function schedulePoll() {
   const activeCollection = (state.bootstrap.collectionJobs || []).some((job) =>
     ['queued', 'running', 'pausing', 'cancelling', 'processing'].includes(job.status));
   const active = activeProcessing || activeCollection;
-  if (active) {
+  const automationActive = ['running', 'classifying_qwen'].includes(state.bootstrap.automation?.status);
+  if (active || automationActive) {
     state.polling = setTimeout(() => loadBootstrap({preserveQuery: true}).catch(() => {}), 2000);
   }
 }
