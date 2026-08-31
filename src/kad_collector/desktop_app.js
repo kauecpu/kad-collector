@@ -205,7 +205,9 @@ function renderScopeItems(root, included = [], excluded = [], outsideIds = []) {
       const title = document.createElement('strong');
       title.textContent = `Questão ${item.number ?? '—'} · ${item.exam || 'prova sem nome'}`;
       const detail = document.createElement('small');
-      detail.textContent = `${item.source || 'arquivo local'} · ID ${item.id}${item.reason ? ` · ${item.reason}` : ''}`;
+      detail.textContent = item.canonicalId
+        ? `${item.source || 'arquivo local'} · questão principal do banco`
+        : `${item.source || 'arquivo local'} · ID ${item.id}${item.reason ? ` · ${item.reason}` : ''}`;
       row.append(title, detail);
       root.append(row);
     });
@@ -1553,7 +1555,7 @@ function renderBatchToolbar() {
   byId('qwen-selected-open').disabled = selected === 0;
   byId('qwen-selected-open').textContent = `Classificar ${selected} selecionada${selected === 1 ? '' : 's'} com Qwen`;
   byId('prepare-questions-open').textContent = `Validar ${state.query?.total || 0} questões deste filtro`;
-  byId('qwen-classify-open').textContent = `Classificar ${state.query?.total || 0} questões com Qwen`;
+  byId('qwen-classify-open').textContent = 'Abrir prévia da classificação';
   const selectAll = byId('select-all-pending');
   selectAll.checked = pending.length > 0 && selected === pending.length;
   selectAll.indeterminate = selected > 0 && selected < pending.length;

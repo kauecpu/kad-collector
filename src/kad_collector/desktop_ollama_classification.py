@@ -458,26 +458,41 @@ class DesktopOllamaClassificationManager:
         selected = set(resolved.question_ids)
         placeholders = ",".join("?" for _ in selected)
         rows = connection.execute(
-            "SELECT q.id,g.id AS group_id,g.status AS group_status,cq.id AS canonical_id "
+            "SELECT q.id,g.id AS group_id,g.status AS group_status,cq.id AS canonical_id, "
+            "rep_o.question_id AS representative_question_id "
             "FROM questions q LEFT JOIN question_occurrences o ON o.question_id=q.id "
             "LEFT JOIN question_group_occurrences go ON go.occurrence_id=o.id "
             "AND go.status='active' "
             "LEFT JOIN question_equivalence_groups g ON g.id=go.group_id "
             "LEFT JOIN canonical_questions cq ON cq.group_id=g.id "
+            "LEFT JOIN question_occurrences rep_o ON rep_o.id=cq.representative_occurrence_id "
             f"WHERE q.id IN ({placeholders})",  # noqa: S608
             tuple(sorted(selected)),
         ).fetchall()
         by_id = {cast(str, row["id"]): row for row in rows}
-        included: list[dict[str, Any]] = []
+        included_by_group: dict[str, list[tuple[dict[str, Any], sqlite3.Row]]] = {}
         excluded: list[dict[str, Any]] = []
         group_ids: set[str] = set()
         for item in resolved.items:
             row = by_id.get(cast(str, item["id"]))
             if row is not None and row["group_status"] == "confirmed" and row["canonical_id"]:
-                included.append({**item, "canonicalId": row["canonical_id"]})
-                group_ids.add(cast(str, row["group_id"]))
+                group_id = cast(str, row["group_id"])
+                included_by_group.setdefault(group_id, []).append((dict(item), row))
+                group_ids.add(group_id)
             else:
                 excluded.append({**item, "reason": "questão sem unidade canônica elegível"})
+        included: list[dict[str, Any]] = []
+        for candidates in included_by_group.values():
+            representative_id = candidates[0][1]["representative_question_id"]
+            item, row = next(
+                (
+                    candidate
+                    for candidate in candidates
+                    if candidate[0]["id"] == representative_id
+                ),
+                candidates[0],
+            )
+            included.append({**item, "canonicalId": row["canonical_id"]})
         affected: set[str] = set()
         if group_ids:
             group_placeholders = ",".join("?" for _ in group_ids)

@@ -532,6 +532,19 @@ class DesktopOllamaClassificationTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "mudou desde a prévia"):
             manager.start(str(preview["confirmationToken"]), scope, 25)
 
+    def test_qwen_preview_lists_one_database_question_per_equivalence_group(self) -> None:
+        fixture, rows = _seed_canonical(self.root)
+        _clear_fields(fixture, rows[0][1], {"level"})
+        manager = self._manager(fixture, FakeAdmin(), FakeProvider(_level_decision()))
+
+        preview = _preview(manager)
+
+        self.assertEqual(preview["counts"]["scope"]["count"], 2)
+        self.assertEqual(preview["counts"]["includedCount"], 1)
+        self.assertEqual(len(preview["counts"]["included"]), 1)
+        self.assertEqual(preview["counts"]["included"][0]["id"], rows[0][1])
+        self.assertTrue(preview["counts"]["included"][0]["canonicalId"])
+
 
 if __name__ == "__main__":
     unittest.main()
