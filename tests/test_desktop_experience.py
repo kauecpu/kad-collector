@@ -182,6 +182,7 @@ console.log(JSON.stringify(output));
     def test_packaged_ui_exposes_guided_workspaces_accessibility_and_qwen_safety(self) -> None:
         package = resources.files("kad_collector")
         html = package.joinpath("desktop_ui.html").read_text(encoding="utf-8")
+        javascript = package.joinpath("desktop_app.js").read_text(encoding="utf-8")
         css = package.joinpath("desktop_styles.css").read_text(encoding="utf-8")
         for value in (
             "Banco ativo neste aplicativo",
@@ -191,6 +192,7 @@ console.log(JSON.stringify(output));
             "Unidades aptas à classificação",
             "Questões com campos pendentes",
             "Abrir prévia da classificação",
+            "Dados compatíveis",
             "Revisar pendências",
             "Exportar questões",
             "Validar provas e questões",
@@ -222,6 +224,9 @@ console.log(JSON.stringify(output));
             self.assertIn(value, html)
         self.assertEqual(html.count("<nav"), 1)
         self.assertNotIn('class="journey"', html)
+        self.assertIn("Já exportada", javascript)
+        self.assertIn("Dados completos", javascript)
+        self.assertIn("principal de", javascript)
         self.assertIn(":focus-visible", css)
         self.assertIn("@media (max-width: 1180px)", css)
         self.assertIn("@media (prefers-reduced-motion: reduce)", css)
