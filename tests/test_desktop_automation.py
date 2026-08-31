@@ -69,7 +69,7 @@ def test_running_qwen_does_not_repeat_database_preparation() -> None:
             ),
             patch(
                 "kad_collector.desktop_automation.apply_desktop_preparation",
-                return_value={"prepared": 1},
+                return_value={"prepared": 1, "qwenEligible": 1},
             ) as preparation,
             patch(
                 "kad_collector.desktop_automation.run_canonical_classification",
@@ -112,7 +112,7 @@ def test_qwen_failure_persists_backoff_without_repeating_preparation() -> None:
             ),
             patch(
                 "kad_collector.desktop_automation.apply_desktop_preparation",
-                return_value={"prepared": 1},
+                return_value={"prepared": 1, "qwenEligible": 1},
             ) as preparation,
             patch(
                 "kad_collector.desktop_automation.run_canonical_classification",
@@ -128,6 +128,36 @@ def test_qwen_failure_persists_backoff_without_repeating_preparation() -> None:
         assert first["nextRetryAt"]
         assert second["status"] == "waiting_qwen"
         assert preparation.call_count == 1
+
+
+def test_qwen_starts_from_canonical_preparation_queue() -> None:
+    """AI candidates must come from canonical preparation, not the rules pass."""
+    with TemporaryDirectory() as directory:
+        store = DesktopStore(Path(directory) / "collector.sqlite3")
+        ollama = _Ollama()
+        manager = DesktopAutomationManager(store, ollama)
+        deterministic = SimpleNamespace(ai_candidates=0, as_dict=lambda: {"aiCandidates": 0})
+
+        with (
+            patch.object(
+                store,
+                "operational_presentation_summary",
+                return_value={"rawQuestions": 1},
+            ),
+            patch(
+                "kad_collector.desktop_automation.apply_desktop_preparation",
+                return_value={"qwenEligible": 1, "qwenEligibleQuestions": 1},
+            ),
+            patch(
+                "kad_collector.desktop_automation.run_canonical_classification",
+                return_value=deterministic,
+            ),
+            patch.object(manager, "_approve_ready_questions", return_value=0),
+        ):
+            result = manager.run_once()
+
+        assert result["status"] == "classifying_qwen"
+        assert ollama.state == "running"
 
 
 def test_two_automation_instances_cannot_claim_the_same_database() -> None:

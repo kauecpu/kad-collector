@@ -53,7 +53,7 @@
 
             <section class="automation-status-card" aria-live="polite">
               <div><p class="eyebrow">AUTOMAÇÃO LOCAL</p><h2 id="automation-status-title">Aguardando o banco local</h2><p id="automation-status-detail">Depois da coleta, clique em Iniciar processamento para preparar e classificar as questões. A exportação continua manual.</p></div>
-              <div class="automation-status-actions"><span id="automation-status-progress" class="automation-status-progress">Pronto</span><button id="automation-start" class="button primary" type="button">Iniciar processamento</button></div>
+              <div class="automation-status-actions"><div class="automation-progress-wrap"><progress id="automation-progress-bar" max="100" value="0" aria-label="Progresso da automação"></progress><span id="automation-status-progress" class="automation-status-progress">Pronto</span></div><button id="automation-start" class="button primary" type="button">Iniciar processamento</button></div>
             </section>
 
             <section class="overview-grid" aria-label="Resumo do trabalho">
