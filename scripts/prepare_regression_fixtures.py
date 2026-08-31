@@ -85,7 +85,7 @@ def prepare_official_fixtures(manifest_path: Path) -> list[Path]:
     for fixture in manifest.fixtures:
         if fixture.kind != "official":
             continue
-        destination = (root / fixture.path).resolve()
+        destination = root / fixture.path
         try:
             validate_fixture(fixture, root)
         except RegressionError:
