@@ -717,8 +717,8 @@ label { display: grid; gap: 6px; color: #5f596b; font-size: 10px; font-weight: 7
 .question-number { font-size: 12px; }
 .status-pill, .confidence { font-size: 11px; }
 
-.export-stage { display: grid; grid-template-columns: 1.3fr 1fr; gap: 12px; padding: 0; background: transparent; border: 0; box-shadow: none; }
-.export-ready-card, .export-blocked-card { display: grid; gap: 5px; min-height: 180px; padding: 28px; background: white; border: 1px solid var(--line); border-top: 5px solid var(--success); border-radius: 14px; }
+.export-stage { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 0; background: transparent; border: 0; box-shadow: none; }
+.export-ready-card, .export-blocked-card { display: grid; gap: 5px; min-height: 180px; padding: 28px; color: inherit; text-align: left; cursor: pointer; background: white; border: 1px solid var(--line); border-top: 5px solid var(--success); border-radius: 14px; }
 .export-blocked-card { border-top-color: var(--warning); }
 .export-stage span { color: #475467; font-size: 14px; font-weight: 750; }
 .export-stage strong { font: 650 52px/1 "Bahnschrift SemiCondensed", "Aptos Display", sans-serif; }

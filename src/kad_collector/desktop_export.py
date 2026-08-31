@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import shutil
+import uuid
 from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -56,6 +58,35 @@ def _sha256(path: Path) -> str:
         while chunk := handle.read(1024 * 1024):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _validate_package(
+    directory: Path,
+    *,
+    expected_records: int,
+    expected_exceptions: int,
+) -> None:
+    questions = directory / "questoes.jsonl"
+    exceptions = directory / "excecoes.jsonl"
+    manifest_path = directory / "manifesto.json"
+    question_count = sum(1 for line in questions.read_text(encoding="utf-8").splitlines() if line)
+    exception_count = sum(
+        1 for line in exceptions.read_text(encoding="utf-8").splitlines() if line
+    )
+    if (question_count, exception_count) != (expected_records, expected_exceptions):
+        raise RuntimeError("a quantidade de registros do pacote de exportação divergiu")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for item in manifest.get("files", []):
+        relative = item.get("path")
+        if not isinstance(relative, str):
+            raise RuntimeError("o manifesto da exportação contém um caminho inválido")
+        path = directory / relative
+        if (
+            not path.is_file()
+            or path.stat().st_size != int(item.get("sizeBytes", -1))
+            or _sha256(path) != item.get("sha256")
+        ):
+            raise RuntimeError(f"o arquivo {relative} não passou na validação da exportação")
 
 
 def _document_record(view: dict[str, Any]) -> DocumentRecord:
@@ -272,68 +303,83 @@ def export_filtered_questions(
     now: datetime | None = None,
 ) -> DesktopExportResult:
     created_at = now or datetime.now(UTC)
-    directory = output_root / f"KAD-export-{created_at.strftime('%Y%m%d-%H%M%S')}"
-    questions_path = directory / "questoes.jsonl"
-    exceptions_path = directory / "excecoes.jsonl"
-    report_path = directory / "relatorio.json"
+    output_root.mkdir(parents=True, exist_ok=True)
+    suffix = f"{created_at.strftime('%Y%m%d-%H%M%S-%f')}-{uuid.uuid4().hex[:8]}"
+    directory = output_root / f"KAD-export-{suffix}"
+    temporary_directory = output_root / f".KAD-export-{suffix}.tmp"
+    temporary_directory.mkdir(exist_ok=False)
+    questions_path = temporary_directory / "questoes.jsonl"
+    exceptions_path = temporary_directory / "excecoes.jsonl"
+    report_path = temporary_directory / "relatorio.json"
     evaluation = _evaluate_filtered_questions(store, filters)
-
-    write_json_lines(questions_path, evaluation.records)
-    write_json_lines(exceptions_path, evaluation.exceptions)
-    evidence_paths: list[Path] = []
-    for digest, source in evaluation.evidence.items():
-        destination = directory / "fontes" / f"prova-{digest[:16]}.pdf"
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, destination)
-        evidence_paths.append(destination)
-    write_json(
-        report_path,
-        {
-            "schemaVersion": 2,
-            "contractFingerprint": EDITORIAL_IMPORT_V2_FINGERPRINT,
-            "createdAt": created_at.isoformat(),
-            "filters": filters.model_dump(mode="json"),
-            "selected": evaluation.selected,
-            "exported": len(evaluation.records),
-            "exceptions": len(evaluation.exceptions),
-            "exclusionReasons": dict(evaluation.reason_counts.most_common()),
-            "answerKeySummary": dict(evaluation.answer_key_summary),
-            "answerKeyDiagnostics": dict(
-                evaluation.answer_key_diagnostics.most_common()
-            ),
-            "notes": [
-                "Somente questões aprovadas, válidas e com origem HTTPS foram exportadas.",
-                "PDFs são evidência; questoes.jsonl é o arquivo aceito pelo painel KAD.",
-            ],
-        },
-    )
-    manifest_files = [questions_path, exceptions_path, report_path, *evidence_paths]
-    write_json(
-        directory / "manifesto.json",
-        {
-            "schemaVersion": 2,
-            "contract": {
-                "name": "editorial-question-import-v2",
-                "fingerprint": EDITORIAL_IMPORT_V2_FINGERPRINT,
+    try:
+        write_json_lines(questions_path, evaluation.records)
+        write_json_lines(exceptions_path, evaluation.exceptions)
+        evidence_paths: list[Path] = []
+        for digest, source in evaluation.evidence.items():
+            destination = temporary_directory / "fontes" / f"prova-{digest[:16]}.pdf"
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+            evidence_paths.append(destination)
+        write_json(
+            report_path,
+            {
+                "schemaVersion": 2,
+                "contractFingerprint": EDITORIAL_IMPORT_V2_FINGERPRINT,
+                "createdAt": created_at.isoformat(),
+                "filters": filters.model_dump(mode="json"),
+                "selected": evaluation.selected,
+                "exported": len(evaluation.records),
+                "exceptions": len(evaluation.exceptions),
+                "exclusionReasons": dict(evaluation.reason_counts.most_common()),
+                "answerKeySummary": dict(evaluation.answer_key_summary),
+                "answerKeyDiagnostics": dict(
+                    evaluation.answer_key_diagnostics.most_common()
+                ),
+                "notes": [
+                    "Somente questões aprovadas, válidas e com origem HTTPS foram exportadas.",
+                    "PDFs são evidência; questoes.jsonl é o arquivo aceito pelo painel KAD.",
+                ],
             },
-            "createdAt": created_at.isoformat(),
-            "importFile": "questoes.jsonl",
-            "files": [
-                {
-                    "path": str(path.relative_to(directory)).replace("\\", "/"),
-                    "sha256": _sha256(path),
-                    "sizeBytes": path.stat().st_size,
-                }
-                for path in manifest_files
-            ],
-        },
-    )
-    store.mark_exported(evaluation.exported_ids)
+        )
+        manifest_files = [questions_path, exceptions_path, report_path, *evidence_paths]
+        write_json(
+            temporary_directory / "manifesto.json",
+            {
+                "schemaVersion": 2,
+                "contract": {
+                    "name": "editorial-question-import-v2",
+                    "fingerprint": EDITORIAL_IMPORT_V2_FINGERPRINT,
+                },
+                "createdAt": created_at.isoformat(),
+                "importFile": "questoes.jsonl",
+                "files": [
+                    {
+                        "path": str(path.relative_to(temporary_directory)).replace(
+                            "\\", "/"
+                        ),
+                        "sha256": _sha256(path),
+                        "sizeBytes": path.stat().st_size,
+                    }
+                    for path in manifest_files
+                ],
+            },
+        )
+        _validate_package(
+            temporary_directory,
+            expected_records=len(evaluation.records),
+            expected_exceptions=len(evaluation.exceptions),
+        )
+        temporary_directory.replace(directory)
+        store.mark_exported(evaluation.exported_ids)
+    except Exception:
+        shutil.rmtree(temporary_directory, ignore_errors=True)
+        raise
     return DesktopExportResult(
         directory=directory,
-        questions_path=questions_path,
-        exceptions_path=exceptions_path,
-        report_path=report_path,
+        questions_path=directory / "questoes.jsonl",
+        exceptions_path=directory / "excecoes.jsonl",
+        report_path=directory / "relatorio.json",
         exported_count=len(evaluation.records),
         exception_count=len(evaluation.exceptions),
     )

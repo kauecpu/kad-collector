@@ -96,11 +96,23 @@ class DesktopExperienceTests(unittest.TestCase):
     def test_next_action_prioritizes_blocked_review_then_exportable_questions(self) -> None:
         operational = {"rawQuestions": 70, "canonicalQuestions": 70}
         blocked = _next_desktop_action(
-            {"unclassified": 0, "pending": 70, "exception": 3, "importable": 67},
+            {
+                "unclassified": 0,
+                "pending": 70,
+                "exception": 3,
+                "importable": 67,
+                "exportable": 0,
+            },
             operational,
         )
         ready = _next_desktop_action(
-            {"unclassified": 0, "pending": 70, "exception": 0, "importable": 70},
+            {
+                "unclassified": 0,
+                "pending": 70,
+                "exception": 0,
+                "importable": 70,
+                "exportable": 70,
+            },
             operational,
         )
 

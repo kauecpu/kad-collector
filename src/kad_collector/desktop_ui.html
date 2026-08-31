@@ -52,8 +52,8 @@
             </section>
 
             <section class="automation-status-card" aria-live="polite">
-              <div><p class="eyebrow">AUTOMAÇÃO LOCAL</p><h2 id="automation-status-title">Aguardando o banco local</h2><p id="automation-status-detail">Depois da coleta, clique em Iniciar processamento para preparar e classificar as questões. A exportação continua manual.</p></div>
-              <div class="automation-status-actions"><div class="automation-progress-wrap"><progress id="automation-progress-bar" max="100" value="0" aria-label="Progresso da automação"></progress><span id="automation-status-progress" class="automation-status-progress">Pronto</span></div><button id="automation-start" class="button primary" type="button">Iniciar processamento</button></div>
+              <div><p class="eyebrow">AUTOMAÇÃO LOCAL</p><h2 id="automation-status-title">Aguardando o banco local</h2><p id="automation-status-detail">Depois da coleta, clique em Iniciar processamento para preparar e classificar as questões. A exportação continua manual.</p><p id="automation-status-summary"></p></div>
+              <div class="automation-status-actions"><div class="automation-progress-wrap"><progress id="automation-progress-bar" max="100" value="0" aria-label="Progresso da automação"></progress><span id="automation-status-progress" class="automation-status-progress">Pronto</span></div><button id="automation-stop" class="button ghost" type="button" hidden>Parar processamento</button><button id="automation-start" class="button primary" type="button">Iniciar processamento</button></div>
             </section>
 
             <section class="overview-grid" aria-label="Resumo do trabalho">
@@ -74,6 +74,7 @@
               <section class="database-banner" aria-label="Banco de dados ativo">
                 <div><span id="database-environment" class="environment-badge operational">Banco operacional</span><strong>Banco ativo neste aplicativo</strong></div>
                 <code id="database-path">—</code>
+                <small id="backup-summary">Nenhum backup local</small>
                 <button id="copy-database-path" class="button ghost" type="button">Copiar caminho</button>
               </section>
             </details>
@@ -88,7 +89,7 @@
             <section id="preparation-overview" class="stage-panel">
               <div class="preparation-result-grid" aria-label="Resumo da validação">
                 <article><span>Questões encontradas (ocorrências)</span><strong id="prep-raw">0</strong><small>todas preservadas no banco</small></article>
-                <article><span>Prontas para classificar (principais)</span><strong id="prep-ready">0</strong><small>uma por grupo canônico</small></article>
+                <article><span>Unidades canônicas elegíveis</span><strong id="prep-ready">0</strong><small>uma por grupo canônico; inclui as que já estão completas</small></article>
                 <article><span>Questões repetidas (Cópias preservadas)</span><strong id="prep-duplicates">0</strong><small>ocorrências mantidas para auditoria</small></article>
                 <article class="attention"><span>Casos para revisão</span><strong id="prep-pending">0</strong><small>aparentes duplicatas, conflitos ou provas incompletas</small></article>
               </div>
@@ -200,8 +201,9 @@
               <button id="export-summary-open" class="button success" type="button">Revisar exportação</button>
             </header>
             <section id="export-overview" class="export-stage">
-              <article class="export-ready-card"><span>Prontas para exportar</span><strong id="export-ready-count">0</strong><small>questões sem bloqueios conhecidos</small></article>
-              <article class="export-blocked-card"><span>Ainda bloqueadas</span><strong id="export-blocked-count">0</strong><small>revise os motivos antes de exportar</small></article>
+              <button class="export-ready-card" type="button" data-export-filter="ready"><span>Prontas para exportar</span><strong id="export-ready-count">0</strong><small>questões sem bloqueios conhecidos</small></button>
+              <button class="export-ready-card" type="button" data-export-filter="exported"><span>Já exportadas</span><strong id="export-exported-count">0</strong><small>incluídas anteriormente em um arquivo</small></button>
+              <button class="export-blocked-card" type="button" data-export-filter="blocked"><span>Ainda bloqueadas</span><strong id="export-blocked-count">0</strong><small>revise os motivos antes de exportar</small></button>
             </section>
             <section class="export-guidance"><div><span class="guidance-icon">✓</span><div><h2>A prévia protege o lote</h2><p>Antes de criar o arquivo, o Collector mostra questões incluídas, excluídas e o motivo de cada bloqueio.</p></div></div></section>
             <details class="technical-panel"><summary>Operações avançadas</summary><button id="export-open" class="button ghost" type="button">Exportar somente as questões do filtro atual</button></details>

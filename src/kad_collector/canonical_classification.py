@@ -1616,7 +1616,6 @@ def _process_row(
         )
         return
 
-    report.ai_candidates += 1
     report.requested_fields.update(missing)
     current = _current_fields(question.model_dump(mode="json"), classification)
     options = _taxonomy_options(taxonomy, _metadata(row), current)
@@ -1625,6 +1624,8 @@ def _process_row(
         for field_name in missing
         if field_name not in CLASSIFICATION_FIELDS[:3] or options
     )
+    if ai_fields:
+        report.ai_candidates += 1
     if not enable_ai or not ai_fields or not apply:
         if not ai_fields and any(name in missing for name in CLASSIFICATION_FIELDS[:3]):
             item_id = _queue_review(

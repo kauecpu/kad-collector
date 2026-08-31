@@ -38,9 +38,10 @@ class DesktopAutomationManager:
         self._stop = threading.Event()
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
-        self._last_qwen_attempt = 0.0
         self._retry_attempt = 0
         self._instance_id = str(uuid.uuid4())
+        self._run_id: str | None = None
+        self._wait_for_qwen_stop = False
         with closing(self.store._connect()) as connection:
             connection.execute(
                 """
@@ -86,9 +87,21 @@ class DesktopAutomationManager:
                     "('singleton','idle','waiting','Aguardando o banco local', '{}', ?)" ,
                     (_now(),),
                 )
-            elif row["status"] in {"running", "classifying_qwen"}:
+            elif row["status"] in {
+                "running",
+                "classifying_qwen",
+                "starting",
+                "validating",
+                "preparing",
+                "deduplicating",
+                "classifying_rules",
+                "qwen_pending",
+                "qwen_processing",
+                "finalizing",
+                "stopping",
+            }:
                 connection.execute(
-                    "UPDATE desktop_automation_state SET status='waiting',phase='resume',"
+                    "UPDATE desktop_automation_state SET status='idle',phase='resume',"
                     "message='Retomando a automação após reiniciar o aplicativo',updated_at=? "
                     "WHERE id='singleton'",
                     (_now(),),
@@ -109,6 +122,7 @@ class DesktopAutomationManager:
         *,
         error: str | None = None,
         finished: bool = False,
+        started: bool = False,
         retry_attempt: int | None = None,
         next_retry_at: str | None = None,
     ) -> None:
@@ -116,7 +130,8 @@ class DesktopAutomationManager:
             connection.execute(
                 "UPDATE desktop_automation_state SET status=?,phase=?,message=?,"
                 "report_json=?,error=?,updated_at=?,finished_at=?,"
-                "retry_attempt=?,next_retry_at=? WHERE id='singleton'",
+                "retry_attempt=?,next_retry_at=?,started_at=CASE WHEN ? THEN ? "
+                "ELSE started_at END WHERE id='singleton'",
                 (
                     status,
                     phase,
@@ -127,6 +142,8 @@ class DesktopAutomationManager:
                     _now() if finished else None,
                     self._retry_attempt if retry_attempt is None else retry_attempt,
                     next_retry_at,
+                    int(started),
+                    _now(),
                 ),
             )
             connection.commit()
@@ -149,30 +166,67 @@ class DesktopAutomationManager:
             qwen = self.ollama.status()
         except Exception:
             qwen = {"state": "unavailable"}
-        if row["status"] == "classifying_qwen":
-            total = max(
-                int(qwen.get("target", 0) or 0),
-                int(progress.get("total", 0) or 0),
-            )
-            completed = min(int(qwen.get("processed", 0) or 0), total) if total else 0
+        status = str(row["status"])
+        if status in {"classifying_qwen", "qwen_processing"}:
+            total = max(int(progress.get("initialTotal", 0) or 0), 0)
+            base_completed = max(int(progress.get("completedTotal", 0) or 0), 0)
+            batch_completed = max(int(qwen.get("processed", 0) or 0), 0)
+            completed = min(base_completed + batch_completed, total) if total else 0
             progress = {
                 "stage": "qwen_processing",
+                "runId": progress.get("runId"),
                 "completed": completed,
                 "total": total,
-                "percent": round(completed / total * 100) if total else 0,
+                "percent": min(round(completed / total * 100), 99) if total else 0,
+                "initialTotal": total,
+                "completedTotal": completed,
+                "currentBatchCompleted": batch_completed,
+                "currentBatchTotal": int(qwen.get("target", 0) or 0),
+                "remainingTotal": max(total - completed, 0),
             }
-        elif row["status"] in {"completed", "idle"}:
-            progress = {"stage": "ready", "completed": 1, "total": 1, "percent": 100}
+        elif status in {"completed", "ready"}:
+            total = max(int(progress.get("initialTotal", 0) or 0), 0)
+            progress = {
+                **progress,
+                "stage": "ready",
+                "completed": total,
+                "total": total,
+                "completedTotal": total,
+                "remainingTotal": 0,
+                "percent": 100,
+            }
+        elif status == "idle" and not progress:
+            progress = {
+                "stage": "idle",
+                "completed": 0,
+                "total": 0,
+                "remainingTotal": 0,
+                "percent": 100,
+            }
         try:
             stale = (
-                row["status"] in {"running", "classifying_qwen"}
+                status
+                in {
+                    "running",
+                    "classifying_qwen",
+                    "starting",
+                    "validating",
+                    "preparing",
+                    "deduplicating",
+                    "classifying_rules",
+                    "qwen_pending",
+                    "qwen_processing",
+                    "finalizing",
+                    "stopping",
+                }
                 and datetime.fromisoformat(str(row["updated_at"]))
                 < datetime.now(UTC) - timedelta(seconds=90)
             )
         except (TypeError, ValueError):
             stale = False
+        public_status = "stale" if stale else status
         return {
-            "status": row["status"],
+            "status": public_status,
             "phase": row["phase"],
             "message": row["message"],
             "report": report,
@@ -243,15 +297,26 @@ class DesktopAutomationManager:
                 return
             self._acquire_lease()
             self._stop.clear()
+            self._run_id = str(uuid.uuid4())
             self._thread = threading.Thread(
                 target=self._run_loop,
                 name="kad-desktop-automation",
                 daemon=True,
             )
             self._write(
-                "running",
+                "starting",
                 "starting",
                 "Iniciando automação local",
+                {
+                    "automationProgress": {
+                        "runId": self._run_id,
+                        "stage": "starting",
+                        "completed": 0,
+                        "total": 0,
+                        "percent": 0,
+                    }
+                },
+                started=True,
             )
             self._thread.start()
 
@@ -276,26 +341,50 @@ class DesktopAutomationManager:
             return self.status()
 
     def run_once(self) -> dict[str, Any]:
+        if self._stop.is_set():
+            self._write("stopped", "stopped", "Processamento interrompido", finished=True)
+            return self.status()
         if self.collection_active():
-            self._write("waiting", "collection", "Aguardando a coleta terminar")
+            self._write("idle", "collection", "Aguardando a coleta terminar")
             return self.status()
         persisted = self.status()
+        persisted_report = persisted.get("report")
+        if not isinstance(persisted_report, dict):
+            persisted_report = {}
+
+        def execution_report(values: dict[str, Any]) -> dict[str, Any]:
+            """Keep the stable run identity while intermediate stages are persisted."""
+            return {**persisted_report, **values}
+
         qwen_status = self.ollama.status()
         qwen_active = qwen_status.get("state") in {
             "starting",
             "running",
             "pause_requested",
         }
-        if persisted["status"] == "classifying_qwen" and qwen_active:
+        if persisted["status"] in {"classifying_qwen", "qwen_processing"} and qwen_active:
             self._write(
-                "classifying_qwen",
-                "qwen",
+                "qwen_processing",
+                "qwen_processing",
                 "Classificando novas questões com Qwen",
                 persisted.get("report") or {},
                 retry_attempt=self._retry_attempt,
             )
             return self.status()
-        if persisted["status"] == "waiting_qwen":
+        if persisted["status"] in {"classifying_qwen", "qwen_processing"} and qwen_status.get(
+            "state"
+        ) not in {"completed"}:
+            detail = str(qwen_status.get("pauseReason") or qwen_status.get("state") or "")
+            self._write(
+                "error",
+                "qwen_processing",
+                "O Qwen não concluiu a classificação",
+                persisted.get("report") or {},
+                error=detail or "estado final do Qwen não reconhecido",
+                finished=True,
+            )
+            return self.status()
+        if persisted["status"] in {"waiting_qwen", "retry"}:
             next_retry_at = persisted.get("nextRetryAt")
             if next_retry_at:
                 try:
@@ -306,15 +395,41 @@ class DesktopAutomationManager:
             return self._start_qwen(persisted.get("report") or {})
         summary = self.store.operational_presentation_summary()
         if not summary["rawQuestions"]:
-            self._write("idle", "waiting", "Aguardando novas questões", summary, finished=True)
+            self._write("idle", "idle", "Aguardando novas questões", summary, finished=True)
             return self.status()
         try:
-            self._write("running", "preparing", "Preparando provas e agrupando duplicatas", summary)
+            self._write(
+                "validating",
+                "validating",
+                "Validando o banco local",
+                execution_report(summary),
+            )
+            self._write(
+                "preparing", "preparing", "Preparando as provas", execution_report(summary)
+            )
+            self._write(
+                "deduplicating",
+                "deduplicating",
+                "Agrupando cópias e definindo questões principais",
+                execution_report(summary),
+            )
             with closing(self.store._connect()) as connection:
                 preparation = apply_desktop_preparation(
                     connection,
                     run_id=f"automatic-{uuid.uuid4().hex}",
                 )
+            if self._stop.is_set():
+                self._write(
+                    "stopped", "stopped", "Processamento interrompido", finished=True
+                )
+                return self.status()
+            self._write(
+                "classifying_rules",
+                "classifying_rules",
+                "Aplicando regras locais de classificação",
+                execution_report({**summary, "preparation": preparation}),
+            )
+            with closing(self.store._connect()) as connection:
                 deterministic = run_canonical_classification(
                     connection,
                     apply=True,
@@ -323,58 +438,141 @@ class DesktopAutomationManager:
                     queue_ineligible=False,
                     eligibility_scope="answered",
                     checkpoint_interval=5,
+                    should_pause=self._stop.is_set,
                 )
+            if self._stop.is_set():
+                self._write("stopped", "stopped", "Processamento interrompido", finished=True)
+                return self.status()
+            self._write(
+                "finalizing",
+                "finalizing",
+                "Finalizando validações e aprovações seguras",
+                execution_report({**summary, "preparation": preparation}),
+            )
             approved = self._approve_ready_questions()
+            if self._stop.is_set():
+                self._write(
+                    "stopped", "stopped", "Processamento interrompido", finished=True
+                )
+                return self.status()
             latest = self.store.operational_presentation_summary()
+            pending_qwen = max(int(getattr(deterministic, "ai_candidates", 0) or 0), 0)
+            previous_progress = persisted.get("report", {}).get("automationProgress", {})
+            if not isinstance(previous_progress, dict):
+                previous_progress = {}
+            initial_total = max(
+                int(previous_progress.get("initialTotal", 0) or 0), pending_qwen
+            )
+            completed_total = max(initial_total - pending_qwen, 0)
+            run_id = str(
+                previous_progress.get("runId") or self._run_id or uuid.uuid4()
+            )
+            self._run_id = run_id
+            previous_qwen = persisted.get("report", {}).get("qwenTotals", {})
+            if not isinstance(previous_qwen, dict):
+                previous_qwen = {}
+            finished_qwen = (
+                qwen_status
+                if persisted["status"] in {"classifying_qwen", "qwen_processing"}
+                and qwen_status.get("state") == "completed"
+                else {}
+            )
+            qwen_totals = {
+                "processed": int(previous_qwen.get("processed", 0) or 0)
+                + int(finished_qwen.get("processed", 0) or 0),
+                "aiCalls": int(previous_qwen.get("aiCalls", 0) or 0)
+                + int(finished_qwen.get("aiCalls", 0) or 0),
+                "accepted": int(previous_qwen.get("accepted", 0) or 0)
+                + int(finished_qwen.get("acceptedSuggestions", 0) or 0),
+                "reviewRequired": int(previous_qwen.get("reviewRequired", 0) or 0)
+                + int(finished_qwen.get("reviewRequired", 0) or 0),
+                "failures": int(previous_qwen.get("failures", 0) or 0)
+                + int(finished_qwen.get("failures", 0) or 0),
+            }
+            deterministic_report = deterministic.as_dict()
+            previous_rules = persisted.get("report", {}).get("ruleTotals", {})
+            if not isinstance(previous_rules, dict):
+                previous_rules = {}
+            rule_totals = {
+                "alreadyComplete": int(
+                    previous_rules.get(
+                        "alreadyComplete",
+                        deterministic_report.get("alreadyComplete", 0),
+                    )
+                    or 0
+                ),
+                "resolved": int(previous_rules.get("resolved", 0) or 0)
+                + int(deterministic_report.get("deterministicQuestions", 0) or 0),
+                "needsReview": int(deterministic_report.get("reviewRequired", 0) or 0),
+                "blocked": int(latest.get("blocked", 0) or 0),
+            }
             report = {
                 **latest,
                 "preparation": preparation,
-                "deterministic": deterministic.as_dict(),
+                "deterministic": deterministic_report,
                 "autoApproved": approved,
+                "qwenTotals": qwen_totals,
+                "ruleTotals": rule_totals,
                 "automationProgress": {
-                    "stage": "qwen_pending",
-                    "completed": 0,
-                    "total": max(int(preparation.get("qwenEligible", 0) or 0), 0),
-                    "percent": 0,
+                    "runId": run_id,
+                    "stage": "qwen_pending" if pending_qwen else "ready",
+                    "completed": completed_total,
+                    "total": initial_total,
+                    "initialTotal": initial_total,
+                    "completedTotal": completed_total,
+                    "currentBatchCompleted": 0,
+                    "currentBatchTotal": min(250, pending_qwen),
+                    "remainingTotal": pending_qwen,
+                    "percent": (
+                        min(round(completed_total / initial_total * 100), 99)
+                        if initial_total
+                        else 100
+                    ),
                 },
             }
             qwen_status = self.ollama.status()
             if qwen_status.get("state") in {"starting", "running", "pause_requested"}:
                 self._write(
-                    "classifying_qwen", "qwen", "Classificando novas questões com Qwen", report
+                    "qwen_processing",
+                    "qwen_processing",
+                    "Classificando novas questões com Qwen",
+                    report,
                 )
                 return self.status()
-            # The rules pass deliberately runs with AI disabled, so its
-            # ``ai_candidates`` value is always zero.  The preparation report
-            # is the source of truth because it counts canonical units that
-            # are actually eligible for Qwen.
-            qwen_needed = int(preparation.get("qwenEligible", 0) or 0) > 0
-            if qwen_needed and time.monotonic() - self._last_qwen_attempt >= 30:
-                self._last_qwen_attempt = time.monotonic()
+            # qwenEligible is the complete canonical population, including
+            # units already complete or solved by rules.  ai_candidates is
+            # measured after those rules and is the actual remaining queue.
+            qwen_needed = pending_qwen > 0
+            if qwen_needed:
                 return self._start_qwen(report)
+            report["noWorkReason"] = "Nenhuma questão precisa do Qwen"
             self._write(
-                "completed",
                 "ready",
-                "Banco preparado; revise o resumo e exporte",
+                "ready",
+                "Nenhuma questão precisa do Qwen; banco pronto para exportação",
                 report,
                 finished=True,
             )
             return self.status()
         except Exception as exc:
+            if self._stop.is_set():
+                self._write(
+                    "stopped", "stopped", "Processamento interrompido", finished=True
+                )
+                return self.status()
             self._write(
-                "waiting",
+                "retry",
                 "retry",
                 "A automação aguardará uma nova tentativa",
-                summary,
+                execution_report(summary),
                 error=str(exc),
             )
             return self.status()
 
     def _start_qwen(self, report: dict[str, Any]) -> dict[str, Any]:
-        self._last_qwen_attempt = time.monotonic()
         self._write(
-            "classifying_qwen",
-            "qwen",
+            "qwen_pending",
+            "qwen_pending",
             "Iniciando classificação automática com Qwen",
             report,
             retry_attempt=self._retry_attempt,
@@ -387,8 +585,8 @@ class DesktopAutomationManager:
             )
             self._retry_attempt = 0
             self._write(
-                "classifying_qwen",
-                "qwen",
+                "qwen_processing",
+                "qwen_processing",
                 "Classificando novas questões com Qwen",
                 report,
                 retry_attempt=0,
@@ -400,8 +598,8 @@ class DesktopAutomationManager:
             delay = min(300, 15 * (2 ** (self._retry_attempt - 1)))
             next_retry = (datetime.now(UTC) + timedelta(seconds=delay)).isoformat()
             self._write(
-                "waiting_qwen",
-                "qwen",
+                "retry",
+                "retry",
                 "Qwen indisponível; a automação tentará novamente",
                 report,
                 error=str(exc),
@@ -411,21 +609,27 @@ class DesktopAutomationManager:
             return self.status()
 
     def _approve_ready_questions(self) -> int:
-        views = self.store.query(DesktopFilterSet(statuses=["pending"]))["questions"]
-        ids = [
-            str(view["id"])
-            for view in views
-            if view.get("importable")
-            and not view.get("reviewer")
-            and not view.get("review_notes")
-        ]
-        if not ids:
-            return 0
-        return self.store.approve_questions(
-            ids[:1_000],
-            actor="automacao_local",
-            notes="Aprovada automaticamente após validações locais e classificação canônica.",
-        )
+        approved = 0
+        while not self._stop.is_set():
+            views = self.store.query(DesktopFilterSet(statuses=["pending"]))["questions"]
+            ids = [
+                str(view["id"])
+                for view in views
+                if view.get("importable")
+                and not view.get("reviewer")
+                and not view.get("review_notes")
+            ][:1_000]
+            if not ids:
+                break
+            approved += self.store.approve_questions(
+                ids,
+                actor="automacao_local",
+                notes=(
+                    "Aprovada automaticamente após validações locais e "
+                    "classificação canônica."
+                ),
+            )
+        return approved
 
     def _run_loop(self) -> None:
         try:
@@ -433,21 +637,61 @@ class DesktopAutomationManager:
                 self._renew_lease()
                 result = self.run_once()
                 status = result.get("status")
-                if status in {"completed", "idle"}:
+                if status in {"completed", "ready", "idle", "stopped", "stale", "error"}:
                     return
-                if status == "waiting_qwen":
+                if status in {"waiting_qwen", "retry"}:
                     delay = min(60.0, 15.0 * (2 ** max(self._retry_attempt - 1, 0)))
                 else:
                     delay = self.interval_seconds
                 self._wake.wait(delay)
                 self._wake.clear()
         finally:
+            while self._wait_for_qwen_stop:
+                try:
+                    state = self.ollama.status().get("state")
+                except Exception:
+                    state = "unavailable"
+                if state not in {"starting", "running", "pause_requested", "unavailable"}:
+                    self._wait_for_qwen_stop = False
+                    break
+                self._renew_lease()
+                time.sleep(0.5)
+            if self._stop.is_set() and not self._wait_for_qwen_stop:
+                self._write(
+                    "stopped", "stopped", "Processamento interrompido", finished=True
+                )
             self._release_lease()
 
     def shutdown(self) -> None:
-        self._stop.set()
-        self._wake.set()
+        self.stop()
         thread = self._thread
         if thread is not None and thread.is_alive():
             thread.join(timeout=10)
+        if thread is not None and thread.is_alive():
+            self._write(
+                "error",
+                "stopping",
+                "Não foi possível parar a automação com segurança",
+                error="a tarefa permaneceu ativa; o bloqueio do banco foi mantido",
+            )
+            return
         self._release_lease()
+
+    def stop(self) -> dict[str, Any]:
+        """Request cooperative cancellation without releasing a live lease."""
+        self._stop.set()
+        self._wake.set()
+        try:
+            qwen = self.ollama.status()
+            run_id = qwen.get("runId")
+            if run_id and qwen.get("state") in {"starting", "running", "pause_requested"}:
+                self._wait_for_qwen_stop = True
+                self.ollama.pause(str(run_id))
+        except Exception:
+            pass
+        thread = self._thread
+        if thread is None or not thread.is_alive():
+            self._write("stopped", "stopped", "Processamento interrompido", finished=True)
+        else:
+            self._write("stopping", "stopping", "Parando o processamento com segurança")
+        return self.status()

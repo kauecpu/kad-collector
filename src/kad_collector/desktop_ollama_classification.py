@@ -433,6 +433,13 @@ class DesktopOllamaClassificationManager:
                 "count": report.already_complete,
                 "action": "Nenhuma ação de classificação é necessária para essas questões.",
             })
+        categorized = (
+            report.already_complete
+            + report.deterministic_questions
+            + report.ai_candidates
+            + report.review_required
+            + report.provider_failures
+        )
         return {
             "rawQuestions": preparation["rawQuestions"],
             "officialAnswered": coverage["officialAnswered"],
@@ -445,6 +452,14 @@ class DesktopOllamaClassificationManager:
             "alreadyComplete": report.already_complete,
             "deterministic": report.deterministic_questions,
             "qwenRequired": report.ai_candidates,
+            "needsReview": report.review_required,
+            "failures": report.provider_failures,
+            "classificationInvariant": {
+                "eligible": report.eligible,
+                "categorized": categorized,
+                "uncategorized": max(report.eligible - categorized, 0),
+                "balanced": categorized == report.eligible,
+            },
             "missingFields": dict(sorted(report.requested_fields.items())),
             "exclusionReasons": exclusion_reasons,
             "performance": {"previewMs": (time.perf_counter() - started) * 1000},
@@ -586,10 +601,20 @@ class DesktopOllamaClassificationManager:
             "pause_requested",
         }:
             return self.status(cast(str, current["id"]))
+        resolved = resolve_desktop_scope(self.store, scope)
+        counts = self._passive_counts(resolved)
+        pending = int(counts.get("qwenRequired", 0) or 0)
+        if pending == 0:
+            return {
+                "state": "completed",
+                "target": 0,
+                "processed": 0,
+                "remaining": 0,
+                "aiCalls": 0,
+                "noWorkReason": "Nenhuma questão precisa do Qwen",
+            }
         preview = self.preview(scope, selected_limit)
         counts = cast(dict[str, Any], preview.get("counts", {}))
-        if int(counts.get("eligible", 0)) == 0:
-            return self.status()
         token = preview.get("confirmationToken")
         if not isinstance(token, str) or not token:
             raise CanonicalClassificationError("prévia automática do Qwen inválida")
@@ -621,6 +646,18 @@ class DesktopOllamaClassificationManager:
             raise RuntimeError(
                 "a classificação afetaria cópias fora do escopo; autorize o impacto na prévia"
             )
+        pending = int(approval.counts["deterministic"]) + int(
+            approval.counts["qwenRequired"]
+        )
+        if pending == 0:
+            return {
+                "state": "completed",
+                "target": 0,
+                "processed": 0,
+                "remaining": 0,
+                "aiCalls": 0,
+                "noWorkReason": "Nenhuma questão precisa do Qwen",
+            }
         with closing(self.store._connect()) as connection:
             existing = connection.execute(
                 "SELECT id FROM desktop_ollama_classification_jobs WHERE confirmation_hash=?",
@@ -651,9 +688,6 @@ class DesktopOllamaClassificationManager:
             )
             run_id = str(uuid.uuid4())
             now = _now()
-            pending = int(approval.counts["deterministic"]) + int(
-                approval.counts["qwenRequired"]
-            )
             initial_remaining = min(selected_limit, pending)
             connection.execute(
                 "INSERT INTO desktop_ollama_classification_jobs "
@@ -690,9 +724,6 @@ class DesktopOllamaClassificationManager:
                 ),
             )
             connection.commit()
-        if initial_remaining == 0:
-            self._finish(run_id, "completed")
-            return self.status(run_id)
         with self._lock:
             self._approvals.pop(confirmation_token, None)
             event = threading.Event()
