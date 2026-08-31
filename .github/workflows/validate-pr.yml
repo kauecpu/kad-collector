@@ -28,7 +28,7 @@ jobs:
 
       - name: Install dependencies
         shell: pwsh
-        run: python -m pip install ".[dev,desktop,browser]"
+        run: python -m pip install ".[dev,desktop,browser,database]"
 
       - name: Run tests
         shell: pwsh
