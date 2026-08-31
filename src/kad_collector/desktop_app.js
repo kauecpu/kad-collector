@@ -1247,7 +1247,7 @@ function schedulePoll() {
   const activeCollection = (state.bootstrap.collectionJobs || []).some((job) =>
     ['queued', 'running', 'pausing', 'cancelling', 'processing'].includes(job.status));
   const active = activeProcessing || activeCollection;
-  const automationActive = ['running', 'classifying_qwen'].includes(state.bootstrap.automation?.status);
+  const automationActive = ['running', 'classifying_qwen', 'waiting_qwen'].includes(state.bootstrap.automation?.status);
   if (active || automationActive) {
     state.polling = setTimeout(() => loadBootstrap({preserveQuery: true}).catch(() => {}), 2000);
   }
