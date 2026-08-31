@@ -1476,9 +1476,16 @@ function renderQuestions() {
     const title = document.createElement('strong');
     title.textContent = question.statement;
     const source = document.createElement('small');
+    const equivalence = view.question_equivalence || {};
+    const copyNote = equivalence.status === 'confirmed' && equivalence.isRepresentative
+      && (equivalence.occurrenceCount || 0) > 1
+      ? ` · principal de ${equivalence.occurrenceCount} ocorrências`
+      : '';
     source.textContent = view.status === 'exception' && view.review_notes
       ? `Motivo: ${view.review_notes}`
-      : `${view.filename} · pág. ${(question.source_pages || []).join(', ') || '—'}`;
+      : view.status === 'exported'
+        ? `${view.filename} · já incluída em uma exportação${copyNote}`
+        : `${view.filename} · pág. ${(question.source_pages || []).join(', ') || '—'}${copyNote}`;
     text.append(title, source);
     main.append(number, text);
 
@@ -1524,7 +1531,12 @@ function renderQuestions() {
 
     const status = document.createElement('span');
     status.className = `status-pill ${view.status}`;
-    status.textContent = view.importable ? 'Importável' : statusLabel(view.status);
+    status.textContent = view.status === 'exported' ? 'Já exportada'
+      : view.exportable ? 'Pronta para exportar'
+        : view.importable ? 'Dados completos' : statusLabel(view.status);
+    if (view.status === 'exported') {
+      status.title = 'O Collector já incluiu esta questão em um arquivo de exportação. A importação no app externo não é confirmada aqui.';
+    }
     open.append(main, answer, classification, confidence, status);
     row.append(open);
     root.append(row);
