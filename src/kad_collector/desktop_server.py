@@ -64,7 +64,14 @@ def _desktop_environment(data_dir: Path) -> str:
     reference_parts = {"baseline", "fresh", "reference", "references"}
     if parts.intersection(reference_parts) or "benchmark" in joined:
         return "reference"
-    if parts.intersection({"test", "tests", "tmp", "temp"}) or "pytest" in joined:
+    temporary_directory = any(
+        re.fullmatch(r"(?:tmp|temp)[-_a-z0-9]*", part) is not None for part in parts
+    )
+    if (
+        parts.intersection({"test", "tests", "tmp", "temp"})
+        or temporary_directory
+        or "pytest" in joined
+    ):
         return "test"
     return "operational"
 
@@ -104,11 +111,11 @@ def _next_desktop_action(summary: dict[str, Any], operational: dict[str, Any]) -
             "detail": f"{summary['exception']} questão(ões) precisam de decisão humana.",
             "action": "Revisar pendências",
         }
-    if summary.get("importable", 0):
+    if summary.get("exportable", 0):
         return {
             "step": "export",
             "title": "Revise o lote pronto para exportação",
-            "detail": f"{summary['importable']} questão(ões) estão prontas para o app.",
+            "detail": f"{summary['exportable']} questão(ões) estão prontas para o app.",
             "action": "Ver exportação",
         }
     if summary.get("pending", 0):
@@ -147,10 +154,14 @@ class DesktopApplication:
             collection_active=self._collection_or_processing_active,
         )
         self.answer_suggestions = DesktopAnswerSuggestionManager(self.store)
+        self._export_lock = threading.Lock()
         self.token = secrets.token_urlsafe(32)
 
     def _automation_enabled(self) -> bool:
-        return _desktop_environment(self.data_dir) == "operational"
+        return (
+            _desktop_environment(self.data_dir) == "operational"
+            or os.environ.get("KAD_COLLECTOR_ALLOW_NON_OPERATIONAL_AUTOMATION") == "1"
+        )
 
     def _collection_or_processing_active(self) -> bool:
         collection = any(
@@ -183,6 +194,7 @@ class DesktopApplication:
             "answerKeyAuditSummary": self.store.answer_key_audit_summary(),
             "automation": self.automation.status(),
             "answerSuggestionSummary": self.answer_suggestions.summary(),
+            "backupSummary": self.store.backup_summary(),
             "operationalSummary": {
                 **operational,
                 "nextAction": _next_desktop_action(query["summary"], operational),
@@ -194,8 +206,10 @@ class DesktopApplication:
                 "environmentLabel": {
                     "operational": "Banco operacional",
                     "test": "Banco de teste",
-                    "reference": "Referência",
+                    "reference": "Base de referência",
                 }[environment],
+                "readOnly": environment == "reference",
+                "automationEnabled": self._automation_enabled(),
                 "openaiConfigured": bool(os.environ.get("OPENAI_API_KEY")),
                 "openaiModel": os.environ.get("OPENAI_MODEL", "gpt-5.6-terra"),
                 "localOnly": True,
@@ -308,8 +322,15 @@ class DesktopApplication:
         return collection_id
 
     def start_automation(self) -> dict[str, Any]:
+        if not self._automation_enabled():
+            raise RuntimeError(
+                "automação mutável bloqueada neste banco de teste ou referência"
+            )
         self.automation.start()
         return self.automation.status()
+
+    def stop_automation(self) -> dict[str, Any]:
+        return self.automation.stop()
 
     def answer_suggestion(self, question_id: str) -> dict[str, Any]:
         return self.answer_suggestions.suggest(question_id)
@@ -434,7 +455,12 @@ class DesktopApplication:
             else self.data_dir / "exports"
         )
         output_root.mkdir(parents=True, exist_ok=True)
-        return export_filtered_questions(self.store, filters, output_root=output_root)
+        if not self._export_lock.acquire(blocking=False):
+            raise RuntimeError("já existe uma exportação em andamento")
+        try:
+            return export_filtered_questions(self.store, filters, output_root=output_root)
+        finally:
+            self._export_lock.release()
 
 
 def create_desktop_server(
@@ -546,6 +572,21 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
             path = urlparse(self.path).path
             try:
                 payload = self._read_json()
+                if (
+                    _desktop_environment(application.data_dir) == "reference"
+                    and path
+                    not in {
+                        "/api/query",
+                        "/api/export/preview",
+                        "/api/preparation/preview",
+                        "/api/answer-key-audit/preview",
+                        "/api/local-ai/classification/preview",
+                        "/api/questions/classification-batch/preview",
+                    }
+                ):
+                    raise RuntimeError(
+                        "a base de referência está aberta em modo somente leitura"
+                    )
                 if path == "/api/query":
                     filters = DesktopFilterSet.model_validate(payload.get("filters", payload))
                     self._send_json(application.store.query(filters))
@@ -567,6 +608,9 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                     return
                 if path == "/api/automation/start":
                     self._send_json(application.start_automation())
+                    return
+                if path == "/api/automation/stop":
+                    self._send_json(application.stop_automation())
                     return
                 suggestion_match = re.fullmatch(
                     r"/api/questions/([a-f0-9-]+)/answer-suggestion", path

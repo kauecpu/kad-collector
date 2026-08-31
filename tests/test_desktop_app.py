@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import threading
 import unittest
@@ -780,6 +781,37 @@ class DesktopReviewAndFilterTests(unittest.TestCase):
         self.assertEqual(summary["pending"], 1)
         self.assertEqual(summary["exception"], 2)
 
+    def test_summary_keeps_importable_exportable_exported_and_blocked_distinct(self) -> None:
+        ready_id = self.store.save_question(
+            self.document["id"], valid_question(1), full_classification()
+        )
+        blocked = valid_question(
+            2, "Questão distinta que permanece bloqueada por ausência de resposta oficial."
+        ).model_copy(
+            update={"answer_status": "missing", "correct_answer": None}
+        )
+        self.store.save_question(self.document["id"], blocked, full_classification())
+
+        pending_summary = self.store.query(DesktopFilterSet())["summary"]
+        self.assertEqual(pending_summary["importable"], 1)
+        self.assertEqual(pending_summary["exportable"], 0)
+        self.assertEqual(pending_summary["exported"], 0)
+        self.assertEqual(pending_summary["blocked"], 1)
+
+        self.store.decide_question(ready_id, "approved", actor="revisora", notes=None)
+        approved_summary = self.store.query(DesktopFilterSet())["summary"]
+        self.assertEqual(approved_summary["importable"], 1)
+        self.assertEqual(approved_summary["exportable"], 1)
+
+        export_filtered_questions(
+            self.store,
+            DesktopFilterSet(statuses=["exportable"]),
+            output_root=self.root / "counter-export",
+        )
+        exported_summary = self.store.query(DesktopFilterSet())["summary"]
+        self.assertEqual(exported_summary["exportable"], 0)
+        self.assertEqual(exported_summary["exported"], 1)
+
     def test_human_review_exports_only_valid_approved_selection(self) -> None:
         question_id = self.store.save_question(
             self.document["id"], valid_question(1), full_classification()
@@ -804,6 +836,70 @@ class DesktopReviewAndFilterTests(unittest.TestCase):
         self.assertEqual(records[0]["data"]["publicationStatus"], "draft")
         self.assertEqual(self.store.question(question_id)["status"], "exported")
         self.assertTrue((result.directory / "fontes").is_dir())
+
+        manifest = json.loads(
+            (result.directory / "manifesto.json").read_text(encoding="utf-8")
+        )
+        for item in manifest["files"]:
+            path = result.directory / item["path"]
+            self.assertEqual(path.stat().st_size, item["sizeBytes"])
+            self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), item["sha256"])
+
+    def test_two_exports_in_the_same_instant_use_distinct_directories(self) -> None:
+        question_id = self.store.save_question(
+            self.document["id"], valid_question(1), full_classification()
+        )
+        self.store.decide_question(question_id, "approved", actor="revisora", notes=None)
+        instant = datetime(2026, 8, 17, 12, 0, tzinfo=UTC)
+
+        first = export_filtered_questions(
+            self.store,
+            DesktopFilterSet(statuses=["exportable"]),
+            output_root=self.root / "concurrent-exports",
+            now=instant,
+        )
+        second = export_filtered_questions(
+            self.store,
+            DesktopFilterSet(statuses=["exported"]),
+            output_root=self.root / "concurrent-exports",
+            now=instant,
+        )
+
+        self.assertNotEqual(first.directory, second.directory)
+        self.assertTrue(first.directory.is_dir())
+        self.assertTrue(second.directory.is_dir())
+
+    def test_failed_export_does_not_mark_questions_or_leave_temporary_files(self) -> None:
+        question_id = self.store.save_question(
+            self.document["id"], valid_question(1), full_classification()
+        )
+        self.store.decide_question(question_id, "approved", actor="revisora", notes=None)
+        output = self.root / "failed-export"
+
+        with patch(
+            "kad_collector.desktop_export._validate_package",
+            side_effect=RuntimeError("pacote inválido"),
+        ), self.assertRaisesRegex(RuntimeError, "pacote inválido"):
+            export_filtered_questions(
+                self.store,
+                DesktopFilterSet(statuses=["exportable"]),
+                output_root=output,
+            )
+
+        self.assertEqual(self.store.question(question_id)["status"], "approved")
+        self.assertEqual(list(output.glob(".KAD-export-*.tmp")), [])
+
+    def test_backup_retention_keeps_latest_verified_copies(self) -> None:
+        with patch.dict(os.environ, {"KAD_COLLECTOR_BACKUP_RETENTION": "2"}):
+            for _ in range(3):
+                self.store.backup_before_preparation()
+
+            summary = self.store.backup_summary()
+
+        self.assertEqual(summary["count"], 2)
+        self.assertEqual(summary["retention"], 2)
+        self.assertIsNotNone(summary["latest"])
+        self.assertGreater(summary["sizeBytes"], 0)
 
     def test_batch_approval_is_atomic_audited_and_persistent(self) -> None:
         first_id = self.store.save_question(
@@ -1525,6 +1621,7 @@ console.log(JSON.stringify(text(root).filter(Boolean)));
             "defer-question",
             "review-context",
             "automation-start",
+            "automation-stop",
             "automation-progress-bar",
             "metric-answer-suggestion-summary",
             "answer-suggestion",
@@ -1549,6 +1646,81 @@ console.log(JSON.stringify(text(root).filter(Boolean)));
             self.assertNotIn(f'id="{removed_control}"', html)
         self.assertNotIn("Revisor responsável", html)
         self.assertNotIn(">Observações<", html)
+
+    def test_render_metrics_executes_with_missing_and_present_suggestions(self) -> None:
+        package = resources.files("kad_collector")
+        with resources.as_file(package.joinpath("desktop_app.js")) as resource_path:
+            runner = r"""
+const fs = require('fs');
+const source = fs.readFileSync(process.argv[1], 'utf8');
+const pattern = /function renderMetrics\(\) \{([\s\S]*?)\r?\n\}\r?\n\r?\n/;
+const match = source.match(pattern);
+if (!match) throw new Error('renderMetrics não encontrada');
+const body = match[1];
+const nodes = new Map();
+const byId = (id) => {
+  if (!nodes.has(id)) nodes.set(id, {
+    textContent: '', classList: {toggle() {}}, replaceChildren() {}, append() {},
+  });
+  return nodes.get(id);
+};
+const state = {
+  bootstrap: {
+    summary: {total: 12, answer_matched: 8, answer_annulled: 1, answer_missing: 3},
+    operationalSummary: {occurrences: 15},
+    preparationSummary: {duplicateQuestions: 3},
+  },
+  filters: {statuses: [], answer_states: [], answer_diagnostics: []},
+};
+const renderAnswerDiagnosticSummary = () => {};
+const renderMetrics = new Function('state', 'byId', 'renderAnswerDiagnosticSummary', body);
+const results = [];
+for (const value of [undefined, {}, {pending: 2, confirmed: 5}]) {
+  if (value === undefined) delete state.bootstrap.answerSuggestionSummary;
+  else state.bootstrap.answerSuggestionSummary = value;
+  renderMetrics(state, byId, renderAnswerDiagnosticSummary);
+  results.push(nodes.get('metric-answer-suggestion-summary').textContent);
+}
+console.log(JSON.stringify(results));
+"""
+            completed = subprocess.run(
+                ["node", "-e", runner, str(resource_path)],
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=10,
+            )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(
+            json.loads(completed.stdout),
+            [
+                "0 sugestões do Qwen pendentes · 0 confirmadas pelo operador",
+                "0 sugestões do Qwen pendentes · 0 confirmadas pelo operador",
+                "2 sugestões do Qwen pendentes · 5 confirmadas pelo operador",
+            ],
+        )
+
+    def test_reference_database_is_read_only_and_named_clearly(self) -> None:
+        with TemporaryDirectory() as directory:
+            application = DesktopApplication(Path(directory) / "reference")
+            config = application.bootstrap()["config"]
+
+        self.assertEqual(config["environment"], "reference")
+        self.assertEqual(config["environmentLabel"], "Base de referência")
+        self.assertTrue(config["readOnly"])
+        self.assertFalse(config["automationEnabled"])
+
+    def test_application_rejects_parallel_export(self) -> None:
+        with TemporaryDirectory() as directory:
+            application = DesktopApplication(Path(directory))
+            application._export_lock.acquire()
+            try:
+                with self.assertRaisesRegex(RuntimeError, "exportação em andamento"):
+                    application.export({"filters": {}})
+            finally:
+                application._export_lock.release()
 
     def test_packaged_resources_and_database_bootstrap(self) -> None:
         with TemporaryDirectory() as directory:
@@ -1663,7 +1835,10 @@ console.log(JSON.stringify(text(root).filter(Boolean)));
                 thread.join(timeout=3)
 
     def test_processing_starts_only_from_explicit_button_endpoint(self) -> None:
-        with TemporaryDirectory() as directory:
+        with TemporaryDirectory() as directory, patch.dict(
+            os.environ,
+            {"KAD_COLLECTOR_ALLOW_NON_OPERATIONAL_AUTOMATION": "1"},
+        ):
             application = DesktopApplication(Path(directory) / "data")
             self.assertEqual(application.automation.status()["status"], "idle")
             server, thread, url = start_desktop_server(application)
@@ -1689,6 +1864,15 @@ console.log(JSON.stringify(text(root).filter(Boolean)));
                 server.shutdown()
                 server.server_close()
                 thread.join(timeout=3)
+
+    def test_automation_is_blocked_for_non_operational_database(self) -> None:
+        with TemporaryDirectory() as directory, patch.dict(
+            os.environ,
+            {"KAD_COLLECTOR_ALLOW_NON_OPERATIONAL_AUTOMATION": "0"},
+        ):
+            application = DesktopApplication(Path(directory) / "data")
+            with self.assertRaisesRegex(RuntimeError, "banco de teste ou referência"):
+                application.start_automation()
 
     def test_document_identity_correction_endpoint_uses_internal_actor_and_returns_result(
         self,

@@ -160,6 +160,9 @@ class DesktopOllamaClassificationTests(unittest.TestCase):
         self.assertEqual(admin.chat_calls, 0)
         self.assertEqual((before_runs, after_runs, jobs), (0, 0, 0))
         self.assertEqual(preview["counts"]["qwenRequired"], 1)
+        invariant = preview["counts"]["classificationInvariant"]
+        self.assertTrue(invariant["balanced"])
+        self.assertEqual(invariant["eligible"], invariant["categorized"])
         self.assertEqual(preview["counts"]["missingFields"], {"level": 1})
         self.assertEqual(preview["preflight"]["model"], DESKTOP_OLLAMA_MODEL)
         self.assertEqual(preview["preflight"]["digest"], DESKTOP_OLLAMA_DIGEST)
@@ -213,6 +216,46 @@ class DesktopOllamaClassificationTests(unittest.TestCase):
         self.assertEqual(status["target"], 0)
         self.assertEqual(admin.chat_calls, 0)
         self.assertEqual(admin.unloads, [])
+
+    def test_automatic_start_skips_preview_backup_and_job_when_no_qwen_work(self) -> None:
+        fixture, _ = _seed_canonical(self.root)
+        admin = FakeAdmin()
+        manager = self._manager(fixture, admin)
+
+        with (
+            patch.object(manager, "preview") as preview,
+            patch.object(fixture.store, "backup_before_preparation") as backup,
+        ):
+            status = manager.start_automatic(_all_scope(), limit=250)
+
+        self.assertEqual(status["state"], "completed")
+        self.assertEqual(status["processed"], 0)
+        self.assertEqual(status["target"], 0)
+        self.assertEqual(status["noWorkReason"], "Nenhuma questão precisa do Qwen")
+        preview.assert_not_called()
+        backup.assert_not_called()
+        self.assertEqual(admin.chat_calls, 0)
+        with closing(fixture.store._connect()) as connection:
+            jobs = connection.execute(
+                "SELECT COUNT(*) FROM desktop_ollama_classification_jobs"
+            ).fetchone()[0]
+        self.assertEqual(jobs, 0)
+
+    def test_question_without_official_answer_does_not_start_qwen(self) -> None:
+        fixture = SyntheticCatalog(self.root, booklets=("1",))
+        missing_answer = _question().model_copy(
+            update={"answer_status": "missing", "correct_answer": None}
+        )
+        question_id = fixture.add("Analista", "1", missing_answer)
+        _clear_fields(fixture, question_id, {"level"})
+        admin = FakeAdmin()
+        manager = self._manager(fixture, admin)
+
+        status = manager.start_automatic(_all_scope(), limit=250)
+
+        self.assertEqual(status["state"], "completed")
+        self.assertEqual(status["target"], 0)
+        self.assertEqual(admin.chat_calls, 0)
 
     def test_confirmed_run_uses_qwen_once_and_preserves_answer(self) -> None:
         fixture, rows = _seed_canonical(self.root)

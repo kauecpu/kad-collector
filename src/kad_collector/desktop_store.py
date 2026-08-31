@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
 import unicodedata
 import uuid
@@ -1232,7 +1233,77 @@ class DesktopStore:
         finally:
             destination.close()
             source.close()
+        self.prune_backups()
         return backup_path
+
+    def prune_backups(self) -> int:
+        """Keep a bounded set while always preserving the newest verified copy."""
+        backup_directory = self.path.parent / "backups"
+        if not backup_directory.is_dir():
+            return 0
+        try:
+            retention = int(os.environ.get("KAD_COLLECTOR_BACKUP_RETENTION", "20"))
+        except ValueError:
+            retention = 20
+        retention = max(1, min(retention, 200))
+        backups = sorted(
+            backup_directory.glob("collector-*.sqlite3"),
+            key=lambda path: (path.stat().st_mtime_ns, path.name),
+            reverse=True,
+        )
+        verified = [path for path in backups if self._backup_integrity_ok(path)]
+        if not verified:
+            return 0
+        protected = {
+            path
+            for path in backups
+            if "error" in path.name.casefold() or path == verified[0]
+        }
+        removable = [path for path in verified if path not in protected]
+        keep_slots = max(retention - len(protected), 0)
+        removed = 0
+        for obsolete in removable[keep_slots:]:
+            obsolete.unlink(missing_ok=True)
+            removed += 1
+        return removed
+
+    @staticmethod
+    def _backup_integrity_ok(path: Path) -> bool:
+        try:
+            connection = sqlite3.connect(f"file:{path.resolve()}?mode=ro", uri=True)
+            try:
+                row = connection.execute("PRAGMA quick_check").fetchone()
+                return row is not None and row[0] == "ok"
+            finally:
+                connection.close()
+        except sqlite3.Error:
+            return False
+
+    def backup_summary(self) -> dict[str, Any]:
+        backup_directory = self.path.parent / "backups"
+        backups = (
+            sorted(
+                backup_directory.glob("collector-*.sqlite3"),
+                key=lambda path: (path.stat().st_mtime_ns, path.name),
+                reverse=True,
+            )
+            if backup_directory.is_dir()
+            else []
+        )
+        return {
+            "count": len(backups),
+            "sizeBytes": sum(path.stat().st_size for path in backups),
+            "latest": str(backups[0]) if backups else None,
+            "retention": max(
+                1,
+                min(
+                    int(os.environ.get("KAD_COLLECTOR_BACKUP_RETENTION", "20"))
+                    if os.environ.get("KAD_COLLECTOR_BACKUP_RETENTION", "20").isdigit()
+                    else 20,
+                    200,
+                ),
+            ),
+        }
 
     def run_answer_key_audit(self) -> dict[str, Any]:
         backup_path = self.backup_before_answer_key_audit()

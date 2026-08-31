@@ -72,12 +72,14 @@ function qwenPreviewPresentation(preview) {
     counts: [
       ['Questões brutas', counts.rawQuestions || 0],
       ['Com resposta oficial', counts.officialAnswered || 0],
-      ['Prontas para classificar', counts.eligibleQuestions || 0],
-      ['Unidades de classificação', counts.classificationUnits || 0],
-      ['Cópias que herdam', counts.inheritedCopies || 0],
+      ['Ocorrências cobertas', counts.eligibleQuestions || 0],
+      ['Unidades canônicas elegíveis', counts.classificationUnits || 0],
+      ['Cópias que herdam a classificação', counts.inheritedCopies || 0],
       ['Já completas', counts.alreadyComplete || 0],
       ['Resolvidas por regras', counts.deterministic || 0],
       ['Precisam do Qwen', counts.qwenRequired || 0],
+      ['Precisam de revisão', counts.needsReview || 0],
+      ['Bloqueadas antes do Qwen', counts.blockedAnswered || 0],
     ],
     missing: counts.eligible > 0
       ? missing.map(([field, total]) => `${fieldLabels[field] || field}: ${total}`)
@@ -419,8 +421,8 @@ function renderNavigationState() {
     ? `${summary.unclassified} sem classificação` : canonical ? 'Classificação completa' : 'Aguardando validação';
   byId('nav-review-state').textContent = reviewPending
     ? `${reviewPending} para revisar` : 'Nenhuma pendência';
-  byId('nav-export-state').textContent = summary.importable
-    ? `${summary.importable} prontas` : 'Nada pronto';
+  byId('nav-export-state').textContent = summary.exportable
+    ? `${summary.exportable} prontas` : 'Nada pronto';
 }
 
 function renderOperationalOverview() {
@@ -428,21 +430,32 @@ function renderOperationalOverview() {
   const operational = state.bootstrap.operationalSummary || {};
   const preparation = state.bootstrap.preparationSummary || {};
   const answerAudit = state.bootstrap.answerKeyAuditSummary || {};
-  const suggestions = state.bootstrap.answerSuggestionSummary || {};
   const config = state.bootstrap.config || {};
   const automation = state.bootstrap.automation || {};
+  const automationReport = automation.report || {};
+  const backups = state.bootstrap.backupSummary || {};
   byId('database-environment').textContent = config.environmentLabel || 'Banco operacional';
   byId('database-environment').className = `environment-badge ${config.environment || 'operational'}`;
   byId('database-path').textContent = config.databasePath || config.dataDirectory || '—';
+  byId('backup-summary').textContent = backups.count
+    ? `${backups.count} backup(s) · ${(Number(backups.sizeBytes || 0) / 1048576).toFixed(1)} MB · retenção ${backups.retention} · mais recente ${backups.latest}`
+    : `Nenhum backup local · retenção ${backups.retention || 20}`;
   byId('automation-status-title').textContent = automation.message || 'Aguardando o banco local';
   const automationPhaseLabels = {
     starting: 'iniciando a automação', waiting: 'aguardando novas questões', collection: 'aguardando a coleta terminar',
-    preparing: 'preparando provas e duplicatas', qwen: 'classificando com Qwen',
+    validating: 'validando o banco', preparing: 'preparando as provas',
+    deduplicating: 'agrupando cópias', classifying_rules: 'aplicando regras locais',
+    finalizing: 'finalizando e aprovando', qwen: 'classificando com Qwen',
     qwen_pending: 'aguardando unidades para o Qwen', qwen_processing: 'classificando com Qwen',
     pending: 'pendências prontas para iniciar', ready: 'pronto para exportação',
     retry: 'aguardando nova tentativa', resume: 'retomando',
   };
   const progress = automation.progress || {};
+  const activeStatuses = [
+    'running', 'classifying_qwen', 'starting', 'validating', 'preparing',
+    'deduplicating', 'classifying_rules', 'qwen_pending', 'qwen_processing',
+    'finalizing', 'stopping',
+  ];
   const progressPercent = Math.max(0, Math.min(100, Number(progress.percent) || 0));
   const progressBar = byId('automation-progress-bar');
   if (progressBar) {
@@ -450,20 +463,40 @@ function renderOperationalOverview() {
     progressBar.setAttribute('aria-valuenow', String(progressPercent));
   }
   const stale = Boolean(automation.stale);
+  const updatedAt = automation.updatedAt
+    ? new Date(automation.updatedAt).toLocaleTimeString('pt-BR') : '—';
+  const elapsedSeconds = automation.startedAt
+    ? Math.max(0, Math.floor((new Date(automation.finishedAt || Date.now()) - new Date(automation.startedAt)) / 1000))
+    : 0;
+  const timing = ` · ${Math.floor(elapsedSeconds / 60)}min ${elapsedSeconds % 60}s · atualização ${updatedAt}`;
   byId('automation-status-detail').textContent = stale
     ? 'Sem atualização recente. O processamento parece ter parado; você pode iniciar novamente.'
     : automation.error
-      ? `A automação tentará novamente. Detalhe: ${automation.error}`
-      : `Etapa atual: ${automationPhaseLabels[progress.stage] || automationPhaseLabels[automation.phase] || 'em andamento'} · ${progressPercent}%`;
-  byId('automation-status-progress').textContent = automation.status === 'completed'
-    ? 'Tudo processado' : stale ? 'Parado' : automation.status === 'classifying_qwen' ? `Qwen em execução · ${progressPercent}%` : automation.status === 'waiting_qwen' ? 'Aguardando Qwen' : automation.status === 'running' ? `Processando · ${progressPercent}%` : automation.status === 'waiting' && automation.phase === 'retry' ? 'Aguardando nova tentativa' : 'Aguardando';
+      ? `Detalhe: ${automation.error}${timing}`
+      : `Etapa atual: ${automationPhaseLabels[progress.stage] || automationPhaseLabels[automation.phase] || 'em andamento'} · ${progressPercent}%${timing}`;
+  byId('automation-status-progress').textContent = ['completed', 'ready'].includes(automation.status)
+    ? 'Tudo processado' : ['stopped', 'stale'].includes(automation.status) || stale ? 'Parado' : automation.status === 'error' ? 'Erro' : automation.status === 'retry' ? 'Nova tentativa agendada' : automation.status === 'stopping' ? 'Parando' : ['classifying_qwen', 'qwen_processing'].includes(automation.status) ? `Qwen em execução · ${progressPercent}%` : activeStatuses.includes(automation.status) ? `Processando · ${progressPercent}%` : 'Aguardando';
   const automationButton = byId('automation-start');
-  const automationActive = !stale && ['running', 'classifying_qwen'].includes(automation.status);
-  const resumable = automation.status === 'waiting' && automation.phase === 'resume';
+  const automationActive = !stale && activeStatuses.includes(automation.status);
+  const stopButton = byId('automation-stop');
+  stopButton.hidden = ![...activeStatuses, 'waiting_qwen', 'retry'].includes(automation.status);
+  stopButton.disabled = automation.status === 'stopping';
+  const resumable = ['waiting', 'idle'].includes(automation.status) && automation.phase === 'resume';
   const hasPending = automation.status === 'waiting' && automation.phase === 'pending';
-  const automationWaiting = ['waiting', 'waiting_qwen'].includes(automation.status) && !resumable && !hasPending;
-  automationButton.disabled = automationActive || automationWaiting || automation.status === 'completed';
-  automationButton.textContent = automationActive ? 'Processando...' : resumable ? 'Retomar processamento' : automation.status === 'waiting_qwen' ? 'Aguardando Qwen' : automation.status === 'waiting' ? (hasPending ? 'Iniciar processamento' : 'Aguardando processamento') : automation.status === 'completed' ? 'Tudo processado' : 'Iniciar processamento';
+  const automationWaiting = ['waiting', 'waiting_qwen', 'retry'].includes(automation.status) && !resumable && !hasPending;
+  const automationDisabled = state.bootstrap.config?.automationEnabled === false;
+  automationButton.disabled = automationDisabled || automationActive || automationWaiting || ['completed', 'ready'].includes(automation.status);
+  automationButton.textContent = automationDisabled ? 'Somente leitura' : automationActive ? 'Processando...' : resumable ? 'Retomar processamento' : automation.status === 'waiting_qwen' ? 'Aguardando Qwen' : automation.status === 'retry' ? 'Nova tentativa agendada' : automation.status === 'waiting' ? (hasPending ? 'Iniciar processamento' : 'Aguardando processamento') : ['completed', 'ready'].includes(automation.status) ? 'Tudo processado' : 'Iniciar processamento';
+  const ruleTotals = automationReport.ruleTotals || {};
+  const qwenTotals = automationReport.qwenTotals || {};
+  byId('automation-status-summary').textContent = [
+    `${ruleTotals.alreadyComplete || 0} já completas`,
+    `${ruleTotals.resolved || 0} resolvidas por regras`,
+    `${qwenTotals.aiCalls || 0} enviadas ao Qwen`,
+    `${qwenTotals.accepted || 0} aceitas`,
+    `${(ruleTotals.needsReview || 0) + (qwenTotals.reviewRequired || 0)} para revisão`,
+    `${ruleTotals.blocked || 0} bloqueadas`,
+  ].join(' · ');
   byId('overview-official').textContent = summary.answer_matched || 0;
   byId('overview-annulled').textContent = summary.answer_annulled || 0;
   byId('overview-unmatched').textContent = summary.answer_missing || 0;
@@ -481,10 +514,11 @@ function renderOperationalOverview() {
   byId('overview-validation').textContent = preparation.pendingQuestions
     || Math.max((operational.rawQuestions || 0) - (operational.canonicalQuestions || 0), 0);
   byId('overview-review-total').textContent = summary.exception || 0;
-  byId('overview-ready-total').textContent = summary.importable || 0;
-  byId('export-ready-count').textContent = summary.importable || 0;
+  byId('overview-ready-total').textContent = summary.exportable || 0;
+  byId('export-ready-count').textContent = summary.exportable || 0;
+  byId('export-exported-count').textContent = summary.exported || 0;
   byId('export-blocked-count').textContent = Math.max(
-    (summary.total || 0) - (summary.importable || 0) - (summary.exported || 0), 0
+    (summary.total || 0) - (summary.exportable || 0) - (summary.exported || 0), 0
   );
   byId('audit-confirmed').textContent = answerAudit.confirmed || 0;
   byId('audit-uncertain').textContent = answerAudit.uncertain || 0;
@@ -1127,25 +1161,25 @@ function renderMetrics() {
   const summary = state.bootstrap.summary || {};
   const operational = state.bootstrap.operationalSummary || {};
   const preparation = state.bootstrap.preparationSummary || {};
-  byId('metric-total').textContent = summary.total || 0;
-  byId('metric-answer-summary').textContent =
-    `${summary.answer_matched || 0} com resposta oficial · ${summary.answer_annulled || 0} anuladas · ${summary.answer_missing || 0} sem gabarito associado`;
-  byId('metric-duplicate-summary').textContent =
-    `${operational.occurrences || operational.rawQuestions || 0} ocorrências no banco · ${preparation.duplicateQuestions || 0} cópias preservadas`;
-  byId('metric-answer-suggestion-summary').textContent =
-    `${suggestions.pending || 0} sugestões do Qwen pendentes · ${suggestions.confirmed || 0} confirmadas pelo operador`;
-  byId('metric-pending').textContent = summary.pending || 0;
-  byId('metric-exceptions').textContent = summary.exception || 0;
-  byId('metric-missing-answers').textContent = `${summary.answer_missing || 0} sem resposta oficial`;
-  byId('metric-importable').textContent = summary.importable || 0;
+  const suggestions = state.bootstrap.answerSuggestionSummary || {};
+  const setText = (id, value) => { const node = byId(id); if (node) node.textContent = value; };
+  const toggle = (id, name, enabled) => { const node = byId(id); if (node) node.classList.toggle(name, enabled); };
+  setText('metric-total', summary.total || 0);
+  setText('metric-answer-summary', `${summary.answer_matched || 0} com resposta oficial · ${summary.answer_annulled || 0} anuladas · ${summary.answer_missing || 0} sem gabarito associado`);
+  setText('metric-duplicate-summary', `${operational.occurrences || operational.rawQuestions || 0} ocorrências no banco · ${preparation.duplicateQuestions || 0} cópias preservadas`);
+  setText('metric-answer-suggestion-summary', `${suggestions.pending || 0} sugestões do Qwen pendentes · ${suggestions.confirmed || 0} confirmadas pelo operador`);
+  setText('metric-pending', summary.pending || 0);
+  setText('metric-exceptions', summary.exception || 0);
+  setText('metric-missing-answers', `${summary.answer_missing || 0} sem resposta oficial`);
+  setText('metric-importable', summary.importable || 0);
   const activeStatus = state.filters.statuses.length === 1 ? state.filters.statuses[0] : null;
-  byId('metric-card-pending').classList.toggle('active', activeStatus === 'pending');
-  byId('metric-card-exceptions').classList.toggle('active', activeStatus === 'exception');
-  byId('metric-card-importable').classList.toggle('active', activeStatus === 'importable');
+  toggle('metric-card-pending', 'active', activeStatus === 'pending');
+  toggle('metric-card-exceptions', 'active', activeStatus === 'exception');
+  toggle('metric-card-importable', 'active', activeStatus === 'importable');
   const activeAnswer = state.filters.answer_states.length === 1 ? state.filters.answer_states[0] : null;
-  byId('metric-card-answer-official').classList.toggle('active', activeAnswer === 'official');
-  byId('metric-card-answer-annulled').classList.toggle('active', activeAnswer === 'annulled');
-  byId('metric-card-answer-missing').classList.toggle('active', activeAnswer === 'missing');
+  toggle('metric-card-answer-official', 'active', activeAnswer === 'official');
+  toggle('metric-card-answer-annulled', 'active', activeAnswer === 'annulled');
+  toggle('metric-card-answer-missing', 'active', activeAnswer === 'missing');
   renderAnswerDiagnosticSummary(summary.answer_key_diagnostics || {});
 }
 
@@ -1270,7 +1304,13 @@ function schedulePoll() {
   const activeCollection = (state.bootstrap.collectionJobs || []).some((job) =>
     ['queued', 'running', 'pausing', 'cancelling', 'processing'].includes(job.status));
   const active = activeProcessing || activeCollection;
-  const automationActive = ['running', 'classifying_qwen', 'waiting_qwen'].includes(state.bootstrap.automation?.status);
+  const automationState = state.bootstrap.automation || {};
+  const automationActive = !automationState.stale
+    && [
+      'running', 'classifying_qwen', 'waiting_qwen', 'starting', 'validating',
+      'preparing', 'deduplicating', 'classifying_rules', 'qwen_pending',
+      'qwen_processing', 'finalizing', 'retry', 'stopping',
+    ].includes(automationState.status);
   if (active || automationActive) {
     state.polling = setTimeout(() => loadBootstrap({preserveQuery: true}).catch(() => {}), 2000);
   }
@@ -2226,6 +2266,8 @@ async function openExportPreview() {
 async function exportCurrentFilter(event) {
   if (event) event.preventDefault();
   let outputPath = null;
+  const buttons = [byId('export-preview-submit'), byId('export-open'), byId('export-summary-open')];
+  buttons.forEach((button) => { if (button) button.disabled = true; });
   try {
     if (window.pywebview?.api) outputPath = await window.pywebview.api.choose_export_folder();
     else outputPath = window.prompt('Pasta de destino (deixe vazio para usar a pasta padrão):') || null;
@@ -2237,6 +2279,7 @@ async function exportCurrentFilter(event) {
     toast(`Exportação concluída: ${result.exported} válida(s), ${result.exceptions} para revisão. Pasta: ${result.directory}`);
     await loadBootstrap({preserveQuery: false});
   } catch (error) { toast(error.message, 'error'); }
+  finally { buttons.forEach((button) => { if (button) button.disabled = false; }); }
 }
 
 function renderImportDiagnosis() {
@@ -2728,9 +2771,18 @@ document.querySelectorAll('.rail-link').forEach((button) => {
     if (section === 'collect') return;
     state.filters.statuses = section === 'review'
       ? ['exception']
-      : section === 'export' ? ['importable', 'exported'] : [];
+      : section === 'export' ? ['exportable'] : [];
     await runQuery();
     if (section === 'prepare') await refreshValidationOverview();
+  });
+});
+document.querySelectorAll('[data-export-filter]').forEach((button) => {
+  button.addEventListener('click', async () => {
+    const filter = button.dataset.exportFilter;
+    state.filters.statuses = filter === 'ready'
+      ? ['exportable'] : filter === 'exported' ? ['exported'] : ['pending', 'exception'];
+    state.filters.readiness_states = [];
+    await runQuery();
   });
 });
 document.querySelectorAll('[data-section-jump]').forEach((button) => {
@@ -2757,6 +2809,16 @@ byId('automation-start').addEventListener('click', async () => {
   try {
     await request('/api/automation/start', {method: 'POST', body: '{}'});
     toast('Processamento iniciado. O Collector continuará sozinho até a próxima decisão manual.');
+    await loadBootstrap({preserveQuery: true});
+  } catch (error) { toast(error.message, 'error'); }
+  finally { button.disabled = false; }
+});
+byId('automation-stop').addEventListener('click', async () => {
+  const button = byId('automation-stop');
+  button.disabled = true;
+  try {
+    await request('/api/automation/stop', {method: 'POST', body: '{}'});
+    toast('O Collector está parando o processamento com segurança.');
     await loadBootstrap({preserveQuery: true});
   } catch (error) { toast(error.message, 'error'); }
   finally { button.disabled = false; }
