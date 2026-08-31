@@ -613,6 +613,11 @@ label { display: grid; gap: 6px; color: #5f596b; font-size: 10px; font-weight: 7
 .automation-status-card p:last-child { margin:0; color:var(--muted); font-size:12px; }
 .automation-status-card .eyebrow { color:var(--purple); }
 .automation-status-progress { flex:0 0 auto; padding:7px 10px; color:var(--purple-dark); background:var(--surface-2); border-radius:999px; font:700 11px "Cascadia Mono", "Consolas", monospace; }
+.automation-status-actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
+.answer-suggestion { margin:14px 0; padding:14px 16px; background:var(--surface-2); border:1px solid var(--line); border-radius:12px; }
+.answer-suggestion h3 { margin:0 0 6px; color:var(--purple-dark); font-size:14px; }
+.answer-suggestion p { margin:5px 0; color:var(--muted); font-size:12px; line-height:1.45; }
+.answer-suggestion .suggestion-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
 
 .overview-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
 .overview-stat { display: grid; gap: 5px; min-height: 130px; padding: 20px; background: var(--surface); border: 1px solid var(--line); border-top: 4px solid #98a2b3; border-radius: 12px; }

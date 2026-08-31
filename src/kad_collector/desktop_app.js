@@ -166,6 +166,7 @@ const state = {
   localAIPreview: null,
   localAIScopeType: 'filter',
   localAIStatus: null,
+  answerSuggestion: null,
   localAIPolling: null,
   polling: null,
   activeSection: 'overview',
@@ -436,13 +437,21 @@ function renderOperationalOverview() {
   const automationPhaseLabels = {
     waiting: 'aguardando novas questões', collection: 'aguardando a coleta terminar',
     preparing: 'preparando provas e duplicatas', qwen: 'classificando com Qwen',
-    ready: 'pronto para exportação', retry: 'aguardando nova tentativa', resume: 'retomando',
+    pending: 'pendências prontas para iniciar', ready: 'pronto para exportação',
+    retry: 'aguardando nova tentativa', resume: 'retomando',
   };
   byId('automation-status-detail').textContent = automation.error
     ? `A automação tentará novamente. Detalhe: ${automation.error}`
     : `Etapa atual: ${automationPhaseLabels[automation.phase] || 'em andamento'}. O Collector preserva todas as ocorrências no banco.`;
   byId('automation-status-progress').textContent = automation.status === 'completed'
-    ? 'Pronto para exportar' : automation.status === 'classifying_qwen' ? 'Qwen em execução' : automation.status === 'waiting_qwen' ? 'Aguardando Qwen' : automation.status === 'running' ? 'Processando' : 'Aguardando';
+    ? 'Tudo processado' : automation.status === 'classifying_qwen' ? 'Qwen em execução' : automation.status === 'waiting_qwen' ? 'Aguardando Qwen' : automation.status === 'running' ? 'Processando' : 'Aguardando';
+  const automationButton = byId('automation-start');
+  const automationActive = ['running', 'classifying_qwen'].includes(automation.status);
+  const resumable = automation.status === 'waiting' && automation.phase === 'resume';
+  const hasPending = automation.status === 'waiting' && automation.phase === 'pending';
+  const automationWaiting = ['waiting', 'waiting_qwen'].includes(automation.status) && !resumable && !hasPending;
+  automationButton.disabled = automationActive || automationWaiting || automation.status === 'completed';
+  automationButton.textContent = automationActive ? 'Processando...' : resumable ? 'Retomar processamento' : automation.status === 'waiting_qwen' ? 'Aguardando Qwen' : automation.status === 'waiting' ? (hasPending ? 'Iniciar processamento' : 'Aguardando processamento') : automation.status === 'completed' ? 'Tudo processado' : 'Iniciar processamento';
   byId('overview-official').textContent = summary.answer_matched || 0;
   byId('overview-annulled').textContent = summary.answer_annulled || 0;
   byId('overview-unmatched').textContent = summary.answer_missing || 0;
@@ -1111,6 +1120,8 @@ function renderMetrics() {
     `${summary.answer_matched || 0} com resposta oficial · ${summary.answer_annulled || 0} anuladas · ${summary.answer_missing || 0} sem gabarito associado`;
   byId('metric-duplicate-summary').textContent =
     `${operational.occurrences || operational.rawQuestions || 0} ocorrências no banco · ${preparation.duplicateQuestions || 0} cópias preservadas`;
+  byId('metric-answer-suggestion-summary').textContent =
+    `${suggestions.pending || 0} sugestões do Qwen pendentes · ${suggestions.confirmed || 0} confirmadas pelo operador`;
   byId('metric-pending').textContent = summary.pending || 0;
   byId('metric-exceptions').textContent = summary.exception || 0;
   byId('metric-missing-answers').textContent = `${summary.answer_missing || 0} sem resposta oficial`;
@@ -1765,7 +1776,75 @@ function fillReviewForm() {
   renderImportDiagnosis();
   renderBatchCorrection();
   renderReviewContext();
+  renderAnswerSuggestion();
   byId('review-status-copy').textContent = `Situação atual: ${statusLabel(view.status)} · ${state.currentAudit.length} evento(s) de auditoria`;
+}
+
+function renderAnswerSuggestion() {
+  const root = byId('answer-suggestion');
+  root.replaceChildren();
+  const suggestion = state.currentQuestion?.answer_suggestion;
+  const question = state.currentQuestion?.question;
+  if (!question || question.answer_status !== 'missing') return;
+  const title = document.createElement('h3');
+  title.textContent = 'Resposta assistida pelo Qwen';
+  root.append(title);
+  const copy = document.createElement('p');
+  copy.textContent = suggestion
+    ? `Sugestão: alternativa ${suggestion.confirmedAnswer || suggestion.suggestedAnswer} · confiança ${Math.round(suggestion.confidence * 100)}% · ${suggestion.status === 'pending' ? 'aguarda sua confirmação' : suggestion.status}`
+    : 'Não há gabarito oficial. O Qwen pode sugerir uma alternativa, mas ela nunca será considerada oficial automaticamente.';
+  root.append(copy);
+  if (suggestion) {
+    const explanation = document.createElement('p');
+    explanation.textContent = suggestion.explanation;
+    root.append(explanation);
+    const metadata = document.createElement('small');
+    metadata.textContent = `${suggestion.model} · ${new Date(suggestion.createdAt).toLocaleString()} · ${suggestion.warning}`;
+    root.append(metadata);
+  }
+  const actions = document.createElement('div');
+  actions.className = 'suggestion-actions';
+  if (!suggestion || suggestion.status === 'rejected') {
+    const suggest = document.createElement('button');
+    suggest.className = 'button ghost'; suggest.type = 'button'; suggest.textContent = 'Sugerir resposta com Qwen';
+    suggest.addEventListener('click', requestAnswerSuggestion);
+    actions.append(suggest);
+  }
+  if (suggestion?.status === 'pending') {
+    const correction = document.createElement('label');
+    correction.textContent = 'Alternativa a confirmar';
+    const select = document.createElement('select');
+    select.id = 'answer-suggestion-corrected';
+    question.alternatives.forEach((alternative) => {
+      const option = document.createElement('option');
+      option.value = alternative.letter;
+      option.textContent = `${alternative.letter}) ${alternative.text}`;
+      option.selected = alternative.letter === suggestion.suggestedAnswer;
+      select.append(option);
+    });
+    correction.append(select);
+    actions.append(correction);
+    [['confirm','Confirmar sugestão'],['reject','Rejeitar sugestão']].forEach(([decision, label]) => {
+      const button = document.createElement('button'); button.className = decision === 'confirm' ? 'button success' : 'button ghost warning'; button.type = 'button'; button.textContent = label;
+      button.addEventListener('click', () => decideAnswerSuggestion(decision)); actions.append(button);
+    });
+  }
+  root.append(actions);
+}
+
+async function requestAnswerSuggestion() {
+  try {
+    const result = await request(`/api/questions/${state.currentQuestion.id}/answer-suggestion`, {method:'POST', body:'{}'});
+    state.currentQuestion.answer_suggestion = result; renderAnswerSuggestion(); toast('Sugestão criada. Confira o raciocínio antes de decidir.');
+  } catch (error) { toast(error.message, 'error'); }
+}
+
+async function decideAnswerSuggestion(decision) {
+  try {
+    const corrected = byId('answer-suggestion-corrected');
+    const result = await request(`/api/questions/${state.currentQuestion.id}/answer-suggestion/decision`, {method:'POST', body:JSON.stringify({decision, correctedAnswer: corrected?.value || null})});
+    state.currentQuestion.answer_suggestion = result; renderAnswerSuggestion(); toast(decision === 'confirm' ? 'Sugestão confirmada e mantida separada do gabarito oficial.' : 'Sugestão rejeitada.');
+  } catch (error) { toast(error.message, 'error'); }
 }
 
 function renderReviewContext() {
@@ -2659,6 +2738,16 @@ byId('copy-database-path').addEventListener('click', async () => {
 byId('next-action-button').addEventListener('click', () => {
   const step = byId('next-action-button').dataset.step || 'collect';
   document.querySelector(`.rail-link[data-section="${step}"]`)?.click();
+});
+byId('automation-start').addEventListener('click', async () => {
+  const button = byId('automation-start');
+  button.disabled = true;
+  try {
+    await request('/api/automation/start', {method: 'POST', body: '{}'});
+    toast('Processamento iniciado. O Collector continuará sozinho até a próxima decisão manual.');
+    await loadBootstrap({preserveQuery: true});
+  } catch (error) { toast(error.message, 'error'); }
+  finally { button.disabled = false; }
 });
 
 applyCapacityProfile();

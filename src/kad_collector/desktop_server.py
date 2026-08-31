@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 
 from pydantic import ValidationError
 
+from .desktop_answer_suggestions import DesktopAnswerSuggestionManager
 from .desktop_automation import DesktopAutomationManager
 from .desktop_collection import DesktopCollectionManager
 from .desktop_export import (
@@ -145,6 +146,7 @@ class DesktopApplication:
             self.ollama_classification,
             collection_active=self._collection_or_processing_active,
         )
+        self.answer_suggestions = DesktopAnswerSuggestionManager(self.store)
         self.token = secrets.token_urlsafe(32)
 
     def _automation_enabled(self) -> bool:
@@ -162,10 +164,6 @@ class DesktopApplication:
         return collection or processing
 
     def bootstrap(self) -> dict[str, Any]:
-        # Test/reference databases are deliberately inert: their callers own
-        # every mutation and must never receive a background writer.
-        if _desktop_environment(self.data_dir) == "operational":
-            self.automation.start()
         query = self.store.query(DesktopFilterSet())
         raw_summary = self.store.query(
             DesktopFilterSet(), include_equivalent_copies=True
@@ -184,6 +182,7 @@ class DesktopApplication:
             "preparationSummary": self.preparation.summary(),
             "answerKeyAuditSummary": self.store.answer_key_audit_summary(),
             "automation": self.automation.status(),
+            "answerSuggestionSummary": self.answer_suggestions.summary(),
             "operationalSummary": {
                 **operational,
                 "nextAction": _next_desktop_action(query["summary"], operational),
@@ -228,10 +227,9 @@ class DesktopApplication:
         classifier_provider = payload.get("classifierProvider", "local")
         if classifier_provider not in {"local", "openai"}:
             raise ValueError("classificador deve ser local ou openai")
-        result = self.pipeline.import_paths(paths, metadata, classifier_provider)
-        if self._automation_enabled():
-            self.automation.wake()
-        return result
+        job_ids = self.pipeline.import_paths(paths, metadata, classifier_provider)
+        self.automation.mark_pending()
+        return job_ids
 
     def reprocess_documents(
         self,
@@ -242,10 +240,9 @@ class DesktopApplication:
             raise ValueError("documentIds deve conter ao menos um identificador")
         if classifier_provider not in {"local", "openai"}:
             raise ValueError("classificador deve ser local ou openai")
-        result = self.pipeline.reprocess(document_ids, classifier_provider)
-        if self._automation_enabled():
-            self.automation.wake()
-        return result
+        job_ids = self.pipeline.reprocess(document_ids, classifier_provider)
+        self.automation.mark_pending()
+        return job_ids
 
     def reclassify_questions(self) -> dict[str, Any]:
         return self.processor.reclassify_existing_questions()
@@ -306,10 +303,33 @@ class DesktopApplication:
         )
 
     def collect_from_link(self, payload: dict[str, Any]) -> str:
-        result = self.collection_manager.start(payload)
-        if self._automation_enabled():
-            self.automation.wake()
-        return result
+        collection_id = self.collection_manager.start(payload)
+        self.automation.mark_pending()
+        return collection_id
+
+    def start_automation(self) -> dict[str, Any]:
+        self.automation.start()
+        return self.automation.status()
+
+    def answer_suggestion(self, question_id: str) -> dict[str, Any]:
+        return self.answer_suggestions.suggest(question_id)
+
+    def decide_answer_suggestion(
+        self, question_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        decision = payload.get("decision")
+        if decision not in {"confirm", "reject"}:
+            raise ValueError("decisão de sugestão inválida")
+        corrected = payload.get("correctedAnswer")
+        if corrected is not None and not isinstance(corrected, str):
+            raise ValueError("correctedAnswer deve ser texto")
+        return self.answer_suggestions.decide(
+            question_id,
+            decision=decision,
+            actor=LOCAL_DESKTOP_ACTOR,
+            corrected_answer=corrected,
+            notes=_optional_text(payload, "notes"),
+        )
 
     def collection_action(self, collection_id: str, action: str) -> None:
         self.collection_manager.action(collection_id, action)
@@ -485,6 +505,9 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                     detailed_equivalence = application.store.question_equivalence(question_id)
                     if detailed_equivalence is not None:
                         question["question_equivalence"] = detailed_equivalence
+                    question["answer_suggestion"] = application.answer_suggestions.latest(
+                        question_id
+                    )
                     question["documentIdentity"] = application.store.document_identity(
                         cast(str, question["document_id"])
                     )
@@ -541,6 +564,28 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                 if path == "/api/collections":
                     collection_id = application.collect_from_link(payload)
                     self._send_json({"collectionId": collection_id}, HTTPStatus.CREATED)
+                    return
+                if path == "/api/automation/start":
+                    self._send_json(application.start_automation())
+                    return
+                suggestion_match = re.fullmatch(
+                    r"/api/questions/([a-f0-9-]+)/answer-suggestion", path
+                )
+                if suggestion_match is not None:
+                    self._send_json(
+                        application.answer_suggestion(suggestion_match.group(1)),
+                        HTTPStatus.CREATED,
+                    )
+                    return
+                suggestion_decision = re.fullmatch(
+                    r"/api/questions/([a-f0-9-]+)/answer-suggestion/decision", path
+                )
+                if suggestion_decision is not None:
+                    self._send_json(
+                        application.decide_answer_suggestion(
+                            suggestion_decision.group(1), payload
+                        )
+                    )
                     return
                 if path == "/api/settings/cloudflare-bypass":
                     enabled = application.set_cloudflare_bypass_enabled(payload)

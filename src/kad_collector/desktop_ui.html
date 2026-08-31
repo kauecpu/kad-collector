@@ -52,12 +52,12 @@
             </section>
 
             <section class="automation-status-card" aria-live="polite">
-              <div><p class="eyebrow">AUTOMAÇÃO LOCAL</p><h2 id="automation-status-title">Aguardando o banco local</h2><p id="automation-status-detail">Ao abrir o aplicativo, a preparação e a classificação pendente são executadas automaticamente.</p></div>
-              <span id="automation-status-progress" class="automation-status-progress">Pronto</span>
+              <div><p class="eyebrow">AUTOMAÇÃO LOCAL</p><h2 id="automation-status-title">Aguardando o banco local</h2><p id="automation-status-detail">Depois da coleta, clique em Iniciar processamento para preparar e classificar as questões. A exportação continua manual.</p></div>
+              <div class="automation-status-actions"><span id="automation-status-progress" class="automation-status-progress">Pronto</span><button id="automation-start" class="button primary" type="button">Iniciar processamento</button></div>
             </section>
 
             <section class="overview-grid" aria-label="Resumo do trabalho">
-              <article class="overview-stat"><span>Questões no acervo (principais)</span><strong id="metric-total">0</strong><small id="metric-answer-summary">Nenhuma questão coletada</small><small id="metric-duplicate-summary">0 ocorrências no banco · 0 cópias preservadas</small></article>
+              <article class="overview-stat"><span>Questões no acervo (principais)</span><strong id="metric-total">0</strong><small id="metric-answer-summary">Nenhuma questão coletada</small><small id="metric-duplicate-summary">0 ocorrências no banco · 0 cópias preservadas</small><small id="metric-answer-suggestion-summary">0 sugestões do Qwen pendentes</small></article>
               <article class="overview-stat attention"><span>Questões por validar</span><strong id="overview-validation">0</strong><small>agrupadas por prova na confirmação</small></article>
               <article class="overview-stat"><span>Para revisão</span><strong id="overview-review-total">0</strong><small>decisões humanas pendentes</small></article>
               <article class="overview-stat ready"><span>Prontas para exportar</span><strong id="overview-ready-total">0</strong><small>sem bloqueios conhecidos</small></article>
@@ -379,7 +379,7 @@
         </div>
         <footer class="modal-footer">
           <span id="import-hint">Nenhum arquivo selecionado.</span>
-          <button id="import-submit" class="button primary" type="submit">Iniciar processamento</button>
+          <button id="import-submit" class="button primary" type="submit">Adicionar e processar PDFs</button>
         </footer>
       </form>
     </dialog>
@@ -397,6 +397,7 @@
         <section id="question-state-groups" class="question-state-groups" aria-label="Estado da questão"></section>
         <section id="equivalence-details" class="equivalence-details" aria-label="Cópias desta questão"></section>
         <section id="import-diagnosis" class="import-diagnosis" aria-label="Diagnóstico de importação"></section>
+        <section id="answer-suggestion" class="answer-suggestion" aria-label="Sugestão de resposta do Qwen"></section>
         <div id="review-context" class="review-context" aria-label="Contexto da questão"></div>
         <section id="document-identity" class="document-identity" aria-label="Identidade semântica do documento"></section>
         <div class="review-layout">
