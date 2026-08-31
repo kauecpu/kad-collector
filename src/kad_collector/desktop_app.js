@@ -205,7 +205,9 @@ function renderScopeItems(root, included = [], excluded = [], outsideIds = []) {
       const title = document.createElement('strong');
       title.textContent = `Questão ${item.number ?? '—'} · ${item.exam || 'prova sem nome'}`;
       const detail = document.createElement('small');
-      detail.textContent = `${item.source || 'arquivo local'} · ID ${item.id}${item.reason ? ` · ${item.reason}` : ''}`;
+      detail.textContent = item.canonicalId
+        ? `${item.source || 'arquivo local'} · questão principal do banco`
+        : `${item.source || 'arquivo local'} · ID ${item.id}${item.reason ? ` · ${item.reason}` : ''}`;
       row.append(title, detail);
       root.append(row);
     });
