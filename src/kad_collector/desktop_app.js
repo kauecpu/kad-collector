@@ -4,7 +4,7 @@ function semanticIdentityBadge(view) {
     republication: 'Republicação',
     new_identity: 'Nova versão',
     new_version: 'Nova versão',
-    uncertain: 'Exceção',
+    uncertain: 'Precisa de revisão',
   }[view?.resolution] || null;
 }
 
@@ -104,18 +104,18 @@ function questionStatePresentation(view) {
       : {
           state: diagnosis.label || 'Diagnóstico pendente', tone: 'blocked',
           reason: diagnosis.explanation || 'O banco ainda não explica a ausência da resposta.',
-          action: diagnosis.action || 'Revisar preparação', context: answerContext,
+          action: diagnosis.action || 'Revisar a prova', context: answerContext,
           details: view?.answer_key_evidence || {},
         };
   const preparation = equivalence.status === 'confirmed' && equivalence.canonicalQuestionId
     ? equivalence.isRepresentative
-      ? {state: 'Principal', tone: 'success', reason: equivalence.hasStatementVariants ? 'Esta é a principal; questões realmente diferentes com o mesmo enunciado ficaram separadas.' : 'Esta é a cópia escolhida automaticamente para classificação e importação.', action: 'Nenhuma ação'}
+      ? {state: 'Principal', tone: 'success', reason: equivalence.hasStatementVariants ? 'Esta é a principal; questões diferentes com o mesmo enunciado ficaram separadas.' : 'Esta é a cópia escolhida para classificação e importação.', action: 'Nenhuma ação'}
       : {state: 'Cópia preservada', tone: 'success', reason: 'A classificação será herdada da principal e esta cópia não será importada.', action: 'Consultar a principal nos detalhes'}
     : equivalence.groupId
-      ? {state: 'Equivalência pendente', tone: 'attention', reason: 'A questão foi agrupada, mas o grupo ainda precisa de confirmação.', action: 'Revisar grupo equivalente'}
+      ? {state: 'Validação pendente', tone: 'attention', reason: 'O Collector encontrou uma questão repetida e aguarda a validação da prova.', action: 'Validar a prova'}
       : view?.canonical_identity
-        ? {state: 'Identidade pendente', tone: 'attention', reason: 'O documento foi reconhecido, mas a preparação das ocorrências ainda não terminou.', action: 'Executar preparação'}
-        : {state: 'Bruta', tone: 'attention', reason: 'A questão foi extraída, mas ainda não entrou na preparação canônica.', action: 'Executar preparação'};
+        ? {state: 'Prova reconhecida', tone: 'attention', reason: 'O documento foi reconhecido, mas suas questões ainda precisam de validação.', action: 'Validar a prova'}
+        : {state: 'Prova não validada', tone: 'attention', reason: 'A questão foi extraída e ainda precisa ser ligada à prova.', action: 'Validar a prova'};
   const classification = missingClassification.length
     ? {state: 'Incompleta', tone: 'attention', reason: `Faltam ${missingClassification.map((field) => fieldLabels[field]).join(', ')}.`, action: question.answer_status === 'matched' ? 'Aplicar regras ou usar Qwen' : 'Resolver o gabarito primeiro'}
     : {state: 'Completa', tone: 'success', reason: 'Os campos editoriais necessários estão preenchidos.', action: 'Revisar conteúdo'};
@@ -124,7 +124,7 @@ function questionStatePresentation(view) {
     : {state: 'Bloqueada', tone: 'blocked', reason: view?.import_diagnosis?.issues?.[0]?.what || 'Existem requisitos de importação pendentes.', action: view?.import_diagnosis?.issues?.[0]?.how || 'Abra o diagnóstico abaixo'};
   return [
     {label: 'Gabarito', ...answer},
-    {label: 'Preparação', ...preparation},
+    {label: 'Prova', ...preparation},
     {label: 'Classificação', ...classification},
     {label: 'Importação', ...importing},
   ];
@@ -173,6 +173,7 @@ const state = {
 };
 
 const byId = (id) => document.getElementById(id);
+const quantityLabel = (count, singular, plural) => `${count} ${count === 1 ? singular : plural}`;
 const optional = (id) => byId(id).value.trim() || null;
 const numberOrNull = (id) => {
   const value = byId(id).value.trim();
@@ -190,9 +191,9 @@ function operationScope(type, allowOutOfScope = false) {
 }
 
 function operationScopeLabel(type, count) {
-  if (type === 'selected') return `${count} questão(ões) selecionada(s)`;
-  if (type === 'filter') return `${count} questão(ões) do filtro atual`;
-  return `${count} questão(ões) do banco inteiro`;
+  if (type === 'selected') return `${quantityLabel(count, 'questão selecionada', 'questões selecionadas')}`;
+  if (type === 'filter') return `${quantityLabel(count, 'questão', 'questões')} deste filtro`;
+  return `${quantityLabel(count, 'questão', 'questões')} do banco inteiro`;
 }
 
 function renderScopeItems(root, included = [], excluded = [], outsideIds = []) {
@@ -211,23 +212,34 @@ function renderScopeItems(root, included = [], excluded = [], outsideIds = []) {
   if (outsideIds.length) {
     const warning = document.createElement('span');
     warning.className = 'scope-preview-item excluded';
-    warning.textContent = `${outsideIds.length} cópia(s) equivalente(s) fora do escopo: ${outsideIds.join(', ')}`;
+    warning.textContent = `${quantityLabel(outsideIds.length, 'questão repetida', 'questões repetidas')} fora deste filtro: ${outsideIds.join(', ')}`;
     root.append(warning);
   }
 }
 
 function renderPreparationUnits(root, units = [], outsideIds = []) {
   root.replaceChildren();
+  if (!units.length && !outsideIds.length) {
+    const empty = document.createElement('article');
+    empty.className = 'scope-preview-item complete';
+    const title = document.createElement('strong');
+    title.textContent = 'Nenhuma prova aguarda confirmação neste conjunto';
+    const detail = document.createElement('small');
+    detail.textContent = 'As questões encontradas já estão validadas ou não há questões neste filtro.';
+    empty.append(title, detail);
+    root.append(empty);
+    return;
+  }
   units.forEach((unit) => {
     const row = document.createElement('article');
     row.className = `scope-preview-item${unit.excludedCount ? ' excluded' : ''}`;
     const title = document.createElement('strong');
     title.textContent = unit.document || 'Documento sem título';
     const detail = document.createElement('span');
-    detail.textContent = `${unit.questionCount || 0} questões · ${unit.action}`;
+    detail.textContent = `${quantityLabel(unit.questionCount || 0, 'questão', 'questões')} · ${unit.action}`;
     const reason = document.createElement('small');
     reason.textContent = unit.reasons?.length
-      ? `Bloqueio do documento/grupo: ${unit.reasons.join('; ')}`
+      ? `Verificar nesta prova: ${unit.reasons.join('; ')}`
       : 'Uma confirmação vale para todas as questões relacionadas.';
     row.append(title, detail, reason);
     root.append(row);
@@ -236,7 +248,7 @@ function renderPreparationUnits(root, units = [], outsideIds = []) {
     const warning = document.createElement('article');
     warning.className = 'scope-preview-item excluded';
     const title = document.createElement('strong');
-    title.textContent = `${outsideIds.length} cópia(s) equivalente(s) fora do filtro`;
+    title.textContent = `${quantityLabel(outsideIds.length, 'questão repetida', 'questões repetidas')} fora do filtro`;
     const detail = document.createElement('small');
     detail.textContent = 'A execução exige autorização explícita para incluir essas cópias.';
     warning.append(title, detail);
@@ -296,7 +308,7 @@ function toast(message, kind = 'info') {
 function statusLabel(status) {
   return {
     pending: 'Pendente', approved: 'Aprovada', rejected: 'Rejeitada',
-    exception: 'Exceção', exported: 'Exportada', exportable: 'Exportável',
+    exception: 'Precisa de revisão', exported: 'Exportada', exportable: 'Exportável',
     importable: 'Importável', publication_ready: 'Pronta para publicação',
     unclassified: 'Não classificada', blocked: 'Bloqueada',
   }[status] || status;
@@ -358,6 +370,7 @@ function render() {
   renderOperationalOverview();
   renderMetrics();
   renderJobs();
+  renderNavigationState();
   renderSavedFilters();
   renderQuery();
   renderSourceCatalog();
@@ -376,6 +389,35 @@ function renderSection() {
   const collecting = state.activeSection === 'collect';
   byId('editorial-view').hidden = collecting;
   byId('source-view').hidden = !collecting;
+  document.querySelectorAll('#editorial-view [data-workspace]').forEach((view) => {
+    view.hidden = view.dataset.workspace !== state.activeSection;
+  });
+  document.body.dataset.section = state.activeSection;
+  document.querySelectorAll('.rail-link').forEach((item) => {
+    const active = item.dataset.section === state.activeSection;
+    item.classList.toggle('active', active);
+    if (active) item.setAttribute('aria-current', 'page');
+    else item.removeAttribute('aria-current');
+  });
+}
+
+function renderNavigationState() {
+  const summary = state.bootstrap.summary || {};
+  const operational = state.bootstrap.operationalSummary || {};
+  const preparation = state.bootstrap.preparationSummary || {};
+  const raw = operational.rawQuestions || 0;
+  const canonical = operational.canonicalQuestions || 0;
+  const validationPending = preparation.pendingQuestions || Math.max(raw - canonical, 0);
+  const reviewPending = summary.exception || 0;
+  byId('nav-collect-state').textContent = raw ? `${raw} questões encontradas` : 'Adicionar provas';
+  byId('nav-prepare-state').textContent = validationPending
+    ? `${validationPending} por validar` : raw ? 'Provas validadas' : 'Aguardando coleta';
+  byId('nav-complete-state').textContent = summary.unclassified
+    ? `${summary.unclassified} sem classificação` : canonical ? 'Classificação completa' : 'Aguardando validação';
+  byId('nav-review-state').textContent = reviewPending
+    ? `${reviewPending} para revisar` : 'Nenhuma pendência';
+  byId('nav-export-state').textContent = summary.importable
+    ? `${summary.importable} prontas` : 'Nada pronto';
 }
 
 function renderOperationalOverview() {
@@ -398,6 +440,15 @@ function renderOperationalOverview() {
   byId('prep-ready').textContent = preparation.qwenEligible || 0;
   byId('prep-duplicates').textContent = preparation.duplicateQuestions || 0;
   byId('prep-pending').textContent = preparation.pendingQuestions || 0;
+  byId('classification-ready').textContent = preparation.qwenEligible || 0;
+  byId('overview-validation').textContent = preparation.pendingQuestions
+    || Math.max((operational.rawQuestions || 0) - (operational.canonicalQuestions || 0), 0);
+  byId('overview-review-total').textContent = summary.exception || 0;
+  byId('overview-ready-total').textContent = summary.importable || 0;
+  byId('export-ready-count').textContent = summary.importable || 0;
+  byId('export-blocked-count').textContent = Math.max(
+    (summary.total || 0) - (summary.importable || 0) - (summary.exported || 0), 0
+  );
   byId('audit-confirmed').textContent = answerAudit.confirmed || 0;
   byId('audit-uncertain').textContent = answerAudit.uncertain || 0;
   byId('audit-incorrect').textContent = answerAudit.incorrect || 0;
@@ -407,13 +458,67 @@ function renderOperationalOverview() {
     operational.rawQuestions > 0 && operational.canonicalQuestions === 0
   );
   const next = operational.nextAction || {};
+  const stepLabels = {collect: 'Etapa 1', prepare: 'Etapa 2', complete: 'Etapa 3', review: 'Etapa 4', export: 'Etapa 5'};
+  byId('next-action-step').textContent = stepLabels[next.step] || 'Agora';
   byId('next-action-title').textContent = next.title || 'Banco pronto para começar';
   byId('next-action-detail').textContent = next.detail || '';
   byId('next-action-button').textContent = next.action || 'Ver fluxo';
   byId('next-action-button').dataset.step = next.step || 'collect';
   byId('prepare-questions-open').disabled = (state.query?.total || 0) === 0;
   byId('prepare-all-open').disabled = (operational.rawQuestions || 0) === 0;
+  byId('activity-empty').hidden = Boolean((state.bootstrap.jobs || []).length);
   renderPreparationReviews(preparation.reviews || []);
+}
+
+async function refreshValidationOverview() {
+  const root = byId('validation-unit-list');
+  root.setAttribute('aria-busy', 'true');
+  try {
+    if ((state.query?.total || 0) > 250) {
+      root.replaceChildren();
+      const guidance = document.createElement('article');
+      guidance.className = 'scope-preview-item neutral';
+      const title = document.createElement('strong');
+      title.textContent = 'Escolha uma prova para conferir o conjunto';
+      const detail = document.createElement('small');
+      detail.textContent = 'Use Revisar e os filtros avançados para selecionar uma banca, concurso ou arquivo. A validação mostrará uma confirmação por prova.';
+      guidance.append(title, detail);
+      root.append(guidance);
+      return;
+    }
+    const visibleQuestions = state.query?.questions || [];
+    const allVisibleValidated = visibleQuestions.length > 0
+      && visibleQuestions.length === state.query.total
+      && visibleQuestions.every((view) => view.question_equivalence?.status === 'confirmed'
+        && view.question_equivalence?.canonicalQuestionId);
+    if (allVisibleValidated) {
+      byId('prepare-questions-open').disabled = true;
+      byId('prepare-questions-open').textContent = 'Conjunto já validado';
+      root.replaceChildren();
+      const complete = document.createElement('article');
+      complete.className = 'scope-preview-item complete';
+      const title = document.createElement('strong');
+      title.textContent = `${quantityLabel(state.query.total, 'questão validada', 'questões validadas')}`;
+      const detail = document.createElement('small');
+      detail.textContent = 'Este conjunto já está pronto para classificação.';
+      complete.append(title, detail);
+      root.append(complete);
+      return;
+    }
+    byId('prepare-questions-open').disabled = (state.query?.total || 0) === 0;
+    const preview = await request('/api/preparation/preview', {
+      method: 'POST', body: JSON.stringify({scope: operationScope('filter')}),
+    });
+    renderPreparationUnits(root, preview.confirmationUnits, preview.outsideScopeQuestionIds);
+  } catch (error) {
+    root.replaceChildren();
+    const message = document.createElement('p');
+    message.className = 'plain-warning';
+    message.textContent = `Não foi possível carregar as provas: ${error.message}`;
+    root.append(message);
+  } finally {
+    root.removeAttribute('aria-busy');
+  }
 }
 
 function renderPreparationReviews(reviews) {
@@ -423,9 +528,11 @@ function renderPreparationReviews(reviews) {
   const heading = document.createElement('div');
   heading.className = 'preparation-review-heading';
   const title = document.createElement('strong');
-  title.textContent = `${reviews.length} prova(s) precisam de revisão`;
+  title.textContent = reviews.length === 1
+    ? '1 prova precisa de revisão'
+    : `${reviews.length} provas precisam de revisão`;
   const copy = document.createElement('span');
-  copy.textContent = 'Corrija os dados indicados e execute a preparação novamente.';
+  copy.textContent = 'Confira os dados indicados e valide as provas novamente.';
   heading.append(title, copy);
   root.append(heading);
   reviews.forEach((review) => {
@@ -438,7 +545,7 @@ function renderPreparationReviews(reviews) {
       ? `Conferir: ${review.missingLabels.join(', ')}.`
       : review.reason;
     const context = document.createElement('small');
-    context.textContent = `${review.questionCount || 0} questão(ões) · ${review.candidates?.length || 0} gabarito(s) candidato(s)`;
+    context.textContent = `${quantityLabel(review.questionCount || 0, 'questão', 'questões')} · ${quantityLabel(review.candidates?.length || 0, 'gabarito candidato', 'gabaritos candidatos')}`;
     text.append(name, reason, context);
     const button = document.createElement('button');
     button.type = 'button';
@@ -457,12 +564,12 @@ function renderPreparationPreview(preview) {
   const grid = document.createElement('div');
   grid.className = 'qwen-count-grid';
   [
-    ['No escopo', preview.selectedCount || 0],
-    ['Incluídas', preview.includedCount || 0],
+    ['Questões encontradas', preview.selectedCount || 0],
+    ['Serão incluídas', preview.includedCount || 0],
     ['Excluídas', preview.excludedCount || 0],
-    ['Grupos canônicos', preview.canonicalGroups || 0],
-    ['Cópias equivalentes', preview.equivalentCopies || 0],
-    ['Fora do escopo', preview.outsideScopeCount || 0],
+    ['Conjuntos de questões', preview.canonicalGroups || 0],
+    ['Questões repetidas', preview.equivalentCopies || 0],
+    ['Fora deste filtro', preview.outsideScopeCount || 0],
   ].forEach(([label, value]) => {
     const item = document.createElement('span');
     const number = document.createElement('strong');
@@ -476,8 +583,8 @@ function renderPreparationPreview(preview) {
   const detail = document.createElement('p');
   detail.className = 'qwen-zero-reason';
   detail.textContent = preview.requiresOutsideScopeAuthorization
-    ? 'A execução está bloqueada até o impacto fora do escopo ser autorizado.'
-    : 'A execução ficará restrita ao escopo exibido nesta prévia.';
+    ? 'A validação inclui questões repetidas fora deste filtro e precisa da sua autorização.'
+    : 'A validação ficará restrita às questões exibidas nesta prévia.';
   root.append(detail);
   byId('preparation-scope-label').textContent = operationScopeLabel(
     preview.scope?.type || state.preparationScopeType, preview.selectedCount || 0
@@ -532,9 +639,10 @@ async function runPreparation(event) {
       body: JSON.stringify({confirmationToken: preview.confirmationToken, scope}),
     });
     byId('preparation-dialog').close();
-    toast(`${result.includedCount || 0} questão(ões) foram preparadas neste escopo.`);
+    toast(`${quantityLabel(result.includedCount || 0, 'questão foi validada', 'questões foram validadas')} neste conjunto.`);
     await loadBootstrap({preserveQuery: true});
     await runQuery();
+    await refreshValidationOverview();
   } catch (error) {
     toast(error.message, 'error');
   } finally {
@@ -543,7 +651,7 @@ async function runPreparation(event) {
 }
 
 const answerAuditLabels = {
-  confirmed: 'Confirmado', uncertain: 'Duvidoso', incorrect: 'Incorreto', missing: 'Sem gabarito',
+  confirmed: 'Confirmado', uncertain: 'Precisa de revisão', incorrect: 'Incorreto', missing: 'Sem gabarito',
   awaiting_definitive: 'Aguardando definitivo',
 };
 
@@ -1198,10 +1306,10 @@ function renderQuery() {
   const activeAnswer = state.filters.answer_states.length === 1 ? state.filters.answer_states[0] : null;
   byId('records-kicker').textContent = activeAnswer === 'official' ? 'COM RESPOSTA OFICIAL'
     : activeAnswer === 'annulled' ? 'QUESTÕES ANULADAS'
-      : activeAnswer === 'missing' ? 'SEM RESPOSTA ASSOCIADA'
+      : activeAnswer === 'missing' ? 'SEM RESPOSTA OFICIAL'
         : activeStatus === 'pending' ? 'FILA DE REVISÃO'
-    : activeStatus === 'exception' ? 'QUESTÕES EM EXCEÇÃO'
-      : activeStatus === 'importable' ? 'IMPORTÁVEIS PARA O APP' : 'QUESTÕES ENCONTRADAS';
+    : activeStatus === 'exception' ? 'QUESTÕES COM BLOQUEIO'
+      : activeStatus === 'importable' ? 'PRONTAS PARA EXPORTAR' : 'QUESTÕES ENCONTRADAS';
   renderFacets();
   renderActiveFilters();
   renderQuestions();
@@ -1441,11 +1549,11 @@ function renderBatchToolbar() {
   byId('batch-approve-open').disabled = selected === 0;
   byId('batch-classification-open').disabled = selected === 0;
   byId('prepare-selected-open').disabled = selected === 0;
-  byId('prepare-selected-open').textContent = `Preparar ${selected} selecionada${selected === 1 ? '' : 's'}`;
+  byId('prepare-selected-open').textContent = `Validar ${selected} selecionada${selected === 1 ? '' : 's'}`;
   byId('qwen-selected-open').disabled = selected === 0;
   byId('qwen-selected-open').textContent = `Classificar ${selected} selecionada${selected === 1 ? '' : 's'} com Qwen`;
-  byId('prepare-questions-open').textContent = `Preparar ${state.query?.total || 0} do filtro atual`;
-  byId('qwen-classify-open').textContent = `Classificar ${state.query?.total || 0} do filtro atual com Qwen`;
+  byId('prepare-questions-open').textContent = `Validar ${state.query?.total || 0} questões deste filtro`;
+  byId('qwen-classify-open').textContent = `Classificar ${state.query?.total || 0} questões com Qwen`;
   const selectAll = byId('select-all-pending');
   selectAll.checked = pending.length > 0 && selected === pending.length;
   selectAll.indeterminate = selected > 0 && selected < pending.length;
@@ -1864,7 +1972,7 @@ async function decideCurrent(status) {
     });
     const messages = {
       approved: 'Questão aprovada e movida para Exportáveis.',
-      exception: 'Questão enviada para Exceções com a justificativa informada.',
+      exception: 'Questão enviada para revisão com a justificativa informada.',
       rejected: 'Questão rejeitada e decisão registrada.',
       pending: 'Questão mantida em Pendentes para revisão posterior.',
     };
@@ -2002,7 +2110,7 @@ async function exportCurrentFilter(event) {
     const result = await request('/api/export', {
       method: 'POST', body: JSON.stringify({filters: state.filters, outputPath}),
     });
-    toast(`Exportação concluída: ${result.exported} válida(s), ${result.exceptions} exceção(ões). Pasta: ${result.directory}`);
+    toast(`Exportação concluída: ${result.exported} válida(s), ${result.exceptions} para revisão. Pasta: ${result.directory}`);
     await loadBootstrap({preserveQuery: false});
   } catch (error) { toast(error.message, 'error'); }
 }
@@ -2488,22 +2596,17 @@ byId('batch-classification-form').addEventListener('submit', submitBatchClassifi
 byId('export-preview-form').addEventListener('submit', exportCurrentFilter);
 document.querySelectorAll('.rail-link').forEach((button) => {
   button.addEventListener('click', async () => {
-    document.querySelectorAll('.rail-link').forEach((item) => item.classList.remove('active'));
-    button.classList.add('active');
     const section = button.dataset.section;
     state.activeSection = section;
     state.selectedQuestionIds.clear();
     renderSection();
+    window.scrollTo({top: 0, behavior: 'smooth'});
     if (section === 'collect') return;
     state.filters.statuses = section === 'review'
-      ? ['pending', 'exception']
+      ? ['exception']
       : section === 'export' ? ['importable', 'exported'] : [];
     await runQuery();
-    const target = {
-      prepare: 'preparation-overview', complete: 'completion-overview',
-      review: 'review-workbench', export: 'export-overview', overview: 'main',
-    }[section];
-    byId(target)?.scrollIntoView({behavior: 'smooth', block: 'start'});
+    if (section === 'prepare') await refreshValidationOverview();
   });
 });
 document.querySelectorAll('[data-section-jump]').forEach((button) => {

@@ -1456,7 +1456,7 @@ class DesktopSmokeTests(unittest.TestCase):
                 thread.join(timeout=3)
 
         contract = json.loads(completed.stdout)
-        self.assertEqual(contract["badge"], "Exceção")
+        self.assertEqual(contract["badge"], "Precisa de revisão")
         self.assertEqual(
             contract["fallbackBadges"],
             [None, None, None, "Nova versão", "Nova versão"],
@@ -1528,7 +1528,7 @@ console.log(JSON.stringify(text(root).filter(Boolean)));
             self.assertIn(f'id="{control_id}"', html)
         self.assertIn("/api/questions/batch-approve", javascript)
         self.assertIn("activateEditorialQueue('pending')", javascript)
-        self.assertIn("vinculadas ao gabarito", html)
+        self.assertIn("Com resposta oficial", html)
         self.assertIn("Resposta oficial (gabarito)", html)
         self.assertIn("Arquivo já conhecido; nenhuma nova tarefa foi criada.", javascript)
         for removed_control in (

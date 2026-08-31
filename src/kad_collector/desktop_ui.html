@@ -13,226 +13,212 @@
       <aside class="app-rail" aria-label="Navegação principal">
         <div class="brand-block" aria-label="KAD Collector">
           <span class="brand-k">K</span>
-          <span><strong>KAD</strong><small>COLLECTOR</small></span>
+          <span><strong>KAD</strong><small>Collector</small></span>
         </div>
         <nav class="rail-nav">
-          <button class="rail-link active" type="button" data-section="overview">
-            <span class="rail-icon">⌂</span><span>Visão geral</span>
+          <button class="rail-link active" type="button" data-section="overview" aria-current="page">
+            <span class="rail-icon">⌂</span><span><strong>Início</strong><small id="nav-overview-state">Resumo do trabalho</small></span>
           </button>
           <button class="rail-link" type="button" data-section="collect">
-            <span class="rail-icon">1</span><span>Coletar</span>
+            <span class="rail-icon">1</span><span><strong>Coletar</strong><small id="nav-collect-state">Adicionar provas</small></span>
           </button>
           <button class="rail-link" type="button" data-section="prepare">
-            <span class="rail-icon">2</span><span>Preparar</span>
+            <span class="rail-icon">2</span><span><strong>Validar provas</strong><small id="nav-prepare-state">Aguardando dados</small></span>
           </button>
           <button class="rail-link" type="button" data-section="complete">
-            <span class="rail-icon">3</span><span>Completar</span>
+            <span class="rail-icon">3</span><span><strong>Classificar</strong><small id="nav-complete-state">Aguardando validação</small></span>
           </button>
           <button class="rail-link" type="button" data-section="review">
-            <span class="rail-icon">4</span><span>Revisar</span>
+            <span class="rail-icon">4</span><span><strong>Revisar</strong><small id="nav-review-state">Nenhuma pendência</small></span>
           </button>
           <button class="rail-link" type="button" data-section="export">
-            <span class="rail-icon">5</span><span>Exportar</span>
+            <span class="rail-icon">5</span><span><strong>Exportar</strong><small id="nav-export-state">Nada pronto</small></span>
           </button>
         </nav>
-        <div class="local-seal"><span></span>100% local</div>
+        <div class="local-seal"><span></span><div><strong>Execução local</strong><small>Seus arquivos ficam neste computador</small></div></div>
       </aside>
 
       <main id="main" class="main-area">
         <div id="editorial-view">
-        <header class="app-header">
-          <div>
-            <p class="eyebrow">VISÃO GERAL</p>
-            <h1>Veja o que está pronto e o que precisa de atenção.</h1>
-            <p class="header-copy">Da coleta à exportação, cada etapa mostra seu estado e a próxima ação.</p>
-          </div>
-          <div class="header-actions">
-            <button id="qwen-selected-open" class="button ghost" type="button">Classificar selecionadas com Qwen</button>
-            <button id="qwen-classify-open" class="button ghost" type="button">Classificar filtro atual com Qwen</button>
-            <button id="reclassify-open" class="button ghost" type="button">Reclassificar acervo</button>
-            <button id="export-open" class="button ghost" type="button">Exportar filtro</button>
-            <button id="import-open" class="button primary" type="button"><span>＋</span>Novo lote</button>
-          </div>
-        </header>
-
-        <section class="database-banner" aria-label="Banco de dados ativo">
-          <div>
-            <span id="database-environment" class="environment-badge operational">Banco operacional</span>
-            <strong>Banco ativo neste aplicativo</strong>
-          </div>
-          <code id="database-path">—</code>
-          <button id="copy-database-path" class="button ghost" type="button">Copiar caminho</button>
-        </section>
-
-        <nav class="journey" aria-label="Etapas do trabalho">
-          <button type="button" data-section-jump="collect"><span>1</span><strong>Coletar</strong><small>Buscar e processar PDFs</small></button>
-          <button type="button" data-section-jump="prepare"><span>2</span><strong>Preparar</strong><small>Associar e agrupar</small></button>
-          <button type="button" data-section-jump="complete"><span>3</span><strong>Completar</strong><small>Preencher classificação</small></button>
-          <button type="button" data-section-jump="review"><span>4</span><strong>Revisar</strong><small>Decidir pendências</small></button>
-          <button type="button" data-section-jump="export"><span>5</span><strong>Exportar</strong><small>Confirmar o lote pronto</small></button>
-        </nav>
-
-        <section class="metric-grid" aria-label="Resumo do acervo">
-          <article class="metric-card signature">
-            <span class="metric-label">QUESTÕES ÚNICAS</span>
-            <strong id="metric-total">0</strong>
-            <small id="metric-answer-summary">0 com resposta oficial · 0 sem gabarito associado</small>
-          </article>
-          <button id="metric-card-answer-official" class="metric-card metric-action" type="button"><span class="metric-label">COM RESPOSTA OFICIAL</span><strong id="overview-official">0</strong><small>vinculadas ao gabarito</small><span class="metric-cue">Ver questões →</span></button>
-          <button id="metric-card-answer-annulled" class="metric-card metric-action" type="button"><span class="metric-label">ANULADAS</span><strong id="overview-annulled">0</strong><small>conforme gabarito oficial</small><span class="metric-cue">Ver questões →</span></button>
-          <button id="metric-card-answer-missing" class="metric-card metric-action attention" type="button"><span class="metric-label">SEM RESPOSTA ASSOCIADA</span><strong id="overview-unmatched">0</strong><small>separadas pelo motivo comprovado</small><span class="metric-cue">Ver questões →</span></button>
-          <article class="metric-card attention"><span class="metric-label">SEM CLASSIFICAÇÃO</span><strong id="overview-unclassified">0</strong><small>campos editoriais ausentes</small></article>
-          <button id="metric-card-pending" class="metric-card metric-action" type="button" aria-label="Abrir fila de revisão editorial">
-            <span class="metric-label">REVISÃO EDITORIAL</span>
-            <strong id="metric-pending">0</strong>
-            <small>aguardando conferência humana</small>
-            <span class="metric-cue">Revisar fila →</span>
-          </button>
-          <button id="metric-card-exceptions" class="metric-card metric-action" type="button" aria-label="Abrir questões em exceção">
-            <span class="metric-label">EXCEÇÕES</span>
-            <strong id="metric-exceptions">0</strong>
-            <small id="metric-missing-answers">0 sem resposta oficial</small>
-            <span class="metric-cue">Ver motivos →</span>
-          </button>
-          <button id="metric-card-importable" class="metric-card metric-action ready" type="button" aria-label="Abrir questões importáveis">
-            <span class="metric-label">IMPORTÁVEIS</span>
-            <strong id="metric-importable">0</strong>
-            <small>aptas para entrar no app</small>
-            <span class="metric-cue">Ver importáveis →</span>
-          </button>
-        </section>
-
-        <section id="answer-diagnostic-summary" class="answer-diagnostic-summary" aria-label="Motivos das questões sem resposta"></section>
-
-        <section id="job-strip" class="job-strip" aria-label="Processamentos recentes"></section>
-        <section id="qwen-job-strip" class="qwen-job-strip" aria-live="polite" hidden>
-          <div>
-            <strong id="qwen-job-title">Classificação local com Qwen 8B</strong>
-            <span id="qwen-job-state"></span>
-          </div>
-          <div id="qwen-job-metrics" class="qwen-job-metrics"></div>
-          <div class="qwen-job-actions">
-            <button id="qwen-job-pause" class="button ghost" type="button" hidden>Pausar</button>
-            <button id="qwen-job-resume" class="button ghost" type="button" hidden>Retomar</button>
-          </div>
-        </section>
-
-        <section class="next-action-card" aria-live="polite">
-          <div><p class="eyebrow">PRÓXIMA AÇÃO</p><h2 id="next-action-title">Carregando estado do banco</h2><p id="next-action-detail"></p></div>
-          <button id="next-action-button" class="button primary" type="button">Ver fluxo</button>
-        </section>
-
-        <section id="preparation-overview" class="flow-section">
-          <header><div><p class="eyebrow">ETAPA 2 · PREPARAR</p><h2>Da extração à questão canônica</h2></div><div class="preparation-heading-action"><p>Uma <abbr title="Versão editorial única escolhida para representar ocorrências equivalentes da mesma questão.">questão canônica</abbr> só existe depois que a prova é identificada e o <abbr title="Conjunto de ocorrências da mesma questão em cadernos ou versões diferentes.">grupo equivalente</abbr> é confirmado.</p><div class="header-actions"><button id="prepare-selected-open" class="button ghost" type="button">Preparar selecionadas</button><button id="prepare-questions-open" class="button primary" type="button">Preparar filtro atual</button></div><details class="advanced-operation"><summary>Operação avançada</summary><button id="prepare-all-open" class="button danger" type="button">Preparar banco inteiro</button></details></div></header>
-          <div class="preparation-steps">
-            <article><strong id="prep-raw">0</strong><span>Aparições brutas</span><small>todas as cópias extraídas dos PDFs</small></article>
-            <i>→</i><article><strong id="prep-occurrences">0</strong><span>Ocorrências preparadas</span><small>ligadas à prova</small></article>
-            <i>→</i><article><strong id="prep-groups">0</strong><span>Grupos confirmados</span><small>equivalências revisadas</small></article>
-            <i>→</i><article><strong id="prep-canonical">0</strong><span>Questões canônicas</span><small>aptas à classificação</small></article>
-          </div>
-          <div class="preparation-result-grid" aria-label="Resultado da preparação">
-            <article><span>Prontas para o Qwen</span><strong id="prep-ready">0</strong></article>
-            <article><span>Cópias repetidas</span><strong id="prep-duplicates">0</strong></article>
-            <article><span>Pendentes de revisão</span><strong id="prep-pending">0</strong></article>
-          </div>
-          <section class="answer-key-audit-card" aria-labelledby="answer-key-audit-title">
-            <div>
-              <p class="eyebrow">PROVA E GABARITO</p>
-              <h3 id="answer-key-audit-title">Auditoria dos vínculos</h3>
-              <p>Confere identidade, quantidade de questões e letras das alternativas antes de manter uma resposta oficial.</p>
-            </div>
-            <div class="answer-key-audit-counts" aria-label="Última auditoria">
-              <span><strong id="audit-confirmed">0</strong> confirmados</span>
-              <span><strong id="audit-uncertain">0</strong> duvidosos</span>
-              <span><strong id="audit-incorrect">0</strong> incorretos</span>
-              <span><strong id="audit-missing">0</strong> sem gabarito</span>
-              <span><strong id="audit-awaiting-definitive">0</strong> aguardando definitivo</span>
-            </div>
-            <button id="answer-key-audit-open" class="button ghost" type="button">Auditar vínculos</button>
-          </section>
-          <p id="canonical-empty-message" class="plain-warning" hidden>As questões foram coletadas, mas ainda precisam da preparação canônica antes da classificação com Qwen.</p>
-          <div id="preparation-review-list" class="preparation-review-list" aria-live="polite"></div>
-        </section>
-
-        <section id="completion-overview" class="flow-section qwen-explainer">
-          <div><p class="eyebrow">ETAPA 3 · COMPLETAR</p><h2>Classificação editorial assistida</h2><p>Primeiro o Collector aplica regras locais. Depois, somente questões canônicas elegíveis podem receber uma <abbr title="Classificação proposta pela IA local que continua sujeita à revisão humana.">sugestão do Qwen</abbr>.</p></div>
-          <div class="safety-note"><strong>O Qwen pode sugerir</strong><span>Disciplina, Matéria, Assunto e Nível.</span><strong>O Qwen nunca altera</strong><span>Gabaritos, respostas oficiais, identidade da prova ou decisões humanas.</span></div>
-        </section>
-
-        <section id="review-workbench" class="workbench">
-          <aside class="filter-panel" aria-label="Filtros profissionais">
-            <header class="panel-heading">
-              <div><p class="eyebrow">REFINAR</p><h2>Filtros</h2></div>
-              <button id="clear-filters" class="text-button" type="button">Limpar</button>
+          <section id="overview-view" class="workspace-view" data-workspace="overview">
+            <header class="workspace-header">
+              <div><p class="eyebrow">CENTRAL DE TRABALHO</p><h1>Seu acervo, do PDF ao arquivo pronto.</h1><p>Continue de onde parou ou consulte o estado do trabalho.</p></div>
             </header>
-            <label class="search-field compact">
-              <span>⌕</span>
-              <input id="facet-search" type="search" placeholder="Buscar nas opções" autocomplete="off">
-            </label>
-            <div class="saved-filter-row">
-              <select id="saved-filter-select" aria-label="Filtros salvos">
-                <option value="">Filtros salvos</option>
-              </select>
-              <button id="save-filter" class="icon-button" type="button" aria-label="Salvar filtro atual">＋</button>
-            </div>
-            <div id="facet-groups" class="facet-groups"></div>
-          </aside>
 
-          <section class="records-panel">
-            <header class="records-toolbar">
-              <div>
-                <p id="records-kicker" class="eyebrow">QUESTÕES ENCONTRADAS</p>
-                <h2><span id="result-count">0</span> itens no recorte</h2>
-              </div>
-              <label class="search-field records-search">
-                <span>⌕</span>
-                <input id="question-search" type="search" placeholder="Buscar no enunciado" autocomplete="off">
-              </label>
-            </header>
-            <div id="active-filters" class="active-filters" aria-label="Filtros ativos"></div>
-            <div id="batch-toolbar" class="batch-toolbar" hidden>
-              <label class="batch-select-all">
-                <input id="select-all-pending" type="checkbox">
-                <span>Selecionar todas deste recorte</span>
-              </label>
-              <span id="selection-summary" aria-live="polite">0 selecionadas</span>
-              <div>
-                <button id="clear-selection" class="text-button" type="button">Limpar seleção</button>
-                <button id="batch-classification-open" class="button ghost" type="button" disabled>Confirmar classificação</button>
-                <button id="batch-approve-open" class="button success" type="button" disabled>Aprovar selecionadas</button>
-              </div>
-            </div>
-            <div class="table-head" aria-hidden="true">
-              <span></span><span>Questão</span><span>Gabarito</span><span>Classificação</span><span>Confiança</span><span>Situação</span>
-            </div>
-            <div id="question-list" class="question-list" aria-live="polite"></div>
+            <section class="next-action-card" aria-live="polite">
+              <div class="next-action-marker"><span id="next-action-step">Agora</span></div>
+              <div><p class="eyebrow">PRÓXIMA AÇÃO</p><h2 id="next-action-title">Carregando estado do banco</h2><p id="next-action-detail"></p></div>
+              <button id="next-action-button" class="button primary" type="button">Continuar</button>
+            </section>
+
+            <section class="overview-grid" aria-label="Resumo do trabalho">
+              <article class="overview-stat"><span>Questões no acervo</span><strong id="metric-total">0</strong><small id="metric-answer-summary">Nenhuma questão coletada</small></article>
+              <article class="overview-stat attention"><span>Questões por validar</span><strong id="overview-validation">0</strong><small>agrupadas por prova na confirmação</small></article>
+              <article class="overview-stat"><span>Para revisão</span><strong id="overview-review-total">0</strong><small>decisões humanas pendentes</small></article>
+              <article class="overview-stat ready"><span>Prontas para exportar</span><strong id="overview-ready-total">0</strong><small>sem bloqueios conhecidos</small></article>
+            </section>
+
+            <section class="activity-panel">
+              <header><div><p class="eyebrow">ATIVIDADE</p><h2>Processos recentes</h2></div></header>
+              <section id="job-strip" class="job-strip" aria-label="Processamentos recentes"></section>
+              <p id="activity-empty" class="empty-guidance">Nenhum processamento recente. Use Coletar para adicionar uma prova.</p>
+            </section>
+
+            <details class="technical-panel">
+              <summary>Ver detalhes técnicos do banco</summary>
+              <section class="database-banner" aria-label="Banco de dados ativo">
+                <div><span id="database-environment" class="environment-badge operational">Banco operacional</span><strong>Banco ativo neste aplicativo</strong></div>
+                <code id="database-path">—</code>
+                <button id="copy-database-path" class="button ghost" type="button">Copiar caminho</button>
+              </section>
+            </details>
           </section>
-        </section>
-        <section id="export-overview" class="flow-section export-callout">
-          <div><p class="eyebrow">ETAPA 5 · EXPORTAR</p><h2>Somente questões prontas entram no arquivo</h2><p>O Collector lista os bloqueios restantes e pede confirmação antes de gerar a exportação.</p></div>
-          <button id="export-summary-open" class="button success" type="button">Revisar exportação</button>
-        </section>
+
+          <section id="preparation-view" class="workspace-view" data-workspace="prepare" hidden>
+            <header class="workspace-header split">
+              <div><p class="eyebrow">ETAPA 2 DE 5</p><h1>Validar provas</h1><p>Confira cada conjunto uma vez. A confirmação vale para todas as questões da mesma prova.</p></div>
+              <button id="prepare-questions-open" class="button primary" type="button">Validar provas deste conjunto</button>
+            </header>
+
+            <section id="preparation-overview" class="stage-panel">
+              <div class="preparation-result-grid" aria-label="Resumo da validação">
+                <article><span>Questões encontradas</span><strong id="prep-raw">0</strong></article>
+                <article><span>Prontas para classificar</span><strong id="prep-ready">0</strong></article>
+                <article><span>Questões repetidas</span><strong id="prep-duplicates">0</strong></article>
+                <article class="attention"><span>Provas com pendência</span><strong id="prep-pending">0</strong></article>
+              </div>
+              <p id="canonical-empty-message" class="plain-warning" hidden>As provas foram coletadas e ainda precisam de validação antes da classificação.</p>
+              <div id="validation-unit-list" class="preparation-review-list dossier-list" aria-live="polite"></div>
+              <div id="preparation-review-list" class="preparation-review-list dossier-list" aria-live="polite"></div>
+
+              <details class="technical-panel">
+                <summary>Ver detalhes técnicos da validação</summary>
+                <div class="preparation-steps">
+                  <article><strong id="prep-occurrences">0</strong><span>Questões ligadas às provas</span><small>registros preparados</small></article>
+                  <i>→</i><article><strong id="prep-groups">0</strong><span>Conjuntos confirmados</span><small>repetições revisadas</small></article>
+                  <i>→</i><article><strong id="prep-canonical">0</strong><span>Questões principais</span><small>aptas à classificação</small></article>
+                </div>
+                <section class="answer-key-audit-card" aria-labelledby="answer-key-audit-title">
+                  <div><p class="eyebrow">PROVA E GABARITO</p><h3 id="answer-key-audit-title">Auditar relações atuais</h3><p>Confere identidade, quantidade e alternativas antes de manter uma resposta oficial.</p></div>
+                  <div class="answer-key-audit-counts" aria-label="Última auditoria">
+                    <span><strong id="audit-confirmed">0</strong> confirmadas</span><span><strong id="audit-uncertain">0</strong> duvidosas</span><span><strong id="audit-incorrect">0</strong> incorretas</span><span><strong id="audit-missing">0</strong> sem gabarito</span><span><strong id="audit-awaiting-definitive">0</strong> aguardando definitivo</span>
+                  </div>
+                  <button id="answer-key-audit-open" class="button ghost" type="button">Auditar relações</button>
+                </section>
+              </details>
+
+              <details class="technical-panel danger-zone">
+                <summary>Operações em massa</summary>
+                <p>Use estas ações somente quando souber quais questões serão afetadas.</p>
+                <div class="header-actions"><button id="prepare-selected-open" class="button ghost" type="button">Validar questões selecionadas</button><button id="prepare-all-open" class="button danger" type="button">Validar banco inteiro</button></div>
+              </details>
+            </section>
+          </section>
+
+          <section id="completion-view" class="workspace-view" data-workspace="complete" hidden>
+            <header class="workspace-header split">
+              <div><p class="eyebrow">ETAPA 3 DE 5</p><h1>Classificar questões</h1><p>Preencha disciplina, matéria, assunto e nível com regras locais e sugestões do Qwen.</p></div>
+              <button id="qwen-classify-open" class="button primary" type="button">Classificar pendentes com Qwen</button>
+            </header>
+
+            <section class="classification-hero">
+              <div><span>Podem usar o Qwen</span><strong id="classification-ready">0</strong><small>questões validadas com campos pendentes</small></div>
+              <div><span>Ainda sem classificação</span><strong id="overview-unclassified">0</strong><small>campos editoriais ausentes</small></div>
+            </section>
+
+            <section id="qwen-job-strip" class="qwen-job-strip" aria-live="polite" hidden>
+              <div><strong id="qwen-job-title">Classificação local com Qwen 8B</strong><span id="qwen-job-state"></span></div>
+              <div id="qwen-job-metrics" class="qwen-job-metrics"></div>
+              <div class="qwen-job-actions"><button id="qwen-job-pause" class="button ghost" type="button" hidden>Pausar</button><button id="qwen-job-resume" class="button primary" type="button" hidden>Retomar</button></div>
+            </section>
+
+            <details id="completion-overview" class="technical-panel">
+              <summary>Segurança e opções de classificação</summary>
+              <div class="safety-note"><strong>O Qwen pode sugerir</strong><span>Disciplina, matéria, assunto e nível.</span><strong>O Qwen não altera</strong><span>Gabaritos, respostas oficiais, dados da prova ou decisões humanas.</span></div>
+              <div class="advanced-actions"><button id="reclassify-open" class="button ghost" type="button">Reaplicar regras locais ao acervo</button></div>
+            </details>
+          </section>
+
+          <section id="review-view" class="workspace-view" data-workspace="review" hidden>
+            <header class="workspace-header split">
+              <div><p class="eyebrow">ETAPA 4 DE 5</p><h1>Revisar pendências</h1><p>Comece pelas questões bloqueadas. Itens resolvidos pelo sistema não exigem nova decisão.</p></div>
+              <button id="qwen-selected-open" class="button secondary" type="button">Classificar seleção com Qwen</button>
+            </header>
+
+            <section class="review-queues" aria-label="Filas de revisão">
+              <button id="metric-card-exceptions" class="queue-card attention" type="button" aria-label="Abrir questões que precisam de revisão"><span>Precisam de revisão</span><strong id="metric-exceptions">0</strong><small id="metric-missing-answers">0 sem resposta oficial</small></button>
+              <button id="metric-card-pending" class="queue-card" type="button" aria-label="Abrir fila para conferência"><span>Para conferência</span><strong id="metric-pending">0</strong><small>aguardando decisão humana</small></button>
+              <button id="metric-card-importable" class="queue-card ready" type="button" aria-label="Abrir questões prontas"><span>Prontas</span><strong id="metric-importable">0</strong><small>podem ser exportadas</small></button>
+            </section>
+
+            <details class="technical-panel diagnostic-panel">
+              <summary>Diagnósticos do gabarito</summary>
+              <section class="answer-metric-grid" aria-label="Estado dos gabaritos">
+                <button id="metric-card-answer-official" class="compact-metric" type="button"><span>Com resposta oficial</span><strong id="overview-official">0</strong></button>
+                <button id="metric-card-answer-annulled" class="compact-metric" type="button"><span>Anuladas</span><strong id="overview-annulled">0</strong></button>
+                <button id="metric-card-answer-missing" class="compact-metric attention" type="button"><span>Sem resposta associada</span><strong id="overview-unmatched">0</strong></button>
+              </section>
+              <section id="answer-diagnostic-summary" class="answer-diagnostic-summary" aria-label="Motivos das questões sem resposta"></section>
+            </details>
+
+            <section id="review-workbench" class="workbench">
+              <details class="filter-drawer">
+                <summary><span><strong>Filtros avançados</strong><small>Refine por prova, conteúdo ou situação</small></span><span aria-hidden="true">＋</span></summary>
+                <aside class="filter-panel" aria-label="Filtros avançados">
+                  <header class="panel-heading"><h2>Refinar questões</h2><button id="clear-filters" class="text-button" type="button">Limpar</button></header>
+                  <label class="search-field compact"><span>⌕</span><input id="facet-search" type="search" placeholder="Buscar nas opções" autocomplete="off"></label>
+                  <div class="saved-filter-row"><select id="saved-filter-select" aria-label="Filtros salvos"><option value="">Filtros salvos</option></select><button id="save-filter" class="icon-button" type="button" aria-label="Salvar filtro atual">＋</button></div>
+                  <div id="facet-groups" class="facet-groups"></div>
+                </aside>
+              </details>
+
+              <section class="records-panel">
+                <header class="records-toolbar">
+                  <div><p id="records-kicker" class="eyebrow">QUESTÕES DA FILA</p><h2><span id="result-count">0</span> questões</h2></div>
+                  <label class="search-field records-search"><span>⌕</span><input id="question-search" type="search" placeholder="Buscar no enunciado" autocomplete="off"></label>
+                </header>
+                <div id="active-filters" class="active-filters" aria-label="Filtros ativos"></div>
+                <div id="batch-toolbar" class="batch-toolbar" hidden>
+                  <label class="batch-select-all"><input id="select-all-pending" type="checkbox"><span>Selecionar todas desta fila</span></label>
+                  <span id="selection-summary" aria-live="polite">0 selecionadas</span>
+                  <div><button id="clear-selection" class="text-button" type="button">Limpar seleção</button><button id="batch-classification-open" class="button ghost" type="button" disabled>Confirmar classificação</button><button id="batch-approve-open" class="button success" type="button" disabled>Aprovar selecionadas</button></div>
+                </div>
+                <div class="table-head" aria-hidden="true"><span></span><span>Questão</span><span>Gabarito</span><span>Classificação</span><span>Confiança</span><span>Situação</span></div>
+                <div id="question-list" class="question-list" aria-live="polite"></div>
+              </section>
+            </section>
+          </section>
+
+          <section id="export-view" class="workspace-view" data-workspace="export" hidden>
+            <header class="workspace-header split">
+              <div><p class="eyebrow">ETAPA 5 DE 5</p><h1>Exportar questões</h1><p>Confira o que entra no arquivo e os motivos de qualquer exclusão.</p></div>
+              <button id="export-summary-open" class="button success" type="button">Revisar exportação</button>
+            </header>
+            <section id="export-overview" class="export-stage">
+              <article class="export-ready-card"><span>Prontas para exportar</span><strong id="export-ready-count">0</strong><small>questões sem bloqueios conhecidos</small></article>
+              <article class="export-blocked-card"><span>Ainda bloqueadas</span><strong id="export-blocked-count">0</strong><small>revise os motivos antes de exportar</small></article>
+            </section>
+            <section class="export-guidance"><div><span class="guidance-icon">✓</span><div><h2>A prévia protege o lote</h2><p>Antes de criar o arquivo, o Collector mostra questões incluídas, excluídas e o motivo de cada bloqueio.</p></div></div></section>
+            <details class="technical-panel"><summary>Operações avançadas</summary><button id="export-open" class="button ghost" type="button">Exportar somente as questões do filtro atual</button></details>
+          </section>
         </div>
 
-        <section id="source-view" class="source-view" hidden>
+        <section id="source-view" class="source-view workspace-view" data-workspace="collect" hidden>
           <header class="source-header">
             <div>
-              <p class="eyebrow">FONTES OFICIAIS</p>
-              <h1>Coletar de um link</h1>
-              <p>Cole a página de uma prova, concurso ou edição. O Collector baixa somente PDFs permitidos e inicia o processamento local.</p>
+              <p class="eyebrow">ETAPA 1 DE 5</p>
+              <h1>Coletar provas</h1>
+              <p>Cole o link de uma prova ou adicione PDFs que já estão neste computador.</p>
             </div>
-            <span class="source-safety"><i></i>motor seguro · coleta retomável</span>
+            <div class="header-actions"><span class="source-safety"><i></i>coleta retomável</span><button id="import-open" class="button secondary" type="button">Adicionar PDFs</button></div>
           </header>
 
-          <ol class="collection-pipeline" aria-label="Etapas da coleta">
-            <li><span>1</span><strong>Página consultada</strong><small>Aguardando ou concluída</small></li>
-            <li><span>2</span><strong>PDFs encontrados</strong><small>Origem validada</small></li>
-            <li><span>3</span><strong>PDFs baixados</strong><small>Arquivos locais</small></li>
-            <li><span>4</span><strong>Texto extraído</strong><small>Leitura dos documentos</small></li>
-            <li><span>5</span><strong>Questões identificadas</strong><small>Registro bruto</small></li>
-            <li><span>6</span><strong>Gabaritos associados</strong><small>Resposta oficial</small></li>
-            <li><span>7</span><strong>Preparação canônica</strong><small>Identidade e equivalência</small></li>
-          </ol>
+          <details class="technical-panel collection-explainer">
+            <summary>Como a coleta funciona</summary>
+            <ol class="collection-pipeline" aria-label="Etapas internas da coleta">
+              <li><span>1</span><strong>Consulta</strong><small>abre a página informada</small></li><li><span>2</span><strong>Arquivos</strong><small>encontra e baixa PDFs</small></li><li><span>3</span><strong>Leitura</strong><small>extrai o texto</small></li><li><span>4</span><strong>Questões</strong><small>identifica o conteúdo</small></li><li><span>5</span><strong>Gabarito</strong><small>relaciona respostas</small></li>
+            </ol>
+          </details>
 
           <div class="source-layout">
             <form id="source-form" class="source-form-card">
@@ -247,8 +233,9 @@
                 <input id="source-url" type="url" inputmode="url" placeholder="https://..." required>
               </label>
 
-              <div class="source-step"><span>03</span><div><strong>Configure o motor</strong><small>Capacidade, JavaScript e diagnóstico da execução</small></div></div>
-              <section class="engine-panel" aria-label="Motor de coleta">
+              <details class="technical-panel source-engine-settings">
+                <summary>Ajustar coleta e acesso ao site</summary>
+                <section class="engine-panel" aria-label="Configurações da coleta">
                 <div class="engine-profile-row">
                   <label>Perfil de capacidade
                     <select id="source-capacity-profile">
@@ -296,7 +283,8 @@
                   <span>POLÍTICAS <strong>REGISTRADAS NO MANIFESTO</strong></span>
                   <span id="engine-cache-summary">CACHE 0 B</span>
                 </div>
-              </section>
+                </section>
+              </details>
               <div class="form-grid two">
                 <label>Classificador
                   <select id="source-classifier">
@@ -346,7 +334,7 @@
           <div><p class="eyebrow">NOVO LOTE</p><h2>Adicionar PDFs</h2></div>
           <button class="icon-button modal-close" type="button" aria-label="Fechar">×</button>
         </header>
-        <p class="modal-copy">O arquivo permanece no computador. PDFs sem texto entram em exceções e não usam OCR nesta versão.</p>
+        <p class="modal-copy">O arquivo permanece no computador. PDFs sem texto vão para revisão e não usam OCR nesta versão.</p>
         <section class="drop-zone" aria-label="Selecionar documentos">
           <div class="drop-symbol">PDF</div>
           <div><strong>Escolha arquivos ou uma pasta</strong><span>Processamento retomável, indicado para lotes de até 300 páginas.</span></div>
@@ -440,14 +428,14 @@
             <h3>Origem do documento</h3>
             <label>Provider<input id="edit-provider"></label>
             <label>URL HTTPS<input id="edit-source-url" type="url"></label>
-            <label>Justificativa<textarea id="edit-decision-notes" rows="3" placeholder="Obrigatória para exceção ou rejeição"></textarea></label>
+            <label>Justificativa<textarea id="edit-decision-notes" rows="3" placeholder="Obrigatória ao enviar para revisão ou rejeitar"></textarea></label>
           </aside>
         </div>
         <footer class="modal-footer decision-footer">
           <span id="review-status-copy"></span>
           <div>
             <button id="defer-question" class="button ghost" type="button">Ignorar por enquanto</button>
-            <button id="mark-exception" class="button ghost warning" type="button">Enviar para Exceções</button>
+            <button id="mark-exception" class="button ghost warning" type="button">Enviar para revisão</button>
             <button id="reject-question" class="button danger" type="button">Rejeitar</button>
             <button id="save-question" class="button ghost" type="button">Salvar</button>
             <button id="revert-classification-batch" class="button ghost warning" type="button" hidden>Corrigir decisão em lote</button>
@@ -491,18 +479,18 @@
     <dialog id="preparation-dialog" class="modal compact-modal">
       <form id="preparation-form">
         <header class="modal-header">
-          <div><p class="eyebrow">ETAPA 2 · PRÉVIA</p><h2>Preparar questões para classificação</h2></div>
+          <div><p class="eyebrow">ETAPA 2 · PRÉVIA</p><h2>Validar provas e questões</h2></div>
           <button class="icon-button modal-close" type="button" aria-label="Fechar">×</button>
         </header>
-        <p class="modal-copy">O Collector relacionará provas e gabaritos já reconhecidos, reunirá cópias da mesma questão e escolherá uma cópia principal. Nenhum PDF será baixado e o Qwen não será executado.</p>
+        <p class="modal-copy">O Collector relacionará cada prova ao gabarito, reunirá questões repetidas e escolherá uma cópia principal. Uma confirmação vale para todas as questões da mesma prova.</p>
         <strong id="preparation-scope-label" class="scope-label"></strong>
         <div id="preparation-preview" class="preview-summary" aria-live="polite"></div>
         <div id="preparation-preview-list" class="preview-list" aria-live="polite"></div>
-        <label id="preparation-outside-authorization-row" class="scope-authorization" hidden><input id="preparation-outside-authorization" type="checkbox"> Autorizar explicitamente as cópias equivalentes fora do escopo listadas acima</label>
-        <p class="batch-warning">Casos sem evidência suficiente continuarão pendentes para revisão.</p>
+        <label id="preparation-outside-authorization-row" class="scope-authorization" hidden><input id="preparation-outside-authorization" type="checkbox"> Incluir também as questões repetidas fora deste filtro</label>
+        <p class="batch-warning">Provas sem informações suficientes continuarão na fila de revisão.</p>
         <footer class="modal-footer">
           <button class="button ghost modal-close" type="button">Cancelar</button>
-          <button id="preparation-submit" class="button success" type="submit">Confirmar preparação</button>
+          <button id="preparation-submit" class="button success" type="submit">Confirmar validação</button>
         </footer>
       </form>
     </dialog>
@@ -539,7 +527,7 @@
         <button id="qwen-preview-refresh" class="button ghost" type="button">Atualizar prévia</button>
         <div id="qwen-classification-preview" class="preview-summary" aria-live="polite"></div>
         <div id="qwen-classification-list" class="preview-list" aria-live="polite"></div>
-        <label id="qwen-outside-authorization-row" class="scope-authorization" hidden><input id="qwen-outside-authorization" type="checkbox"> Autorizar explicitamente o impacto fora do escopo listado acima</label>
+        <label id="qwen-outside-authorization-row" class="scope-authorization" hidden><input id="qwen-outside-authorization" type="checkbox"> Incluir também as questões repetidas fora deste filtro</label>
         <dl id="qwen-classification-contract" class="qwen-contract"></dl>
         <p id="qwen-classification-warning" class="batch-warning"></p>
         <footer class="modal-footer">

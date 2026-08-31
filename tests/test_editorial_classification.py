@@ -460,7 +460,7 @@ class StoredReclassificationTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn("Não classificada", javascript)
-        self.assertIn("IMPORTÁVEIS", html)
+        self.assertIn("Prontas para exportar", html)
         self.assertIn("Matéria", html)
         self.assertNotIn("<label>Tópico<input id=\"edit-subject\">", html)
 
