@@ -118,12 +118,12 @@
           <section id="completion-view" class="workspace-view" data-workspace="complete" hidden>
             <header class="workspace-header split">
               <div><p class="eyebrow">ETAPA 3 DE 5</p><h1>Classificar questões</h1><p>Preencha disciplina, matéria, assunto e nível com regras locais e sugestões do Qwen.</p></div>
-              <button id="qwen-classify-open" class="button primary" type="button">Classificar pendentes com Qwen</button>
+              <button id="qwen-classify-open" class="button primary" type="button">Abrir prévia da classificação</button>
             </header>
 
             <section class="classification-hero">
-              <div><span>Podem usar o Qwen</span><strong id="classification-ready">0</strong><small>questões validadas com campos pendentes</small></div>
-              <div><span>Ainda sem classificação</span><strong id="overview-unclassified">0</strong><small>campos editoriais ausentes</small></div>
+              <div><span>Unidades aptas à classificação</span><strong id="classification-ready">0</strong><small>após validação e resposta oficial</small></div>
+              <div><span>Questões com campos pendentes</span><strong id="overview-unclassified">0</strong><small>disciplina, matéria, assunto ou nível ausentes</small></div>
             </section>
 
             <section id="qwen-job-strip" class="qwen-job-strip" aria-live="polite" hidden>
@@ -515,7 +515,7 @@
     <dialog id="qwen-classification-dialog" class="modal compact-modal">
       <form id="qwen-classification-form">
         <header class="modal-header">
-          <div><p class="eyebrow">IA LOCAL · PRÉVIA PASSIVA</p><h2>Classificar pendentes com Qwen 8B</h2></div>
+          <div><p class="eyebrow">IA LOCAL · PRÉVIA PASSIVA</p><h2>Conferir classificação com Qwen 8B</h2></div>
           <button class="icon-button modal-close" type="button" aria-label="Fechar">×</button>
         </header>
         <p class="modal-copy">A prévia não executa inferência nem altera o banco. Regras determinísticas serão aplicadas antes da IA.</p>
