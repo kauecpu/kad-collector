@@ -292,6 +292,75 @@ class QuestionEquivalenceTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.directory.cleanup()
 
+    def test_large_catalog_keeps_occurrences_but_operates_on_canonical_questions(self) -> None:
+        """Regression scenario: 600 extracted occurrences, 100 confirmed copies."""
+        fixture = SyntheticCatalog(
+            self.root,
+            booklets=tuple(str(index) for index in range(1, 11)),
+        )
+        # Five hundred distinct questions spread across ten source PDFs.
+        for index in range(500):
+            booklet = str(index % 10 + 1)
+            fixture.add(
+                "Analista",
+                booklet,
+                _question(
+                    number=index // 10 + 1,
+                    statement=f"Enunciado sintético único {index}.",
+                ),
+            )
+        # One hundred repeated occurrences are deliberately stored under a
+        # different document/question key so the audit trail remains intact.
+        for index in range(100):
+            target_booklet = str((index + 1) % 10 + 1)
+            fixture.add(
+                "Analista",
+                target_booklet,
+                _question(
+                    number=1000 + index,
+                    statement=f"Enunciado sintético único {index}.",
+                ),
+            )
+
+        with closing(fixture.store._connect()) as connection:
+            report = run_question_equivalence_migration(
+                connection,
+                contest_alias="SYN26",
+                apply=True,
+                run_id="large-catalog-equivalence",
+            )
+            repeated = run_question_equivalence_migration(
+                connection,
+                contest_alias="SYN26",
+                apply=True,
+                run_id="large-catalog-equivalence-repeated",
+            )
+            occurrence_count = connection.execute(
+                "SELECT COUNT(*) FROM question_occurrences WHERE scope_id IS NOT NULL"
+            ).fetchone()[0]
+            copy_count = connection.execute(
+                "SELECT COALESCE(SUM(occurrence_count - 1), 0) "
+                "FROM question_equivalence_groups WHERE status='confirmed'"
+            ).fetchone()[0]
+
+        self.assertEqual(occurrence_count, 600)
+        self.assertEqual(report.canonical_questions, 500)
+        self.assertEqual(repeated.occurrences_total, 600)
+        self.assertEqual(repeated.canonical_questions, 500)
+        self.assertEqual(copy_count, 100)
+        self.assertEqual(fixture.store.query(DesktopFilterSet())["total"], 500)
+        self.assertEqual(len(fixture.store.classification_question_rows()), 500)
+        self.assertEqual(
+            fixture.store.query(
+                DesktopFilterSet(), include_equivalent_copies=True
+            )["total"],
+            600,
+        )
+        self.assertEqual(
+            len(fixture.store.export_candidates(DesktopFilterSet())),
+            500,
+        )
+
     def test_permuted_alternatives_create_one_canonical_export_with_two_origins(self) -> None:
         fixture = SyntheticCatalog(self.root)
         fixture.add("Analista", "1", _question(order=("Errada", "Certa")))
