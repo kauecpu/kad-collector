@@ -580,7 +580,7 @@ class DesktopStore:
                     for normalized_document, claim in selected:
                         document_id = str(uuid.uuid4())
                         document_metadata = _editorial_metadata(normalized_document)
-                        path = Path(normalized_document.local_path).absolute()
+                        path = Path(normalized_document.local_path).resolve()
                         connection.execute(
                             """
                             INSERT INTO documents (

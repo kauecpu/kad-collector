@@ -83,7 +83,7 @@ def prepare_official_contest_fixtures(manifest_path: Path) -> list[Path]:
     for document in loaded.spec.documents:
         if document.support_status != "supported":
             continue
-        destination = root / document.path
+        destination = (root / document.path).resolve()
         try:
             validate_official_fixture(document, root)
         except OfficialRegressionError:

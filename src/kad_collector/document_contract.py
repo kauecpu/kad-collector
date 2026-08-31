@@ -64,10 +64,7 @@ def _sha256_file(path: Path) -> str:
 
 
 def normalize_local_document(local_path: str | Path) -> NormalizedDocument:
-    # Keep the caller's Windows path spelling (including short-name aliases).
-    # Resolving a path a second time can turn ``RUNNER~1`` into ``runneradmin``
-    # and make the submitted snapshot differ from the file that was validated.
-    path = Path(local_path).absolute()
+    path = Path(local_path).resolve()
     if not path.exists():
         raise ValueError(f"arquivo local nao existe: {path}")
     if not path.is_file():

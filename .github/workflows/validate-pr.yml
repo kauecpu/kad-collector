@@ -8,6 +8,12 @@ on:
 permissions:
   contents: read
 
+env:
+  # Avoid 8.3 aliases such as RUNNER~1 in tempfile paths. Some regression
+  # tests intentionally compare the submitted path with the validated path.
+  TEMP: ${{ runner.temp }}
+  TMP: ${{ runner.temp }}
+
 jobs:
   validate:
     runs-on: windows-latest
