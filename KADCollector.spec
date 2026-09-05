@@ -26,6 +26,9 @@ fingerprint_data, fingerprint_binaries, fingerprint_hidden = collect_all(
     "apify_fingerprint_datapoints"
 )
 cryptography_data, cryptography_binaries, cryptography_hidden = collect_all("cryptography")
+rapidocr_data, rapidocr_binaries, rapidocr_hidden = collect_all("rapidocr")
+onnxruntime_data, onnxruntime_binaries, onnxruntime_hidden = collect_all("onnxruntime")
+pdfium_data, pdfium_binaries, pdfium_hidden = collect_all("pypdfium2")
 
 a = Analysis(
     ["desktop_launcher.py"],
@@ -38,6 +41,9 @@ a = Analysis(
         *browserforge_binaries,
         *fingerprint_binaries,
         *cryptography_binaries,
+        *rapidocr_binaries,
+        *onnxruntime_binaries,
+        *pdfium_binaries,
     ],
     datas=[
         *collect_data_files("kad_collector"),
@@ -48,6 +54,9 @@ a = Analysis(
         *browserforge_data,
         *fingerprint_data,
         *cryptography_data,
+        *rapidocr_data,
+        *onnxruntime_data,
+        *pdfium_data,
     ],
     hiddenimports=[
         *webview_hidden,
@@ -57,6 +66,9 @@ a = Analysis(
         *browserforge_hidden,
         *fingerprint_hidden,
         *cryptography_hidden,
+        *rapidocr_hidden,
+        *onnxruntime_hidden,
+        *pdfium_hidden,
     ],
     hookspath=[],
     hooksconfig={},

@@ -39,6 +39,7 @@ from .editorial_taxonomy import EditorialTaxonomy
 from .fgv_parser import BankParsingContext
 from .fgv_turn import extract_fgv_turn_evidence, normalize_fgv_turn
 from .models import QuestionRecord
+from .ocr import OCR_MIN_TEXT_CHARACTERS, OcrEngine, OcrError, ocr_pdf_pages
 from .semantic_identity import (
     AssociationCandidate,
     DocumentAssociationDecision,
@@ -263,7 +264,13 @@ def _apply_classification(
 
 
 class DesktopProcessor:
-    def __init__(self, store: DesktopStore, *, max_workers: int = 2) -> None:
+    def __init__(
+        self,
+        store: DesktopStore,
+        *,
+        max_workers: int = 2,
+        ocr_engine: OcrEngine | None = None,
+    ) -> None:
         self.store = store
         self._executor = ThreadPoolExecutor(
             max_workers=max_workers, thread_name_prefix="kad-processor"
@@ -272,6 +279,7 @@ class DesktopProcessor:
         self._cancel_events: dict[str, threading.Event] = {}
         self._lock = threading.Lock()
         self._reclassification_lock = threading.Lock()
+        self._ocr_engine = ocr_engine
 
     def start(self, job_id: str) -> None:
         with self._lock:
@@ -725,7 +733,54 @@ class DesktopProcessor:
             )
 
         pages = self.store.pages(document_id)
-        ocr_pages = [int(page["page_number"]) for page in pages if page["status"] == "ocr_required"]
+        ocr_pages = [
+            int(page["page_number"])
+            for page in pages
+            if page["status"] == "ocr_required"
+        ]
+        if ocr_pages and not event.is_set():
+            self.store.update_job(job_id, message=f"Aplicando OCR local em {path.name}")
+            try:
+                recovered = ocr_pdf_pages(
+                    payload,
+                    ocr_pages,
+                    engine=self._ocr_engine,
+                    should_stop=event.is_set,
+                )
+                current_pages = {
+                    int(page["page_number"]): page
+                    for page in self.store.pages(document_id)
+                }
+                for number, result in recovered.items():
+                    if len(result.text) >= OCR_MIN_TEXT_CHARACTERS:
+                        self.store.save_page(
+                            document_id, number, result.text, status="ocr_text"
+                        )
+                        confidence = (
+                            f" ({result.confidence:.0%} de confiança média)"
+                            if result.confidence is not None
+                            else ""
+                        )
+                        warnings.append(
+                            f"página {number}: texto recuperado por OCR local{confidence}"
+                        )
+                    elif result.error:
+                        previous = current_pages[number]
+                        self.store.save_page(
+                            document_id,
+                            number,
+                            str(previous["text"]),
+                            status="ocr_required",
+                            error=result.error,
+                        )
+            except OcrError as exc:
+                warnings.append(f"OCR local indisponível: {exc}")
+            pages = self.store.pages(document_id)
+            ocr_pages = [
+                int(page["page_number"])
+                for page in pages
+                if page["status"] == "ocr_required"
+            ]
         non_empty = sum(int(page["character_count"]) >= 20 for page in pages)
         if ocr_pages:
             preview = ", ".join(str(number) for number in ocr_pages[:12])
@@ -733,7 +788,7 @@ class DesktopProcessor:
             warnings.append(f"páginas sem texto, encaminhadas para exceções: {preview}{suffix}")
         mostly_ocr = not pages or non_empty < max(1, (len(pages) + 1) // 2)
         if mostly_ocr:
-            warnings.append("documento sem camada textual suficiente; OCR necessário")
+            warnings.append("documento sem texto suficiente após OCR local; revisão necessária")
         self.store.update_document(
             document_id,
             status="exception" if mostly_ocr else "extracted",
