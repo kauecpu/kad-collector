@@ -45,8 +45,10 @@ O relatório mede triagem, páginas lidas normalmente, páginas recuperadas por 
 ilegíveis, questões, alternativas, respostas, tempo e pico de alocações Python. A memória
 nativa usada pelo ONNX Runtime não entra em `peak_python_bytes`.
 
-Tipos declarados manualmente alimentam o processamento. A classificação automática é
-calculada separadamente com as mesmas regras do aplicativo, sem usar o tipo declarado.
+Os documentos FGV e FCC e o gabarito Cebraspe entram com tipo automático. A prova Cebraspe
+tem tipo manual explícito no manifesto para exercitar o parser de itens após recuperar o OCR.
+A classificação automática é calculada separadamente com as mesmas regras do aplicativo,
+sem usar o tipo declarado.
 O relatório guarda as duas decisões. O tempo de uma prova inclui o processamento de seu
 gabarito pareado; extração, OCR e triagem são medidos juntos, assim como estruturação e
 associação. Não há medição isolada de cada subetapa.
@@ -61,6 +63,10 @@ sem inferir a taxa de sucesso de downloads anteriores. A taxa OCR conta páginas
 entre páginas candidatas; páginas visualmente vazias também entram nesse denominador.
 Ela não mede precisão de transcrição. Um gabarito no estado `extracted` concluiu sua etapa;
 o vínculo com uma prova é avaliado separadamente nas respostas dessa prova.
+
+Use `--without-memory-tracing` para repetir uma correção com menos sobrecarga de medição.
+Nesse modo, os campos de memória ficam nulos. Não compare o tempo de uma rodada instrumentada
+com o de outra sem instrumentação como se fosse uma melhoria do aplicativo.
 
 ## Cobertura dos cenários solicitados
 

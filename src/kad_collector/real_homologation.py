@@ -176,7 +176,7 @@ def _official_entries(loaded: LoadedRealHomologation) -> list[CorpusEntry]:
                     if document.booklet_type is not None
                     else None
                 ),
-                document_type=document.kind,
+                document_type="auto",
                 concurso=document.contest_aliases[0],
                 board=document.board,
                 year=document.application_year,
@@ -351,7 +351,7 @@ def _entry_metrics(
     store: DesktopStore,
     job_id: str,
     elapsed_seconds: float,
-    peak_python_bytes: int,
+    peak_python_bytes: int | None,
 ) -> dict[str, Any]:
     documents = store.documents_for_job(job_id)
     document = next(
@@ -440,7 +440,12 @@ class _TimedProcessor(DesktopProcessor):
             self.structuring_seconds += time.monotonic() - begin
 
 
-def _process_entry(entry: CorpusEntry, entries: dict[str, CorpusEntry]) -> dict[str, Any]:
+def _process_entry(
+    entry: CorpusEntry,
+    entries: dict[str, CorpusEntry],
+    *,
+    measure_memory: bool = True,
+) -> dict[str, Any]:
     selected = [entry]
     if entry.answer_key_id is not None:
         selected.append(entries[entry.answer_key_id])
@@ -456,15 +461,17 @@ def _process_entry(entry: CorpusEntry, entries: dict[str, CorpusEntry]) -> dict[
                 "local",
                 metadata_by_path=metadata,
             )
-            tracemalloc.start()
-            tracemalloc.reset_peak()
+            if measure_memory:
+                tracemalloc.start()
+                tracemalloc.reset_peak()
             started = time.monotonic()
             try:
                 processor.run(job_id)
                 elapsed = time.monotonic() - started
-                _, peak = tracemalloc.get_traced_memory()
+                peak = tracemalloc.get_traced_memory()[1] if measure_memory else None
             finally:
-                tracemalloc.stop()
+                if measure_memory:
+                    tracemalloc.stop()
             metrics = _entry_metrics(entry, store, job_id, elapsed, peak)
             metrics["stage_seconds"] = {
                 "extraction_ocr_triage": round(processor.extraction_seconds, 3),
@@ -572,7 +579,12 @@ def _summary(results: list[dict[str, Any]], resume_probe: dict[str, Any]) -> dic
             else 0.0
         ),
         "max_peak_python_bytes": max(
-            (int(item["peak_python_bytes"]) for item in results), default=0
+            (
+                int(item["peak_python_bytes"])
+                for item in results
+                if item["peak_python_bytes"] is not None
+            ),
+            default=None,
         ),
         "questions_found": sum(int(item["questions_found"]) for item in results),
         "failures": sum(item["result"] == "failed" for item in results),
@@ -603,7 +615,8 @@ def _markdown_report(report: dict[str, Any]) -> str:
         recovery_line,
         f"- Retomada: {summary['resume_success_rate']:.1%}",
         f"- Tempo mediano: {summary['median_elapsed_seconds']:.3f} s",
-        f"- Pico aproximado de memória Python: {summary['max_peak_python_bytes']} bytes",
+        f"- Pico aproximado de memória Python (bytes; None = não medido): "
+        f"{summary['max_peak_python_bytes']}",
         "",
         "## Resultado por documento",
         "",
@@ -647,6 +660,7 @@ def run_real_homologation(
     markdown_path: Path,
     *,
     commit: str = "unknown",
+    measure_memory: bool = True,
 ) -> dict[str, Any]:
     loaded = load_real_homologation(manifest_path)
     entries = corpus_entries(loaded)
@@ -661,7 +675,7 @@ def run_real_homologation(
     results = []
     for index, entry in enumerate(entries, 1):
         print(f"[{index}/{len(entries)}] {entry.id}", flush=True)
-        results.append(_process_entry(entry, by_id))
+        results.append(_process_entry(entry, by_id, measure_memory=measure_memory))
     resume_entry = next(entry for entry in entries if entry.kind == "exam")
     resume_probe = _resume_probe(resume_entry)
     report: dict[str, Any] = {
@@ -671,6 +685,7 @@ def run_real_homologation(
         "platform": platform.platform(),
         "python": platform.python_version(),
         "offline_processing": True,
+        "memory_tracing": measure_memory,
         "documents": results,
         "resume_probe": resume_probe,
         "summary": _summary(results, resume_probe),

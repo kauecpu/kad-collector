@@ -25,6 +25,10 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("data/homologation/real-report.md"),
     )
+    parser.add_argument(
+        "--without-memory-tracing", action="store_true",
+        help="Desativa tracemalloc; memória fica não medida no relatório.",
+    )
     return parser
 
 
@@ -45,6 +49,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.report,
             args.markdown,
             commit=_commit(),
+            measure_memory=not args.without_memory_tracing,
         )
     except (OSError, RealHomologationError) as exc:
         print(f"ERRO: {exc}")
