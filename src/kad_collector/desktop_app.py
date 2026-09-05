@@ -73,8 +73,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             return _smoke_test(application)
         finally:
-            application.automation.shutdown()
-            application.ollama_classification.shutdown()
+            application.shutdown()
     server, server_thread, url = start_desktop_server(application, port=args.port)
     del server_thread
     try:
@@ -105,8 +104,7 @@ def main(argv: list[str] | None = None) -> int:
         webview.start(debug=False)
         return 0
     finally:
-        application.automation.shutdown()
-        application.ollama_classification.shutdown()
+        application.shutdown()
         server.shutdown()
         server.server_close()
 

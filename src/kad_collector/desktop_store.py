@@ -675,6 +675,26 @@ class DesktopStore:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def recover_interrupted_jobs(self) -> int:
+        """Turn work left active by a previous process into resumable jobs."""
+
+        recovered_at = _now()
+        with closing(self._connect()) as connection:
+            cursor = connection.execute(
+                """
+                UPDATE jobs
+                SET status = 'paused',
+                    message = 'Aplicativo foi fechado; lote pronto para retomar',
+                    error = NULL,
+                    eta_seconds = NULL,
+                    updated_at = ?
+                WHERE status IN ('queued', 'running', 'cancelling')
+                """,
+                (recovered_at,),
+            )
+            connection.commit()
+            return cursor.rowcount
+
     def job(self, job_id: str) -> dict[str, Any]:
         with closing(self._connect()) as connection:
             row = connection.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()

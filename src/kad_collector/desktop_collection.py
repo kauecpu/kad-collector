@@ -228,6 +228,45 @@ class DesktopCollectionManager:
         self._transport_closers: dict[str, Any] = {}
         self._forced_terminal: set[str] = set()
         self._startup_timers: dict[str, threading.Timer] = {}
+        self._threads: dict[str, threading.Thread] = {}
+
+    def shutdown(self) -> None:
+        """Stop collection workers and preserve their checkpoints for a later run."""
+
+        with self._lock:
+            controls = list(self._controls.values())
+            manual_actions = list(self._manual_actions.values())
+            timers = list(self._startup_timers.values())
+            closers = list(self._transport_closers.values())
+            threads = list(self._threads.values())
+            for job in self._jobs.values():
+                if job.get("status") in {
+                    "queued",
+                    "running",
+                    "processing",
+                    "pausing",
+                    "cancelling",
+                    "awaiting_manual_action",
+                }:
+                    job["requestedAction"] = "pause"
+                    job["status"] = "pausing"
+        for timer in timers:
+            timer.cancel()
+        for control in controls:
+            control.set()
+        for event in manual_actions:
+            event.set()
+        for closer in closers:
+            with suppress(Exception):
+                closer()
+        current = threading.current_thread()
+        for thread in threads:
+            if thread is not current:
+                thread.join(timeout=10)
+        with self._lock:
+            for job in self._jobs.values():
+                if job.get("status") in {"pausing", "cancelling"}:
+                    job["status"] = "paused"
 
     def catalog(self) -> list[dict[str, Any]]:
         catalog: list[dict[str, Any]] = []
@@ -418,6 +457,8 @@ class DesktopCollectionManager:
             name=f"kad-collection-{job_id[:8]}",
             daemon=True,
         )
+        with self._lock:
+            self._threads[job_id] = thread
         thread.start()
         timer = threading.Timer(
             COLLECTION_STARTUP_TIMEOUT_SECONDS,
@@ -580,6 +621,8 @@ class DesktopCollectionManager:
             )
             return
         while True:
+            if self._controls[collection_id].is_set():
+                return
             jobs = [self.store.job(job_id) for job_id in import_job_ids]
             failed = [job for job in jobs if job["status"] == "failed"]
             if failed:
@@ -843,6 +886,7 @@ class DesktopCollectionManager:
             self._set_transport_closer(job_id, None)
             with self._lock:
                 self._manual_actions.pop(job_id, None)
+                self._threads.pop(job_id, None)
 
     def _progress_callback(self, job_id: str) -> Any:
         def update(event: Any) -> None:

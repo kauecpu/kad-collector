@@ -7,6 +7,7 @@ from email.message import Message
 from pathlib import Path
 from unittest.mock import patch
 
+from kad_collector.browser_runtime import BrowserRuntimeError
 from kad_collector.collection_state import CollectionStateStore
 from kad_collector.collector import (
     RobotsPolicy,
@@ -311,6 +312,67 @@ class LinkParsingTests(unittest.TestCase):
         self.assertEqual([item.original_url for item in manifest.documents], [pdf_url])
         self.assertEqual(len(manifest.failures), 1)
         self.assertIn("acao manual necessaria", manifest.failures[0].message)
+
+    def test_missing_browser_runtime_does_not_stop_http_sources(self) -> None:
+        browser_url = "https://browser.example.gov.br/lista"
+        healthy_url = "https://http.example.gov.br/lista"
+        pdf_url = "https://http.example.gov.br/prova.pdf"
+
+        class FixtureClient:
+            def __init__(self, user_agent: str, timeout: float, interval_seconds: float) -> None:
+                pass
+
+            def get(self, url: str, allowed_hosts: list[str], max_bytes: int) -> HttpResult:
+                headers = Message()
+                if url.endswith("/robots.txt"):
+                    headers["Content-Type"] = "text/plain; charset=utf-8"
+                    return HttpResult(
+                        url=url,
+                        status_code=200,
+                        headers=headers,
+                        body=b"User-agent: *\nAllow: /\n",
+                    )
+                if url == healthy_url:
+                    headers["Content-Type"] = "text/html; charset=utf-8"
+                    body = b'<a href="/prova.pdf">Prova</a>'
+                elif url == pdf_url:
+                    headers["Content-Type"] = "application/pdf"
+                    body = b"%PDF-1.4\nfixture\n%%EOF"
+                else:
+                    raise AssertionError(f"URL inesperada: {url}")
+                return HttpResult(url=url, status_code=200, headers=headers, body=body)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            browser_source = source_definition(
+                id="fonte_browser",
+                start_urls=[browser_url],
+                allowed_hosts=["browser.example.gov.br"],
+                page_transport="scrapling",
+            )
+            healthy_source = source_definition(
+                id="fonte_http",
+                start_urls=[healthy_url],
+                allowed_hosts=["http.example.gov.br"],
+                page_transport="http",
+            )
+            config = AppConfig(
+                collector=CollectorSettings(data_dir=temporary),
+                sources=[browser_source, healthy_source],
+            )
+            with (
+                patch("kad_collector.collector.SafeHttpClient", FixtureClient),
+                patch(
+                    "kad_collector.collector.check_patchright_chromium",
+                    side_effect=BrowserRuntimeError("Chromium ausente"),
+                ),
+            ):
+                manifest, _ = collect_documents(config)
+
+        self.assertEqual([item.original_url for item in manifest.documents], [pdf_url])
+        self.assertEqual(len(manifest.failures), 1)
+        self.assertEqual(manifest.failures[0].source_id, "fonte_browser")
+        self.assertEqual(manifest.failures[0].stage, "discovery")
+        self.assertIn("Chromium ausente", manifest.failures[0].message)
 
     def test_manual_action_resumes_the_same_page_after_confirmation(self) -> None:
         page_url = "https://provas.example.gov.br/bloqueado"
