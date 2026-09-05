@@ -66,3 +66,36 @@ jobs:
       - name: Run packaged-resource smoke test
         shell: pwsh
         run: python -m kad_collector.desktop_app --smoke-test
+
+  package-smoke:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install build dependencies
+        shell: pwsh
+        run: python -m pip install ".[build,browser,desktop]"
+
+      - name: Build executable with PyInstaller
+        shell: pwsh
+        run: python -m PyInstaller --clean --noconfirm KADCollector.spec
+
+      - name: Smoke test built executable
+        shell: pwsh
+        run: |
+          $process = Start-Process `
+            -FilePath ".\dist\KAD-Collector.exe" `
+            -ArgumentList "--smoke-test", "--data-dir", "$env:RUNNER_TEMP\kad-collector-smoke" `
+            -WindowStyle Hidden `
+            -Wait `
+            -PassThru
+          if ($process.ExitCode -ne 0) {
+            throw "KAD-Collector.exe smoke test failed with exit code $($process.ExitCode)"
+          }

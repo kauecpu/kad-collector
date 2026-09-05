@@ -15,7 +15,7 @@ from typing import Protocol
 from urllib.parse import urljoin, urlsplit, urlunsplit
 from urllib.robotparser import RobotFileParser
 
-from .browser_runtime import check_patchright_chromium
+from .browser_runtime import BrowserRuntimeError, check_patchright_chromium
 from .collection_state import CollectionStateStore
 from .collection_transport import CollectionHttpClient, EngineDownload, EngineHttpResult
 from .discovery import (
@@ -885,8 +885,6 @@ def collect_documents(
     enabled_sources = [source for source in config.sources if source.enabled]
     if not enabled_sources:
         raise CollectorError("nenhuma fonte esta habilitada na configuracao")
-    if any(source.page_transport == "scrapling" for source in enabled_sources):
-        check_patchright_chromium()
 
     settings = config.collector
     data_dir = Path(settings.data_dir)
@@ -905,8 +903,29 @@ def collect_documents(
     filtered_out_documents = 0
     duplicate_documents = 0
     seen_digests: set[str] = set()
+    browser_runtime_checked = False
+    browser_runtime_error: BrowserRuntimeError | None = None
 
     for source in enabled_sources:
+        if source.page_transport == "scrapling":
+            if not browser_runtime_checked:
+                browser_runtime_checked = True
+                try:
+                    check_patchright_chromium()
+                except BrowserRuntimeError as exc:
+                    browser_runtime_error = exc
+            if browser_runtime_error is not None:
+                message = f"{source.id}: navegador indisponivel: {browser_runtime_error}"
+                warnings.append(message)
+                failures.append(
+                    CollectionFailure(
+                        source_id=source.id,
+                        url=source.start_urls[0],
+                        stage="discovery",
+                        message=message,
+                    )
+                )
+                continue
         interval = (
             source.request_interval_seconds
             if source.request_interval_seconds is not None

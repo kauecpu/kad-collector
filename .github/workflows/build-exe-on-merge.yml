@@ -35,6 +35,19 @@ jobs:
         shell: pwsh
         run: python -m PyInstaller --clean --noconfirm KADCollector.spec
 
+      - name: Smoke test built executable
+        shell: pwsh
+        run: |
+          $process = Start-Process `
+            -FilePath ".\dist\KAD-Collector.exe" `
+            -ArgumentList "--smoke-test", "--data-dir", "$env:RUNNER_TEMP\kad-collector-smoke" `
+            -WindowStyle Hidden `
+            -Wait `
+            -PassThru
+          if ($process.ExitCode -ne 0) {
+            throw "KAD-Collector.exe smoke test failed with exit code $($process.ExitCode)"
+          }
+
       - name: Upload executable artifact
         uses: actions/upload-artifact@v4
         with:

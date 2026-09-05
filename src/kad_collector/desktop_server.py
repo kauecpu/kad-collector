@@ -138,6 +138,7 @@ class DesktopApplication:
         self.data_dir = (data_dir or default_desktop_data_dir()).resolve()
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.store = DesktopStore(self.data_dir / "collector.sqlite3")
+        self.store.recover_interrupted_jobs()
         self.processor = DesktopProcessor(self.store)
         self.pipeline = DocumentPipeline(self.store, self.processor)
         self.collection_manager = DesktopCollectionManager(
@@ -156,6 +157,14 @@ class DesktopApplication:
         self.answer_suggestions = DesktopAnswerSuggestionManager(self.store)
         self._export_lock = threading.Lock()
         self.token = secrets.token_urlsafe(32)
+
+    def shutdown(self) -> None:
+        """Stop background workers without abandoning resumable state."""
+
+        self.automation.shutdown()
+        self.collection_manager.shutdown()
+        self.processor.shutdown()
+        self.ollama_classification.shutdown()
 
     def _automation_enabled(self) -> bool:
         return (
@@ -801,30 +810,48 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                 self.headers.get("X-KAD-Desktop-Token", ""), application.token
             ):
                 return True
-            self._send_error(HTTPStatus.FORBIDDEN, "token local inválido")
+            self._reject_request(HTTPStatus.FORBIDDEN, "token local inválido")
             return False
 
         def _trusted_request(self, *, require_origin: bool) -> bool:
             host_values = self.headers.get_all("Host") or []
             if len(host_values) != 1:
-                self._send_error(HTTPStatus.FORBIDDEN, "Host local inválido")
+                self._reject_request(HTTPStatus.FORBIDDEN, "Host local inválido")
                 return False
             authority = _local_authority(host_values[0])
             actual_port = cast(tuple[str, int], self.server.server_address)[1]
             if authority is None or authority[1] != actual_port:
-                self._send_error(HTTPStatus.FORBIDDEN, "Host local inválido")
+                self._reject_request(HTTPStatus.FORBIDDEN, "Host local inválido")
                 return False
 
             origin_values = self.headers.get_all("Origin") or []
             if not origin_values:
                 if require_origin:
-                    self._send_error(HTTPStatus.FORBIDDEN, "Origin local ausente")
+                    self._reject_request(HTTPStatus.FORBIDDEN, "Origin local ausente")
                     return False
                 return True
             if len(origin_values) != 1 or not _origin_matches(origin_values[0], authority):
-                self._send_error(HTTPStatus.FORBIDDEN, "Origin local inválido")
+                self._reject_request(HTTPStatus.FORBIDDEN, "Origin local inválido")
                 return False
             return True
+
+        def _reject_request(self, status: HTTPStatus, message: str) -> None:
+            # urllib envia o corpo antes de ler a resposta. No Windows, fechar a
+            # conexão sem consumi-lo pode transformar o 403 em WinError 10053.
+            raw_length = self.headers.get("Content-Length")
+            try:
+                length = int(raw_length) if raw_length is not None else 0
+            except ValueError:
+                length = 0
+            if 0 < length <= MAX_REQUEST_BYTES:
+                remaining = length
+                while remaining:
+                    chunk = self.rfile.read(min(64 * 1024, remaining))
+                    if not chunk:
+                        break
+                    remaining -= len(chunk)
+            self.close_connection = True
+            self._send_error(status, message)
 
         def _read_json(self) -> dict[str, Any]:
             raw_length = self.headers.get("Content-Length")
@@ -884,6 +911,8 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
             self.send_header("X-Frame-Options", "DENY")
             self.send_header("Referrer-Policy", "no-referrer")
             self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+            if self.close_connection:
+                self.send_header("Connection", "close")
             self.send_header(
                 "Content-Security-Policy",
                 "default-src 'self'; script-src 'self'; style-src 'self'; "

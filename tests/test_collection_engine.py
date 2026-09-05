@@ -794,22 +794,22 @@ class CollectionEngineTests(unittest.TestCase):
         client = self.client(httpx.MockTransport(respond))
 
         def fetch() -> None:
-            with patch(
-                "kad_collector.collection_transport.validate_public_url",
-                side_effect=lambda url, _hosts: url,
-            ):
-                client.get(
-                    "https://example.test/page",
-                    ["example.test"],
-                    1_000,
-                    strategy="html",
-                )
+            client.get(
+                "https://example.test/page",
+                ["example.test"],
+                1_000,
+                strategy="html",
+            )
 
         threads = [threading.Thread(target=fetch) for _ in range(4)]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
+        with patch(
+            "kad_collector.collection_transport.validate_public_url",
+            side_effect=lambda url, _hosts: url,
+        ):
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
         client.close()
         self.assertEqual(len(calls), 4)
 

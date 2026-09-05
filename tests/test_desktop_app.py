@@ -122,6 +122,29 @@ def valid_question(number: int, statement: str | None = None) -> QuestionRecord:
 
 
 class DesktopPipelineTests(unittest.TestCase):
+    def test_application_recovers_interrupted_processing_job_as_paused(self) -> None:
+        with TemporaryDirectory() as directory:
+            data_dir = Path(directory) / "data"
+            pdf_path = Path(directory) / "interrompido.pdf"
+            write_blank_pdf(pdf_path)
+            store = DesktopStore(data_dir / "collector.sqlite3")
+            job_id = store.create_job([pdf_path], metadata(), "local")
+            store.update_job(
+                job_id,
+                status="running",
+                message="Processando antes do encerramento",
+                eta_seconds=30,
+            )
+
+            application = DesktopApplication(data_dir)
+            try:
+                recovered = application.store.job(job_id)
+                self.assertEqual(recovered["status"], "paused")
+                self.assertEqual(recovered["eta_seconds"], None)
+                self.assertIn("pronto para retomar", recovered["message"])
+            finally:
+                application.shutdown()
+
     def test_headless_mode_is_available_for_packaged_end_to_end_validation(self) -> None:
         arguments = build_parser().parse_args(["--headless", "--port", "8878"])
 

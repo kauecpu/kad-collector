@@ -288,6 +288,32 @@ class DesktopProcessor:
             event.set()
         self.store.update_job(job_id, status="cancelling", message="Pausando com segurança")
 
+    def shutdown(self) -> None:
+        """Stop accepting work and leave unfinished jobs resumable on next launch."""
+
+        with self._lock:
+            active = {
+                job_id: future
+                for job_id, future in self._futures.items()
+                if not future.done()
+            }
+            events = [
+                self._cancel_events[job_id]
+                for job_id in active
+                if job_id in self._cancel_events
+            ]
+        for event in events:
+            event.set()
+        self._executor.shutdown(wait=True, cancel_futures=True)
+        for job_id in active:
+            if self.store.job(job_id)["status"] in {"queued", "running", "cancelling"}:
+                self.store.update_job(
+                    job_id,
+                    status="paused",
+                    message="Aplicativo fechado; lote pronto para retomar",
+                    eta_seconds=None,
+                )
+
     @staticmethod
     def _is_protected_classification(value: Any) -> bool:
         source = str(getattr(value, "source", "") or "").casefold()
