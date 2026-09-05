@@ -13,6 +13,7 @@ from kad_collector.official_regression import (
     OfficialRegressionError,
     QuestionSectionSpec,
     _assert_numbers,
+    _execute_rfb22_exam,
     inspect_rfb22_booklet,
     load_official_manifest,
 )
@@ -67,6 +68,38 @@ class OfficialManifestTests(unittest.TestCase):
 
 
 class Rfb22BookletTests(unittest.TestCase):
+    def test_official_executor_accepts_title_case_manifest_shift(self) -> None:
+        manifest = load_official_manifest(RFB22_MANIFEST)
+        exam = next(
+            document
+            for document in manifest.spec.documents
+            if document.id == "rfb22-main-2023-auditor-morning-type-1"
+        )
+        answer_key = next(
+            document
+            for document in manifest.spec.documents
+            if document.id == exam.answer_key_id
+        )
+        with (
+            patch(
+                "kad_collector.official_regression._read_pdf_pages",
+                return_value=[
+                    {"page_number": number, "text": "MANHÃ"}
+                    for number in range(1, exam.page_count + 1)
+                ],
+            ),
+            patch("kad_collector.official_regression.parse_question_document") as parser,
+        ):
+            parser.return_value.identity.role = exam.roles[0]
+            parser.return_value.identity.shift = "manhã"
+            parser.return_value.identity.booklet_type = exam.booklet_type
+            parser.return_value.discursive_numbers = ()
+            parser.return_value.expected_intervals = exam.sections
+            parser.return_value.status = "incomplete"
+            parser.return_value.exceptions = ()
+            with self.assertRaisesRegex(OfficialRegressionError, "incomplete parsing"):
+                _execute_rfb22_exam(exam, Path("unused.pdf"), answer_key, "")
+
     def test_inspection_separates_the_mixed_afternoon_booklet(self) -> None:
         pages: list[dict[str, object]] = [
             {
