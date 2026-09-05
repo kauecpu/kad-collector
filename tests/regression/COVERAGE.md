@@ -8,10 +8,10 @@
 | Preliminar e definitivo | `supported` | `preliminary-definitive-selection` | Metadados sintéticos selecionam o definitivo |
 | Questão anulada | `supported` | `multi-grid-answer-key` | `*` permanece anulado e sem alternativa oficial |
 | Republicação ou revisão | `planned` | `republication-identity` | Falta identificador de revisão que diferencie correção editorial de duplicata por conteúdo |
-| Digitalizado e OCR | `planned` | `scanned-document-ocr` | O Collector detecta ausência de texto e envia para exceção, mas não executa OCR |
+| Digitalizado e OCR | `planned` | `scanned-document-ocr` | O OCR local possui testes sintéticos de integração; faltam fixture, executor e expectativa neste pacote híbrido |
 | Multicargo, turno e versão | `supported` | `multi-grid-answer-key` | Cargo, manhã ou tarde e tipo selecionam uma única grade |
 | Associação ambígua bloqueada | `supported` | `ambiguous-association-blocked` | Dois candidatos sem evidência retornam `blocked` |
-| Documento não relacionado | `planned` | `unrelated-document-rejection` | A importação desktop não oferece o tipo explícito `other` |
+| Documento não relacionado | `planned` | `unrelated-document-rejection` | A triagem desktop possui testes sintéticos; faltam fixture, executor e expectativa neste pacote híbrido |
 
 O manifesto é a fonte executável desta tabela. Uma linha muda para `supported` somente quando
 recebe fixture, executor, expectativa literal e teste que falha diante da quebra do

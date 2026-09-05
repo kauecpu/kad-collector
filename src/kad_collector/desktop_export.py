@@ -181,6 +181,8 @@ def _evaluate_filtered_questions(
                 "grupo de equivalência ainda não confirmado ou ocorrência não representante"
             )
         metadata = cast(dict[str, Any], view["metadata"])
+        if metadata.get("document_type") == "other":
+            issues.append("documento classificado como outro; exportação bloqueada")
         if not str(metadata.get("provider") or "").strip():
             issues.append("provider da origem não informado")
         source_url = str(metadata.get("source_url") or "").strip()

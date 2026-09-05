@@ -103,7 +103,7 @@ def _editorial_metadata(document: NormalizedDocument) -> DesktopImportMetadata:
         "document_type",
         (
             document.declared_type
-            if document.declared_type in {"auto", "exam", "answer_key"}
+            if document.declared_type in {"auto", "exam", "answer_key", "other"}
             else "auto"
         ),
     )
@@ -400,6 +400,7 @@ class DesktopStore:
                     metadata_json TEXT NOT NULL,
                     normalized_json TEXT,
                     parsing_result_json TEXT,
+                    triage_json TEXT,
                     warnings_json TEXT NOT NULL DEFAULT '[]',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
@@ -436,6 +437,16 @@ class DesktopStore:
                 CREATE TABLE IF NOT EXISTS audit_log (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     question_id TEXT NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+                    action TEXT NOT NULL,
+                    actor TEXT,
+                    created_at TEXT NOT NULL,
+                    before_json TEXT,
+                    after_json TEXT,
+                    notes TEXT
+                );
+                CREATE TABLE IF NOT EXISTS document_audit_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
                     action TEXT NOT NULL,
                     actor TEXT,
                     created_at TEXT NOT NULL,
@@ -490,6 +501,8 @@ class DesktopStore:
                 connection.execute("ALTER TABLE documents ADD COLUMN normalized_json TEXT")
             if "parsing_result_json" not in document_columns:
                 connection.execute("ALTER TABLE documents ADD COLUMN parsing_result_json TEXT")
+            if "triage_json" not in document_columns:
+                connection.execute("ALTER TABLE documents ADD COLUMN triage_json TEXT")
             initialize_semantic_schema(connection)
             initialize_canonical_identity_schema(connection)
             initialize_question_equivalence_schema(connection)
@@ -1028,9 +1041,11 @@ class DesktopStore:
                   ON qgo.occurrence_id = qo.id AND qgo.status = 'active'
                 LEFT JOIN question_equivalence_groups qeg ON qeg.id = qgo.group_id
                 LEFT JOIN canonical_questions cq ON cq.group_id = qeg.id
-                WHERE qo.id IS NULL OR (
+                WHERE q.status != 'rejected'
+                  AND COALESCE(json_extract(d.metadata_json, '$.document_type'), 'auto') != 'other'
+                  AND (qo.id IS NULL OR (
                     qeg.status = 'confirmed' AND cq.representative_occurrence_id = qo.id
-                )
+                  ))
                 ORDER BY q.document_id, q.question_number
                 """
             ).fetchall()
@@ -1717,7 +1732,7 @@ class DesktopStore:
         if not isinstance(digest, str) or not digest or size_bytes < 1:
             raise ValueError("documento legado nao possui integridade local comprovada")
         declared_type = metadata.get("document_type", "auto")
-        if declared_type not in {"auto", "exam", "answer_key"}:
+        if declared_type not in {"auto", "exam", "answer_key", "other"}:
             declared_type = "auto"
         title = metadata.get("document_title")
         original_url = metadata.get("source_url")
@@ -1762,6 +1777,10 @@ class DesktopStore:
             if parsing_result_json is not None
             else None
         )
+        triage_json = payload.pop("triage_json", None)
+        payload["triage"] = (
+            json.loads(cast(str, triage_json)) if triage_json is not None else None
+        )
         payload["needs_ocr"] = bool(payload["needs_ocr"])
         return payload
 
@@ -1799,6 +1818,7 @@ class DesktopStore:
             "warnings_json",
             "metadata_json",
             "parsing_result_json",
+            "triage_json",
         }
         selected = {key: value for key, value in changes.items() if key in allowed}
         if not selected:
@@ -1811,6 +1831,252 @@ class DesktopStore:
                 (*selected.values(), document_id),
             )
             connection.commit()
+
+    def document_review_items(self, limit: int = 100) -> list[dict[str, Any]]:
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                "SELECT * FROM documents ORDER BY created_at DESC, filename LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [
+            {
+                "id": item["id"],
+                "jobId": item["job_id"],
+                "filename": item["filename"],
+                "status": item["status"],
+                "needsOcr": item["needs_ocr"],
+                "metadata": item["metadata"],
+                "triage": item["triage"],
+                "warnings": item["warnings"],
+                "createdAt": item["created_at"],
+                "updatedAt": item["updated_at"],
+                "activeJobId": self.active_reprocessing_job(cast(str, item["id"])),
+            }
+            for row in rows
+            if (item := self._document_row(row))
+        ]
+
+    def document_audit_log(self, document_id: str) -> list[dict[str, Any]]:
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                "SELECT * FROM document_audit_log WHERE document_id = ? ORDER BY id DESC",
+                (document_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def record_document_triage(
+        self,
+        document_id: str,
+        triage: dict[str, Any],
+        *,
+        status: str,
+        metadata: DesktopImportMetadata,
+    ) -> None:
+        changed_at = _now()
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                row = connection.execute(
+                    "SELECT triage_json, normalized_json FROM documents WHERE id = ?",
+                    (document_id,),
+                ).fetchone()
+                if row is None:
+                    raise ValueError("documento nao encontrado")
+                triage_json = _json(triage)
+                normalized_json = row["normalized_json"]
+                if normalized_json is not None:
+                    normalized = NormalizedDocument.model_validate_json(
+                        cast(str, normalized_json)
+                    )
+                    if metadata.document_type == "other":
+                        normalized = normalized.model_copy(
+                            update={
+                                "declared_type": "other",
+                                "metadata": metadata.model_dump(
+                                    mode="json", exclude_none=True
+                                ),
+                            }
+                        )
+                    normalized_json = _json(normalized.model_dump(mode="json"))
+                connection.execute(
+                    "UPDATE documents SET status = ?, metadata_json = ?, normalized_json = ?, "
+                    "triage_json = ?, updated_at = ? WHERE id = ?",
+                    (
+                        status,
+                        _json(metadata.model_dump(mode="json")),
+                        normalized_json,
+                        triage_json,
+                        changed_at,
+                        document_id,
+                    ),
+                )
+                if row["triage_json"] != triage_json:
+                    connection.execute(
+                        """
+                        INSERT INTO document_audit_log (
+                            document_id, action, actor, created_at,
+                            before_json, after_json, notes
+                        ) VALUES (?, 'triage_decided', 'system', ?, ?, ?, ?)
+                        """,
+                        (
+                            document_id,
+                            changed_at,
+                            row["triage_json"],
+                            triage_json,
+                            cast(str, triage.get("reason", "Triagem local concluída.")),
+                        ),
+                    )
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+
+    def active_reprocessing_job(self, document_id: str) -> str | None:
+        document = self.document(document_id)
+        with closing(self._connect()) as connection:
+            row = connection.execute(
+                """
+                SELECT j.id
+                FROM documents d
+                JOIN jobs j ON j.id = d.job_id
+                WHERE d.local_path = ? AND d.sha256 = ?
+                  AND json_extract(d.normalized_json, '$.entry_method') = 'reprocessing'
+                  AND j.status IN ('queued', 'running', 'cancelling', 'paused')
+                ORDER BY j.created_at DESC LIMIT 1
+                """,
+                (document["local_path"], document["sha256"]),
+            ).fetchone()
+        return cast(str, row["id"]) if row is not None else None
+
+    def correct_document_for_reprocessing(
+        self,
+        document_id: str,
+        metadata: DesktopImportMetadata,
+        *,
+        actor: str,
+    ) -> None:
+        reviewer = actor.strip()
+        if not reviewer:
+            raise ValueError("ator da correção é obrigatório")
+        validated = DesktopImportMetadata.model_validate(metadata)
+        changed_at = _now()
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                row = connection.execute(
+                    "SELECT * FROM documents WHERE id = ?", (document_id,)
+                ).fetchone()
+                if row is None:
+                    raise ValueError("documento nao encontrado")
+                before_metadata = json.loads(cast(str, row["metadata_json"]))
+                before_triage = (
+                    json.loads(cast(str, row["triage_json"]))
+                    if row["triage_json"] is not None
+                    else None
+                )
+                normalized_json = row["normalized_json"]
+                if normalized_json is None:
+                    raise ValueError("documento legado sem contrato normalizado")
+                normalized = NormalizedDocument.model_validate_json(
+                    cast(str, normalized_json)
+                )
+                corrected = normalized.model_copy(
+                    update={
+                        "declared_type": validated.document_type,
+                        "title": validated.document_title or normalized.title,
+                        "metadata": validated.model_dump(
+                            mode="json", exclude_none=True
+                        ),
+                    }
+                )
+                after_metadata = validated.model_dump(mode="json")
+                corrected_triage = None
+                if validated.document_type != "auto":
+                    corrected_triage = {
+                        "decision": validated.document_type,
+                        "confidence": 1,
+                        "evidence": ["tipo corrigido pelo operador"],
+                        "algorithm_version": "operator-document-correction-v1",
+                        "reason": (
+                            "O operador substituiu a decisão anterior antes do reprocessamento."
+                        ),
+                        "source": "manual",
+                    }
+                connection.execute(
+                    "UPDATE documents SET metadata_json = ?, normalized_json = ?, "
+                    "triage_json = ?, status = CASE WHEN ? = 'other' THEN 'excluded' "
+                    "ELSE status END, updated_at = ? WHERE id = ?",
+                    (
+                        _json(after_metadata),
+                        _json(corrected.model_dump(mode="json")),
+                        _json(corrected_triage) if corrected_triage is not None else None,
+                        validated.document_type,
+                        changed_at,
+                        document_id,
+                    ),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO document_audit_log (
+                        document_id, action, actor, created_at, before_json, after_json, notes
+                    ) VALUES (?, 'metadata_corrected_for_reprocessing', ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        document_id,
+                        reviewer,
+                        changed_at,
+                        _json(
+                            {
+                                "metadata": before_metadata,
+                                "triage": before_triage,
+                                "status": row["status"],
+                            }
+                        ),
+                        _json(
+                            {
+                                "metadata": after_metadata,
+                                "triage": corrected_triage,
+                                "status": (
+                                    "excluded"
+                                    if validated.document_type == "other"
+                                    else row["status"]
+                                ),
+                            }
+                        ),
+                        "Correção explícita salva antes de criar uma nova execução.",
+                    ),
+                )
+                if validated.document_type == "other":
+                    questions = connection.execute(
+                        "SELECT * FROM questions WHERE document_id = ?",
+                        (document_id,),
+                    ).fetchall()
+                    for question in questions:
+                        if question["status"] == "rejected":
+                            continue
+                        connection.execute(
+                            "UPDATE questions SET status = 'rejected', reviewer = ?, "
+                            "review_notes = ?, exported_at = NULL, updated_at = ? WHERE id = ?",
+                            (
+                                reviewer,
+                                "Resultado invalidado porque o documento foi corrigido para outro.",
+                                changed_at,
+                                question["id"],
+                            ),
+                        )
+                        self._audit(
+                            connection,
+                            cast(str, question["id"]),
+                            "invalidated_by_document_correction",
+                            reviewer,
+                            {"status": question["status"]},
+                            {"status": "rejected", "documentType": "other"},
+                            "Resultado anterior preservado, mas excluído de novos fluxos.",
+                        )
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
 
     def update_document_metadata(
         self, document_id: str, metadata: DesktopImportMetadata, *, actor: str
@@ -2599,6 +2865,11 @@ class DesktopStore:
             action = "excecao" if status == "exception" else "rejeicao"
             raise ValueError(f"uma {action} exige justificativa")
         before = self.question(question_id)
+        if (
+            status != "rejected"
+            and cast(dict[str, Any], before["metadata"]).get("document_type") == "other"
+        ):
+            raise ValueError("documento classificado como outro não pode voltar ao fluxo editorial")
         question = QuestionRecord.model_validate(before["question"])
         if status == "approved":
             errors = validate_app_import_question(question)
@@ -2656,6 +2927,11 @@ class DesktopStore:
         before_views = [self.question(question_id) for question_id in normalized_ids]
         invalid: list[str] = []
         for before in before_views:
+            if cast(dict[str, Any], before["metadata"]).get("document_type") == "other":
+                invalid.append(
+                    f"questao {before['question']['number']}: documento classificado como outro"
+                )
+                continue
             if before["status"] != "pending":
                 invalid.append(f"questao {before['question']['number']}: nao esta pendente")
                 continue
@@ -3706,11 +3982,23 @@ class DesktopStore:
                             SELECT 1 FROM documents d
                             WHERE d.id = questions.document_id
                               AND d.document_version_id IS NULL
+                              AND COALESCE(
+                                  json_extract(d.metadata_json, '$.document_type'), 'auto'
+                              ) != 'other'
                         ) OR EXISTS (
                             SELECT 1 FROM document_links l
                             WHERE l.id = questions.answer_key_link_id
                               AND l.status = 'active'
                               AND l.algorithm_version = 'semantic-association-v3'
+                              AND EXISTS (
+                                  SELECT 1 FROM documents d
+                                  WHERE d.id = questions.document_id
+                                    AND COALESCE(
+                                        json_extract(
+                                            d.metadata_json, '$.document_type'
+                                        ), 'auto'
+                                    ) != 'other'
+                              )
                         )
                     )""",  # noqa: S608
                 (now, now, *question_ids),

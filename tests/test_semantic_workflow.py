@@ -2298,7 +2298,12 @@ class SemanticWorkflowIntegrationTests(unittest.TestCase):
         pdf.drawString(54, 756, "A) Azul")
         pdf.drawString(54, 734, "B) Verde")
         pdf.save()
-        metadata = {"board": "Banca", "concurso": "Concurso", "year": 2026}
+        metadata = {
+            "board": "Banca",
+            "concurso": "Concurso",
+            "year": 2026,
+            "document_type": "exam",
+        }
         self.add_document("failure", binary=pdf_buffer.getvalue(), text="", metadata=metadata)
         processor = DesktopProcessor(self.store)
         try:

@@ -181,7 +181,7 @@ def _import_metadata(
         else None
     )
     document_type: DesktopDocumentType = "auto"
-    if document is not None and document.document_type in {"exam", "answer_key"}:
+    if document is not None and document.document_type in {"exam", "answer_key", "other"}:
         document_type = cast(DesktopDocumentType, document.document_type)
     return DesktopImportMetadata(
         provider=source.id,

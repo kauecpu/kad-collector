@@ -6,7 +6,7 @@ from pydantic import Field, field_validator, model_validator
 
 from .models import StrictModel
 
-DesktopDocumentType = Literal["auto", "exam", "answer_key"]
+DesktopDocumentType = Literal["auto", "exam", "answer_key", "other"]
 DesktopQuestionStatus = Literal["pending", "approved", "rejected", "exception", "exported"]
 ClassifierProviderName = Literal["local", "openai"]
 
@@ -62,6 +62,13 @@ class DesktopImportMetadata(StrictModel):
         if value is not None and not value.startswith("https://"):
             raise ValueError("a URL de origem deve usar HTTPS")
         return value
+
+
+class DocumentReprocessRequest(StrictModel):
+    metadata: DesktopImportMetadata
+    classifier_provider: ClassifierProviderName = Field(
+        default="local", alias="classifierProvider"
+    )
 
 
 class DesktopFilterSet(StrictModel):

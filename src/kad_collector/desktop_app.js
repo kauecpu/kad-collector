@@ -161,6 +161,7 @@ const state = {
   selectedPaths: [],
   selectedQuestionIds: new Set(),
   currentQuestion: null,
+  currentDocument: null,
   currentAudit: [],
   batchClassificationPreview: null,
   preparationPreview: null,
@@ -316,6 +317,8 @@ function statusLabel(status) {
     exception: 'Precisa de revisão', exported: 'Exportada', exportable: 'Exportável',
     importable: 'Importável', publication_ready: 'Pronta para publicação',
     unclassified: 'Não classificada', blocked: 'Bloqueada',
+    excluded: 'Fora do banco de questões', extracted: 'Texto extraído',
+    processed: 'Processado', processing: 'Em processamento', queued: 'Na fila',
   }[status] || status;
 }
 
@@ -375,6 +378,7 @@ function render() {
   renderOperationalOverview();
   renderMetrics();
   renderJobs();
+  renderDocuments();
   renderNavigationState();
   renderSavedFilters();
   renderQuery();
@@ -383,11 +387,14 @@ function render() {
   renderSection();
   const openaiOption = byId('import-classifier').querySelector('option[value="openai"]');
   const sourceOpenaiOption = byId('source-classifier').querySelector('option[value="openai"]');
+  const documentOpenaiOption = byId('document-classifier').querySelector('option[value="openai"]');
   const configured = state.bootstrap.config.openaiConfigured;
   openaiOption.disabled = !configured;
   openaiOption.textContent = configured ? 'OpenAI configurada' : 'OpenAI não configurada';
   sourceOpenaiOption.disabled = !configured;
   sourceOpenaiOption.textContent = configured ? 'OpenAI configurada' : 'OpenAI não configurada';
+  documentOpenaiOption.disabled = !configured;
+  documentOpenaiOption.textContent = configured ? 'OpenAI configurada' : 'OpenAI não configurada';
 }
 
 function renderSection() {
@@ -1502,6 +1509,166 @@ function filterChip(key, value) {
     await runQuery();
   });
   return button;
+}
+
+function documentTypeLabel(value) {
+  return {auto: 'Detecção automática', exam: 'Prova', answer_key: 'Gabarito', other: 'Outro documento'}[value] || value;
+}
+
+function renderDocuments() {
+  const root = byId('document-review-list');
+  if (!root) return;
+  root.replaceChildren();
+  const items = state.bootstrap.documents || [];
+  byId('document-review-count').textContent = items.length;
+  if (!items.length) {
+    const empty = document.createElement('p');
+    empty.className = 'empty-guidance';
+    empty.textContent = 'Nenhum PDF foi processado neste banco.';
+    root.append(empty);
+    return;
+  }
+  items.forEach((item) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `document-review-card ${item.triage?.decision || 'unreviewed'}`;
+    const copy = document.createElement('span');
+    const title = document.createElement('strong');
+    title.textContent = item.filename;
+    const detail = document.createElement('small');
+    detail.textContent = item.triage
+      ? `${documentTypeLabel(item.triage.decision)} · ${item.triage.reason}`
+      : `${statusLabel(item.status)} · triagem ainda não concluída`;
+    copy.append(title, detail);
+    const status = document.createElement('span');
+    status.className = `status-pill ${item.status}`;
+    status.textContent = item.activeJobId ? `Execução ${item.activeJobId.slice(0, 8)} ativa` : statusLabel(item.status);
+    button.append(copy, status);
+    button.addEventListener('click', () => openDocument(item.id));
+    root.append(button);
+  });
+  if (state.currentDocument && byId('document-dialog').open) {
+    const current = items.find((item) => item.id === state.currentDocument.id);
+    if (current) {
+      state.currentDocument = {...state.currentDocument, ...current};
+      renderDocumentJobState();
+    }
+  }
+}
+
+async function openDocument(documentId) {
+  try {
+    state.currentDocument = await request(`/api/documents/${documentId}`);
+    const metadata = state.currentDocument.metadata || {};
+    byId('document-title').textContent = state.currentDocument.filename;
+    byId('document-pdf').href = `/api/documents/${documentId}/pdf`;
+    const fields = {
+      'document-type': metadata.document_type || 'auto', 'document-name': metadata.document_title,
+      'document-provider': metadata.provider, 'document-source-url': metadata.source_url,
+      'document-canonical-url': metadata.canonical_url, 'document-external-id': metadata.external_id,
+      'document-board': metadata.board, 'document-concurso': metadata.concurso,
+      'document-year': metadata.year, 'document-role': metadata.role,
+      'document-organization': metadata.organization, 'document-stage': metadata.stage,
+      'document-turn': metadata.turn, 'document-variant': metadata.variant,
+      'document-level': metadata.level, 'document-discipline': metadata.discipline,
+      'document-subject': metadata.subject, 'document-topic': metadata.topic,
+      'document-difficulty': metadata.difficulty,
+    };
+    Object.entries(fields).forEach(([id, value]) => { byId(id).value = value ?? ''; });
+    renderDocumentTriage();
+    renderDocumentAudit();
+    renderDocumentJobState();
+    byId('document-dialog').showModal();
+  } catch (error) { toast(error.message, 'error'); }
+}
+
+function renderDocumentTriage() {
+  const root = byId('document-triage-detail');
+  root.replaceChildren();
+  const triage = state.currentDocument?.triage;
+  const title = document.createElement('strong');
+  title.textContent = triage ? documentTypeLabel(triage.decision) : 'Triagem pendente';
+  const reason = document.createElement('p');
+  reason.textContent = triage?.reason || 'Este documento ainda não recebeu uma decisão local.';
+  root.append(title, reason);
+  if (triage?.evidence?.length) {
+    const evidence = document.createElement('small');
+    evidence.textContent = `Evidências: ${triage.evidence.join(' · ')} · confiança ${Math.round(triage.confidence * 100)}% · regra ${triage.algorithm_version}`;
+    root.append(evidence);
+  }
+  updateDocumentEffect();
+}
+
+function updateDocumentEffect() {
+  const item = state.currentDocument;
+  if (!item) return;
+  const type = byId('document-type').value;
+  byId('document-effect').textContent = type === 'other'
+    ? `${item.filename} continuará salvo, mas não criará questões, não usará Qwen e não entrará na exportação. Uma nova execução registrará a decisão.`
+    : `${item.filename} será reprocessado do PDF local em uma nova execução; o documento e o histórico atuais serão preservados.`;
+}
+
+function renderDocumentAudit() {
+  const root = byId('document-audit');
+  root.replaceChildren();
+  const audit = state.currentDocument?.audit || [];
+  if (!audit.length) {
+    root.textContent = 'Nenhuma correção manual registrada.';
+    return;
+  }
+  audit.forEach((event) => {
+    const row = document.createElement('p');
+    row.textContent = `${new Date(event.created_at).toLocaleString('pt-BR')} · ${event.action} · ${event.notes || 'sem observação'}`;
+    root.append(row);
+  });
+}
+
+function renderDocumentJobState() {
+  const activeJobId = state.currentDocument?.activeJobId;
+  byId('document-job-state').textContent = activeJobId
+    ? `Execução ${activeJobId.slice(0, 8)} ativa. Acompanhe o andamento na tela inicial.`
+    : 'O reprocessamento criará uma nova execução retomável.';
+  byId('document-reprocess').disabled = Boolean(activeJobId);
+}
+
+function collectDocumentMetadata() {
+  return {
+    provider: optional('document-provider'), source_url: optional('document-source-url'),
+    canonical_url: optional('document-canonical-url'), external_id: optional('document-external-id'),
+    document_title: optional('document-name'), variant: optional('document-variant'),
+    document_type: byId('document-type').value, concurso: optional('document-concurso'),
+    board: optional('document-board'), year: numberOrNull('document-year'),
+    role: optional('document-role'), stage: optional('document-stage'), turn: optional('document-turn'),
+    organization: optional('document-organization'), level: optional('document-level'),
+    discipline: optional('document-discipline'), subject: optional('document-subject'),
+    topic: optional('document-topic'), difficulty: optional('document-difficulty'),
+  };
+}
+
+async function correctAndReprocessDocument(event) {
+  event.preventDefault();
+  const item = state.currentDocument;
+  if (!item) return;
+  const type = byId('document-type').value;
+  const effect = type === 'other'
+    ? 'ficará fora da estruturação, do Qwen e da exportação'
+    : `será tratado como ${documentTypeLabel(type).toLocaleLowerCase('pt-BR')}`;
+  if (!window.confirm(`Criar uma nova execução para ${item.filename}? O arquivo original será preservado e ${effect}.`)) return;
+  const button = byId('document-reprocess');
+  button.disabled = true;
+  try {
+    const result = await request(`/api/documents/${item.id}/reprocess`, {
+      method: 'POST',
+      body: JSON.stringify({metadata: collectDocumentMetadata(), classifierProvider: byId('document-classifier').value}),
+    });
+    state.currentDocument.activeJobId = result.jobId;
+    renderDocumentJobState();
+    toast(`${item.filename}: correção salva e execução ${result.jobId.slice(0, 8)} criada.`);
+    await loadBootstrap({preserveQuery: true});
+  } catch (error) {
+    button.disabled = false;
+    toast(error.message, 'error');
+  }
 }
 
 function renderQuestions() {
@@ -2707,6 +2874,9 @@ byId('metric-card-answer-official').addEventListener('click', () => activateAnsw
 byId('metric-card-answer-annulled').addEventListener('click', () => activateAnswerQueue('annulled'));
 byId('metric-card-answer-missing').addEventListener('click', () => activateAnswerQueue('missing'));
 byId('review-pdf').addEventListener('click', openAuthenticatedPdf);
+byId('document-pdf').addEventListener('click', openAuthenticatedPdf);
+byId('document-type').addEventListener('change', updateDocumentEffect);
+byId('document-form').addEventListener('submit', correctAndReprocessDocument);
 byId('choose-files').addEventListener('click', () => choosePaths('files'));
 byId('choose-folder').addEventListener('click', () => choosePaths('folder'));
 byId('import-form').addEventListener('submit', submitImport);
