@@ -163,7 +163,7 @@ title = "Documento digitalizado processado por OCR"
 status = "planned"
 fixtures = []
 covers = ["scanned_ocr"]
-gap = "O Collector detecta ausência de camada textual e envia o PDF para exceção; ele ainda não executa OCR."
+gap = "O OCR local possui testes sintéticos de integração, mas este pacote híbrido ainda não possui fixture, executor e expectativa executável para o caso digitalizado."
 
 [[cases]]
 id = "unrelated-document-rejection"
@@ -171,4 +171,4 @@ title = "Documento não relacionado rejeitado antes da estruturação"
 status = "planned"
 fixtures = []
 covers = ["unrelated_document"]
-gap = "A importação desktop não oferece o tipo explícito other e classifica todo arquivo automático que não parece gabarito como prova."
+gap = "A triagem desktop possui testes sintéticos, mas este pacote híbrido ainda não possui fixture, executor e expectativa executável para um documento não relacionado."
