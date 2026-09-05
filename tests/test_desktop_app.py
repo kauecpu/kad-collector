@@ -12,10 +12,12 @@ from http import HTTPStatus
 from importlib import resources
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+from PIL import Image, ImageDraw
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 
@@ -56,6 +58,14 @@ def write_blank_pdf(path: Path, page_count: int = 1) -> None:
         writer.add_blank_page(width=595, height=842)
     with path.open("wb") as stream:
         writer.write(stream)
+
+
+def write_scanned_pdf(path: Path) -> None:
+    image = Image.new("RGB", (900, 1200), "white")
+    draw = ImageDraw.Draw(image)
+    draw.text((60, 80), "QUESTAO DIGITALIZADA", fill="black")
+    draw.text((60, 130), "Imagem sem camada de texto no PDF", fill="black")
+    image.save(path, "PDF", resolution=150)
 
 
 def metadata(**changes: object) -> DesktopImportMetadata:
@@ -571,6 +581,41 @@ Informações editoriais da banca.
             self.assertTrue(
                 any("OCR" in issue or "texto" in issue for issue in exceptions[0]["issues"])
             )
+
+    def test_scanned_pdf_is_processed_after_local_ocr(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "prova-digitalizada.pdf"
+            write_scanned_pdf(pdf_path)
+            store = DesktopStore(root / "collector.sqlite3")
+            job_id = store.create_job(
+                [pdf_path], metadata(document_type="exam"), "local"
+            )
+
+            class FakeOcr:
+                def __call__(self, _image: object) -> SimpleNamespace:
+                    return SimpleNamespace(
+                        txts=(
+                            "QUESTAO 1",
+                            "Assinale a alternativa correta sobre a escala cartografica.",
+                            "A) Primeira alternativa.",
+                            "B) Segunda alternativa.",
+                            "C) Terceira alternativa.",
+                        ),
+                        scores=(0.99, 0.98, 0.97, 0.96, 0.95),
+                    )
+
+            processor = DesktopProcessor(store, ocr_engine=FakeOcr())
+            processor.run(job_id)
+            processor.shutdown()
+
+            document = store.documents_for_job(job_id)[0]
+            pages = store.pages(document["id"])
+            self.assertFalse(document["needs_ocr"])
+            self.assertEqual(document["status"], "processed")
+            self.assertEqual(pages[0]["status"], "ocr_text")
+            self.assertEqual(len(store.question_records(document["id"])), 1)
+            self.assertTrue(any("OCR local" in item for item in document["warnings"]))
 
     def test_text_pdf_with_blank_trailing_page_does_not_require_document_ocr(self) -> None:
         with TemporaryDirectory() as directory:

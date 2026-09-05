@@ -8,6 +8,7 @@ from typing import Any
 
 from .browser_runtime import configure_playwright_browsers_path
 from .desktop_server import DesktopApplication, _resource_bytes, start_desktop_server
+from .ocr import prepare_ocr_runtime
 
 
 class DesktopBridge:
@@ -55,6 +56,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _smoke_test(application: DesktopApplication) -> int:
     application.bootstrap()
+    prepare_ocr_runtime()
     for resource_name in ("desktop_ui.html", "desktop_styles.css", "desktop_app.js"):
         if not _resource_bytes(resource_name):
             raise RuntimeError(f"recurso desktop vazio: {resource_name}")

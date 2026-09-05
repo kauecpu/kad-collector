@@ -18,8 +18,9 @@ termos, `robots.txt` e limites antes da primeira execucao no ambiente da equipe.
 
 O MVP processa paginas HTML que contenham links para PDFs. Fontes selecionadas podem usar
 uma sessao persistente do Scrapling para renderizar JavaScript sem alterar o parsing existente.
-PDFs digitalizados sem camada de texto sao marcados como `needs_ocr` e nao seguem
-automaticamente para a IA.
+PDFs digitalizados sem camada de texto passam por OCR local em portugues. Paginas que ainda
+nao produzam texto suficiente sao marcadas como `needs_ocr` e nao seguem automaticamente
+para a IA.
 
 ## Requisitos
 
@@ -161,8 +162,9 @@ kad-collector-desktop
 
 A interface aceita lotes textuais de aproximadamente 300 paginas, trabalha em segundo plano
 e salva checkpoints por pagina. **Pausar** encerra o trecho corrente com seguranca; **Retomar**
-continua das paginas ja persistidas. PDFs digitalizados ou paginas sem camada de texto entram
-em `excecoes.jsonl`; OCR nao faz parte desta versao.
+continua das paginas ja persistidas. PDFs digitalizados ou paginas sem camada de texto passam
+por OCR local; somente as paginas que continuam ilegíveis entram em `excecoes.jsonl`.
+O documento nao sai do computador. O modelo latino e incluido no executavel do Windows.
 
 Cada lote aceita no maximo 20 PDFs, 5.000 paginas no total, 1.000 paginas por arquivo e
 50 MB por PDF. Arquivos que ultrapassam os limites entram nas excecoes sem serem processados.
@@ -483,7 +485,8 @@ Uma copia de seguranca do banco continua recomendada antes de atualizar o aplica
 
 ### Limitacoes conhecidas
 
-- O Collector detecta PDF digitalizado ou com pouco texto, mas nao executa OCR.
+- Digitalizacoes de baixa resolucao, manuscritos e diagramas complexos podem continuar
+  ilegíveis depois do OCR e seguem para revisão.
 - Prova e gabarito no mesmo PDF nao recebem suporte completo neste fluxo.
 - Associacoes sem evidencia suficiente, inclusive empates, seguem para excecao sem resposta
   oficial aplicada.
@@ -769,7 +772,8 @@ Use o caminho do manifesto exibido pelo comando anterior:
 kad-collector extract data\manifests\download-AAAAMMDDTHHMMSSZ.json
 ```
 
-A saida fica em `data/extracted/`. Documentos com pouco texto sao marcados para OCR.
+A saida fica em `data/extracted/`. Paginas com pouco texto passam por OCR local; documentos
+que continuarem sem texto suficiente ficam marcados para revisao.
 
 ### 3. Estruturar as questoes com IA
 
@@ -904,7 +908,7 @@ kad-collector sync --config config\sources.toml ^
 
 Execute `sync` periodicamente pelo agendador autorizado do ambiente. O comando termina ao fim
 de cada rodada; ele nao instala servico, nao altera infraestrutura e nao publica no aplicativo.
-Falhas permanentes, OCR pendente e questoes incompletas continuam visiveis no relatorio. Para
+Falhas permanentes, OCR sem resultado e questoes incompletas continuam visiveis no relatorio. Para
 reprocessar todo o acervo com outra politica ou modelo, use um novo arquivo em `--state`.
 
 ## Pacote de promocao local legado
@@ -999,8 +1003,9 @@ suportado duas vezes e grava um relatorio local sem acessar banco operacional:
 
 O pacote cobre prova e gabarito separados, resposta no mesmo documento, tipos 1 a 4,
 preliminar e definitivo, anulacao, grades por cargo e turno e associacao ambigua bloqueada.
-Republicacao, OCR real e rejeicao explicita de documento nao relacionado permanecem marcados
-como `planned`. A [documentacao de manutencao](tests/regression/README.md) e a
+O OCR local tem testes sinteticos de integracao; sua inclusao no pacote hibrido, assim como
+republicacao e rejeicao explicita de documento nao relacionado, permanece marcada como
+`planned`. A [documentacao de manutencao](tests/regression/README.md) e a
 [matriz final](tests/regression/COVERAGE.md) explicam os limites e o processo de atualizacao.
 
 ### Regressao oficial do RFB22

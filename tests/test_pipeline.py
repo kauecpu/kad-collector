@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import httpx
 from openai import BadRequestError
+from PIL import Image, ImageDraw
 from pypdf import PdfWriter
 
 from kad_collector.ai_processor import OpenAIChunkExtractor, chunk_text, process_document
@@ -31,6 +32,14 @@ from kad_collector.review import approve_batch
 from kad_collector.validation import verify_approved_batch
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def write_scanned_pdf(path: Path) -> None:
+    image = Image.new("RGB", (900, 1200), "white")
+    draw = ImageDraw.Draw(image)
+    draw.text((60, 80), "QUESTAO DIGITALIZADA", fill="black")
+    draw.text((60, 130), "Imagem sem camada de texto no PDF", fill="black")
+    image.save(path, "PDF", resolution=150)
 
 
 def document_record(local_path: str = "data/raw/prova.pdf") -> DocumentRecord:
@@ -258,6 +267,37 @@ class PipelineTests(unittest.TestCase):
             write_json(manifest_path, manifest.model_dump(mode="json"))
             result, _ = extract_manifest(manifest_path, output_path)
             self.assertTrue(result.documents[0].needs_ocr)
+
+    def test_scanned_pdf_is_recovered_by_local_ocr(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            pdf_path = root / "digitalizado.pdf"
+            write_scanned_pdf(pdf_path)
+            record = document_record(str(pdf_path))
+            record.size_bytes = pdf_path.stat().st_size
+            record.sha256 = hashlib.sha256(pdf_path.read_bytes()).hexdigest()
+            manifest = DownloadManifest(created_at=datetime.now(UTC), documents=[record])
+            manifest_path = root / "manifest.json"
+            write_json(manifest_path, manifest.model_dump(mode="json"))
+
+            class FakeOcr:
+                def __call__(self, _image: object) -> SimpleNamespace:
+                    return SimpleNamespace(
+                        txts=(
+                            "QUESTAO 1",
+                            "Assinale a alternativa correta sobre cartografia.",
+                            "A) Primeira alternativa.",
+                            "B) Segunda alternativa.",
+                        ),
+                        scores=(0.99, 0.98, 0.97, 0.96),
+                    )
+
+            result, _ = extract_manifest(manifest_path, ocr_engine=FakeOcr())
+
+            document = result.documents[0]
+            self.assertFalse(document.needs_ocr)
+            self.assertIn("QUESTAO 1", document.text)
+            self.assertTrue(any("OCR local" in item for item in document.warnings))
 
     def test_pdf_integrity_mismatch_stops_extraction(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

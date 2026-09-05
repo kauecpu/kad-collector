@@ -16,6 +16,7 @@ from .models import (
     ExtractedPage,
     ExtractionManifest,
 )
+from .ocr import OCR_MIN_TEXT_CHARACTERS, OcrEngine, OcrError, ocr_pdf_pages
 
 
 def _verify_local_document(document: NormalizedDocument) -> None:
@@ -35,7 +36,10 @@ def _verify_local_document(document: NormalizedDocument) -> None:
 
 
 def _extract_document(
-    normalized: NormalizedDocument, record: DocumentRecord
+    normalized: NormalizedDocument,
+    record: DocumentRecord,
+    *,
+    ocr_engine: OcrEngine | None = None,
 ) -> ExtractedDocument:
     local_path = Path(normalized.local_path)
     warnings: list[str] = []
@@ -67,7 +71,37 @@ def _extract_document(
             warnings=[f"PDF ilegivel: {exc}"],
         )
 
-    non_empty_pages = sum(page.character_count >= 20 for page in pages)
+    ocr_page_numbers = [
+        page.number
+        for page in pages
+        if page.character_count < OCR_MIN_TEXT_CHARACTERS
+    ]
+    if ocr_page_numbers:
+        try:
+            recovered = ocr_pdf_pages(local_path, ocr_page_numbers, engine=ocr_engine)
+            page_indexes = {page.number: index for index, page in enumerate(pages)}
+            for number in ocr_page_numbers:
+                result = recovered.get(number)
+                if result is None:
+                    continue
+                if len(result.text) >= OCR_MIN_TEXT_CHARACTERS:
+                    pages[page_indexes[number]] = ExtractedPage(
+                        number=number, text=result.text, character_count=len(result.text)
+                    )
+                    confidence = (
+                        f" ({result.confidence:.0%} de confianca media)"
+                        if result.confidence is not None
+                        else ""
+                    )
+                    warnings.append(f"pagina {number}: texto recuperado por OCR local{confidence}")
+                elif result.error:
+                    warnings.append(f"pagina {number}: {result.error}")
+        except OcrError as exc:
+            warnings.append(f"OCR local indisponivel: {exc}")
+
+    non_empty_pages = sum(
+        page.character_count >= OCR_MIN_TEXT_CHARACTERS for page in pages
+    )
     needs_ocr = not pages or non_empty_pages < max(1, (len(pages) + 1) // 2)
     if needs_ocr:
         warnings.append("pouco texto detectado; encaminhar para OCR e revisao manual")
@@ -84,13 +118,16 @@ def _extract_document(
 
 
 def extract_manifest(
-    manifest_path: Path, output_path: Path | None = None
+    manifest_path: Path,
+    output_path: Path | None = None,
+    *,
+    ocr_engine: OcrEngine | None = None,
 ) -> tuple[ExtractionManifest, Path]:
     manifest = DownloadManifest.model_validate(read_json(manifest_path))
     extracted: list[ExtractedDocument] = []
     for record in manifest.documents:
         normalized = normalize_collected_document(record)
-        extracted.append(_extract_document(normalized, record))
+        extracted.append(_extract_document(normalized, record, ocr_engine=ocr_engine))
 
     result = ExtractionManifest(
         created_at=datetime.now(UTC),
