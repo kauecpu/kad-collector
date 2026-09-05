@@ -39,6 +39,7 @@ from kad_collector.desktop_store import DesktopStore
 from kad_collector.document_contract import normalize_collected_document
 from kad_collector.document_pipeline import DocumentPipeline
 from kad_collector.models import Alternative, DocumentRecord, QuestionRecord
+from kad_collector.semantic_identity import extract_semantic_profile
 
 
 def write_text_pdf(path: Path, pages: list[list[str]]) -> None:
@@ -156,6 +157,35 @@ def valid_question(number: int, statement: str | None = None) -> QuestionRecord:
 
 
 class DesktopPipelineTests(unittest.TestCase):
+    def test_automatic_answer_key_triage_reaches_semantic_resolution(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "001.pdf"
+            write_text_pdf(pdf_path, [[
+                "Gabarito definitivo da prova objetiva",
+                "1 - A", "2 - C", "3 - D",
+            ]])
+            store = DesktopStore(root / "collector.sqlite3")
+            job_id = store.create_job(
+                [pdf_path], metadata(document_type="auto", document_title="Gabarito definitivo"),
+                "local",
+            )
+            processor = DesktopProcessor(store)
+            try:
+                with patch(
+                    "kad_collector.desktop_store.extract_semantic_profile",
+                    wraps=extract_semantic_profile,
+                ) as extract:
+                    processor.run(job_id)
+                effective = extract.call_args.args[0]
+                self.assertEqual(effective.declared_type, "answer_key")
+                document = store.documents_for_job(job_id)[0]
+                self.assertEqual(document["triage"]["source"], "local_rules")
+                self.assertEqual(document["normalized_document"].declared_type, "auto")
+                self.assertEqual(document["metadata"]["document_type"], "auto")
+            finally:
+                processor.shutdown()
+
     def test_manual_other_is_preserved_without_creating_questions(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)

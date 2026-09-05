@@ -1702,6 +1702,15 @@ class DesktopStore:
         if normalized is None:
             raise ValueError("documento não possui contrato normalizado")
         pages = [(int(page["page_number"]), str(page["text"])) for page in self.pages(document_id)]
+        triage = cast(dict[str, Any] | None, document.get("triage"))
+        if (
+            normalized.declared_type == "auto"
+            and triage is not None
+            and triage.get("decision") in {"exam", "answer_key"}
+        ):
+            # Feed the persisted triage decision into identity extraction, while
+            # retaining the original auto contract and its provenance in storage.
+            normalized = normalized.model_copy(update={"declared_type": triage["decision"]})
         profile = extract_semantic_profile(normalized, pages)
         with closing(self._connect()) as connection:
             result = resolve_document_version(connection, document_id, profile, _now())
