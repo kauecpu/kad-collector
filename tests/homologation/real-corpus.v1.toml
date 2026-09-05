@@ -1,0 +1,79 @@
+schema_version = 1
+cache_dir = "data/homologation/external"
+official_manifests = ["../regression/rfb22/manifest.v1.toml"]
+
+[[documents]]
+id = "cebraspe-pcdf13-agent-exam"
+bank = "Cebraspe"
+kind = "exam"
+expected_triage = "exam"
+declared_type = "exam"
+filename = "cebraspe-pcdf13-exam.pdf"
+source_url = "https://cdn.cebraspe.org.br/concursos/PC_DF_13_AGENTE/arquivos/PCDF13_001_01.pdf"
+source_page_url = "https://cdn.cebraspe.org.br/concursos/PC_DF_13_AGENTE/"
+sha256 = "56b71b10e865d949e2a673d9646b52fcc4b8a6167c70e66315fe929aa5a034e8"
+size_bytes = 441350
+page_count = 16
+title = "Caderno de questões - Agente de Polícia - Tipo I"
+provider = "cebraspe"
+contest = "PCDF 2013 - Agente"
+year = 2013
+role = "Agente de Polícia"
+organization = "Polícia Civil do Distrito Federal"
+variant = "Tipo I"
+answer_key_id = "cebraspe-pcdf13-agent-answer-key"
+
+[[documents]]
+id = "cebraspe-pcdf13-agent-answer-key"
+bank = "Cebraspe"
+kind = "answer_key"
+expected_triage = "answer_key"
+filename = "cebraspe-pcdf13-answer-key.pdf"
+source_url = "https://cdn.cebraspe.org.br/concursos/PC_DF_13_AGENTE/arquivos/Gab_definitivo_PCDF13_001_01.PDF"
+source_page_url = "https://cdn.cebraspe.org.br/concursos/PC_DF_13_AGENTE/"
+sha256 = "acced492855f7644fd73d2756f4210224409fc92053a8e6ed9fbb7c7234dddc3"
+size_bytes = 87339
+page_count = 1
+title = "Gabarito definitivo - Agente de Polícia - Tipo I"
+provider = "cebraspe"
+contest = "PCDF 2013 - Agente"
+year = 2013
+role = "Agente de Polícia"
+organization = "Polícia Civil do Distrito Federal"
+variant = "Tipo I"
+
+[[documents]]
+id = "fcc-dpeba125-answer-key-notice"
+bank = "FCC"
+kind = "answer_key"
+expected_triage = "answer_key"
+filename = "fcc-dpeba125-edital-gabaritos.pdf"
+source_url = "https://www.concursosfcc.com.br/concursos/dpeba125/edital_dos_gabaritos_prova_objetiva.pdf"
+source_page_url = "https://www.concursosfcc.com.br/concursos/dpeba125/index.html"
+sha256 = "4ed3d645a799f9777f96e8d1acf0cfcbf517614886a39c13a08eb26e053a2332"
+size_bytes = 386435
+page_count = 3
+title = "Edital de divulgação dos gabaritos da prova objetiva"
+provider = "fcc"
+contest = "DPE Bahia 2025"
+year = 2026
+role = "Defensor Público"
+organization = "Defensoria Pública do Estado da Bahia"
+
+[[documents]]
+id = "fcc-dpeba125-discursive-result"
+bank = "FCC"
+kind = "other"
+expected_triage = "other"
+filename = "fcc-dpeba125-resultado-discursiva.pdf"
+source_url = "https://www.concursosfcc.com.br/concursos/dpeba125/edital_de_resultado_definitiva_prova_discursiva_e_convocacao_para_comissao_de_heteroidentificacao.pdf"
+source_page_url = "https://www.concursosfcc.com.br/concursos/dpeba125/index.html"
+sha256 = "b1e59582f8c7bb172192c6c2c188f1d9680cec0ba01c9b790f01bbcfb17105e0"
+size_bytes = 608470
+page_count = 9
+title = "Resultado definitivo da prova discursiva e convocação"
+provider = "fcc"
+contest = "DPE Bahia 2025"
+year = 2026
+role = "Defensor Público"
+organization = "Defensoria Pública do Estado da Bahia"
