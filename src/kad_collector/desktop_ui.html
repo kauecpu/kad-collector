@@ -157,6 +157,14 @@
               <button id="metric-card-importable" class="queue-card ready" type="button" aria-label="Abrir questões com dados compatíveis"><span>Dados compatíveis</span><strong id="metric-importable">0</strong><small>sem bloqueios de conteúdo</small></button>
             </section>
 
+            <section class="document-review-panel" aria-labelledby="document-review-title">
+              <header class="section-heading">
+                <div><p class="eyebrow">DOCUMENTOS</p><h2 id="document-review-title">Triagem dos PDFs</h2><p>Arquivos irrelevantes continuam salvos e podem ter o tipo corrigido.</p></div>
+                <strong id="document-review-count">0</strong>
+              </header>
+              <div id="document-review-list" class="document-review-list" aria-live="polite"></div>
+            </section>
+
             <details class="technical-panel diagnostic-panel">
               <summary>Diagnósticos do gabarito</summary>
               <section class="answer-metric-grid" aria-label="Estado dos gabaritos">
@@ -373,7 +381,7 @@
             <select id="import-difficulty"><option value="">Não informada</option><option>Fácil</option><option>Média</option><option>Difícil</option></select>
           </label>
           <label>Tipo do documento
-            <select id="import-document-type"><option value="auto">Detectar pelo nome</option><option value="exam">Prova</option><option value="answer_key">Gabarito</option></select>
+            <select id="import-document-type"><option value="auto">Detectar automaticamente</option><option value="exam">Prova</option><option value="answer_key">Gabarito</option><option value="other">Outro documento</option></select>
           </label>
           <label>Classificador
             <select id="import-classifier"><option value="local">Local, sem custo</option><option value="openai">OpenAI configurada</option></select>
@@ -382,6 +390,47 @@
         <footer class="modal-footer">
           <span id="import-hint">Nenhum arquivo selecionado.</span>
           <button id="import-submit" class="button primary" type="submit">Adicionar e processar PDFs</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <dialog id="document-dialog" class="modal document-modal">
+      <form id="document-form">
+        <header class="modal-header">
+          <div><p class="eyebrow">DETALHES DO DOCUMENTO</p><h2 id="document-title">Documento</h2></div>
+          <div class="review-header-actions">
+            <a id="document-pdf" class="button ghost" href="#" target="_blank" rel="noreferrer">Abrir PDF</a>
+            <button class="icon-button modal-close" type="button" aria-label="Fechar">×</button>
+          </div>
+        </header>
+        <section id="document-triage-detail" class="document-triage-detail"></section>
+        <p id="document-effect" class="modal-copy"></p>
+        <div class="form-grid three">
+          <label>Tipo do documento<select id="document-type"><option value="auto">Detectar automaticamente</option><option value="exam">Prova</option><option value="answer_key">Gabarito</option><option value="other">Outro documento</option></select></label>
+          <label>Título<input id="document-name"></label>
+          <label>Provider<input id="document-provider"></label>
+          <label>URL HTTPS da origem<input id="document-source-url" type="url"></label>
+          <label>URL canônica HTTPS<input id="document-canonical-url" type="url"></label>
+          <label>ID externo<input id="document-external-id"></label>
+          <label>Banca<input id="document-board"></label>
+          <label>Concurso<input id="document-concurso"></label>
+          <label>Ano<input id="document-year" type="number" min="1900" max="2100"></label>
+          <label>Cargo<input id="document-role"></label>
+          <label>Órgão<input id="document-organization"></label>
+          <label>Etapa<input id="document-stage"></label>
+          <label>Turno<input id="document-turn"></label>
+          <label>Variante<input id="document-variant"></label>
+          <label>Nível<select id="document-level"><option value="">—</option><option>Fundamental</option><option>Médio</option><option>Superior</option></select></label>
+          <label>Disciplina<input id="document-discipline"></label>
+          <label>Matéria<input id="document-subject"></label>
+          <label>Assunto<input id="document-topic"></label>
+          <label>Dificuldade<select id="document-difficulty"><option value="">—</option><option>Fácil</option><option>Média</option><option>Difícil</option></select></label>
+          <label>Classificador<select id="document-classifier"><option value="local">Local, sem custo</option><option value="openai">OpenAI configurada</option></select></label>
+        </div>
+        <details class="technical-panel"><summary>Histórico preservado</summary><div id="document-audit" class="document-audit"></div></details>
+        <footer class="modal-footer">
+          <span id="document-job-state"></span>
+          <button id="document-reprocess" class="button primary" type="submit">Corrigir e reprocessar</button>
         </footer>
       </form>
     </dialog>

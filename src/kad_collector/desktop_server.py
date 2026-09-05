@@ -34,6 +34,7 @@ from .desktop_models import (
     DesktopFilterSet,
     DesktopImportMetadata,
     DesktopOperationScope,
+    DocumentReprocessRequest,
     QuestionClassification,
 )
 from .desktop_ollama_classification import (
@@ -156,6 +157,7 @@ class DesktopApplication:
         )
         self.answer_suggestions = DesktopAnswerSuggestionManager(self.store)
         self._export_lock = threading.Lock()
+        self._document_reprocess_lock = threading.Lock()
         self.token = secrets.token_urlsafe(32)
 
     def shutdown(self) -> None:
@@ -194,6 +196,7 @@ class DesktopApplication:
             **query,
             "rawSummary": raw_summary,
             "jobs": self.store.list_jobs(),
+            "documents": self.store.document_review_items(),
             "collectionJobs": self.collection_manager.list_jobs(),
             "sources": self.collection_manager.catalog(),
             "collectionEngine": self.collection_manager.engine_summary(),
@@ -266,6 +269,51 @@ class DesktopApplication:
         job_ids = self.pipeline.reprocess(document_ids, classifier_provider)
         self.automation.mark_pending()
         return job_ids
+
+    def document_details(self, document_id: str) -> dict[str, Any]:
+        document = self.store.document(document_id)
+        return {
+            "id": document["id"],
+            "jobId": document["job_id"],
+            "filename": document["filename"],
+            "status": document["status"],
+            "needsOcr": document["needs_ocr"],
+            "metadata": document["metadata"],
+            "triage": document["triage"],
+            "warnings": document["warnings"],
+            "createdAt": document["created_at"],
+            "updatedAt": document["updated_at"],
+            "activeJobId": self.store.active_reprocessing_job(document_id),
+            "audit": self.store.document_audit_log(document_id),
+        }
+
+    def correct_and_reprocess_document(
+        self, document_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        try:
+            request = DocumentReprocessRequest.model_validate(payload)
+        except ValidationError:
+            raise ValueError("pedido de correção e reprocessamento inválido") from None
+        with self._document_reprocess_lock:
+            active_job_id = self.store.active_reprocessing_job(document_id)
+            if active_job_id is not None:
+                raise ValueError(
+                    f"o documento já possui a execução ativa {active_job_id[:8]}"
+                )
+            self.store.correct_document_for_reprocessing(
+                document_id, request.metadata, actor=LOCAL_DESKTOP_ACTOR
+            )
+            job_ids = self.reprocess_documents(
+                [document_id], request.classifier_provider
+            )
+        if len(job_ids) != 1:
+            raise RuntimeError("não foi possível criar a nova execução")
+        return {
+            "ok": True,
+            "jobId": job_ids[0],
+            "documentId": document_id,
+            "message": "Correção salva; uma nova execução retomável foi criada.",
+        }
 
     def reclassify_questions(self) -> dict[str, Any]:
         return self.processor.reclassify_existing_questions()
@@ -562,6 +610,13 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                 except ValueError as exc:
                     self._send_error(HTTPStatus.NOT_FOUND, str(exc))
                 return
+            document_match = re.fullmatch(r"/api/documents/([a-f0-9-]+)", path)
+            if document_match is not None:
+                try:
+                    self._send_json(application.document_details(document_match.group(1)))
+                except ValueError as exc:
+                    self._send_error(HTTPStatus.NOT_FOUND, str(exc))
+                return
             pdf_match = re.fullmatch(r"/api/documents/([a-f0-9-]+)/pdf", path)
             if pdf_match is not None:
                 try:
@@ -608,6 +663,17 @@ def _handler_for(application: DesktopApplication) -> type[BaseHTTPRequestHandler
                             "jobIds": job_ids,
                             "exactDuplicate": not job_ids,
                         },
+                        HTTPStatus.CREATED,
+                    )
+                    return
+                reprocess_match = re.fullmatch(
+                    r"/api/documents/([a-f0-9-]+)/reprocess", path
+                )
+                if reprocess_match is not None:
+                    self._send_json(
+                        application.correct_and_reprocess_document(
+                            reprocess_match.group(1), payload
+                        ),
                         HTTPStatus.CREATED,
                     )
                     return

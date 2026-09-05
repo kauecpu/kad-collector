@@ -35,6 +35,7 @@ from .document_matching import (
     normalize_text,
     structural_v_number,
 )
+from .document_triage import classify_document
 from .editorial_taxonomy import EditorialTaxonomy
 from .fgv_parser import BankParsingContext
 from .fgv_turn import extract_fgv_turn_evidence, normalize_fgv_turn
@@ -61,7 +62,7 @@ def _document_type(filename: str, metadata: DesktopImportMetadata) -> str:
         "respostas",
         "solucao",
     )
-    return "answer_key" if any(item in normalized for item in answer_markers) else "exam"
+    return "answer_key" if any(item in normalized for item in answer_markers) else "auto"
 
 
 def _variant_number(document: dict[str, Any]) -> int | None:
@@ -578,6 +579,12 @@ class DesktopProcessor:
                     )
                     return
                 document_id = cast(str, document["id"])
+                triage = cast(dict[str, Any] | None, document.get("triage"))
+                if document["status"] == "excluded" or (
+                    triage is not None
+                    and triage.get("decision") in {"other", "review"}
+                ):
+                    continue
                 try:
                     resolution = self.store.resolve_extracted_document(document_id)
                 except Exception as exc:
@@ -789,11 +796,32 @@ class DesktopProcessor:
         mostly_ocr = not pages or non_empty < max(1, (len(pages) + 1) // 2)
         if mostly_ocr:
             warnings.append("documento sem texto suficiente após OCR local; revisão necessária")
+        metadata = DesktopImportMetadata.model_validate(document["metadata"])
+        triage = classify_document(
+            filename=path.name,
+            title=metadata.document_title,
+            text="\n".join(str(page["text"]) for page in pages),
+            declared_type=metadata.document_type,
+        )
+        if triage.decision == "other":
+            metadata = metadata.model_copy(update={"document_type": "other"})
+            warnings.append(triage.reason)
+            status = "excluded"
+        elif triage.decision == "review":
+            warnings.append(triage.reason)
+            status = "exception"
+        else:
+            status = "exception" if mostly_ocr else "extracted"
         self.store.update_document(
             document_id,
-            status="exception" if mostly_ocr else "extracted",
             needs_ocr=1 if mostly_ocr else 0,
             warnings_json=json.dumps(list(dict.fromkeys(warnings)), ensure_ascii=False),
+        )
+        self.store.record_document_triage(
+            document_id,
+            triage.model_dump(mode="json"),
+            status=status,
+            metadata=metadata,
         )
 
     def _structure_job(self, job_id: str, event: threading.Event) -> None:
@@ -801,6 +829,11 @@ class DesktopProcessor:
         new_answer_key_versions: list[str] = []
         exam_documents: list[dict[str, Any]] = []
         for document in documents:
+            if document["status"] in {"excluded", "exception"}:
+                continue
+            triage = cast(dict[str, Any] | None, document.get("triage"))
+            if triage is not None and triage.get("decision") in {"other", "review"}:
+                continue
             if document.get("semantic_resolution") not in {"new_identity", "new_version"}:
                 continue
             document_id = cast(str, document["id"])

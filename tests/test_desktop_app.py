@@ -23,7 +23,7 @@ from reportlab.pdfgen import canvas
 
 from kad_collector.desktop_app import _smoke_test, build_parser, main
 from kad_collector.desktop_classifier import LocalRuleClassifier
-from kad_collector.desktop_export import export_filtered_questions
+from kad_collector.desktop_export import export_filtered_questions, preview_filtered_questions
 from kad_collector.desktop_limits import MAX_BATCH_PDFS
 from kad_collector.desktop_models import (
     ClassificationRequest,
@@ -156,6 +156,231 @@ def valid_question(number: int, statement: str | None = None) -> QuestionRecord:
 
 
 class DesktopPipelineTests(unittest.TestCase):
+    def test_manual_other_is_preserved_without_creating_questions(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "material.pdf"
+            write_text_pdf(pdf_path, [["Material administrativo preservado no acervo local."]])
+            store = DesktopStore(root / "collector.sqlite3")
+            job_id = store.create_job(
+                [pdf_path], metadata(document_type="other"), "local"
+            )
+
+            DesktopProcessor(store).run(job_id)
+
+            document = store.documents_for_job(job_id)[0]
+            self.assertEqual(document["status"], "excluded")
+            self.assertEqual(document["triage"]["decision"], "other")
+            self.assertEqual(document["triage"]["source"], "manual")
+            self.assertEqual(store.query(DesktopFilterSet())["total"], 0)
+            self.assertTrue(store.document_audit_log(document["id"]))
+
+    def test_automatic_triage_excludes_a_synthetic_edital(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "edital-de-abertura.pdf"
+            write_text_pdf(
+                pdf_path,
+                [[
+                    "EDITAL DE ABERTURA",
+                    "O orgao torna publico o cronograma das inscricoes.",
+                    "O prazo para recurso consta no comunicado oficial.",
+                ]],
+            )
+            store = DesktopStore(root / "collector.sqlite3")
+            job_id = store.create_job([pdf_path], metadata(document_type="auto"), "local")
+
+            DesktopProcessor(store).run(job_id)
+
+            document = store.documents_for_job(job_id)[0]
+            self.assertEqual(document["status"], "excluded")
+            self.assertEqual(document["metadata"]["document_type"], "other")
+            self.assertEqual(document["triage"]["decision"], "other")
+            self.assertEqual(store.query(DesktopFilterSet())["total"], 0)
+
+    def test_automatic_triage_sends_an_ambiguous_pdf_to_human_review(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "material-2026.pdf"
+            write_text_pdf(pdf_path, [["Material informativo sem estrutura conclusiva."]])
+            store = DesktopStore(root / "collector.sqlite3")
+            job_id = store.create_job([pdf_path], metadata(document_type="auto"), "local")
+
+            DesktopProcessor(store).run(job_id)
+
+            document = store.documents_for_job(job_id)[0]
+            self.assertEqual(document["status"], "exception")
+            self.assertEqual(document["triage"]["decision"], "review")
+            self.assertEqual(store.query(DesktopFilterSet())["total"], 0)
+
+    def test_exam_structure_wins_over_an_irrelevant_filename_marker(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "edital-e-prova.pdf"
+            write_text_pdf(
+                pdf_path,
+                [[
+                    "QUESTAO 1",
+                    "Assinale a alternativa correta sobre o tema apresentado.",
+                    "A) Primeira alternativa.",
+                    "B) Segunda alternativa.",
+                    "C) Terceira alternativa.",
+                ]],
+            )
+            store = DesktopStore(root / "collector.sqlite3")
+            job_id = store.create_job([pdf_path], metadata(document_type="auto"), "local")
+
+            DesktopProcessor(store).run(job_id)
+
+            document = store.documents_for_job(job_id)[0]
+            self.assertEqual(document["triage"]["decision"], "exam")
+            self.assertEqual(store.query(DesktopFilterSet())["total"], 1)
+
+    def test_correction_from_other_to_exam_creates_a_new_local_execution(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "corrigir-para-prova.pdf"
+            write_text_pdf(
+                pdf_path,
+                [[
+                    "QUESTAO 1",
+                    "Assinale a alternativa correta sobre o tema apresentado.",
+                    "A) Primeira alternativa.",
+                    "B) Segunda alternativa.",
+                    "C) Terceira alternativa.",
+                ]],
+            )
+            application = DesktopApplication(root / "data")
+            try:
+                original_job = application.store.create_job(
+                    [pdf_path], metadata(document_type="other"), "local"
+                )
+                application.processor.run(original_job)
+                original = application.store.documents_for_job(original_job)[0]
+
+                result = application.correct_and_reprocess_document(
+                    original["id"],
+                    {
+                        "metadata": metadata(document_type="exam").model_dump(mode="json"),
+                        "classifierProvider": "local",
+                    },
+                )
+                application.processor._futures[result["jobId"]].result(timeout=10)
+
+                replacement = application.store.documents_for_job(result["jobId"])[0]
+                self.assertNotEqual(replacement["id"], original["id"])
+                self.assertEqual(replacement["normalized_document"].entry_method, "reprocessing")
+                self.assertEqual(replacement["local_path"], original["local_path"])
+                self.assertEqual(replacement["sha256"], original["sha256"])
+                self.assertEqual(replacement["metadata"]["document_type"], "exam")
+                self.assertEqual(application.store.query(DesktopFilterSet())["total"], 1)
+                preserved = application.store.document(original["id"])
+                self.assertEqual(preserved["sha256"], original["sha256"])
+                audit = application.store.document_audit_log(original["id"])
+                self.assertEqual(audit[0]["action"], "metadata_corrected_for_reprocessing")
+            finally:
+                application.shutdown()
+
+    def test_correction_from_exam_to_other_invalidates_previous_questions(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "corrigir-para-outro.pdf"
+            write_text_pdf(
+                pdf_path,
+                [[
+                    "QUESTAO 1",
+                    "Assinale a alternativa correta sobre o tema apresentado.",
+                    "A) Primeira alternativa.",
+                    "B) Segunda alternativa.",
+                    "C) Terceira alternativa.",
+                ]],
+            )
+            application = DesktopApplication(root / "data")
+            try:
+                original_job = application.store.create_job(
+                    [pdf_path], metadata(document_type="exam"), "local"
+                )
+                application.processor.run(original_job)
+                original = application.store.documents_for_job(original_job)[0]
+                question_id = application.store.query(DesktopFilterSet())["questions"][0]["id"]
+
+                result = application.correct_and_reprocess_document(
+                    original["id"],
+                    {
+                        "metadata": metadata(document_type="other").model_dump(mode="json"),
+                        "classifierProvider": "local",
+                    },
+                )
+                application.processor._futures[result["jobId"]].result(timeout=10)
+
+                replacement = application.store.documents_for_job(result["jobId"])[0]
+                self.assertEqual(replacement["status"], "excluded")
+                self.assertEqual(application.store.question(question_id)["status"], "rejected")
+                self.assertEqual(application.store.classification_question_rows(), [])
+                self.assertTrue(
+                    any(
+                        event["action"] == "invalidated_by_document_correction"
+                        for event in application.store.audit_log(question_id)
+                    )
+                )
+                with self.assertRaisesRegex(ValueError, "fluxo editorial"):
+                    application.store.decide_question(
+                        question_id,
+                        "approved",
+                        actor="revisor",
+                        notes=None,
+                    )
+                with closing(application.store._connect()) as connection:
+                    connection.execute(
+                        "UPDATE questions SET status = 'approved' WHERE id = ?",
+                        (question_id,),
+                    )
+                    connection.commit()
+                preview = preview_filtered_questions(
+                    application.store, DesktopFilterSet()
+                )
+                self.assertEqual(preview.included_count, 0)
+                self.assertIn(
+                    "documento classificado como outro; exportação bloqueada",
+                    preview.exclusion_reasons,
+                )
+            finally:
+                application.shutdown()
+
+    def test_active_reprocessing_prevents_a_second_execution_for_the_same_pdf(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "execucao-ativa.pdf"
+            write_text_pdf(pdf_path, [["Documento local para reprocessamento."]])
+            application = DesktopApplication(root / "data")
+            try:
+                original_job = application.store.create_job(
+                    [pdf_path], metadata(document_type="other"), "local"
+                )
+                original = application.store.documents_for_job(original_job)[0]
+                contract = application.store.reprocessing_contract(original["id"])
+                active_job = application.store.create_interpretation_job(
+                    [contract], "local", force_reprocess=True
+                )
+                self.assertIsNotNone(active_job)
+                reopened_store = DesktopStore(application.store.path)
+                self.assertEqual(
+                    reopened_store.active_reprocessing_job(original["id"]), active_job
+                )
+
+                with self.assertRaisesRegex(ValueError, "execução ativa"):
+                    application.correct_and_reprocess_document(
+                        original["id"],
+                        {
+                            "metadata": metadata(document_type="exam").model_dump(
+                                mode="json"
+                            ),
+                            "classifierProvider": "local",
+                        },
+                    )
+            finally:
+                application.shutdown()
+
     def test_application_recovers_interrupted_processing_job_as_paused(self) -> None:
         with TemporaryDirectory() as directory:
             data_dir = Path(directory) / "data"
@@ -1801,6 +2026,10 @@ console.log(JSON.stringify(text(root).filter(Boolean)));
             "automation-progress-bar",
             "metric-answer-suggestion-summary",
             "answer-suggestion",
+            "document-review-list",
+            "document-dialog",
+            "document-type",
+            "document-reprocess",
         ):
             self.assertIn(f'id="{control_id}"', html)
         self.assertIn("/api/questions/batch-approve", javascript)
@@ -1810,6 +2039,11 @@ console.log(JSON.stringify(text(root).filter(Boolean)));
         self.assertIn("Arquivo já conhecido; nenhuma nova tarefa foi criada.", javascript)
         self.assertIn("Sugerir resposta com Qwen", javascript)
         self.assertIn("Retomar processamento", javascript)
+        self.assertIn("/api/documents/${item.id}/reprocess", javascript)
+        self.assertIn("renderDocuments();", javascript)
+        self.assertIn("state.currentDocument.activeJobId = result.jobId", javascript)
+        self.assertIn("Corrigir e reprocessar", html)
+        self.assertIn("Outro documento", html)
         self.assertIn(
             "const suggestions = state.bootstrap.answerSuggestionSummary || {};", javascript
         )
@@ -2143,6 +2377,72 @@ console.log(JSON.stringify(results));
                     if event["action"] == "identity_corrected"
                 )
                 self.assertEqual(corrected["actor"], "operador_local")
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
+    def test_document_reprocessing_route_enforces_local_security_and_closed_schema(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "rota-reprocessamento.pdf"
+            write_text_pdf(pdf_path, [["Documento preservado para a rota local."]])
+            application = DesktopApplication(root / "data")
+            job_id = application.store.create_job(
+                [pdf_path], metadata(document_type="other"), "local"
+            )
+            document = application.store.documents_for_job(job_id)[0]
+            server, thread, url = start_desktop_server(application)
+            try:
+                origin = url.rstrip("/")
+                valid_payload = {
+                    "metadata": metadata(document_type="other").model_dump(mode="json"),
+                    "classifierProvider": "local",
+                }
+
+                def post(
+                    payload: dict[str, object],
+                    *,
+                    token: bool = True,
+                    request_origin: str | None = origin,
+                ) -> tuple[int, dict[str, object]]:
+                    headers = {"Content-Type": "application/json"}
+                    if request_origin is not None:
+                        headers["Origin"] = request_origin
+                    if token:
+                        headers["X-KAD-Desktop-Token"] = application.token
+                    request = Request(
+                        f"{url}api/documents/{document['id']}/reprocess",
+                        data=json.dumps(payload).encode("utf-8"),
+                        method="POST",
+                        headers=headers,
+                    )
+                    try:
+                        with urlopen(request, timeout=3) as response:
+                            return response.status, json.loads(response.read())
+                    except HTTPError as exc:
+                        return exc.code, json.loads(exc.read())
+
+                status, body = post(valid_payload, token=False)
+                self.assertEqual(status, HTTPStatus.FORBIDDEN)
+                self.assertEqual(set(body), {"error"})
+
+                status, body = post(valid_payload, request_origin="https://evil.example")
+                self.assertEqual(status, HTTPStatus.FORBIDDEN)
+                self.assertEqual(set(body), {"error"})
+
+                status, body = post({**valid_payload, "unexpected": "secret"})
+                self.assertEqual(status, HTTPStatus.BAD_REQUEST)
+                self.assertEqual(set(body), {"error"})
+                self.assertNotIn("secret", str(body))
+                self.assertNotIn(application.token, str(body))
+
+                status, body = post(valid_payload)
+                self.assertEqual(status, HTTPStatus.CREATED)
+                self.assertEqual(body["documentId"], document["id"])
+                self.assertIsInstance(body["jobId"], str)
             finally:
                 server.shutdown()
                 server.server_close()
