@@ -90,7 +90,12 @@ jobs:
       - name: Smoke test built executable
         shell: pwsh
         run: |
-          & .\dist\KAD-Collector.exe --smoke-test --data-dir "$env:RUNNER_TEMP\kad-collector-smoke"
-          if ($LASTEXITCODE -ne 0) {
-            throw "KAD-Collector.exe smoke test failed with exit code $LASTEXITCODE"
+          $process = Start-Process `
+            -FilePath ".\dist\KAD-Collector.exe" `
+            -ArgumentList "--smoke-test", "--data-dir", "$env:RUNNER_TEMP\kad-collector-smoke" `
+            -WindowStyle Hidden `
+            -Wait `
+            -PassThru
+          if ($process.ExitCode -ne 0) {
+            throw "KAD-Collector.exe smoke test failed with exit code $($process.ExitCode)"
           }
