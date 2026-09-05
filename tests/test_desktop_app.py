@@ -68,6 +68,30 @@ def write_scanned_pdf(path: Path) -> None:
     image.save(path, "PDF", resolution=150)
 
 
+def write_mixed_pdf(path: Path) -> None:
+    image_path = path.with_suffix(".png")
+    image = Image.new("RGB", (900, 1200), "white")
+    draw = ImageDraw.Draw(image)
+    draw.text((60, 80), "ANEXO DIGITALIZADO", fill="black")
+    draw.text((60, 130), "Conteudo complementar sem camada textual", fill="black")
+    image.save(image_path)
+    document = canvas.Canvas(str(path))
+    y = 800
+    for line in (
+        "QUESTAO 1",
+        "Assinale a alternativa correta sobre a escala cartografica.",
+        "A) Primeira alternativa.",
+        "B) Segunda alternativa.",
+        "C) Terceira alternativa.",
+    ):
+        document.drawString(54, y, line)
+        y -= 22
+    document.showPage()
+    document.drawImage(str(image_path), 54, 80, width=480, height=640)
+    document.showPage()
+    document.save()
+
+
 def metadata(**changes: object) -> DesktopImportMetadata:
     values: dict[str, object] = {
         "provider": "banca-oficial",
@@ -616,6 +640,90 @@ Informações editoriais da banca.
             self.assertEqual(pages[0]["status"], "ocr_text")
             self.assertEqual(len(store.question_records(document["id"])), 1)
             self.assertTrue(any("OCR local" in item for item in document["warnings"]))
+
+    def test_mixed_pdf_preserves_text_page_and_recovers_scanned_page(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "prova-mista.pdf"
+            write_mixed_pdf(pdf_path)
+            store = DesktopStore(root / "collector.sqlite3")
+            job_id = store.create_job(
+                [pdf_path], metadata(document_type="exam"), "local"
+            )
+
+            class CountingOcr:
+                def __init__(self) -> None:
+                    self.calls = 0
+
+                def __call__(self, _image: object) -> SimpleNamespace:
+                    self.calls += 1
+                    return SimpleNamespace(
+                        txts=(
+                            "ANEXO DIGITALIZADO",
+                            "Conteudo complementar recuperado por OCR local.",
+                        ),
+                        scores=(0.98, 0.97),
+                    )
+
+            engine = CountingOcr()
+            processor = DesktopProcessor(store, ocr_engine=engine)
+            processor.run(job_id)
+            processor.shutdown()
+
+            document = store.documents_for_job(job_id)[0]
+            pages = store.pages(document["id"])
+            self.assertEqual(engine.calls, 1)
+            self.assertEqual([page["status"] for page in pages], ["text", "ocr_text"])
+            self.assertIn("QUESTAO 1", pages[0]["text"])
+            self.assertFalse(document["needs_ocr"])
+
+    def test_resume_does_not_repeat_completed_ocr_page(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            pdf_path = root / "retomada-ocr.pdf"
+            first = Image.new("RGB", (900, 1200), "white")
+            second = Image.new("RGB", (900, 1200), "white")
+            ImageDraw.Draw(first).rectangle((40, 40, 860, 1160), outline="black", width=3)
+            ImageDraw.Draw(second).rectangle((40, 40, 860, 1160), outline="black", width=3)
+            first.save(
+                pdf_path,
+                "PDF",
+                save_all=True,
+                append_images=[second],
+                resolution=150,
+            )
+            store = DesktopStore(root / "collector.sqlite3")
+            job_id = store.create_job(
+                [pdf_path], metadata(document_type="exam"), "local"
+            )
+            document = store.documents_for_job(job_id)[0]
+            store.save_page(
+                document["id"],
+                1,
+                "QUESTAO 1\nAssinale a alternativa correta.\nA) Uma.\nB) Duas.\nC) Tres.",
+                status="ocr_text",
+            )
+
+            class CountingOcr:
+                def __init__(self) -> None:
+                    self.calls = 0
+
+                def __call__(self, _image: object) -> SimpleNamespace:
+                    self.calls += 1
+                    return SimpleNamespace(
+                        txts=("PAGINA 2", "Texto complementar recuperado na retomada."),
+                        scores=(0.98, 0.97),
+                    )
+
+            engine = CountingOcr()
+            processor = DesktopProcessor(store, ocr_engine=engine)
+            processor.run(job_id, threading.Event())
+            processor.shutdown()
+
+            pages = store.pages(document["id"])
+            self.assertEqual(engine.calls, 1)
+            self.assertEqual(len(pages), 2)
+            self.assertIn("QUESTAO 1", pages[0]["text"])
 
     def test_text_pdf_with_blank_trailing_page_does_not_require_document_ocr(self) -> None:
         with TemporaryDirectory() as directory:
