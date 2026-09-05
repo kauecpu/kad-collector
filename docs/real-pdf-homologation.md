@@ -20,7 +20,8 @@ download. Se o site impedir a preparação, preserve o erro; não contorne o blo
 O contrato RFB22 mantém a política já registrada em seu próprio manifesto.
 
 As fontes adicionais são o arquivo público PCDF 2013 do Cebraspe (uma prova e seu gabarito)
-e a página DPE Bahia 2025 da FCC (gabarito e resultado). O manifesto registra banca, concurso,
+e a página `dpeba125` da FCC, cujos editais são de 2026 (gabarito e resultado).
+O manifesto registra banca, concurso,
 ano, cargo, título e referência oficial. Não há descoberta recursiva: são quatro arquivos,
 uma requisição de PDF por arquivo ausente, sem retentativas automáticas. Arquivos já válidos
 no cache não geram download. A validação técnica não constitui autorização para republicação.
