@@ -6,6 +6,37 @@ from kad_collector.document_triage import TRIAGE_ALGORITHM_VERSION, classify_doc
 
 
 class DocumentTriageTests(unittest.TestCase):
+    def test_fgv_standalone_numbers_and_parenthesized_alternatives(self) -> None:
+        result = classify_document(
+            filename="caderno-01.pdf", title=None, declared_type="auto",
+            text=(
+                "1\nQual opção descreve a situação fictícia?\n(A) Primeira\n(B) Segunda\n"
+                "2\nQual procedimento atende ao caso?\n(A) Primeiro\n(B) Segundo\n"
+            ),
+        )
+        self.assertEqual(result.decision, "exam")
+
+    def test_numbered_prose_is_not_an_answer_key(self) -> None:
+        result = classify_document(
+            filename="caderno.pdf", title=None, declared_type="auto",
+            text="1. A organização define regras.\n2. A unidade recebe pedidos.\n3. A lei regula.",
+        )
+        self.assertEqual(result.decision, "review")
+
+    def test_bare_numbered_list_without_alternatives_stays_in_review(self) -> None:
+        result = classify_document(
+            filename="lista.pdf", title=None, declared_type="auto",
+            text="1\nPrimeiro assunto\n2\nSegundo assunto\n3\nTerceiro assunto",
+        )
+        self.assertEqual(result.decision, "review")
+
+    def test_simple_answer_rows_remain_a_key(self) -> None:
+        result = classify_document(
+            filename="001.pdf", title=None, declared_type="auto",
+            text="1 - A\n2 - C\n3 - D\n",
+        )
+        self.assertEqual(result.decision, "answer_key")
+
     def test_manual_other_is_preserved_as_an_explicit_decision(self) -> None:
         result = classify_document(
             filename="arquivo.pdf", title=None, text="", declared_type="other"

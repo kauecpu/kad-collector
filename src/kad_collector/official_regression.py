@@ -18,6 +18,7 @@ from pypdf import PdfReader
 from .answer_key import AnswerEntry, parse_answer_key
 from .desktop_parser import parse_question_document
 from .fgv_parser import BankParsingContext
+from .fgv_turn import normalize_fgv_turn
 from .models import QuestionRecord
 
 DocumentKind = Literal["exam", "answer_key"]
@@ -476,7 +477,7 @@ def _execute_rfb22_exam(
     identity = parsing.identity
     if identity.role not in exam.roles:
         raise OfficialRegressionError(f"role mismatch: {exam.id} ({identity.role})")
-    if identity.shift != exam.shift:
+    if identity.shift != normalize_fgv_turn(exam.shift or ""):
         raise OfficialRegressionError(f"shift mismatch: {exam.id} ({identity.shift})")
     if identity.booklet_type != exam.booklet_type:
         raise OfficialRegressionError(

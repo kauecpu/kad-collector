@@ -8,7 +8,7 @@ from pydantic import Field
 
 from .models import StrictModel
 
-TRIAGE_ALGORITHM_VERSION = "desktop-document-triage-v1"
+TRIAGE_ALGORITHM_VERSION = "desktop-document-triage-v2"
 
 
 class DocumentTriage(StrictModel):
@@ -69,13 +69,22 @@ def classify_document(
         for marker in ("gabarito", "answer key", "padrao de resposta", "respostas oficiais")
     )
     answer_rows = len(
-        re.findall(r"(?m)^\s*(?:questao\s*)?\d{1,3}\s*[-.:)]\s*[a-e]\b", content)
+        re.findall(
+            r"(?m)^[ \t]*(?:questao[ \t]*)?\d{1,3}[ \t]*[-.:)]"
+            r"[ \t]*[a-e][ \t]*\r?$",
+            content,
+        )
     )
     question_headers = len(
         re.findall(r"(?m)^\s*(?:questao|questao n|q)\s*[ºo.]?\s*\d{1,3}\b", content)
     )
-    alternative_rows = len(re.findall(r"(?m)^\s*[a-e]\s*[).:-]\s+\S+", content))
-    exam_structure = question_headers >= 1 and alternative_rows >= 2
+    alternative_rows = len(
+        re.findall(r"(?m)^[ \t]*(?:\([a-e]\)|[a-e][ \t]*[).:-])[ \t]+\S+", content)
+    )
+    standalone_headers = len(re.findall(r"(?m)^[ \t]*\d{1,3}[ \t]*\r?$", content))
+    exam_structure = (question_headers >= 1 and alternative_rows >= 2) or (
+        standalone_headers >= 2 and alternative_rows >= 4
+    )
 
     if answer_name or answer_rows >= 3:
         evidence = []
@@ -96,7 +105,7 @@ def classify_document(
             decision="exam",
             confidence=0.96,
             evidence=[
-                f"{question_headers} enunciado(s) numerado(s)",
+                f"{question_headers + standalone_headers} enunciado(s) numerado(s)",
                 f"{alternative_rows} alternativa(s) estruturada(s)",
             ],
             reason=(

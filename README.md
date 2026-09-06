@@ -1025,6 +1025,19 @@ Prepare e execute o pacote com:
 O inventario, as contagens oficiais, as fontes e a politica de manutencao estao descritos em
 `tests/regression/rfb22/README.md`.
 
+### Homologação com documentos reais
+
+O corpus de homologação reúne documentos oficiais da FGV, do Cebraspe e da FCC sem enviar os
+PDFs ao Git. Prepare os arquivos e execute o mesmo pipeline usado pelo aplicativo desktop:
+
+```powershell
+.venv\Scripts\python.exe scripts\prepare_real_homologation.py
+.venv\Scripts\python.exe scripts\run_real_homologation.py
+```
+
+O manifesto, as métricas e o procedimento de atualização estão descritos em
+[`docs/real-pdf-homologation.md`](docs/real-pdf-homologation.md).
+
 ### Revalidação obrigatória de gabaritos
 
 O banco local pode simular e aplicar a migração de vínculos antigos para
