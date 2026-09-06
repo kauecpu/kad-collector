@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .fgv_turn import normalize_fgv_turn
 from .json_utils import read_json, write_json
-from .models import ExtractionManifest, QuestionBatch, ReviewState
+from .models import ExtractionManifest, QuestionBatch, QuestionRecord, ReviewState
 from .validation import validate_questions
 
 
@@ -16,6 +16,32 @@ class AnswerEntry:
     number: int
     answer: str | None
     annulled: bool = False
+
+
+def questions_use_true_false(questions: list[QuestionRecord]) -> bool:
+    if not questions:
+        return False
+    return all(
+        [(item.letter, item.text.casefold()) for item in question.alternatives]
+        == [("A", "certo"), ("B", "errado")]
+        for question in questions
+    )
+
+
+def adapt_true_false_entries(
+    entries: dict[int, AnswerEntry],
+) -> dict[int, AnswerEntry]:
+    """Translate Cebraspe's C/E alphabet to the internal A/B representation."""
+    translated: dict[int, AnswerEntry] = {}
+    for number, entry in entries.items():
+        if entry.annulled:
+            translated[number] = entry
+            continue
+        answer = {"C": "A", "E": "B"}.get(entry.answer or "")
+        if answer is None:
+            return {}
+        translated[number] = AnswerEntry(number=number, answer=answer)
+    return translated
 
 
 _LINE_PATTERN = re.compile(
@@ -42,6 +68,83 @@ _GRID_HEADING = re.compile(
 )
 _GRID_NUMBER = re.compile(r"\d{1,3}(?:ING|ESP)?", re.IGNORECASE)
 _GRID_ANSWER = re.compile(r"[A-HX*]", re.IGNORECASE)
+_CEBRASPE_GRID_LINE = re.compile(r"[CEX* ]{10,}", re.IGNORECASE)
+
+# FCC publishes several booklet types in a single annex. A recognized annex
+# must never fall back to the unscoped parser, which overwrites equal numbers.
+FCC_BLOCK_HEADING = re.compile(
+    r"(?im)^[ \t]*(?P<code>[A-Z]\d{2,})[ \t]*[-–—][ \t]*"
+    r"(?P<role>[^\r\n]+?)[ \t]*[-–—][ \t]*Tipo[ \t]+(?P<variant>\d+)"
+    r"[ \t]+Folha[ \t]*:[ \t]*\d+[ \t]*\r?$"
+)
+
+
+def _fcc_role(value: str) -> str:
+    return " ".join(sorted(_normalized_words(re.sub(r"\([aA]\)", "", value))))
+
+
+def _parse_fcc_blocks(
+    text: str, *, variant: str | None, role: str | None,
+) -> dict[int, AnswerEntry] | None:
+    headings = list(FCC_BLOCK_HEADING.finditer(text))
+    if not headings:
+        return None
+    if len(headings) > 128 or any(
+        len(heading["variant"]) > 5 or not 1 <= int(heading["variant"]) <= 10_000
+        for heading in headings
+    ):
+        return {}
+    requested = _variant_number(variant)
+    if variant and requested is None:
+        return {}
+    blocks: dict[tuple[str, str, int], dict[int, AnswerEntry]] = {}
+    for index, heading in enumerate(headings):
+        key = (heading["code"].upper(), _fcc_role(heading["role"]), int(heading["variant"]))
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(text)
+        entries = blocks.setdefault(key, {})
+        for line in text[heading.end():end].splitlines():
+            # Reject prose and footer numbers: only complete rows of pairs count.
+            matches = list(_INLINE_PATTERN.finditer(line))
+            if not matches or _INLINE_PATTERN.sub("", line).strip():
+                continue
+            for match in matches:
+                number = int(match["number"])
+                raw = match["answer"].upper()
+                annulled = raw in {"X", "*"} or raw.startswith("ANULAD")
+                entry = AnswerEntry(number, None if annulled else raw, annulled)
+                if number in entries and entries[number] != entry:
+                    return {}
+                entries[number] = entry
+    candidates = [entries for (_, label, kind), entries in blocks.items()
+                  if (requested is None or kind == requested)
+                  and (not role or label == _fcc_role(role))]
+    return candidates[0] if len(candidates) == 1 else {}
+
+
+def _parse_cebraspe_grid(text: str) -> dict[int, AnswerEntry] | None:
+    normalized = text.casefold()
+    if (
+        "gabaritos oficiais" not in normalized
+        or "item anulado" not in normalized
+        or "cargo:" not in normalized
+    ):
+        return None
+    answer_rows = [
+        re.sub(r"\s+", "", line).upper()
+        for line in text.splitlines()
+        if _CEBRASPE_GRID_LINE.fullmatch(line.strip())
+    ]
+    answers = "".join(answer_rows)
+    if not 20 <= len(answers) <= 400 or any(answer not in "CEX*" for answer in answers):
+        return {}
+    return {
+        number: AnswerEntry(
+            number=number,
+            answer=None if answer in "X*" else answer,
+            annulled=answer in "X*",
+        )
+        for number, answer in enumerate(answers, start=1)
+    }
 
 
 @dataclass
@@ -204,6 +307,12 @@ def parse_answer_key(
     role: str | None = None,
     turn: str | None = None,
 ) -> dict[int, AnswerEntry]:
+    fcc_entries = _parse_fcc_blocks(text, variant=variant, role=role)
+    if fcc_entries is not None:
+        return fcc_entries
+    cebraspe_entries = _parse_cebraspe_grid(text)
+    if cebraspe_entries is not None:
+        return cebraspe_entries
     grid_entries = _select_answer_grid(
         _parse_answer_grids(text), variant=variant, role=role, turn=turn
     )

@@ -595,14 +595,24 @@ def _field_from_sources(
                     for locator, role in answer_grid_roles
                 )
             )
-    if name == "stage" and not strong_groups and document.source_id == "pci_concursos":
+    if name == "stage" and not strong_groups:
         combined_text = "\n".join(text for _, text in pages)
-        if re.search(
+        cebraspe_objective = (
+            re.search(r"(?i)caso\s+julgue\s+o\s+item\s+certo", combined_text)
+            and re.search(r"(?i)caso\s+julgue\s+o\s+item\s+errado", combined_text)
+        ) or re.search(r"(?i)gabaritos\s+oficiais", combined_text)
+        pci_objective = document.source_id == "pci_concursos" and re.search(
             r"(?i)\bquest(?:ões|oes)\s+objetivas\b|\bgabarito\s+[1-9]\d*\b",
             combined_text,
-        ):
+        )
+        if cebraspe_objective or pci_objective:
             strong_groups.append(
-                (SemanticEvidence.pdf_text("pci:stage", "prova objetiva"),)
+                (
+                    SemanticEvidence.pdf_text(
+                        "cebraspe:stage" if cebraspe_objective else "pci:stage",
+                        "prova objetiva",
+                    ),
+                )
             )
     if name == "variants" and not strong_groups:
         if document.source_id == "pci_concursos":
@@ -628,6 +638,32 @@ def _field_from_sources(
                         for number in pci_variants
                     )
                 )
+        if not strong_groups and document.declared_type == "answer_key":
+            from .answer_key import FCC_BLOCK_HEADING
+
+            # These blocks declare document-wide coverage, not conflicting
+            # identities. Preserve page locators while collecting all types.
+            fcc_headers = [
+                (page_number, match)
+                for page_number, text in pages
+                for match in FCC_BLOCK_HEADING.finditer(text)
+            ]
+            if len(fcc_headers) > MAX_SEMANTIC_VALUES or any(
+                len(match["variant"]) > 5
+                or not 1 <= int(match["variant"]) <= MAX_SEMANTIC_NUMERIC_VALUE
+                for _, match in fcc_headers
+            ):
+                return SemanticField.unknown(f"{name} excede limite semântico seguro")
+            fcc_variants = tuple(
+                SemanticEvidence.pdf_text(
+                    f"page:{page_number}:fcc-block", f"tipo {int(match['variant'])}"
+                )
+                for page_number, match in fcc_headers
+            )
+            if len(fcc_variants) > MAX_SEMANTIC_VALUES:
+                return SemanticField.unknown(f"{name} excede limite semântico seguro")
+            if fcc_variants:
+                strong_groups.append(fcc_variants)
         if not strong_groups:
             for page_number, text in pages:
                 matches = re.findall(

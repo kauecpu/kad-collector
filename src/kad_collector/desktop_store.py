@@ -20,7 +20,7 @@ from .answer_association import (
     remove_answer_key_association,
     replace_answer_key_association,
 )
-from .answer_key import parse_answer_key
+from .answer_key import adapt_true_false_entries, parse_answer_key, questions_use_true_false
 from .answer_key_diagnostics import AnswerKeyEvidence, diagnose_answer_key
 from .canonical_classification import (
     initialize_canonical_classification_schema,
@@ -2417,6 +2417,17 @@ class DesktopStore:
                 variant=variant,
                 turn=turn,
             )
+            question_rows = connection.execute(
+                "SELECT payload_json FROM questions WHERE document_id = ? "
+                "ORDER BY question_number",
+                (document_id,),
+            ).fetchall()
+            questions = [
+                QuestionRecord.model_validate(json.loads(cast(str, row["payload_json"])))
+                for row in question_rows
+            ]
+            if questions_use_true_false(questions):
+                entries = adapt_true_false_entries(entries)
             updates = {
                 number: (
                     "annulled" if entry.annulled else "matched",
