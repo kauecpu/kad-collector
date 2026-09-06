@@ -30,6 +30,10 @@ class CollectorSettings(StrictModel):
     resume_downloads: bool = True
     disk_quota_bytes: int | None = Field(default=5_000_000_000, ge=1_000_000)
     cloudflare_bypass_enabled: bool = True
+    ai_discovery_enabled: bool = False
+    ai_discovery_model: str = Field(default="qwen3:8b", min_length=1, max_length=100)
+    ai_discovery_max_steps_per_source: int = Field(default=3, ge=1, le=10)
+    ai_discovery_max_links_per_page: int = Field(default=120, ge=10, le=300)
 
 
 DiscoveryStrategy = Literal["html", "sitemap", "feed", "json", "browser"]

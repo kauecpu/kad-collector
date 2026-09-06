@@ -16,6 +16,11 @@ conditional_cache = true
 development_cache = false
 resume_downloads = true
 disk_quota_bytes = 5000000000
+# Fallback local opcional. As regras deterministicas continuam sendo executadas primeiro.
+ai_discovery_enabled = false
+ai_discovery_model = "qwen3:8b"
+ai_discovery_max_steps_per_source = 3
+ai_discovery_max_links_per_page = 120
 
 # Este bloco e apenas um molde desativado. Substitua-o por uma fonte oficial
 # cuja coleta tenha sido verificada e autorizada antes de definir enabled=true.

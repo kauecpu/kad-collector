@@ -16,6 +16,13 @@ conditional_cache = true
 development_cache = false
 resume_downloads = true
 disk_quota_bytes = 5000000000
+# O Qwen local entra somente quando as regras da pagina nao encontram nenhum
+# documento. Ele escolhe indices de links permitidos; o motor continua
+# validando dominio, exclusoes, robots.txt e o PDF baixado.
+ai_discovery_enabled = true
+ai_discovery_model = "qwen3:8b"
+ai_discovery_max_steps_per_source = 3
+ai_discovery_max_links_per_page = 120
 
 # Decisao administrativa explicita do responsavel em 2026-08-18: as fontes
 # oficiais ignoram robots.txt e Crawl-delay. A politica efetiva permanece
