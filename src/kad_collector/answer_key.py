@@ -62,6 +62,11 @@ def _parse_fcc_blocks(
     headings = list(FCC_BLOCK_HEADING.finditer(text))
     if not headings:
         return None
+    if len(headings) > 128 or any(
+        len(heading["variant"]) > 5 or not 1 <= int(heading["variant"]) <= 10_000
+        for heading in headings
+    ):
+        return {}
     requested = _variant_number(variant)
     if variant and requested is None:
         return {}

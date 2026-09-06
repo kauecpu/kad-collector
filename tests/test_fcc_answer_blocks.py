@@ -61,3 +61,15 @@ def test_exam_variants_on_different_pages_still_conflict():
     )
     profile = extract_semantic_profile(document, [(1, "Tipo 1"), (2, "Tipo 2")])
     assert profile.identity.variants.status == "conflict"
+
+
+def test_fcc_rejects_unbounded_variant_numbers():
+    text = "A01 - ANALISTA - Tipo " + "9" * 5000 + " Folha: 1\n001 - A\n"
+    assert parse_answer_key(text) == {}
+    document = NormalizedDocument(
+        local_path=str(Path("synthetic.pdf").resolve()), sha256="a" * 64,
+        size_bytes=100, declared_type="answer_key", title="Gabarito",
+        entry_method="direct_import", metadata={"board": "FCC"},
+    )
+    profile = extract_semantic_profile(document, [(1, text)])
+    assert profile.coverage.variants.status == "unknown"

@@ -633,12 +633,22 @@ def _field_from_sources(
 
             # These blocks declare document-wide coverage, not conflicting
             # identities. Preserve page locators while collecting all types.
+            fcc_headers = [
+                (page_number, match)
+                for page_number, text in pages
+                for match in FCC_BLOCK_HEADING.finditer(text)
+            ]
+            if len(fcc_headers) > MAX_SEMANTIC_VALUES or any(
+                len(match["variant"]) > 5
+                or not 1 <= int(match["variant"]) <= MAX_SEMANTIC_NUMERIC_VALUE
+                for _, match in fcc_headers
+            ):
+                return SemanticField.unknown(f"{name} excede limite semântico seguro")
             fcc_variants = tuple(
                 SemanticEvidence.pdf_text(
                     f"page:{page_number}:fcc-block", f"tipo {int(match['variant'])}"
                 )
-                for page_number, text in pages
-                for match in FCC_BLOCK_HEADING.finditer(text)
+                for page_number, match in fcc_headers
             )
             if len(fcc_variants) > MAX_SEMANTIC_VALUES:
                 return SemanticField.unknown(f"{name} excede limite semântico seguro")
