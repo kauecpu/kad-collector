@@ -628,6 +628,22 @@ def _field_from_sources(
                         for number in pci_variants
                     )
                 )
+        if not strong_groups and document.declared_type == "answer_key":
+            from .answer_key import FCC_BLOCK_HEADING
+
+            # These blocks declare document-wide coverage, not conflicting
+            # identities. Preserve page locators while collecting all types.
+            fcc_variants = tuple(
+                SemanticEvidence.pdf_text(
+                    f"page:{page_number}:fcc-block", f"tipo {int(match['variant'])}"
+                )
+                for page_number, text in pages
+                for match in FCC_BLOCK_HEADING.finditer(text)
+            )
+            if len(fcc_variants) > MAX_SEMANTIC_VALUES:
+                return SemanticField.unknown(f"{name} excede limite semântico seguro")
+            if fcc_variants:
+                strong_groups.append(fcc_variants)
         if not strong_groups:
             for page_number, text in pages:
                 matches = re.findall(

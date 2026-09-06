@@ -43,6 +43,51 @@ _GRID_HEADING = re.compile(
 _GRID_NUMBER = re.compile(r"\d{1,3}(?:ING|ESP)?", re.IGNORECASE)
 _GRID_ANSWER = re.compile(r"[A-HX*]", re.IGNORECASE)
 
+# FCC publishes several booklet types in a single annex. A recognized annex
+# must never fall back to the unscoped parser, which overwrites equal numbers.
+FCC_BLOCK_HEADING = re.compile(
+    r"(?im)^[ \t]*(?P<code>[A-Z]\d{2,})[ \t]*[-–—][ \t]*"
+    r"(?P<role>[^\r\n]+?)[ \t]*[-–—][ \t]*Tipo[ \t]+(?P<variant>\d+)"
+    r"[ \t]+Folha[ \t]*:[ \t]*\d+[ \t]*\r?$"
+)
+
+
+def _fcc_role(value: str) -> str:
+    return " ".join(sorted(_normalized_words(re.sub(r"\([aA]\)", "", value))))
+
+
+def _parse_fcc_blocks(
+    text: str, *, variant: str | None, role: str | None,
+) -> dict[int, AnswerEntry] | None:
+    headings = list(FCC_BLOCK_HEADING.finditer(text))
+    if not headings:
+        return None
+    requested = _variant_number(variant)
+    if variant and requested is None:
+        return {}
+    blocks: dict[tuple[str, str, int], dict[int, AnswerEntry]] = {}
+    for index, heading in enumerate(headings):
+        key = (heading["code"].upper(), _fcc_role(heading["role"]), int(heading["variant"]))
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(text)
+        entries = blocks.setdefault(key, {})
+        for line in text[heading.end():end].splitlines():
+            # Reject prose and footer numbers: only complete rows of pairs count.
+            matches = list(_INLINE_PATTERN.finditer(line))
+            if not matches or _INLINE_PATTERN.sub("", line).strip():
+                continue
+            for match in matches:
+                number = int(match["number"])
+                raw = match["answer"].upper()
+                annulled = raw in {"X", "*"} or raw.startswith("ANULAD")
+                entry = AnswerEntry(number, None if annulled else raw, annulled)
+                if number in entries and entries[number] != entry:
+                    return {}
+                entries[number] = entry
+    candidates = [entries for (_, label, kind), entries in blocks.items()
+                  if (requested is None or kind == requested)
+                  and (not role or label == _fcc_role(role))]
+    return candidates[0] if len(candidates) == 1 else {}
+
 
 @dataclass
 class _AnswerGrid:
@@ -204,6 +249,9 @@ def parse_answer_key(
     role: str | None = None,
     turn: str | None = None,
 ) -> dict[int, AnswerEntry]:
+    fcc_entries = _parse_fcc_blocks(text, variant=variant, role=role)
+    if fcc_entries is not None:
+        return fcc_entries
     grid_entries = _select_answer_grid(
         _parse_answer_grids(text), variant=variant, role=role, turn=turn
     )
