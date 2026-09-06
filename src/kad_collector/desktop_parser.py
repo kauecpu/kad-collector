@@ -42,6 +42,10 @@ _SECTION_RESET = re.compile(
     r"redaç(?:ão|ao)|estudo\s+de\s+caso)\s*$",
     re.IGNORECASE,
 )
+_CEBRASPE_ITEM_LINE = re.compile(r"^\s*(?P<number>\d{1,3})\s+(?P<text>\S.*)$")
+_CEBRASPE_TRUE_FALSE_NOTE = (
+    "item CERTO/ERRADO; A representa Certo e B representa Errado no formato interno"
+)
 @dataclass
 class _QuestionBuilder:
     number: int
@@ -359,9 +363,106 @@ def parse_fgv_objective_pages(
     )
 
 
+def _supports_cebraspe_true_false(
+    pages: list[dict[str, Any]], context: BankParsingContext
+) -> bool:
+    owner = " ".join(filter(None, (context.board, context.provider))).casefold()
+    if "cebraspe" not in owner and "cespe" not in owner:
+        return False
+    opening = " ".join(
+        str(page["text"]) for page in pages[:3]
+    ).casefold()
+    return "caso julgue o item certo" in opening and "caso julgue o item errado" in opening
+
+
+def _parse_cebraspe_true_false_pages(
+    pages: list[dict[str, Any]], context: BankParsingContext
+) -> BankParsingResult:
+    questions: list[QuestionRecord] = []
+    warnings: list[str] = []
+    expected = 1
+    for page in pages:
+        page_number = int(page["page_number"])
+        lines = [" ".join(line.split()) for line in str(page["text"]).splitlines()]
+        starts: list[tuple[int, int, str]] = []
+        for index, line in enumerate(lines):
+            match = _CEBRASPE_ITEM_LINE.match(line)
+            if match is None:
+                continue
+            number = int(match.group("number"))
+            if number != expected:
+                continue
+            starts.append((index, number, match.group("text").strip()))
+            expected += 1
+        for position, (line_index, number, inline) in enumerate(starts):
+            end = starts[position + 1][0] if position + 1 < len(starts) else len(lines)
+            statement_lines = [inline]
+            for continuation in lines[line_index + 1 : end]:
+                if not continuation:
+                    continue
+                statement_lines.append(continuation)
+                if re.search(r"[.!?][\"'\u00bb)]?$", continuation):
+                    break
+            statement = _clean(statement_lines)
+            if len(statement) < 5:
+                warnings.append(f"questao {number}: enunciado incompleto")
+                continue
+            questions.append(
+                QuestionRecord(
+                    number=number,
+                    statement=statement,
+                    alternatives=[
+                        Alternative(letter="A", text="Certo"),
+                        Alternative(letter="B", text="Errado"),
+                    ],
+                    matter=None,
+                    subject=None,
+                    board=context.board or "Cebraspe",
+                    organization=None,
+                    role=context.role,
+                    year=None,
+                    source_pages=[page_number],
+                    answer_status="missing",
+                    correct_answer=None,
+                    review_notes=[_CEBRASPE_TRUE_FALSE_NOTE],
+                )
+            )
+    if questions and [question.number for question in questions] != list(
+        range(1, questions[-1].number + 1)
+    ):
+        warnings.append("sequencia CERTO/ERRADO incompleta; conferir o PDF original")
+    return BankParsingResult(
+        adapter_id="cebraspe-true-false",
+        adapter_version="1.0",
+        profile_id=None,
+        identity=FgvDocumentIdentity(
+            role=context.role,
+            shift=context.shift,
+            booklet_type=context.booklet_type,
+            evidence=("instrução oficial de marcação CERTO/ERRADO",),
+        ),
+        sections=(),
+        objective_questions=tuple(questions),
+        discursive_numbers=(),
+        expected_intervals=(),
+        exceptions=(),
+        warnings=tuple(warnings),
+        status="completed",
+        summary={
+            "objectiveFound": len(questions),
+            "discursiveFound": 0,
+            "exceptions": 0,
+            "numberingClosed": bool(questions) and not warnings,
+            "status": "cebraspe_true_false",
+        },
+    )
+
+
 def parse_question_document(
     pages: list[dict[str, Any]], context: BankParsingContext
 ) -> BankParsingResult:
+    if _supports_cebraspe_true_false(pages, context):
+        return _parse_cebraspe_true_false_pages(pages, context)
     adapter = FgvSectionAdapter()
     if adapter.supports(context):
         return adapter.parse(

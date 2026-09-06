@@ -595,14 +595,24 @@ def _field_from_sources(
                     for locator, role in answer_grid_roles
                 )
             )
-    if name == "stage" and not strong_groups and document.source_id == "pci_concursos":
+    if name == "stage" and not strong_groups:
         combined_text = "\n".join(text for _, text in pages)
-        if re.search(
+        cebraspe_objective = (
+            re.search(r"(?i)caso\s+julgue\s+o\s+item\s+certo", combined_text)
+            and re.search(r"(?i)caso\s+julgue\s+o\s+item\s+errado", combined_text)
+        ) or re.search(r"(?i)gabaritos\s+oficiais", combined_text)
+        pci_objective = document.source_id == "pci_concursos" and re.search(
             r"(?i)\bquest(?:ões|oes)\s+objetivas\b|\bgabarito\s+[1-9]\d*\b",
             combined_text,
-        ):
+        )
+        if cebraspe_objective or pci_objective:
             strong_groups.append(
-                (SemanticEvidence.pdf_text("pci:stage", "prova objetiva"),)
+                (
+                    SemanticEvidence.pdf_text(
+                        "cebraspe:stage" if cebraspe_objective else "pci:stage",
+                        "prova objetiva",
+                    ),
+                )
             )
     if name == "variants" and not strong_groups:
         if document.source_id == "pci_concursos":

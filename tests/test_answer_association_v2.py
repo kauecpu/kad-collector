@@ -501,6 +501,41 @@ class AnswerAssociationRevalidationTests(unittest.TestCase):
         self.assertEqual(decision.selected_version_id, key["document_version_id"])
         self.assertEqual(context.candidates[0].question_interval, QuestionInterval(first=1, last=2))
 
+    def test_runtime_maps_cebraspe_certo_errado_before_validation(self) -> None:
+        exam, _question_ids = self.add_exam("true-false")
+        for number in (1, 2):
+            self.store.save_question(
+                str(exam["id"]),
+                QuestionRecord(
+                    number=number,
+                    statement=f"Item CERTO ou ERRADO {number}.",
+                    alternatives=[
+                        Alternative(letter="A", text="Certo"),
+                        Alternative(letter="B", text="Errado"),
+                    ],
+                    answer_status="missing",
+                    matter=None,
+                    subject=None,
+                    board="FGV",
+                    concurso="Concurso teste",
+                    organization="Orgao teste",
+                    year=2026,
+                    role="Analista",
+                    source_pages=[1],
+                ),
+                QuestionClassification(),
+            )
+        key = self.add_key("true-false", answers=("C", "E"))
+
+        with closing(self.store._connect()) as connection:
+            context, decision = decide_runtime_association(
+                connection, str(exam["document_version_id"])
+            )
+
+        self.assertEqual(decision.selected_version_id, key["document_version_id"])
+        updates = context.answer_updates[str(key["document_version_id"])]
+        self.assertEqual(updates, {1: ("matched", "A"), 2: ("matched", "B")})
+
     def test_runtime_selects_types_one_through_four(self) -> None:
         key = self.add_fgv_multi_grid_key(
             "types", role="Auditor", variants=(1, 2, 3, 4),

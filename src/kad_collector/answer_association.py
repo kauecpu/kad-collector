@@ -8,10 +8,11 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Literal, cast
 
-from .answer_key import parse_answer_key
+from .answer_key import adapt_true_false_entries, parse_answer_key, questions_use_true_false
 from .canonical_identity import canonicalize_profile_for_version
 from .document_contract import NormalizedDocument
 from .fgv_turn import is_fgv_source
+from .models import QuestionRecord
 from .question_equivalence import (
     sync_canonical_editorial_from_question,
     sync_question_occurrence,
@@ -159,11 +160,18 @@ def build_runtime_context(
         connection, exam_version_id, exam_profile
     )
     question_rows = connection.execute(
-        "SELECT q.question_number FROM questions q JOIN documents d ON d.id = q.document_id "
+        "SELECT q.question_number, q.payload_json FROM questions q "
+        "JOIN documents d ON d.id = q.document_id "
         "WHERE d.document_version_id = ? ORDER BY q.question_number",
         (exam_version_id,),
     ).fetchall()
     exam_interval = _closed_interval([int(item["question_number"]) for item in question_rows])
+    true_false = questions_use_true_false(
+        [
+            QuestionRecord.model_validate(json.loads(cast(str, item["payload_json"])))
+            for item in question_rows
+        ]
+    )
     role = _display_semantic_value(
         connection,
         exam_profile.identity.roles,
@@ -195,6 +203,8 @@ def build_runtime_context(
         ).fetchall()
         text = "\n".join(cast(str, text_row["text"]) for text_row in text_rows)
         entries = parse_answer_key(text, role=role, variant=variant, turn=turn)
+        if true_false:
+            entries = adapt_true_false_entries(entries)
         updates = {
             number: (
                 "annulled" if entry.annulled else "matched",

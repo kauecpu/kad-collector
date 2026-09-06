@@ -15,7 +15,7 @@ from typing import Any, cast
 from pypdf import PdfReader
 from pypdf.errors import DependencyError, PdfReadError
 
-from .answer_key import parse_answer_key
+from .answer_key import adapt_true_false_entries, parse_answer_key, questions_use_true_false
 from .desktop_classifier import LocalRuleClassifier, build_classifier
 from .desktop_limits import MAX_BATCH_PAGES, MAX_PDF_BYTES, MAX_PDF_PAGES
 from .desktop_models import (
@@ -1026,6 +1026,14 @@ class DesktopProcessor:
                 cast(str, exam.get("exam_text", "")), fallback=metadata.turn
             ),
         )
+        questions = [
+            question
+            for question, _classification in self.store.question_records(
+                cast(str, exam["id"])
+            )
+        ]
+        if questions_use_true_false(questions):
+            entries = adapt_true_false_entries(entries)
         updates = {
             number: (
                 "annulled" if entry.annulled else "matched",

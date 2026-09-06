@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .fgv_turn import normalize_fgv_turn
 from .json_utils import read_json, write_json
-from .models import ExtractionManifest, QuestionBatch, ReviewState
+from .models import ExtractionManifest, QuestionBatch, QuestionRecord, ReviewState
 from .validation import validate_questions
 
 
@@ -16,6 +16,32 @@ class AnswerEntry:
     number: int
     answer: str | None
     annulled: bool = False
+
+
+def questions_use_true_false(questions: list[QuestionRecord]) -> bool:
+    if not questions:
+        return False
+    return all(
+        [(item.letter, item.text.casefold()) for item in question.alternatives]
+        == [("A", "certo"), ("B", "errado")]
+        for question in questions
+    )
+
+
+def adapt_true_false_entries(
+    entries: dict[int, AnswerEntry],
+) -> dict[int, AnswerEntry]:
+    """Translate Cebraspe's C/E alphabet to the internal A/B representation."""
+    translated: dict[int, AnswerEntry] = {}
+    for number, entry in entries.items():
+        if entry.annulled:
+            translated[number] = entry
+            continue
+        answer = {"C": "A", "E": "B"}.get(entry.answer or "")
+        if answer is None:
+            return {}
+        translated[number] = AnswerEntry(number=number, answer=answer)
+    return translated
 
 
 _LINE_PATTERN = re.compile(
@@ -42,6 +68,7 @@ _GRID_HEADING = re.compile(
 )
 _GRID_NUMBER = re.compile(r"\d{1,3}(?:ING|ESP)?", re.IGNORECASE)
 _GRID_ANSWER = re.compile(r"[A-HX*]", re.IGNORECASE)
+_CEBRASPE_GRID_LINE = re.compile(r"[CEX* ]{10,}", re.IGNORECASE)
 
 # FCC publishes several booklet types in a single annex. A recognized annex
 # must never fall back to the unscoped parser, which overwrites equal numbers.
@@ -92,6 +119,32 @@ def _parse_fcc_blocks(
                   if (requested is None or kind == requested)
                   and (not role or label == _fcc_role(role))]
     return candidates[0] if len(candidates) == 1 else {}
+
+
+def _parse_cebraspe_grid(text: str) -> dict[int, AnswerEntry] | None:
+    normalized = text.casefold()
+    if (
+        "gabaritos oficiais" not in normalized
+        or "item anulado" not in normalized
+        or "cargo:" not in normalized
+    ):
+        return None
+    answer_rows = [
+        re.sub(r"\s+", "", line).upper()
+        for line in text.splitlines()
+        if _CEBRASPE_GRID_LINE.fullmatch(line.strip())
+    ]
+    answers = "".join(answer_rows)
+    if not 20 <= len(answers) <= 400 or any(answer not in "CEX*" for answer in answers):
+        return {}
+    return {
+        number: AnswerEntry(
+            number=number,
+            answer=None if answer in "X*" else answer,
+            annulled=answer in "X*",
+        )
+        for number, answer in enumerate(answers, start=1)
+    }
 
 
 @dataclass
@@ -257,6 +310,9 @@ def parse_answer_key(
     fcc_entries = _parse_fcc_blocks(text, variant=variant, role=role)
     if fcc_entries is not None:
         return fcc_entries
+    cebraspe_entries = _parse_cebraspe_grid(text)
+    if cebraspe_entries is not None:
+        return cebraspe_entries
     grid_entries = _select_answer_grid(
         _parse_answer_grids(text), variant=variant, role=role, turn=turn
     )

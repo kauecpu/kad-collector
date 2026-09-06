@@ -85,6 +85,12 @@ def classify_document(
     exam_structure = (question_headers >= 1 and alternative_rows >= 2) or (
         standalone_headers >= 2 and alternative_rows >= 4
     )
+    true_false_items = len(re.findall(r"(?m)^\s*\d{1,3}\s+\S+", content))
+    true_false_structure = (
+        "caso julgue o item certo" in content
+        and "caso julgue o item errado" in content
+        and true_false_items >= 3
+    )
 
     if answer_name or answer_rows >= 3:
         evidence = []
@@ -100,14 +106,21 @@ def classify_document(
             source="local_rules",
         )
 
-    if exam_structure:
+    if exam_structure or true_false_structure:
+        if true_false_structure:
+            evidence = [
+                "instrução de marcação CERTO/ERRADO reconhecida",
+                f"{true_false_items} item(ns) numerado(s)",
+            ]
+        else:
+            evidence = [
+                f"{question_headers + standalone_headers} enunciado(s) numerado(s)",
+                f"{alternative_rows} alternativa(s) estruturada(s)",
+            ]
         return DocumentTriage(
             decision="exam",
             confidence=0.96,
-            evidence=[
-                f"{question_headers + standalone_headers} enunciado(s) numerado(s)",
-                f"{alternative_rows} alternativa(s) estruturada(s)",
-            ],
+            evidence=evidence,
             reason=(
                 "O texto contém estrutura de questão e alternativas; "
                 "o documento não foi descartado."
