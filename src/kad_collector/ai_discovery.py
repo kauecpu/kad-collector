@@ -19,6 +19,10 @@ _FILE_PATH_HINT = re.compile(
     r"(?i)(?:\.pdf(?:$|[?#])|/(?:download|downloads|arquivo|arquivos|file|files|"
     r"documento|documentos|anexo|anexos|media)(?:/|$))"
 )
+_DISCOVERY_HINT = re.compile(
+    r"(?i)(?:provas?|gabaritos?|cadernos?|quest(?:ao|oes|ão|ões)|respostas?|"
+    r"acervo|vestibular|concurso|exame|20\d{2})"
+)
 
 
 class AIDiscoveryError(RuntimeError):
@@ -123,15 +127,25 @@ class OllamaDiscoveryPlanner:
         links: list[DiscoveredLink],
         visited_urls: set[str],
     ) -> AIDiscoveryDecision:
-        candidates = [
+        normalized_visited = {url.split("#", 1)[0] for url in visited_urls}
+        eligible = [
             item
             for item in safe_discovered_links(links, source)
+            if item.url.split("#", 1)[0] not in normalized_visited
             if not source.exclude_patterns
             or not any(
                 re.search(pattern, f"{item.title}\n{item.url}")
                 for pattern in source.exclude_patterns
             )
-        ][: self.max_links]
+        ]
+        unique: dict[str, DiscoveredLink] = {}
+        for item in eligible:
+            unique.setdefault(item.url, item)
+        candidates = sorted(
+            unique.values(),
+            key=lambda item: _candidate_priority(item, source),
+            reverse=True,
+        )[: self.max_links]
         if not candidates:
             return AIDiscoveryDecision([], [], 0)
         candidate_text = "\n".join(
@@ -175,7 +189,7 @@ class OllamaDiscoveryPlanner:
             "options": {
                 "temperature": 0,
                 "num_ctx": 4096,
-                "num_predict": 256,
+                "num_predict": 512,
                 "seed": 0,
             },
         }
@@ -208,6 +222,8 @@ class OllamaDiscoveryPlanner:
                 navigation_from_documents.append(choice.index)
         seen_navigation: set[int] = set()
         for index in [*parsed.navigation, *navigation_from_documents]:
+            if len(navigation_urls) >= 10:
+                break
             if (
                 index > len(candidates)
                 or index in seen_navigation
@@ -239,6 +255,15 @@ def document_choice_is_allowed(item: DiscoveredLink, source: SourceDefinition) -
         re.search(pattern, candidate) for pattern in source.exclude_patterns
     ):
         return False
+    parsed = urlsplit(item.url)
+    document_evidence = f"{item.title}\n{parsed.path.rsplit('/', 1)[-1]}\n{parsed.query}"
+    expected_patterns = (
+        source.exam_patterns
+        if item.declared_type == "exam"
+        else source.answer_key_patterns
+    )
+    if not any(re.search(pattern, document_evidence) for pattern in expected_patterns):
+        return False
     return bool(safe_discovered_links([item], source))
 
 
@@ -252,3 +277,40 @@ def _looks_like_download(url: str) -> bool:
             if part
         )
     )
+
+
+def _candidate_priority(item: DiscoveredLink, source: SourceDefinition) -> int:
+    """Put likely document and archive links before navigation chrome."""
+
+    candidate = f"{item.title}\n{item.url}"
+    values = (item.url, candidate)
+    score = 0
+    if _looks_like_download(item.url):
+        score += 100
+    if any(
+        re.search(pattern, value)
+        for pattern in source.include_patterns
+        for value in values
+    ):
+        score += 80
+    if any(
+        re.search(pattern, value)
+        for pattern in source.pagination_patterns
+        for value in values
+    ):
+        score += 70
+    if any(
+        re.search(pattern, value)
+        for pattern in source.collection_url_patterns
+        for value in values
+    ):
+        score += 65
+    if any(
+        re.search(pattern, value)
+        for pattern in source.exam_patterns + source.answer_key_patterns
+        for value in values
+    ):
+        score += 50
+    if _DISCOVERY_HINT.search(candidate):
+        score += 20
+    return score

@@ -142,10 +142,12 @@ class _LinkParser(HTMLParser):
         self.allow_data_url = allow_data_url
         self.links: list[tuple[str, str]] = []
         self._href: str | None = None
+        self._link_tag: str | None = None
         self._text: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag.lower() != "a" or self._href is not None:
+        normalized_tag = tag.lower()
+        if self._href is not None:
             return
         attributes = {name.lower(): value for name, value in attrs}
         style = (attributes.get("style") or "").replace(" ", "").casefold()
@@ -155,7 +157,7 @@ class _LinkParser(HTMLParser):
             or "display:none" in style
             or "visibility:hidden" in style
         )
-        href = attributes.get("href")
+        href = attributes.get("href") if normalized_tag == "a" else None
         # Algumas fontes publicas mantem a URL navegavel em um atributo
         # data-url enquanto deixam href como javascript:void(0) ate uma
         # interacao de interface.  Trate apenas esse placeholder como
@@ -167,10 +169,13 @@ class _LinkParser(HTMLParser):
         }
         if self.allow_data_url and placeholder and attributes.get("data-url"):
             href = attributes["data-url"]
+        if normalized_tag != "a" and not (self.allow_data_url and href):
+            return
         if hidden:
             return
         if href:
             self._href = href
+            self._link_tag = normalized_tag
             self._text = []
 
     def handle_data(self, data: str) -> None:
@@ -178,10 +183,11 @@ class _LinkParser(HTMLParser):
             self._text.append(data)
 
     def handle_endtag(self, tag: str) -> None:
-        if tag.lower() == "a" and self._href is not None:
+        if tag.lower() == self._link_tag and self._href is not None:
             text = " ".join("".join(self._text).split())
             self.links.append((self._href, text))
             self._href = None
+            self._link_tag = None
             self._text = []
 
 
@@ -487,7 +493,12 @@ def _is_html_page(result: HttpResult | EngineHttpResult) -> bool:
 
 
 def classify_document(url: str, title: str, source: SourceDefinition) -> DocumentType:
-    candidate = f"{title}\n{url}"
+    parsed = urlsplit(url)
+    # Directory names such as ``/provas_e_gabaritos/`` describe the archive,
+    # not the individual file.  Including the full path made every INEP proof
+    # look like an answer key.  Keep the visible title, filename and query,
+    # which are the evidence that belongs to the document itself.
+    candidate = f"{title}\n{Path(parsed.path).name}\n{parsed.query}"
     if any(re.search(pattern, candidate) for pattern in source.answer_key_patterns):
         return "answer_key"
     if any(re.search(pattern, candidate) for pattern in source.exam_patterns):
@@ -500,15 +511,17 @@ def select_document_links(
 ) -> list[tuple[str, str, DocumentType]]:
     selected: list[tuple[str, str, DocumentType]] = []
     seen: set[str] = set()
-    for url, title in extract_links(
-        html, page_url, allow_data_url=source.id == "pci_concursos"
-    ):
+    for url, title in extract_links(html, page_url, allow_data_url=True):
         candidate = f"{title}\n{url}"
         if source.exclude_patterns and any(
             re.search(pattern, candidate) for pattern in source.exclude_patterns
         ):
             continue
-        if not any(re.search(pattern, candidate) for pattern in source.include_patterns):
+        if not any(
+            re.search(pattern, value)
+            for pattern in source.include_patterns
+            for value in (url, candidate)
+        ):
             continue
         try:
             validate_public_url(url, source.allowed_hosts, resolve_dns=False)
@@ -531,7 +544,7 @@ def select_collection_links(html: str, page_url: str, source: SourceDefinition) 
         return []
     selected: list[str] = []
     seen: set[str] = set()
-    for url, title in extract_links(html, page_url):
+    for url, title in extract_links(html, page_url, allow_data_url=True):
         if url in seen or urlsplit(url).path.casefold().endswith(".pdf"):
             continue
         candidate = f"{title}\n{url}"
@@ -571,7 +584,7 @@ def _limit_document_links(
 def select_pagination_links(html: str, page_url: str, source: SourceDefinition) -> list[str]:
     selected: list[str] = []
     seen: set[str] = set()
-    for url, title in extract_links(html, page_url):
+    for url, title in extract_links(html, page_url, allow_data_url=True):
         candidate = f"{title}\n{url}"
         if not any(re.search(pattern, candidate) for pattern in source.pagination_patterns):
             continue
@@ -867,7 +880,11 @@ def _matches_source_link(
         re.search(pattern, candidate) for pattern in source.exclude_patterns
     ):
         return None
-    if not any(re.search(pattern, candidate) for pattern in source.include_patterns):
+    if not any(
+        re.search(pattern, value)
+        for pattern in source.include_patterns
+        for value in (item.url, candidate)
+    ):
         return None
     try:
         validate_public_url(item.url, source.allowed_hosts, resolve_dns=False)
@@ -1367,7 +1384,7 @@ def collect_documents(
                                     for url, title in extract_links(
                                         html,
                                         page.url,
-                                        allow_data_url=source.id == "pci_concursos",
+                                        allow_data_url=True,
                                     )
                                 ]
                                 decision = source_ai_planner.plan(
@@ -1614,12 +1631,12 @@ def collect_documents(
             )
             selected_links = _limit_document_links(source_links, remaining)
             if source.access_mode == "reference_only":
-                for url, _title, _document_type in selected_links:
+                for url, title, _document_type in selected_links:
                     references.append(
                         DiscoveryRecord(
                             source_id=source.id,
                             source_name=source.name,
-                            title=Path(urlsplit(url).path).name or "referencia",
+                            title=title or Path(urlsplit(url).path).name or "referencia",
                             url=url,
                             discovered_at=datetime.now(UTC),
                             authorization_basis=source.authorization_basis,

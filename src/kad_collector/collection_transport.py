@@ -4,6 +4,7 @@ import hashlib
 import os
 import random
 import re
+import ssl
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -201,7 +202,12 @@ class CollectionHttpClient:
         self.client = httpx.Client(
             follow_redirects=False,
             http2=True,
-            verify=True,
+            # ``verify=True`` makes httpx use Certifi.  On Windows that can
+            # reject an otherwise valid public chain that is present in the
+            # operating-system trust store.  Python's default context keeps
+            # certificate and hostname verification enabled while honoring
+            # the platform trust roots.
+            verify=ssl.create_default_context(),
             timeout=httpx.Timeout(timeout, connect=connect_timeout),
             limits=httpx.Limits(
                 max_connections=max(4, max_concurrency * 2),

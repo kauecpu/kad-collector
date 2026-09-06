@@ -12,6 +12,7 @@ from kad_collector.collection_state import CollectionStateStore
 from kad_collector.collector import (
     RobotsPolicy,
     _checkpoint_key,
+    _matches_source_link,
     _should_expand_collection_pages,
     classify_document,
     collect_documents,
@@ -24,7 +25,7 @@ from kad_collector.collector import (
     select_pagination_links,
 )
 from kad_collector.config import ConfigError, config_for_urls, load_config
-from kad_collector.discovery import _looks_blocked, detect_access_challenge
+from kad_collector.discovery import DiscoveredLink, _looks_blocked, detect_access_challenge
 from kad_collector.filters import document_might_match_filters
 from kad_collector.models import (
     AppConfig,
@@ -131,6 +132,47 @@ class LinkParsingTests(unittest.TestCase):
         self.assertEqual(
             extract_links(html, "https://provas.example.gov.br/lista"),
             [("javascript:void(0);", "Compartilhar prova")],
+        )
+
+    def test_extracts_public_data_url_from_lazy_container(self) -> None:
+        html = '<div class="tab" data-url="/provas/2025"><span>2025</span></div>'
+
+        self.assertEqual(
+            extract_links(
+                html,
+                "https://provas.example.gov.br/lista",
+                allow_data_url=True,
+            ),
+            [("https://provas.example.gov.br/provas/2025", "2025")],
+        )
+
+    def test_include_pattern_anchored_to_url_is_supported(self) -> None:
+        source = source_definition(
+            access_mode="reference_only",
+            allowed_hosts=["provas.example.gov.br", "drive.google.com"],
+            include_patterns=[r"(?i)^https://drive\.google\.com/file/"],
+        )
+        html = '<a href="https://drive.google.com/file/d/abc/view">PROVA</a>'
+
+        links = select_document_links(
+            html,
+            "https://provas.example.gov.br/lista",
+            source,
+        )
+
+        self.assertEqual(
+            links,
+            [("https://drive.google.com/file/d/abc/view", "PROVA", "exam")],
+        )
+        self.assertEqual(
+            _matches_source_link(
+                DiscoveredLink(
+                    url="https://drive.google.com/file/d/abc/view",
+                    title="PROVA",
+                ),
+                source,
+            ),
+            ("https://drive.google.com/file/d/abc/view", "PROVA", "exam"),
         )
 
     def test_selects_only_allowed_non_excluded_documents(self) -> None:
@@ -516,6 +558,15 @@ class LinkParsingTests(unittest.TestCase):
         )
         self.assertEqual(kind, "answer_key")
 
+    def test_archive_directory_does_not_turn_an_exam_into_an_answer_key(self) -> None:
+        source = source_definition()
+        kind = classify_document(
+            "https://provas.example.gov.br/provas_e_gabaritos/2025_PV_caderno1.pdf",
+            "Prova 1",
+            source,
+        )
+        self.assertEqual(kind, "exam")
+
     def test_document_prefilter_rejects_known_metadata_mismatch(self) -> None:
         filters = CollectionFilters(years=[2022], boards=["FGV"])
         self.assertFalse(
@@ -585,7 +636,7 @@ class LinkParsingTests(unittest.TestCase):
 
         self.assertEqual(manifest.documents, [])
         self.assertEqual([item.url for item in manifest.references], [question_url])
-        self.assertEqual(manifest.references[0].title, "123")
+        self.assertEqual(manifest.references[0].title, "Questao 123")
         self.assertNotIn(question_url, FixtureClient.requested)
 
     def test_direct_pdf_is_collected_as_exam_and_duplicate_content_is_removed(self) -> None:

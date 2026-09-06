@@ -4,6 +4,7 @@ import hashlib
 import json
 import random
 import sqlite3
+import ssl
 import tempfile
 import threading
 import unittest
@@ -89,6 +90,28 @@ class CollectionEngineTests(unittest.TestCase):
         client.client.close()
         client.client = httpx.Client(transport=handler, follow_redirects=False)
         return client
+
+    def test_http_client_uses_verified_platform_ssl_context(self) -> None:
+        with patch("kad_collector.collection_transport.httpx.Client") as client_factory:
+            CollectionHttpClient(
+                user_agent="KADCollector/Test",
+                timeout=2,
+                connect_timeout=1,
+                interval_seconds=0,
+                max_concurrency=1,
+                max_retries=0,
+                retry_max_delay_seconds=0.01,
+                state_store=self.state,
+                run_id="ssl-test",
+                source_id="source-test",
+                conditional_cache=False,
+                disk_quota_bytes=None,
+            )
+
+        context = client_factory.call_args.kwargs["verify"]
+        self.assertIsInstance(context, ssl.SSLContext)
+        self.assertTrue(context.check_hostname)
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
 
     def test_scrapling_session_is_reused_and_preserves_response_contract(self) -> None:
         payloads = [self.fixture("ok.html"), b"<html><body>segunda</body></html>"]

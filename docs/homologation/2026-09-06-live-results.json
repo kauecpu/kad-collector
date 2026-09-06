@@ -1,0 +1,913 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-09-06T23:27:14.878228+00:00",
+  "commit": "16635f4-dirty",
+  "matrix": "tests\\homologation\\live-sources.v1.toml",
+  "ollama_offline": false,
+  "sources": [
+    {
+      "id": "fuvest_vestibular",
+      "scenario": "PDF direto; prova e gabarito separados",
+      "start_url": "https://www.fuvest.br/acervo-vestibular-2026/",
+      "expected": [
+        {
+          "kind": "exam",
+          "pattern": "(?i)fuvest2026-fase1-prova-V1\\.pdf"
+        },
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)fuvest2026-fase1-gabarito\\.pdf"
+        }
+      ],
+      "actual": [
+        {
+          "kind": "answer_key",
+          "title": "Gabaritos de Provas da 1ª fase",
+          "url": "https://www.fuvest.br/wp-content/uploads/fuvest2026-fase1-gabarito.pdf",
+          "sha256": "a9e1084a125fa35bcefb875610328c0a8cb9b1a298880f2f0c75b928bd860e8e",
+          "mode": "deterministic"
+        },
+        {
+          "kind": "exam",
+          "title": "Prova 2026 V1",
+          "url": "https://www.fuvest.br/wp-content/uploads/fuvest2026-fase1-prova-V1.pdf",
+          "sha256": "93b417ad6ea7e81a3b6adc46337920fd71c213306849846723f13583074f9025",
+          "mode": "deterministic"
+        }
+      ],
+      "accepted": [
+        {
+          "kind": "answer_key",
+          "title": "Gabaritos de Provas da 1ª fase",
+          "url": "https://www.fuvest.br/wp-content/uploads/fuvest2026-fase1-gabarito.pdf",
+          "sha256": "a9e1084a125fa35bcefb875610328c0a8cb9b1a298880f2f0c75b928bd860e8e",
+          "mode": "deterministic"
+        },
+        {
+          "kind": "exam",
+          "title": "Prova 2026 V1",
+          "url": "https://www.fuvest.br/wp-content/uploads/fuvest2026-fase1-prova-V1.pdf",
+          "sha256": "93b417ad6ea7e81a3b6adc46337920fd71c213306849846723f13583074f9025",
+          "mode": "deterministic"
+        }
+      ],
+      "rejected": [],
+      "prohibited_accepted": [],
+      "false_positives": [],
+      "false_negatives": [],
+      "precision": 1.0,
+      "coverage": 1.0,
+      "pairing_required": true,
+      "pairing_success": true,
+      "paths": [
+        "deterministic"
+      ],
+      "pages_visited": [
+        "https://www.fuvest.br/acervo-vestibular-2026/"
+      ],
+      "qwen_calls": [],
+      "duration_seconds": 5.554,
+      "ocr_attempted": 1,
+      "ocr_succeeded": 1,
+      "documents_still_needing_ocr": 0,
+      "failures": [],
+      "warnings": [
+        "fuvest_vestibular: robots.txt ignorado por politica administrativa explicita",
+        "fuvest_vestibular: Crawl-delay ignorado por politica administrativa explicita"
+      ],
+      "manifest": "data\\live-final-v3-20260906\\fuvest_vestibular\\manifests\\download-20260906T232533Z-bee77d7c.json",
+      "extraction_manifest": "data\\live-final-v3-20260906\\fuvest_vestibular\\manifests\\download-20260906T232533Z-bee77d7c-extracted.json"
+    },
+    {
+      "id": "coperve_ufsc_2026",
+      "scenario": "Página oficial com prova e gabarito",
+      "start_url": "https://vestibularunificado2026.ufsc.br/provas-e-gabaritos-definitivos/",
+      "expected": [
+        {
+          "kind": "exam",
+          "pattern": "(?i)p1_amarela\\.pdf"
+        },
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)novo_gabarito_p1_amarela\\.pdf"
+        }
+      ],
+      "actual": [
+        {
+          "kind": "answer_key",
+          "title": "Gabarito",
+          "url": "https://vestibularunificado2026.ufsc.br/files/2025/12/novo_gabarito_p1_amarela.pdf",
+          "sha256": "81ea40e1aac6ffb27e0cdebb2f8a8d96f1c5e5075993958ef7d3626e9be82fba",
+          "mode": "deterministic"
+        },
+        {
+          "kind": "exam",
+          "title": "Prova",
+          "url": "https://vestibularunificado2026.ufsc.br/files/2014/12/p1_amarela.pdf",
+          "sha256": "386e482c93ed499eb1f5419714e5143873fdb5aaf825e705164c279f5a9b19c0",
+          "mode": "deterministic"
+        }
+      ],
+      "accepted": [
+        {
+          "kind": "answer_key",
+          "title": "Gabarito",
+          "url": "https://vestibularunificado2026.ufsc.br/files/2025/12/novo_gabarito_p1_amarela.pdf",
+          "sha256": "81ea40e1aac6ffb27e0cdebb2f8a8d96f1c5e5075993958ef7d3626e9be82fba",
+          "mode": "deterministic"
+        },
+        {
+          "kind": "exam",
+          "title": "Prova",
+          "url": "https://vestibularunificado2026.ufsc.br/files/2014/12/p1_amarela.pdf",
+          "sha256": "386e482c93ed499eb1f5419714e5143873fdb5aaf825e705164c279f5a9b19c0",
+          "mode": "deterministic"
+        }
+      ],
+      "rejected": [
+        {
+          "title": "Edital do Proc. Sel. por Histórico Escolar",
+          "url": "http://vestibularunificado2026.paginas.ufsc.br/files/2026/01/Histórico-Escolar-2026-1.pdf",
+          "reason": "exclude_pattern: (?i)(edital|comunicado|resultado|lista)"
+        },
+        {
+          "title": "Comunicado Oficial – Alterações de Gabarito",
+          "url": "https://vestibularunificado2026.ufsc.br/files/2025/12/Comunicado-Oficial-Vest-2026.pdf",
+          "reason": "exclude_pattern: (?i)(edital|comunicado|resultado|lista)"
+        }
+      ],
+      "prohibited_accepted": [],
+      "false_positives": [],
+      "false_negatives": [],
+      "precision": 1.0,
+      "coverage": 1.0,
+      "pairing_required": true,
+      "pairing_success": true,
+      "paths": [
+        "deterministic"
+      ],
+      "pages_visited": [
+        "https://vestibularunificado2026.ufsc.br/provas-e-gabaritos-definitivos/"
+      ],
+      "qwen_calls": [],
+      "duration_seconds": 1.615,
+      "ocr_attempted": 0,
+      "ocr_succeeded": 0,
+      "documents_still_needing_ocr": 0,
+      "failures": [],
+      "warnings": [
+        "coperve_ufsc_2026: robots.txt ignorado por politica administrativa explicita",
+        "coperve_ufsc_2026: Crawl-delay ignorado por politica administrativa explicita"
+      ],
+      "manifest": "data\\live-final-v3-20260906\\coperve_ufsc_2026\\manifests\\download-20260906T232540Z-10856f7e.json",
+      "extraction_manifest": "data\\live-final-v3-20260906\\coperve_ufsc_2026\\manifests\\download-20260906T232540Z-10856f7e-extracted.json"
+    },
+    {
+      "id": "fgv_conhecimento",
+      "scenario": "Página com muitos editais e resultados",
+      "start_url": "https://conhecimento.fgv.br/concursos/rfb22",
+      "expected": [
+        {
+          "kind": "exam",
+          "pattern": "(?i)auditor-fiscal-frb100-tipo-1\\.pdf"
+        },
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)analista-tributario-e-auditor-fiscal\\.pdf"
+        }
+      ],
+      "actual": [
+        {
+          "kind": "exam",
+          "title": "Auditor-Fiscal da Receita Federal do Brasil",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/auditor-fiscal-frb100-tipo-1.pdf",
+          "sha256": "6271191f43c7d650f99c1df1607165dd2fadb403c53cb987f324d2b5bb6a637b",
+          "mode": "deterministic"
+        },
+        {
+          "kind": "answer_key",
+          "title": "Gabarito Oficial Definitivo da Prova Objetiva - Curso de Formação Profissional (Sub Judice)",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/analista-tributario-e-auditor-fiscal.pdf",
+          "sha256": "2eb2f10fb746ab05faac890d4fdca498301bec0b1c85ea3785fa67436341a13d",
+          "mode": "deterministic"
+        }
+      ],
+      "accepted": [
+        {
+          "kind": "exam",
+          "title": "Auditor-Fiscal da Receita Federal do Brasil",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/auditor-fiscal-frb100-tipo-1.pdf",
+          "sha256": "6271191f43c7d650f99c1df1607165dd2fadb403c53cb987f324d2b5bb6a637b",
+          "mode": "deterministic"
+        },
+        {
+          "kind": "answer_key",
+          "title": "Gabarito Oficial Definitivo da Prova Objetiva - Curso de Formação Profissional (Sub Judice)",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/analista-tributario-e-auditor-fiscal.pdf",
+          "sha256": "2eb2f10fb746ab05faac890d4fdca498301bec0b1c85ea3785fa67436341a13d",
+          "mode": "deterministic"
+        }
+      ],
+      "rejected": [
+        {
+          "title": "Resultado Final de Aprovados (específico para candidatos negros) (retificado em 29/05/2026)",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/388_receita-federal-resultado-final-de-aprovados-nova-class-negro-2026-05-27.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        },
+        {
+          "title": "Resultado Final de Aprovados (específico para candidatos com deficiência) (retificado em 29/05/2026)",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/388_receita-federal-resultado-final-de-aprovados-nova-class-pcd-2026-05-27.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        },
+        {
+          "title": "Resultado Final de Aprovados (retificado em 01/06/2026)",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/388_receita-federal-resultado-final-de-aprovados-nova-class-2026-06-01.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        },
+        {
+          "title": "COMUNICADO - Prova Objetiva Final do Curso de Formação Profissional Sub judice",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/rfb-locais-prova-do-curso-de-fomacao-subjudice-2025.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        },
+        {
+          "title": "COMUNICADO - Prova Objetiva Final do Curso de Formação Profissional Sub judice",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/rfb-prova-do-curso-de-fomacao-subjudice-2025.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        },
+        {
+          "title": "Homologação da Relação de Candidatos Aprovados",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/rfb_concurso_homologacao_edital_6_2025.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        },
+        {
+          "title": "Resultado Final de Aprovados (específico para candidatos negros) (retificado em 03/09/2025)",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/388-receita-federal-resultado-final-de-aprovados-negro-2025-08-26.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        },
+        {
+          "title": "Resultado Final de Aprovados (específico para candidatos com deficiência) (retificado em 03/09/2025)",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/388-receita-federal-resultado-final-de-aprovados-pcd-2025-08-26.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        },
+        {
+          "title": "Resultado Final de Aprovados (retificado em 03/09/2025)",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/388-receita-federal-resultado-final-de-aprovados-2025-08-26.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        },
+        {
+          "title": "COMUNICADO - Prova Objetiva Final do Curso de Formação Profissional",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/comunicado-prova-objetiva-receita.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        },
+        {
+          "title": "Homologação da Relação de Candidatos Aprovados",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/edital-no-1_2023-rfb-de-18-de-dezembro-de-2023-edital-no-1_2023-rfb-de-18-de-dezembro-de-2023-dou-imprensa-nacional.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        },
+        {
+          "title": "Resultado Final de Aprovados (específico para candidatos negros)",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/resultado-final-de-aprovados-negros.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        },
+        {
+          "title": "Resultado Final de Aprovados (específico para candidatos com deficiência)",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/resultado-final-de-aprovados-pcd.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        },
+        {
+          "title": "Resultado Final de Aprovados",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/resultado-final-de-aprovados-ampla.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        },
+        {
+          "title": "COMUNICADO - Prova Objetiva Final do Curso de Formação Profissional (atualizado em 09/11/2023)",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/comunicado-atualizado-prova-cfp.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        },
+        {
+          "title": "Resultado Final de Aprovados - 1ª Etapa (específico para candidatos negros) (retificado em 27/09/2023)",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/388_receita-federal-resultado-final-de-aprovados-negros-2023-09-27.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        },
+        {
+          "title": "Resultado Final de Aprovados - 1ª Etapa (específico para candidatos com deficiência) (retificado em 27/09/2023)",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/388_receita-federal-resultado-final-de-aprovados-pcd-2023-09-27.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        },
+        {
+          "title": "Resultado Final de Aprovados - 1ª Etapa (retificado em 27/09/2023)",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/388_receita-federal-resultado-final-de-aprovados-2023-09-27.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        },
+        {
+          "title": "Resultado Definitivo da Prova Discursiva",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/388_receita-federal-resultado-definitivo-prova-discursiva-2023-08-02.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        },
+        {
+          "title": "COMUNICADO",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/comunicado-rfb-prova-discursiva.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        },
+        {
+          "title": "Espelho de correção - Prova Discursiva",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/rfb2022_espelhodiscursiva.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        },
+        {
+          "title": "Resultado Preliminar da Prova Discursiva (retificado em 06/07/2023)",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/388_receita-federal-resultado-preliminar-prova-discursiva-2023-07-06.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        },
+        {
+          "title": "Relação de candidatos - correção da Prova Discursiva",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/relacao-de-candidatos-correcao-da-prova-discursiva_at.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        },
+        {
+          "title": "Resultado Definitivo da Prova Objetiva (Auditor-Fiscal)",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/388_receita-federal-resultado-definitivo-prova-objetiva-auditor-2023-05-22.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        },
+        {
+          "title": "Resultado Definitivo da Prova Objetiva (Analista-Tributário)",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/388_receita-federal-resultado-definitivo-prova-objetiva-2023-05-16_0.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        },
+        {
+          "title": "Resultado Preliminar da Prova Objetiva (Auditor-Fiscal)",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/388_receita-federal-resultado-preliminar-prova-objetiva-2023-05-12.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        },
+        {
+          "title": "Resultado Preliminar da Prova Objetiva (Analista-Tributário)",
+          "url": "https://conhecimento.fgv.br/sites/default/files/concursos/388_receita-federal-resultado-preliminar-prova-objetiva-2023-04-20_analista.pdf",
+          "reason": "exclude_pattern: (?i)(termos?.?de.?uso|privacidade|cookies?|edital|comunicado|convocacao|resultado|classificacao|isencao|inscricao|cronograma|orientacao|homologacao|retificacao|recurso|vagas?|locais?.?de.?prova|espelho|rela..o.?(?:de.?)?candidatos|correcao.?da.?prova)"
+        }
+      ],
+      "prohibited_accepted": [],
+      "false_positives": [],
+      "false_negatives": [],
+      "precision": 1.0,
+      "coverage": 1.0,
+      "pairing_required": true,
+      "pairing_success": true,
+      "paths": [
+        "deterministic"
+      ],
+      "pages_visited": [
+        "https://conhecimento.fgv.br/concursos/rfb22"
+      ],
+      "qwen_calls": [],
+      "duration_seconds": 1.127,
+      "ocr_attempted": 1,
+      "ocr_succeeded": 1,
+      "documents_still_needing_ocr": 0,
+      "failures": [],
+      "warnings": [
+        "fgv_conhecimento: robots.txt ignorado por politica administrativa explicita",
+        "fgv_conhecimento: Crawl-delay ignorado por politica administrativa explicita"
+      ],
+      "manifest": "data\\live-final-v3-20260906\\fgv_conhecimento\\manifests\\download-20260906T232543Z-901122dd.json",
+      "extraction_manifest": "data\\live-final-v3-20260906\\fgv_conhecimento\\manifests\\download-20260906T232543Z-901122dd-extracted.json"
+    },
+    {
+      "id": "inep_enem",
+      "scenario": "Acervo anual em data-url; fallback Qwen e PDF textual",
+      "start_url": "https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/enem/provas-e-gabaritos",
+      "expected": [
+        {
+          "kind": "exam",
+          "pattern": "(?i)2025_PV_impresso_D1_CD1\\.pdf"
+        },
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)2025_GB_impresso_D1_CD1\\.pdf"
+        }
+      ],
+      "actual": [
+        {
+          "kind": "answer_key",
+          "title": "Gabarito",
+          "url": "https://download.inep.gov.br/enem/provas_e_gabaritos/2025_GB_impresso_D1_CD1.pdf",
+          "sha256": "583ac1950cd1927c42c971c270f96c0e33816844084fd5866a13bf94d8e08a81",
+          "mode": "deterministic"
+        },
+        {
+          "kind": "exam",
+          "title": "Prova",
+          "url": "https://download.inep.gov.br/enem/provas_e_gabaritos/2025_PV_impresso_D1_CD1.pdf",
+          "sha256": "a0f19f878d4ef3ba94c3e0f5ef9e57c13fb046d4bb362f72651898b473ddb7c8",
+          "mode": "deterministic"
+        }
+      ],
+      "accepted": [
+        {
+          "kind": "answer_key",
+          "title": "Gabarito",
+          "url": "https://download.inep.gov.br/enem/provas_e_gabaritos/2025_GB_impresso_D1_CD1.pdf",
+          "sha256": "583ac1950cd1927c42c971c270f96c0e33816844084fd5866a13bf94d8e08a81",
+          "mode": "deterministic"
+        },
+        {
+          "kind": "exam",
+          "title": "Prova",
+          "url": "https://download.inep.gov.br/enem/provas_e_gabaritos/2025_PV_impresso_D1_CD1.pdf",
+          "sha256": "a0f19f878d4ef3ba94c3e0f5ef9e57c13fb046d4bb362f72651898b473ddb7c8",
+          "mode": "deterministic"
+        }
+      ],
+      "rejected": [],
+      "prohibited_accepted": [],
+      "false_positives": [],
+      "false_negatives": [],
+      "precision": 1.0,
+      "coverage": 1.0,
+      "pairing_required": true,
+      "pairing_success": true,
+      "paths": [
+        "deterministic",
+        "qwen_fallback"
+      ],
+      "pages_visited": [
+        "https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/enem/provas-e-gabaritos",
+        "https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/enem/provas-e-gabaritos/2025",
+        "https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/enem/provas-e-gabaritos/2024"
+      ],
+      "qwen_calls": [
+        {
+          "occurred_at": "2026-09-06T23:26:00.103220Z",
+          "source_id": "inep_enem",
+          "url": "https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/enem/provas-e-gabaritos",
+          "strategy": "ai_fallback",
+          "outcome": "selected",
+          "status_code": null,
+          "duration_ms": 13655,
+          "bytes_received": 0,
+          "attempt": 1,
+          "wait_seconds": 0.0,
+          "cache_status": "disabled",
+          "detail": "model=qwen3:8b; candidates=120; documents=0; navigation=10"
+        }
+      ],
+      "duration_seconds": 19.052,
+      "ocr_attempted": 0,
+      "ocr_succeeded": 0,
+      "documents_still_needing_ocr": 0,
+      "failures": [],
+      "warnings": [
+        "inep_enem: paginacao limitada a 3 paginas",
+        "inep_enem: robots.txt ignorado por politica administrativa explicita",
+        "inep_enem: Crawl-delay ignorado por politica administrativa explicita"
+      ],
+      "manifest": "data\\live-final-v3-20260906\\inep_enem\\manifests\\download-20260906T232604Z-63ebbc64.json",
+      "extraction_manifest": "data\\live-final-v3-20260906\\inep_enem\\manifests\\download-20260906T232604Z-63ebbc64-extracted.json"
+    },
+    {
+      "id": "inep_enade",
+      "scenario": "Acervo anual e paginação lógica",
+      "start_url": "https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/enade/provas-e-gabaritos",
+      "expected": [
+        {
+          "kind": "exam",
+          "pattern": "(?i)2025_administracao_PV_1\\.pdf"
+        },
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)2025_administracao_GB_1\\.pdf"
+        }
+      ],
+      "actual": [
+        {
+          "kind": "answer_key",
+          "title": "Gabarito 1",
+          "url": "https://download.inep.gov.br/enade/provas_e_gabaritos/2025_administracao_GB_1.pdf",
+          "sha256": "9f94afae064f2384dd4b2a5b5019e0adff398a895ae7722bd226a0c7e4d8e791",
+          "mode": "deterministic"
+        },
+        {
+          "kind": "exam",
+          "title": "Prova 1",
+          "url": "https://download.inep.gov.br/enade/provas_e_gabaritos/2025_administracao_PV_1.pdf",
+          "sha256": "5c5d5f577c5585497b51a12e1caca4b98b045eb7af6eac31fed50c8b6b9b0b1c",
+          "mode": "deterministic"
+        }
+      ],
+      "accepted": [
+        {
+          "kind": "answer_key",
+          "title": "Gabarito 1",
+          "url": "https://download.inep.gov.br/enade/provas_e_gabaritos/2025_administracao_GB_1.pdf",
+          "sha256": "9f94afae064f2384dd4b2a5b5019e0adff398a895ae7722bd226a0c7e4d8e791",
+          "mode": "deterministic"
+        },
+        {
+          "kind": "exam",
+          "title": "Prova 1",
+          "url": "https://download.inep.gov.br/enade/provas_e_gabaritos/2025_administracao_PV_1.pdf",
+          "sha256": "5c5d5f577c5585497b51a12e1caca4b98b045eb7af6eac31fed50c8b6b9b0b1c",
+          "mode": "deterministic"
+        }
+      ],
+      "rejected": [],
+      "prohibited_accepted": [],
+      "false_positives": [],
+      "false_negatives": [],
+      "precision": 1.0,
+      "coverage": 1.0,
+      "pairing_required": true,
+      "pairing_success": true,
+      "paths": [
+        "deterministic",
+        "qwen_fallback"
+      ],
+      "pages_visited": [
+        "https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/enade/provas-e-gabaritos",
+        "https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/enade/provas-e-gabaritos/2025",
+        "https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/enade/provas-e-gabaritos/2023"
+      ],
+      "qwen_calls": [
+        {
+          "occurred_at": "2026-09-06T23:26:21.750188Z",
+          "source_id": "inep_enade",
+          "url": "https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/enade/provas-e-gabaritos",
+          "strategy": "ai_fallback",
+          "outcome": "selected",
+          "status_code": null,
+          "duration_ms": 13243,
+          "bytes_received": 0,
+          "attempt": 1,
+          "wait_seconds": 0.0,
+          "cache_status": "disabled",
+          "detail": "model=qwen3:8b; candidates=120; documents=0; navigation=10"
+        }
+      ],
+      "duration_seconds": 19.114,
+      "ocr_attempted": 0,
+      "ocr_succeeded": 0,
+      "documents_still_needing_ocr": 0,
+      "failures": [],
+      "warnings": [
+        "inep_enade: paginacao limitada a 3 paginas",
+        "inep_enade: robots.txt ignorado por politica administrativa explicita",
+        "inep_enade: Crawl-delay ignorado por politica administrativa explicita"
+      ],
+      "manifest": "data\\live-final-v3-20260906\\inep_enade\\manifests\\download-20260906T232626Z-4d2c2f9d.json",
+      "extraction_manifest": "data\\live-final-v3-20260906\\inep_enade\\manifests\\download-20260906T232626Z-4d2c2f9d-extracted.json"
+    },
+    {
+      "id": "comvest_unicamp",
+      "scenario": "Acervo com subpáginas e fallback Qwen",
+      "start_url": "https://www.comvest.unicamp.br/vestibulares-anteriores/",
+      "expected": [
+        {
+          "kind": "exam",
+          "pattern": "(?i)F1_2026_Prova-Q\\.pdf"
+        },
+        {
+          "kind": "exam",
+          "pattern": "(?i)F2_1o-dia_todos\\.pdf"
+        }
+      ],
+      "actual": [
+        {
+          "kind": "exam",
+          "title": "Questões – múltipla escolha",
+          "url": "https://www.comvest.unicamp.br/wp-content/uploads/2026/06/F1_2026_Prova-Q.pdf",
+          "sha256": "2d1d0d375fb8ee7ea84ebb11350ca30851a5c928db80ed6e2479aeeb1ba23284",
+          "mode": "deterministic"
+        },
+        {
+          "kind": "exam",
+          "title": "Prova comum aos candidatos de cursos de todas as áreas",
+          "url": "https://www.comvest.unicamp.br/wp-content/uploads/2026/06/F2_1o-dia_todos.pdf",
+          "sha256": "5407a2c93fcddc08e2598f7595d04822b5dba9201a0b6cb9e567a19161b8a4a1",
+          "mode": "deterministic"
+        }
+      ],
+      "accepted": [
+        {
+          "kind": "exam",
+          "title": "Questões – múltipla escolha",
+          "url": "https://www.comvest.unicamp.br/wp-content/uploads/2026/06/F1_2026_Prova-Q.pdf",
+          "sha256": "2d1d0d375fb8ee7ea84ebb11350ca30851a5c928db80ed6e2479aeeb1ba23284",
+          "mode": "deterministic"
+        },
+        {
+          "kind": "exam",
+          "title": "Prova comum aos candidatos de cursos de todas as áreas",
+          "url": "https://www.comvest.unicamp.br/wp-content/uploads/2026/06/F2_1o-dia_todos.pdf",
+          "sha256": "5407a2c93fcddc08e2598f7595d04822b5dba9201a0b6cb9e567a19161b8a4a1",
+          "mode": "deterministic"
+        }
+      ],
+      "rejected": [
+        {
+          "title": "programa",
+          "url": "https://www.comvest.unicamp.br/vest_anteriores/2003/download/comentadas/musica/Introd_Progr_Objetivo.pdf",
+          "reason": "exclude_pattern: (?i)(edital|manual|estatistica|relatorio|perfil|demanda|nota.?de.?corte|programa|anuario|desempenho|lista|chamada|convocad|aprovad|classificacao|resultado|declaracao|isencao|vagas?|normas?)"
+        },
+        {
+          "title": "Desempenho dos Candidatos",
+          "url": "https://www.comvest.unicamp.br/vest_anteriores/2003/download/comentadas/desempenho.pdf",
+          "reason": "exclude_pattern: (?i)(edital|manual|estatistica|relatorio|perfil|demanda|nota.?de.?corte|programa|anuario|desempenho|lista|chamada|convocad|aprovad|classificacao|resultado|declaracao|isencao|vagas?|normas?)"
+        },
+        {
+          "title": "Desempenho dos Candidatos",
+          "url": "https://www.comvest.unicamp.br/vest_anteriores/2002/download/comentadas/Desempenho.pdf",
+          "reason": "exclude_pattern: (?i)(edital|manual|estatistica|relatorio|perfil|demanda|nota.?de.?corte|programa|anuario|desempenho|lista|chamada|convocad|aprovad|classificacao|resultado|declaracao|isencao|vagas?|normas?)"
+        },
+        {
+          "title": "Desempenho dos Candidatos",
+          "url": "https://www.comvest.unicamp.br/vest_anteriores/2001/download/comentadas/Desempenho.pdf",
+          "reason": "exclude_pattern: (?i)(edital|manual|estatistica|relatorio|perfil|demanda|nota.?de.?corte|programa|anuario|desempenho|lista|chamada|convocad|aprovad|classificacao|resultado|declaracao|isencao|vagas?|normas?)"
+        },
+        {
+          "title": "Desempenho dos Candidatos",
+          "url": "https://www.comvest.unicamp.br/vest_anteriores/2000/download/comentadas/Desempenho.pdf",
+          "reason": "exclude_pattern: (?i)(edital|manual|estatistica|relatorio|perfil|demanda|nota.?de.?corte|programa|anuario|desempenho|lista|chamada|convocad|aprovad|classificacao|resultado|declaracao|isencao|vagas?|normas?)"
+        },
+        {
+          "title": "Desempenho dos Candidatos",
+          "url": "https://www.comvest.unicamp.br/vest_anteriores/1999/download/comentadas/Desempenho.pdf",
+          "reason": "exclude_pattern: (?i)(edital|manual|estatistica|relatorio|perfil|demanda|nota.?de.?corte|programa|anuario|desempenho|lista|chamada|convocad|aprovad|classificacao|resultado|declaracao|isencao|vagas?|normas?)"
+        },
+        {
+          "title": "Desempenho dos Candidatos",
+          "url": "https://www.comvest.unicamp.br/vest_anteriores/1998/download/comentadas/Desempenho.pdf",
+          "reason": "exclude_pattern: (?i)(edital|manual|estatistica|relatorio|perfil|demanda|nota.?de.?corte|programa|anuario|desempenho|lista|chamada|convocad|aprovad|classificacao|resultado|declaracao|isencao|vagas?|normas?)"
+        }
+      ],
+      "prohibited_accepted": [],
+      "false_positives": [],
+      "false_negatives": [],
+      "precision": 1.0,
+      "coverage": 1.0,
+      "pairing_required": false,
+      "pairing_success": true,
+      "paths": [
+        "deterministic",
+        "qwen_fallback"
+      ],
+      "pages_visited": [
+        "https://www.comvest.unicamp.br/vestibulares-anteriores/",
+        "https://www.comvest.unicamp.br/ingresso-2027/",
+        "https://www.comvest.unicamp.br/vestibulares-anteriores/1a-fase-2a-fase-comentadas/"
+      ],
+      "qwen_calls": [
+        {
+          "occurred_at": "2026-09-06T23:26:42.496213Z",
+          "source_id": "comvest_unicamp",
+          "url": "https://www.comvest.unicamp.br/vestibulares-anteriores/",
+          "strategy": "ai_fallback",
+          "outcome": "selected",
+          "status_code": null,
+          "duration_ms": 12973,
+          "bytes_received": 0,
+          "attempt": 1,
+          "wait_seconds": 0.0,
+          "cache_status": "disabled",
+          "detail": "model=qwen3:8b; candidates=63; documents=1; navigation=10"
+        },
+        {
+          "occurred_at": "2026-09-06T23:26:45.017966Z",
+          "source_id": "comvest_unicamp",
+          "url": "https://www.comvest.unicamp.br/ingresso-2027/",
+          "strategy": "ai_fallback",
+          "outcome": "selected",
+          "status_code": null,
+          "duration_ms": 1816,
+          "bytes_received": 0,
+          "attempt": 1,
+          "wait_seconds": 0.0,
+          "cache_status": "disabled",
+          "detail": "model=qwen3:8b; candidates=87; documents=0; navigation=10"
+        }
+      ],
+      "duration_seconds": 17.501,
+      "ocr_attempted": 0,
+      "ocr_succeeded": 0,
+      "documents_still_needing_ocr": 0,
+      "failures": [],
+      "warnings": [
+        "comvest_unicamp: paginacao limitada a 3 paginas",
+        "comvest_unicamp: robots.txt ignorado por politica administrativa explicita",
+        "comvest_unicamp: Crawl-delay ignorado por politica administrativa explicita"
+      ],
+      "manifest": "data\\live-final-v3-20260906\\comvest_unicamp\\manifests\\download-20260906T232646Z-007ab648.json",
+      "extraction_manifest": "data\\live-final-v3-20260906\\comvest_unicamp\\manifests\\download-20260906T232646Z-007ab648-extracted.json"
+    },
+    {
+      "id": "obmep_referencias",
+      "scenario": "Referências públicas do Google Drive; download proibido",
+      "start_url": "https://www.obmep.org.br/provas-2025.htm",
+      "expected": [
+        {
+          "kind": "exam",
+          "pattern": "(?i)PROVA"
+        },
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)SOLUÇÃO"
+        }
+      ],
+      "actual": [
+        {
+          "kind": "exam",
+          "title": "PROVA",
+          "url": "https://drive.google.com/file/d/10amPdrx4OVcfmGoQwQ0RHxvj5J_RN9ui/view",
+          "sha256": "reference-only",
+          "mode": "deterministic"
+        },
+        {
+          "kind": "answer_key",
+          "title": "SOLUÇÃO",
+          "url": "https://drive.google.com/file/d/1mZznC5F4aMvFzTvKHh1mX2ehhhyni6HX/view",
+          "sha256": "reference-only",
+          "mode": "deterministic"
+        }
+      ],
+      "accepted": [
+        {
+          "kind": "exam",
+          "title": "PROVA",
+          "url": "https://drive.google.com/file/d/10amPdrx4OVcfmGoQwQ0RHxvj5J_RN9ui/view",
+          "sha256": "reference-only",
+          "mode": "deterministic"
+        },
+        {
+          "kind": "answer_key",
+          "title": "SOLUÇÃO",
+          "url": "https://drive.google.com/file/d/1mZznC5F4aMvFzTvKHh1mX2ehhhyni6HX/view",
+          "sha256": "reference-only",
+          "mode": "deterministic"
+        }
+      ],
+      "rejected": [],
+      "prohibited_accepted": [],
+      "false_positives": [],
+      "false_negatives": [],
+      "precision": 1.0,
+      "coverage": 1.0,
+      "pairing_required": true,
+      "pairing_success": true,
+      "paths": [
+        "deterministic"
+      ],
+      "pages_visited": [
+        "https://www.obmep.org.br/provas-2025.htm"
+      ],
+      "qwen_calls": [],
+      "duration_seconds": 0.29,
+      "ocr_attempted": 0,
+      "ocr_succeeded": 0,
+      "documents_still_needing_ocr": 0,
+      "failures": [],
+      "warnings": [
+        "obmep_referencias: robots.txt ignorado por politica administrativa explicita",
+        "obmep_referencias: Crawl-delay ignorado por politica administrativa explicita"
+      ],
+      "manifest": "data\\live-final-v3-20260906\\obmep_referencias\\manifests\\download-20260906T232650Z-44353b97.json",
+      "extraction_manifest": null
+    },
+    {
+      "id": "uerj_vestibular",
+      "scenario": "Falha TLS da fonte deve ficar isolada",
+      "start_url": "https://sistema.vestibular.uerj.br/portal_vestibular_uerj/busca_rapida/provas_e_gabaritos.html",
+      "expected": [
+        {
+          "kind": "exam",
+          "pattern": "(?i)prova"
+        },
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)gabarito"
+        }
+      ],
+      "actual": [],
+      "accepted": [],
+      "rejected": [],
+      "prohibited_accepted": [],
+      "false_positives": [],
+      "false_negatives": [
+        {
+          "kind": "exam",
+          "pattern": "(?i)prova"
+        },
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)gabarito"
+        }
+      ],
+      "precision": 0.0,
+      "coverage": 0.0,
+      "pairing_required": true,
+      "pairing_success": false,
+      "paths": [
+        "deterministic"
+      ],
+      "pages_visited": [
+        "https://sistema.vestibular.uerj.br/portal_vestibular_uerj/busca_rapida/provas_e_gabaritos.html"
+      ],
+      "qwen_calls": [],
+      "duration_seconds": 1.265,
+      "ocr_attempted": 0,
+      "ocr_succeeded": 0,
+      "documents_still_needing_ocr": 0,
+      "failures": [
+        {
+          "source_id": "uerj_vestibular",
+          "url": "https://sistema.vestibular.uerj.br/portal_vestibular_uerj/busca_rapida/provas_e_gabaritos.html",
+          "stage": "discovery",
+          "message": "uerj_vestibular: falha ao ler https://sistema.vestibular.uerj.br/portal_vestibular_uerj/busca_rapida/provas_e_gabaritos.html: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: certificate has expired (_ssl.c:1006)",
+          "retryable": true
+        }
+      ],
+      "warnings": [
+        "uerj_vestibular: falha ao ler https://sistema.vestibular.uerj.br/portal_vestibular_uerj/busca_rapida/provas_e_gabaritos.html: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: certificate has expired (_ssl.c:1006)",
+        "uerj_vestibular: robots.txt ignorado por politica administrativa explicita",
+        "uerj_vestibular: Crawl-delay ignorado por politica administrativa explicita"
+      ],
+      "manifest": "data\\live-final-v3-20260906\\uerj_vestibular\\manifests\\download-20260906T232652Z-faf013a9.json",
+      "extraction_manifest": null
+    },
+    {
+      "id": "pci_concursos",
+      "scenario": "Página de acervo, detalhe e data-url; desafio sem contorno",
+      "start_url": "https://www.pciconcursos.com.br/provas/banco-do-brasil",
+      "expected": [
+        {
+          "kind": "exam",
+          "pattern": "(?i)escriturario.*\\.pdf"
+        },
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)gabarito.*\\.pdf"
+        }
+      ],
+      "actual": [],
+      "accepted": [],
+      "rejected": [],
+      "prohibited_accepted": [],
+      "false_positives": [],
+      "false_negatives": [
+        {
+          "kind": "exam",
+          "pattern": "(?i)escriturario.*\\.pdf"
+        },
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)gabarito.*\\.pdf"
+        }
+      ],
+      "precision": 0.0,
+      "coverage": 0.0,
+      "pairing_required": true,
+      "pairing_success": false,
+      "paths": [
+        "deterministic"
+      ],
+      "pages_visited": [
+        "https://www.pciconcursos.com.br/provas/banco-do-brasil"
+      ],
+      "qwen_calls": [],
+      "duration_seconds": 13.554,
+      "ocr_attempted": 0,
+      "ocr_succeeded": 0,
+      "documents_still_needing_ocr": 0,
+      "failures": [
+        {
+          "source_id": "pci_concursos",
+          "url": "https://www.pciconcursos.com.br/provas/banco-do-brasil",
+          "stage": "discovery",
+          "message": "pci_concursos: acao manual necessaria: captcha em https://www.pciconcursos.com.br/provas/banco-do-brasil; nenhum contorno automatico foi tentado",
+          "retryable": false
+        }
+      ],
+      "warnings": [
+        "pci_concursos: acao manual necessaria: captcha em https://www.pciconcursos.com.br/provas/banco-do-brasil; nenhum contorno automatico foi tentado",
+        "pci_concursos: robots.txt ignorado por politica administrativa explicita",
+        "pci_concursos: Crawl-delay ignorado por politica administrativa explicita"
+      ],
+      "manifest": "data\\live-final-v3-20260906\\pci_concursos\\manifests\\download-20260906T232705Z-1763f6c9.json",
+      "extraction_manifest": null
+    }
+  ],
+  "summary": {
+    "precision": 1.0,
+    "coverage": 0.7777777777777778,
+    "pairing_rate": 0.75,
+    "ocr_success_rate": 1.0,
+    "false_positives": 0,
+    "false_negatives": 4,
+    "average_seconds_per_source": 8.78577777777778,
+    "sources_without_intervention_rate": 0.7777777777777778,
+    "sources": 9
+  },
+  "idempotency": {
+    "source": "fuvest_vestibular",
+    "stable_hashes": true,
+    "original_count": 2,
+    "repeated_count": 2
+  }
+}
