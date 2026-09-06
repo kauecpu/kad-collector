@@ -659,6 +659,27 @@ next_page_field = "data.proxima"
 
 Cabecalhos `Authorization`, `Cookie` e `Proxy-Authorization` sao rejeitados na configuracao.
 
+#### Fallback local com Qwen
+
+O motor deterministico continua sendo o caminho principal. Quando ele nao encontra nenhum
+documento em uma pagina, `ai_discovery_enabled = true` permite que o Qwen local analise uma
+lista numerada de links ja limitada aos hosts autorizados. O modelo pode marcar indices como
+prova, gabarito ou pagina intermediaria; ele nao cria URLs, nao executa cliques arbitrarios e
+nao baixa arquivos diretamente.
+
+O executor aplica novamente as exclusoes da fonte, os filtros, a politica de `robots.txt`, os
+limites de paginas e a validacao real do PDF. Login, CAPTCHA, administracao e hosts externos
+continuam bloqueados. A configuracao oficial usa `qwen3:8b`, no maximo 120 links por pagina e
+tres decisoes por fonte. Se o Ollama estiver desligado ou responder de forma invalida, a coleta
+deterministica continua e a indisponibilidade fica registrada nos avisos e na telemetria.
+
+```toml
+ai_discovery_enabled = true
+ai_discovery_model = "qwen3:8b"
+ai_discovery_max_steps_per_source = 3
+ai_discovery_max_links_per_page = 120
+```
+
 ### Operacao e recuperacao
 
 A tela **Coletar de um link** permite escolher o perfil, ativar JavaScript, ajustar concorrencia

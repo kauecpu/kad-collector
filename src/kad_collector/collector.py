@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import re
 import threading
+import time
 import unicodedata
 import uuid
 from collections.abc import Callable
@@ -15,6 +16,12 @@ from typing import Protocol
 from urllib.parse import urljoin, urlsplit, urlunsplit
 from urllib.robotparser import RobotFileParser
 
+from .ai_discovery import (
+    AIDiscoveryError,
+    AIDiscoveryPlanner,
+    OllamaDiscoveryPlanner,
+    document_choice_is_allowed,
+)
 from .browser_runtime import BrowserRuntimeError, check_patchright_chromium
 from .collection_state import CollectionStateStore
 from .collection_transport import CollectionHttpClient, EngineDownload, EngineHttpResult
@@ -43,6 +50,7 @@ from .models import (
     DownloadManifest,
     SourceDefinition,
 )
+from .ollama_ai_provider import OllamaUnavailableError
 from .security import FetchError, HttpResult, SafeHttpClient, UnsafeUrlError, validate_public_url
 from .url_utils import canonicalize_url
 
@@ -881,6 +889,7 @@ def collect_documents(
     progress_callback: Callable[[CollectionTelemetryEvent], None] | None = None,
     transport_callback: Callable[[Callable[[], None] | None], None] | None = None,
     manual_action_callback: Callable[[str, str], bool] | None = None,
+    ai_discovery_planner: AIDiscoveryPlanner | None = None,
 ) -> tuple[DownloadManifest, Path]:
     enabled_sources = [source for source in config.sources if source.enabled]
     if not enabled_sources:
@@ -905,6 +914,7 @@ def collect_documents(
     seen_digests: set[str] = set()
     browser_runtime_checked = False
     browser_runtime_error: BrowserRuntimeError | None = None
+    ai_runtime_unavailable = False
 
     for source in enabled_sources:
         if source.page_transport == "scrapling":
@@ -978,6 +988,10 @@ def collect_documents(
         source_items = 0
         pagination_truncated = False
         source_access_denied = False
+        source_ai_steps = 0
+        source_ai_disabled = False
+        source_ai_planner = ai_discovery_planner
+        owns_source_ai_planner = False
         checkpoint_key = _checkpoint_key(source)
         expand_collection_pages = _should_expand_collection_pages(source)
 
@@ -1036,6 +1050,61 @@ def collect_documents(
                     continue
                 _seen_links.add(canonical_url)
                 _source_links.append(selected)
+
+        def add_ai_candidates(
+            candidates: list[DiscoveredLink],
+            *,
+            _source: SourceDefinition = source,
+            _seen_links: set[str] = seen_links,
+            _source_links: list[tuple[str, str, DocumentType]] = source_links,
+        ) -> None:
+            nonlocal filtered_out_documents
+            for candidate in candidates:
+                if not document_choice_is_allowed(candidate, _source):
+                    continue
+                if candidate.declared_type == "exam":
+                    document_type: DocumentType = "exam"
+                elif candidate.declared_type == "answer_key":
+                    document_type = "answer_key"
+                else:
+                    continue
+                try:
+                    canonical_url = canonicalize_url(candidate.url)
+                except ValueError:
+                    continue
+                if canonical_url in _seen_links:
+                    continue
+                title = candidate.title or Path(urlsplit(candidate.url).path).name
+                if not document_might_match_filters(
+                    title, candidate.url, _source.metadata, active_filters
+                ):
+                    filtered_out_documents += 1
+                    continue
+                _seen_links.add(canonical_url)
+                _source_links.append(
+                    (candidate.url, title or _source.name, document_type)
+                )
+
+        def record_ai_event(
+            page_url: str,
+            outcome: str,
+            duration_ms: int,
+            detail: str,
+            *,
+            _source: SourceDefinition = source,
+        ) -> None:
+            event = CollectionTelemetryEvent(
+                occurred_at=datetime.now(UTC),
+                source_id=_source.id,
+                url=page_url,
+                strategy="ai_fallback",
+                outcome=outcome,
+                duration_ms=duration_ms,
+                detail=detail,
+            )
+            state.add_event(active_run_id, event)
+            if progress_callback is not None:
+                progress_callback(event)
 
         try:
             checkpoint = state.load_checkpoint(checkpoint_key)
@@ -1261,22 +1330,86 @@ def collect_documents(
                                 link_variants[document_url] = variant
                             elif previous != variant:
                                 link_variants[document_url] = None
+                        page_document_links = select_document_links(html, page.url, source)
                         add_candidates(
                             [
                                 DiscoveredLink(url=url, title=title, declared_type=kind)
-                                for url, title, kind in select_document_links(
-                                    html, page.url, source
-                                )
+                                for url, title, kind in page_document_links
                             ]
                         )
                         page_metadata = extract_page_metadata(html)
-                        for document_url, _title, _kind in select_document_links(
-                            html, page.url, source
-                        ):
+                        for document_url, _title, _kind in page_document_links:
                             link_metadata[document_url] = {
                                 **source.metadata,
                                 **page_metadata,
                             }
+                        ai_navigation: list[str] = []
+                        if (
+                            settings.ai_discovery_enabled
+                            and source.access_mode == "content"
+                            and not page_document_links
+                            and "browser" not in source.discovery_strategies
+                            and not source_ai_disabled
+                            and not ai_runtime_unavailable
+                            and source_ai_steps < settings.ai_discovery_max_steps_per_source
+                        ):
+                            started_at = time.perf_counter()
+                            source_ai_steps += 1
+                            try:
+                                if source_ai_planner is None:
+                                    source_ai_planner = OllamaDiscoveryPlanner(
+                                        model=settings.ai_discovery_model,
+                                        max_links=settings.ai_discovery_max_links_per_page,
+                                    )
+                                    owns_source_ai_planner = True
+                                raw_links = [
+                                    DiscoveredLink(url=url, title=title)
+                                    for url, title in extract_links(
+                                        html,
+                                        page.url,
+                                        allow_data_url=source.id == "pci_concursos",
+                                    )
+                                ]
+                                decision = source_ai_planner.plan(
+                                    page_url=page.url,
+                                    source=source,
+                                    links=raw_links,
+                                    visited_urls=seen_pages,
+                                )
+                                add_ai_candidates(decision.documents)
+                                for item in decision.documents:
+                                    if document_choice_is_allowed(item, source):
+                                        link_metadata[item.url] = {
+                                            **source.metadata,
+                                            **page_metadata,
+                                            "discovery": "qwen_fallback",
+                                        }
+                                ai_navigation = decision.navigation_urls
+                                duration_ms = int((time.perf_counter() - started_at) * 1000)
+                                record_ai_event(
+                                    page.url,
+                                    "selected" if decision.documents or ai_navigation else "empty",
+                                    duration_ms,
+                                    (
+                                        f"model={source_ai_planner.model}; "
+                                        f"candidates={decision.candidates_considered}; "
+                                        f"documents={len(decision.documents)}; "
+                                        f"navigation={len(ai_navigation)}"
+                                    ),
+                                )
+                            except OllamaUnavailableError as exc:
+                                ai_runtime_unavailable = True
+                                source_ai_disabled = True
+                                duration_ms = int((time.perf_counter() - started_at) * 1000)
+                                message = f"{source.id}: fallback Qwen indisponivel: {exc}"
+                                warnings.append(message)
+                                record_ai_event(page.url, "unavailable", duration_ms, str(exc))
+                            except AIDiscoveryError as exc:
+                                source_ai_disabled = True
+                                duration_ms = int((time.perf_counter() - started_at) * 1000)
+                                message = f"{source.id}: fallback Qwen indisponivel: {exc}"
+                                warnings.append(message)
+                                record_ai_event(page.url, "unavailable", duration_ms, str(exc))
                         if expand_collection_pages:
                             for discovered_collection in select_collection_links(
                                 html, page.url, source
@@ -1289,6 +1422,12 @@ def collect_documents(
                             for discovered_page in select_pagination_links(
                                 html, page.url, source
                             ):
+                                if (
+                                    discovered_page not in seen_pages
+                                    and discovered_page not in pending_pages
+                                ):
+                                    pending_pages.append(discovered_page)
+                            for discovered_page in ai_navigation:
                                 if (
                                     discovered_page not in seen_pages
                                     and discovered_page not in pending_pages
@@ -1596,6 +1735,8 @@ def collect_documents(
                 state.delete_checkpoint(checkpoint_key)
         finally:
             warnings.extend(f"{source.id}: {item}" for item in robots.observations)
+            if owns_source_ai_planner and source_ai_planner is not None:
+                source_ai_planner.close()
             if transport_callback is not None:
                 transport_callback(None)
             client.close()
@@ -1621,6 +1762,12 @@ def collect_documents(
             "conditional_cache": settings.conditional_cache,
             "development_cache": settings.development_cache,
             "resume_downloads": settings.resume_downloads,
+            "ai_discovery_enabled": settings.ai_discovery_enabled,
+            "ai_discovery_model": settings.ai_discovery_model,
+            "ai_discovery_max_steps_per_source": (
+                settings.ai_discovery_max_steps_per_source
+            ),
+            "ai_discovery_max_links_per_page": settings.ai_discovery_max_links_per_page,
             "source_policies": {
                 source.id: {
                     "robots_policy": source.robots_policy,
