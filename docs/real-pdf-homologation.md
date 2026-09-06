@@ -1,5 +1,7 @@
 # Homologação com PDFs reais
 
+Resultado da rodada de 05/09/2026: [relatório e pendências](homologation/2026-09-05-report.md).
+
 O corpus combina 19 documentos da FGV já descritos no contrato RFB22 com quatro arquivos
 oficiais do Cebraspe e da FCC. Os PDFs ficam em diretórios ignorados pelo Git: os da FGV em
 `tests/regression/rfb22/official/` e os demais em `data/homologation/external/`. O manifesto
