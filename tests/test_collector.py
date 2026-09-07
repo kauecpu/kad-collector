@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gzip
+import re
 import tempfile
 import unittest
 from email.message import Message
@@ -256,6 +257,49 @@ class LinkParsingTests(unittest.TestCase):
                 ("Gabarito preliminar", "answer_key"),
                 ("Gabarito definitivo", "answer_key"),
             ],
+        )
+
+    def test_cebraspe_pf_rules_accept_objective_proofs_and_definitive_keys(self) -> None:
+        config = load_config(PROJECT_ROOT / "config" / "sources.official.toml")
+        source = next(
+            item for item in config.sources if item.id == "cebraspe_policia_federal"
+        )
+        html = (FIXTURES / "cebraspe_pf21_rendered.html").read_text(encoding="utf-8")
+
+        selected = select_document_links(html, source.start_urls[2], source)
+
+        self.assertEqual(len(selected), 8)
+        self.assertEqual([item[2] for item in selected], ["exam"] * 4 + ["answer_key"] * 4)
+        self.assertTrue(all("cdn.cebraspe.org.br" in item[0] for item in selected))
+        self.assertFalse(
+            any(
+                token in title.casefold()
+                for _url, title, _kind in selected
+                for token in ("edital", "resultado", "comunicado", "discursiva")
+            )
+        )
+
+    def test_cebraspe_pf_source_keeps_deterministic_browser_before_qwen(self) -> None:
+        config = load_config(PROJECT_ROOT / "config" / "sources.official.toml")
+        source = next(
+            item for item in config.sources if item.id == "cebraspe_policia_federal"
+        )
+
+        self.assertEqual(source.source_tier, "official")
+        self.assertEqual(source.discovery_strategies, ["html", "browser"])
+        self.assertTrue(source.browser_enabled)
+        self.assertEqual(source.robots_policy, "enforce")
+        self.assertEqual(source.crawl_delay_policy, "enforce")
+        self.assertEqual(source.metadata["banca"], "CEBRASPE")
+        self.assertEqual(source.metadata["orgao"], "Policia Federal")
+        self.assertIn("apis.cebraspe.org.br", source.allowed_hosts)
+        self.assertIn("cdn.cebraspe.org.br", source.allowed_hosts)
+        self.assertTrue(all("/concursos/pf_" in url for url in source.start_urls))
+        self.assertTrue(
+            any(
+                re.search(pattern, "https://www.cebraspe.org.br/concursos/prf_2027")
+                for pattern in source.collection_url_patterns
+            )
         )
 
     def test_expired_signed_link_is_refreshed_from_official_endpoint(self) -> None:
@@ -1228,6 +1272,7 @@ class SecurityTests(unittest.TestCase):
                 "uerj_vestibular",
                 "banco_brasil_selecoes",
                 "cesgranrio_banco_brasil",
+                "cebraspe_policia_federal",
                 "pci_concursos",
             },
         )
@@ -1236,7 +1281,12 @@ class SecurityTests(unittest.TestCase):
             source
             for source in config.sources
             if source.id
-            not in {"pci_concursos", "banco_brasil_selecoes", "cesgranrio_banco_brasil"}
+            not in {
+                "pci_concursos",
+                "banco_brasil_selecoes",
+                "cesgranrio_banco_brasil",
+                "cebraspe_policia_federal",
+            }
         ]
         self.assertTrue(all(source.robots_policy == "ignore" for source in legacy_sources))
         self.assertTrue(all(source.crawl_delay_policy == "ignore" for source in legacy_sources))
@@ -1249,11 +1299,17 @@ class SecurityTests(unittest.TestCase):
         cesgranrio = next(
             source for source in config.sources if source.id == "cesgranrio_banco_brasil"
         )
+        cebraspe = next(
+            source for source in config.sources if source.id == "cebraspe_policia_federal"
+        )
         self.assertEqual(banco_brasil.allowed_hosts, ["bb.com.br", "www.bb.com.br"])
         self.assertEqual(cesgranrio.discovery_strategies, ["html", "sitemap", "json"])
         self.assertEqual(cesgranrio.source_tier, "official")
         self.assertIn("https://www.cesgranrio.org.br/sitemap.xml", cesgranrio.sitemap_urls)
         self.assertIn("inscricao.cesgranrio.com.br", cesgranrio.allowed_hosts)
+        self.assertEqual(cebraspe.discovery_strategies, ["html", "browser"])
+        self.assertTrue(cebraspe.browser_enabled)
+        self.assertEqual(cebraspe.robots_policy, "enforce")
         self.assertEqual(pci.source_tier, "secondary")
         self.assertTrue(
             all("sig=" not in url for url in banco_brasil.start_urls + cesgranrio.start_urls)

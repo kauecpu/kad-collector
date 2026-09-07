@@ -1,0 +1,1299 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-09-07T13:32:08.365950+00:00",
+  "source_id": "cebraspe_policia_federal",
+  "catalog_url": "https://apis.cebraspe.org.br/cebraspe/eventos/tipo/concursos/",
+  "selection_rule": "Provas objetivas e gabaritos oficiais preliminares ou definitivos listados em arquivosGabarito; documentos administrativos e outras etapas ficam fora.",
+  "samples": [
+    {
+      "id": "pf_25",
+      "contest": "PF 25",
+      "year": 2025,
+      "public_page_url": "https://www.cebraspe.org.br/concursos/pf_25",
+      "detail_api_url": "https://apis.cebraspe.org.br/cebraspe/eventos/pf_25",
+      "catalog_membership": true,
+      "roles": [
+        "Cargo 1: Delegado de Polícia Federal",
+        "Cargo 2: Perito Criminal Federal – Área 1: Contábil-Financeira",
+        "Cargo 3: Perito Criminal Federal – Área 2: Engenharia Elétrica/Eletrônica",
+        "Cargo 4: Perito Criminal Federal – Área 3: Informática Forense",
+        "Cargo 5: Perito Criminal Federal – Área 5: Geologia Forense",
+        "Cargo 6: Perito Criminal Federal – Área 7: Engenharia Civil",
+        "Cargo 7: Perito Criminal Federal – Área 11: Engenharia Cartográfica",
+        "Cargo 8: Perito Criminal Federal – Área 12: Medicina Legal",
+        "Cargo 9: Perito Criminal Federal – Área 16: Física Forense",
+        "Cargo 10: Perito Criminal Federal – Área 17: Engenharia de Minas",
+        "Cargo 11: Perito Criminal Federal – Área 19: Genética Forense",
+        "Cargo 12: Perito Criminal Federal – Área 20: Engenharia Ambiental",
+        "Cargo 13: Perito Criminal Federal – Área 21: Antropologia Forense",
+        "Cargo 14: Perito Criminal Federal – Área 22: Meio Ambiente",
+        "Cargo 15: Escrivão de Polícia Federal",
+        "Cargo 16: Agente de Polícia Federal",
+        "Cargo 17: Papiloscopista Policial Federal"
+      ],
+      "expected": [
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO – CONHECIMENTOS BÁSICOS PARA TODOS OS CARGOS DE PERITO CRIMINAL FEDERAL",
+          "filename": "5A49198A6084706823226C79C28FFDBB1129FD5D938C9919AD9C1FC97E54701A.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/5A49198A6084706823226C79C28FFDBB1129FD5D938C9919AD9C1FC97E54701A.pdf",
+          "pair_key": "conhecimentos_basicos_peritos"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO – CONHECIMENTOS BÁSICOS – BLOCO I – PARA OS CARGOS 15, 16 E 17",
+          "filename": "D0F881898A969B6733B878291FC1201E6CFE079281391E04B7EE322628BC888C.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/D0F881898A969B6733B878291FC1201E6CFE079281391E04B7EE322628BC888C.pdf",
+          "pair_key": "conhecimentos_basicos_bloco_i"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO – CONHECIMENTOS BÁSICOS – BLOCO II – PARA OS CARGOS 15, 16 E 17",
+          "filename": "A78F5BA07173AF0B8A5E611A1D7AAB166B7BD473E5D7AC2220F0F1B7DDB641E9.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/A78F5BA07173AF0B8A5E611A1D7AAB166B7BD473E5D7AC2220F0F1B7DDB641E9.pdf",
+          "pair_key": "conhecimentos_basicos_bloco_ii"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO – CONHECIMENTOS ESPECÍFICOS – CARGO 1",
+          "filename": "D202E48A0B1EBF5039E398F0B49D0186DD625DFF53498E36EE4D88DE4501E3A8.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/D202E48A0B1EBF5039E398F0B49D0186DD625DFF53498E36EE4D88DE4501E3A8.pdf",
+          "pair_key": "cargo_1"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO – CONHECIMENTOS ESPECÍFICOS – CARGO 2",
+          "filename": "B918D6A805194D299F15922339CA17D2C3921BF015DFD2B258EEFFE487A53F22.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/B918D6A805194D299F15922339CA17D2C3921BF015DFD2B258EEFFE487A53F22.pdf",
+          "pair_key": "cargo_2"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO – CONHECIMENTOS ESPECÍFICOS – CARGO 3",
+          "filename": "2957F96327337126177C0FC57B9996A02B966EAE7A1419F7CEE9D4C686F77B6E.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/2957F96327337126177C0FC57B9996A02B966EAE7A1419F7CEE9D4C686F77B6E.pdf",
+          "pair_key": "cargo_3"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO – CONHECIMENTOS ESPECÍFICOS – CARGO 4",
+          "filename": "C3612023C0E2243979FBA27DE2DD60A80FA5FCD9054B4D9664D9E51356E599EE.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/C3612023C0E2243979FBA27DE2DD60A80FA5FCD9054B4D9664D9E51356E599EE.pdf",
+          "pair_key": "cargo_4"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO – CONHECIMENTOS ESPECÍFICOS – CARGO 5",
+          "filename": "9E550CE72E70B14514C5A47A7A0F3CD30B56607FF45010612931D046BBA96D23.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/9E550CE72E70B14514C5A47A7A0F3CD30B56607FF45010612931D046BBA96D23.pdf",
+          "pair_key": "cargo_5"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO – CONHECIMENTOS ESPECÍFICOS – CARGO 6",
+          "filename": "69579E7D6152E8A1DDCEFA1B6C4A6DCBDAAB69B934E5C17D04FC88BA150BED2B.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/69579E7D6152E8A1DDCEFA1B6C4A6DCBDAAB69B934E5C17D04FC88BA150BED2B.pdf",
+          "pair_key": "cargo_6"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO – CONHECIMENTOS ESPECÍFICOS – CARGO 7",
+          "filename": "69E40522AFDEB12F65A8F018C256D678CAF9787CB383C19E8AD49838B87DDE32.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/69E40522AFDEB12F65A8F018C256D678CAF9787CB383C19E8AD49838B87DDE32.pdf",
+          "pair_key": "cargo_7"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO – CONHECIMENTOS ESPECÍFICOS – CARGO 8",
+          "filename": "A4317E37ECE8E8AA749DB4D62EEEE09EE11BBEFE4CAD3F6DCA02B0B5B85050EB.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/A4317E37ECE8E8AA749DB4D62EEEE09EE11BBEFE4CAD3F6DCA02B0B5B85050EB.pdf",
+          "pair_key": "cargo_8"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO – CONHECIMENTOS ESPECÍFICOS – CARGO 9",
+          "filename": "DAC7F9CA42277AEBFF4D7B97F7A953DBAEE67FAF37C5FBD06493B01E7E4148B4.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/DAC7F9CA42277AEBFF4D7B97F7A953DBAEE67FAF37C5FBD06493B01E7E4148B4.pdf",
+          "pair_key": "cargo_9"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO – CONHECIMENTOS ESPECÍFICOS – CARGO 10",
+          "filename": "A20B3AA111033AF8554D1FD0FAC6456DB5C0B7B9D86783FB9896D4603D5C2524.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/A20B3AA111033AF8554D1FD0FAC6456DB5C0B7B9D86783FB9896D4603D5C2524.pdf",
+          "pair_key": "cargo_10"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO – CONHECIMENTOS ESPECÍFICOS – CARGO 11",
+          "filename": "8C568F1F09BC80CF9149D2DFC247EC5784C5E01825928048D37A80F3F7A60D77.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/8C568F1F09BC80CF9149D2DFC247EC5784C5E01825928048D37A80F3F7A60D77.pdf",
+          "pair_key": "cargo_11"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO – CONHECIMENTOS ESPECÍFICOS – CARGO 12",
+          "filename": "643F5923E964CA1EFCA681AAED5B653BA0136E288E0BF3E23DB9F3F053D1F77E.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/643F5923E964CA1EFCA681AAED5B653BA0136E288E0BF3E23DB9F3F053D1F77E.pdf",
+          "pair_key": "cargo_12"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO – CONHECIMENTOS ESPECÍFICOS – CARGO 13",
+          "filename": "2B1B28107AE0168F6AF795DF71CF83536A1AD39CBC1B405DA6BF3D261A1867CF.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/2B1B28107AE0168F6AF795DF71CF83536A1AD39CBC1B405DA6BF3D261A1867CF.pdf",
+          "pair_key": "cargo_13"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO – CONHECIMENTOS ESPECÍFICOS – CARGO 14",
+          "filename": "281353E4B98F8BC1C8109000C6D0BC06D2C00D30E8523F484883219764A65855.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/281353E4B98F8BC1C8109000C6D0BC06D2C00D30E8523F484883219764A65855.pdf",
+          "pair_key": "cargo_14"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO – CONHECIMENTOS ESPECÍFICOS – CARGO 15",
+          "filename": "570C8865F7DDA1651ED10E330A6297A95466A2393EEEC633290FE754912D6143.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/570C8865F7DDA1651ED10E330A6297A95466A2393EEEC633290FE754912D6143.pdf",
+          "pair_key": "cargo_15"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO – CONHECIMENTOS ESPECÍFICOS – CARGO 16",
+          "filename": "CDC24D454696C9FE260E6C50FE758707F322649AEE24B6FB664FDDA10E307BCF.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/CDC24D454696C9FE260E6C50FE758707F322649AEE24B6FB664FDDA10E307BCF.pdf",
+          "pair_key": "cargo_16"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO – CONHECIMENTOS ESPECÍFICOS – CARGO 17",
+          "filename": "448F54940D877880045A494008870FC0B25C57C9D7233ECD0CDC29B942A683AD.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/448F54940D877880045A494008870FC0B25C57C9D7233ECD0CDC29B942A683AD.pdf",
+          "pair_key": "cargo_17"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA – CONHECIMENTOS ESPECÍFICOS – CARGO 17",
+          "filename": "106_PF_017_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/106_PF_017_01.pdf",
+          "pair_key": "cargo_17"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA – CONHECIMENTOS BÁSICOS PARA TODOS OS CARGOS DE PERITO CRIMINAL FEDERAL",
+          "filename": "106_PF_CB1_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/106_PF_CB1_01.pdf",
+          "pair_key": "conhecimentos_basicos_peritos"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA – CONHECIMENTOS BÁSICOS – BLOCO I – PARA OS CARGOS 15, 16 E 17",
+          "filename": "106_PF_CB2_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/106_PF_CB2_01.pdf",
+          "pair_key": "conhecimentos_basicos_bloco_i"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA – CONHECIMENTOS BÁSICOS – BLOCO II – PARA OS CARGOS 15, 16 E 17",
+          "filename": "106_PF_CG1_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/106_PF_CG1_01.pdf",
+          "pair_key": "conhecimentos_basicos_bloco_ii"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA – CONHECIMENTOS ESPECÍFICOS – CARGO 1",
+          "filename": "106_PF_001_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/106_PF_001_01.pdf",
+          "pair_key": "cargo_1"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA – CONHECIMENTOS ESPECÍFICOS – CARGO 2",
+          "filename": "106_PF_002_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/106_PF_002_01.pdf",
+          "pair_key": "cargo_2"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA – CONHECIMENTOS ESPECÍFICOS – CARGO 3",
+          "filename": "106_PF_003_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/106_PF_003_01.pdf",
+          "pair_key": "cargo_3"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA – CONHECIMENTOS ESPECÍFICOS – CARGO 4",
+          "filename": "106_PF_004_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/106_PF_004_01.pdf",
+          "pair_key": "cargo_4"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA – CONHECIMENTOS ESPECÍFICOS – CARGO 5",
+          "filename": "106_PF_005_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/106_PF_005_01.pdf",
+          "pair_key": "cargo_5"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA – CONHECIMENTOS ESPECÍFICOS – CARGO 6",
+          "filename": "106_PF_006_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/106_PF_006_01.pdf",
+          "pair_key": "cargo_6"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA – CONHECIMENTOS ESPECÍFICOS – CARGO 7",
+          "filename": "106_PF_007_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/106_PF_007_01.pdf",
+          "pair_key": "cargo_7"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA – CONHECIMENTOS ESPECÍFICOS – CARGO 8",
+          "filename": "106_PF_008_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/106_PF_008_01.pdf",
+          "pair_key": "cargo_8"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA – CONHECIMENTOS ESPECÍFICOS – CARGO 9",
+          "filename": "106_PF_009_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/106_PF_009_01.pdf",
+          "pair_key": "cargo_9"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA – CONHECIMENTOS ESPECÍFICOS – CARGO 10",
+          "filename": "106_PF_010_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/106_PF_010_01.pdf",
+          "pair_key": "cargo_10"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA – CONHECIMENTOS ESPECÍFICOS – CARGO 11",
+          "filename": "106_PF_011_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/106_PF_011_01.pdf",
+          "pair_key": "cargo_11"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA – CONHECIMENTOS ESPECÍFICOS – CARGO 12",
+          "filename": "106_PF_012_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/106_PF_012_01.pdf",
+          "pair_key": "cargo_12"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA – CONHECIMENTOS ESPECÍFICOS – CARGO 13",
+          "filename": "106_PF_013_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/106_PF_013_01.pdf",
+          "pair_key": "cargo_13"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA – CONHECIMENTOS ESPECÍFICOS – CARGO 14",
+          "filename": "106_PF_014_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/106_PF_014_01.pdf",
+          "pair_key": "cargo_14"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA – CONHECIMENTOS ESPECÍFICOS – CARGO 15",
+          "filename": "106_PF_015_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/106_PF_015_01.pdf",
+          "pair_key": "cargo_15"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA – CONHECIMENTOS ESPECÍFICOS – CARGO 16",
+          "filename": "106_PF_016_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/106_PF_016_01.pdf",
+          "pair_key": "cargo_16"
+        }
+      ],
+      "rejected_examples": [
+        {
+          "title": "PROVA ORAL - CARGO DELEGADO (APLICADO DIA 19/7/2026) SUB JUDICE",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/CDC7CFAADFFCABACF7DEEF6B1C4EC87CEAC22995AD7BC9550D017C17FE24E431.pdf",
+          "reason": "prova_oral"
+        },
+        {
+          "title": "PROVA ORAL",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/25884E2722C53188F09613E726AA9C1D798AC0810765EE9928BBC06C1D72276C.pdf",
+          "reason": "prova_oral"
+        },
+        {
+          "title": "PADRÃO DEFINITIVO DE RESPOSTAS – PROVA DISCURSIVA – CARGO 1",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/2FFD50E84784D30C2B2B3D92EE2237059B94820D0DE2FAA9F8417ECC69FD93A9.pdf",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "PADRÃO DEFINITIVO DE RESPOSTA – PROVA DISCURSIVA – CARGO 2",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/A42D73A37D7C3C84265EBA68F0A8DD2ED24B7FDF2000A0D0C52DE4DB78A1DCC2.pdf",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "PADRÃO DEFINITIVO DE RESPOSTA – PROVA DISCURSIVA – CARGO 3",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/E6F9E8AEDA4323C0F950613F7DD0FF7C50FD53F7EE3C0876EB074028BEF48D39.pdf",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "PADRÃO DEFINITIVO DE RESPOSTA – PROVA DISCURSIVA – CARGO 4",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/D2D4C6C3DCB37954F7268220891582B67F81A41042156DFD8140D313792EAD8D.pdf",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "PADRÃO DEFINITIVO DE RESPOSTA – PROVA DISCURSIVA – CARGO 5",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/935D90E4167DF7A6595EF6C8F7A647B9CA1FC137B0B72615C93D08823B91654C.pdf",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "PADRÃO DEFINITIVO DE RESPOSTA – PROVA DISCURSIVA – CARGO 6",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/30828DE83D445ED1F69232D50CA6359C3AEB5913C14E26F8D58BA750EF52F391.pdf",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "PADRÃO DEFINITIVO DE RESPOSTA – PROVA DISCURSIVA – CARGO 7",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/B37BAB34751C90BB427B8CC44158900FDEA3E84854322B4FD1C7D7272E64064D.pdf",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "PADRÃO DEFINITIVO DE RESPOSTA – PROVA DISCURSIVA – CARGO 8",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/4FD66C442BA3EA12353908299508FFB5BA2B7181C422C2D3BD4F4857942A481A.pdf",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "PADRÃO DEFINITIVO DE RESPOSTA – PROVA DISCURSIVA – CARGO 9",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/E4D673BB1BE75A3DA7BFC0535E3BCB56871D67EB6E73B7B3B73D44BA36F9B2F7.pdf",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "PADRÃO DEFINITIVO DE RESPOSTA – PROVA DISCURSIVA – CARGO 10",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/73B0463D22FCF7D013D7945CD32AD82B9B5EF58D98807447D916EFB11DA06A20.pdf",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "Edital nº 45 - Homologação do resultado final do concurso público para provimento de vagas nos cargos de Delegado De Polícia Federal, Agente De Polícia Federal, Escrivão De Polícia Federal e Papiloscopista Policial Federal, regido pelo Edital nº 1 – PF – POLICIAL, de 20 de maio de 2025",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/2F3403C4C3EB534589D5314F58233D21335450E57D37D98364B754820C92AAD3.pdf",
+          "reason": "edital"
+        },
+        {
+          "title": "PORTARIA DIREN-ANP PF Nº 633",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/2B60899B2BA66EBFF58F845CA413209BF96DD8CBDA16129A7A0EE83875B992FA.pdf",
+          "reason": "fora_do_escopo_objetivo"
+        },
+        {
+          "title": "PORTARIA DIREN-ANP PF Nº 632",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/215130F9C3AF9E88170C8D2BA061DFB318915B71A60D947D5FCE45BE97695EBD.pdf",
+          "reason": "fora_do_escopo_objetivo"
+        },
+        {
+          "title": "PORTARIA DIREN-ANP PF Nº 631",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/D2733A2650C691EEE3CC98F68BF95AE068454E2199BB46BA5676A5F921DF9BEC.pdf",
+          "reason": "fora_do_escopo_objetivo"
+        },
+        {
+          "title": "PORTARIA DIREN-ANP PF Nº 630",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/4FAF96137BB5E45C1BCFF5FA486AE037D5F7EF6B7537BD1E1A33DD85F25232D5.pdf",
+          "reason": "fora_do_escopo_objetivo"
+        },
+        {
+          "title": "Edital nº 44 - Convocação, em terceira chamada, para matrícula no Curso de Formação Profissional – segunda turma, somente para o cargo de Agente de Polícia Federal",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/ABCC378DC243DF33F95D5D3D042EFCA85E84ED5BAC2CB30B1B31D4FC4042643E.pdf",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 43 - Convocação, em segunda chamada, para matrícula no Curso de Formação Profissional – segunda turma, somente para o cargo de Agente de Polícia Federal",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/6881C09BA6AA385382C32C81E6294746D6314E9D2B0F8D892A56AC250BB23C08.pdf",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 42 - Resultado final na avaliação psicológica, exceto para o cargo de Agente de Polícia Federal",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25/arquivos/1E0F81E52D8CA55FFE17F71A63942AE959826ADC24AD0366D07B2027C98D4F3D.pdf",
+          "reason": "edital"
+        }
+      ]
+    },
+    {
+      "id": "pf_25_adm",
+      "contest": "PF 25 ADM",
+      "year": 2025,
+      "public_page_url": "https://www.cebraspe.org.br/concursos/pf_25_adm",
+      "detail_api_url": "https://apis.cebraspe.org.br/cebraspe/eventos/pf_25_adm",
+      "catalog_membership": true,
+      "roles": [
+        "Cargo 1: Administrador",
+        "Cargo 2: Assistente Social",
+        "Cargo 3: Contador",
+        "Cargo 4: Enfermeiro ",
+        "Cargo 5: Estatístico ",
+        "Cargo 6: Farmacêutico",
+        "Cargo 7: Médico Clínico ",
+        "Cargo 8: Médico Ortopedista",
+        "Cargo 9: Médico Psiquiatra",
+        "Cargo 10: Nutricionista",
+        "Cargo 11: Psicólogo Clínico",
+        "Cargo 12: Psicólogo Organizacional",
+        "Cargo 13: Técnico em Assuntos Educacionais – Área: Pedagogia",
+        "Cargo 14: Técnico em Comunicação Social",
+        "Cargo 15: Agente Administrativo"
+      ],
+      "expected": [
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CONHECIMENTOS BÁSICOS PARA OS CARGOS DE 1 A 14",
+          "filename": "Gab_Definitivo_094_PF_CB1_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/Gab_Definitivo_094_PF_CB1_01.pdf",
+          "pair_key": "conhecimentos_basicos_cargos_1_14"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CONHECIMENTOS BÁSICOS PARA O CARGO 15",
+          "filename": "Gab_Definitivo_094_PF_CB2_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/Gab_Definitivo_094_PF_CB2_01.pdf",
+          "pair_key": "conhecimentos_basicos_cargo_15"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CONHECIMENTOS ESPECÍFICOS – CARGO 1",
+          "filename": "Gab_Definitivo_094_PF_001_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/Gab_Definitivo_094_PF_001_01.pdf",
+          "pair_key": "cargo_1"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CONHECIMENTOS ESPECÍFICOS – CARGO 2",
+          "filename": "Gab_Definitivo_094_PF_002_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/Gab_Definitivo_094_PF_002_01.pdf",
+          "pair_key": "cargo_2"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CONHECIMENTOS ESPECÍFICOS – CARGO 3",
+          "filename": "Gab_Definitivo_094_PF_003_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/Gab_Definitivo_094_PF_003_01.pdf",
+          "pair_key": "cargo_3"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CONHECIMENTOS ESPECÍFICOS – CARGO 4",
+          "filename": "Gab_Definitivo_094_PF_004_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/Gab_Definitivo_094_PF_004_01.pdf",
+          "pair_key": "cargo_4"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CONHECIMENTOS ESPECÍFICOS – CARGO 5",
+          "filename": "Gab_Definitivo_094_PF_005_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/Gab_Definitivo_094_PF_005_01.pdf",
+          "pair_key": "cargo_5"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CONHECIMENTOS ESPECÍFICOS – CARGO 6",
+          "filename": "Gab_Definitivo_094_PF_006_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/Gab_Definitivo_094_PF_006_01.pdf",
+          "pair_key": "cargo_6"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CONHECIMENTOS ESPECÍFICOS – CARGO 7",
+          "filename": "Gab_Definitivo_094_PF_007_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/Gab_Definitivo_094_PF_007_01.pdf",
+          "pair_key": "cargo_7"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CONHECIMENTOS ESPECÍFICOS – CARGO 8",
+          "filename": "Gab_Definitivo_094_PF_008_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/Gab_Definitivo_094_PF_008_01.pdf",
+          "pair_key": "cargo_8"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CONHECIMENTOS ESPECÍFICOS – CARGO 9",
+          "filename": "Gab_Definitivo_094_PF_009_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/Gab_Definitivo_094_PF_009_01.pdf",
+          "pair_key": "cargo_9"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CONHECIMENTOS ESPECÍFICOS – CARGO 10",
+          "filename": "Gab_Definitivo_094_PF_010_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/Gab_Definitivo_094_PF_010_01.pdf",
+          "pair_key": "cargo_10"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CONHECIMENTOS ESPECÍFICOS – CARGO 11",
+          "filename": "Gab_Definitivo_094_PF_011_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/Gab_Definitivo_094_PF_011_01.pdf",
+          "pair_key": "cargo_11"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CONHECIMENTOS ESPECÍFICOS – CARGO 12",
+          "filename": "Gab_Definitivo_094_PF_012_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/Gab_Definitivo_094_PF_012_01.pdf",
+          "pair_key": "cargo_12"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CONHECIMENTOS ESPECÍFICOS – CARGO 13",
+          "filename": "Gab_Definitivo_094_PF_013_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/Gab_Definitivo_094_PF_013_01.pdf",
+          "pair_key": "cargo_13"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CONHECIMENTOS ESPECÍFICOS – CARGO 14",
+          "filename": "Gab_Definitivo_094_PF_014_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/Gab_Definitivo_094_PF_014_01.pdf",
+          "pair_key": "cargo_14"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CONHECIMENTOS ESPECÍFICOS – CARGO 15",
+          "filename": "Gab_Definitivo_094_PF_015_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/Gab_Definitivo_094_PF_015_01.pdf",
+          "pair_key": "cargo_15"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS BÁSICOS PARA OS CARGOS DE 1 A 14",
+          "filename": "094_PF_CB1_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/094_PF_CB1_01.pdf",
+          "pair_key": "conhecimentos_basicos_cargos_1_14"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS BÁSICOS PARA O CARGO 15",
+          "filename": "094_PF_CB2_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/094_PF_CB2_01.pdf",
+          "pair_key": "conhecimentos_basicos_cargo_15"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS – CARGO 1",
+          "filename": "094_PF_001_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/094_PF_001_01.pdf",
+          "pair_key": "cargo_1"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS – CARGO 2",
+          "filename": "094_PF_002_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/094_PF_002_01.pdf",
+          "pair_key": "cargo_2"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS – CARGO 3",
+          "filename": "094_PF_003_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/094_PF_003_01.pdf",
+          "pair_key": "cargo_3"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS – CARGO 4",
+          "filename": "094_PF_004_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/094_PF_004_01.pdf",
+          "pair_key": "cargo_4"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS – CARGO 5",
+          "filename": "094_PF_005_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/094_PF_005_01.pdf",
+          "pair_key": "cargo_5"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS – CARGO 6",
+          "filename": "094_PF_006_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/094_PF_006_01.pdf",
+          "pair_key": "cargo_6"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS – CARGO 7",
+          "filename": "094_PF_007_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/094_PF_007_01.pdf",
+          "pair_key": "cargo_7"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS – CARGO 8",
+          "filename": "094_PF_008_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/094_PF_008_01.pdf",
+          "pair_key": "cargo_8"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS – CARGO 9",
+          "filename": "094_PF_009_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/094_PF_009_01.pdf",
+          "pair_key": "cargo_9"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS – CARGO 10",
+          "filename": "094_PF_010_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/094_PF_010_01.pdf",
+          "pair_key": "cargo_10"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS – CARGO 11",
+          "filename": "094_PF_011_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/094_PF_011_01.pdf",
+          "pair_key": "cargo_11"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS – CARGO 12",
+          "filename": "094_PF_012_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/094_PF_012_01.pdf",
+          "pair_key": "cargo_12"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS – CARGO 13",
+          "filename": "094_PF_013_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/094_PF_013_01.pdf",
+          "pair_key": "cargo_13"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS – CARGO 14",
+          "filename": "094_PF_014_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/094_PF_014_01.pdf",
+          "pair_key": "cargo_14"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS – CARGO 15",
+          "filename": "094_PF_015_01.pdf",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/094_PF_015_01.pdf",
+          "pair_key": "cargo_15"
+        }
+      ],
+      "rejected_examples": [
+        {
+          "title": "PADRÃO DEFINITIVO DE RESPOSTA – PROVA DISCURSIVA – CARGO 1",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/PF_25_ADM_PADR%C3%83O_DE_RESPOSTA_DEFINITIVO_CARGO_1.pdf",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "PADRÃO DEFINITIVO DE RESPOSTA – PROVA DISCURSIVA – CARGO 2",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/PF_25_ADM_PADR%C3%83O_DE_RESPOSTA_DEFINITIVO_CARGO_2.pdf",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "PADRÃO DEFINITIVO DE RESPOSTA – PROVA DISCURSIVA – CARGO 3",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/PF_25_ADM_PADR%C3%83O_DE_RESPOSTA_DEFINITIVO_CARGO_3.pdf",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "PADRÃO DEFINITIVO DE RESPOSTA – PROVA DISCURSIVA – CARGO 4",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/PF_25_ADM_PADR%C3%83O_DE_RESPOSTA_DEFINITIVO_CARGO_4.pdf",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "PADRÃO DEFINITIVO DE RESPOSTA – PROVA DISCURSIVA – CARGO 5",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/PF_25_ADM_PADR%C3%83O_DE_RESPOSTA_DEFINITIVO_CARGO_5.pdf",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "PADRÃO DEFINITIVO DE RESPOSTA – PROVA DISCURSIVA – CARGO 6",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/PF_25_ADM_PADR%C3%83O_DE_RESPOSTA_DEFINITIVO_CARGO_6.pdf",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "PADRÃO DEFINITIVO DE RESPOSTA – PROVA DISCURSIVA – CARGO 7",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/PF_25_ADM_PADR%C3%83O_DE_RESPOSTA_DEFINITIVO_CARGO_7.pdf",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "PADRÃO DEFINITIVO DE RESPOSTA – PROVA DISCURSIVA – CARGO 8",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/PF_25_ADM_PADR%C3%83O_DE_RESPOSTA_DEFINITIVO_CARGO_8.pdf",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "PADRÃO DEFINITIVO DE RESPOSTA – PROVA DISCURSIVA – CARGO 9",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/PF_25_ADM_PADR%C3%83O_DE_RESPOSTA_DEFINITIVO_CARGO_9.pdf",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "PADRÃO DEFINITIVO DE RESPOSTA – PROVA DISCURSIVA – CARGO 10",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/PF_25_ADM_PADR%C3%83O_DE_RESPOSTA_DEFINITIVO_CARGO_10.pdf",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "PADRÃO DEFINITIVO DE RESPOSTA – PROVA DISCURSIVA – CARGO 11",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/PF_25_ADM_PADR%C3%83O_DE_RESPOSTA_DEFINITIVO_CARGO_11.pdf",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "PADRÃO DEFINITIVO DE RESPOSTA – PROVA DISCURSIVA – CARGO 12",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/PF_25_ADM_PADR%C3%83O_DE_RESPOSTA_DEFINITIVO_CARGO_12.pdf",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "Edital nº 13 -  Inclusão dos candidatos sub judice no resultado final na avaliação biopsicossocial, no resultado final no procedimento de heteroidentificação e no resultado final concurso público",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/06FEACCE317D488C0C277EE10F8D2BBBCD08DF99ECBB8617A29416F803634531.pdf",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 12 - Inclusão de candidata inscrita sob o nº 10010615, no resultado final no concurso público.",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/5D2B7681A77F1D6F9AD581EAACDEBEE9869C210F90D08B6A7FB20BDEF45EB3AD.pdf",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 11 – Inclusão de candidatos sub judice.",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/81CAC8AC2CA3FE312A1501C722676702784CCF245EFA8BC507F38EB3A5DB4393.pdf",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 10 – Inclusão de candidato sub judice.",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/162D7046EDC7A50EF39B0159C22F0D09C5E2BEA07B0BA6702EC0DA15736D0CB5.pdf",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 9 – Resultado final na avaliação biopsicossocial dos candidatos que solicitaram concorrer às vagas reservadas às pessoas com deficiência, o resultado final no procedimento de heteroidentificação complementar à autodeclaração dos candidatos negros e o resultado final concurso público",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/875BC747E4ADAAE8AE3235D9E6B6F76DD41ED3840BA6576C9F3A2C70ADD30ABF.pdf",
+          "reason": "edital"
+        },
+        {
+          "title": "Comunicado – Resultado final na avaliação biopsicossocial, e resultado final no procedimento de  heteroidentificação",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/E63B26DF04DF43705457C327B21C8B589C9371069F49549EB9397C9B76B91A6C.pdf",
+          "reason": "resultado"
+        },
+        {
+          "title": "Currículos dos integrantes da comissão recursal",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/1B83F3707588F7B5D3F0105DE1FC1E6CD536777EA6026162DAEF90A91EE020CF.pdf",
+          "reason": "fora_do_escopo_objetivo"
+        },
+        {
+          "title": "Edital nº 8 – Resultado provisório na avaliação biopsicossocial e resultado provisório no procedimento de heteroidentificação",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_25_adm/arquivos/B53FCFC2B05A39C9EFE31D3121D1A1C1E9FC036A8A6EFBFD5DA8553F426AA309.pdf",
+          "reason": "edital"
+        }
+      ]
+    },
+    {
+      "id": "pf_21",
+      "contest": "POLÍCIA FEDERAL",
+      "year": 2021,
+      "public_page_url": "https://www.cebraspe.org.br/concursos/pf_21",
+      "detail_api_url": "https://apis.cebraspe.org.br/cebraspe/eventos/pf_21",
+      "catalog_membership": true,
+      "roles": [
+        "Cargo 1: Delegado de Polícia Federal",
+        "Cargo 2: Agente de Polícia Federal",
+        "Cargo 3: Escrivão de Polícia Federal",
+        "Cargo 4: Papiloscopista Policial Federal"
+      ],
+      "expected": [
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CARGO 1: DELEGADO DE POLÍCIA FEDERAL",
+          "filename": "CARGO_1_DELEGADO_DE_POLCIA_FEDERAL.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/CARGO_1_DELEGADO_DE_POLCIA_FEDERAL.PDF",
+          "pair_key": "cargo_1"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CARGO 2: AGENTE DE POLÍCIA FEDERAL",
+          "filename": "CARGO_2_AGENTE_DE_POLCIA_FEDERAL.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/CARGO_2_AGENTE_DE_POLCIA_FEDERAL.PDF",
+          "pair_key": "cargo_2"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CARGO 3: ESCRIVÃO DE POLÍCIA FEDERAL",
+          "filename": "CARGO_3_ESCRIVO_DE_POLCIA_FEDERAL.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/CARGO_3_ESCRIVO_DE_POLCIA_FEDERAL.PDF",
+          "pair_key": "cargo_3"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CARGO 4: PAPILOSCOPISTA DE POLÍCIA FEDERAL",
+          "filename": "CARGO_4_PAPILOSCOPISTA_POLICIAL_FEDERAL.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/CARGO_4_PAPILOSCOPISTA_POLICIAL_FEDERAL.PDF",
+          "pair_key": "cargo_4"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CARGO 1: DELEGADO DE POLÍCIA FEDERAL",
+          "filename": "GAB_DEFINITIVO_MATRIZ_577_PF_001_00.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/GAB_DEFINITIVO_MATRIZ_577_PF_001_00.PDF",
+          "pair_key": "cargo_1"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CARGO 2: AGENTE DE POLÍCIA FEDERAL",
+          "filename": "GAB_DEFINITIVO_MATRIZ_577_PF_002_00.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/GAB_DEFINITIVO_MATRIZ_577_PF_002_00.PDF",
+          "pair_key": "cargo_2"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CARGO 3: ESCRIVÃO DE POLÍCIA FEDERAL",
+          "filename": "GAB_DEFINITIVO_MATRIZ_577_PF_003_00.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/GAB_DEFINITIVO_MATRIZ_577_PF_003_00.PDF",
+          "pair_key": "cargo_3"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CARGO 4: PAPILOSCOPISTA DE POLÍCIA FEDERAL",
+          "filename": "GAB_DEFINITIVO_MATRIZ_577_PF_004_00.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/GAB_DEFINITIVO_MATRIZ_577_PF_004_00.PDF",
+          "pair_key": "cargo_4"
+        }
+      ],
+      "rejected_examples": [
+        {
+          "title": "PROVA ORAL - CARGO DELEGADO (APLICADO DIA 19/7/2026) SUB JUDICE",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/B46611F19D70F07B019A795D3367C491A414D10BDA1A195E23AFF756A8FE9CE4.pdf",
+          "reason": "prova_oral"
+        },
+        {
+          "title": "PROVA ORAL E PADRÃO DE RESPOSTAS - CARGO DELEGADO (APLICADO EM 11/08/2024) SUB JUDICE",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/999_PF_ORAL_001_COMPADRAO.PDF",
+          "reason": "prova_oral"
+        },
+        {
+          "title": "PROVA ORAL E PADRÃO DE RESPOSTAS SUB JUDICE - DELEGADO (APLICADO EM 22/01/23)",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/794_PF_21_ORAL_SUBJUDICE_001_COMPADRO.PDF",
+          "reason": "prova_oral"
+        },
+        {
+          "title": "PROVA ORAL E PADRÃO DE RESPOSTAS SUB JUDICE - CARGO DE DELEGADO",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/753_DGP_PF_ORAL_001_COMPADRAO.PDF",
+          "reason": "prova_oral"
+        },
+        {
+          "title": "PROVA ORAL E PADRÃO DE RESPOSTAS - CARGO DE DELEGADO",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/616_PF_DELEGADO_ORAL_COM_PADRO.PDF",
+          "reason": "prova_oral"
+        },
+        {
+          "title": "PROVA DE DIGITAÇÃO - CARGO DE ESCRIVÃO",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/PF_ESCRIVO_617.PDF",
+          "reason": "prova_de_digitacao"
+        },
+        {
+          "title": "PADRÃO DE RESPOSTA DEFINITIVO - DELEGADO DE POLÍCIA FEDERAL - ATUALIZADO EM 14/6/2021",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/PF_21_PADRO_DE_RESPOSTA_DEFINITIVO_COMPLETO_VF.PDF",
+          "reason": "padrao_de_resposta"
+        },
+        {
+          "title": "PADRÃO DE RESPOSTA DEFINITIVO - DEMAIS CARGOS",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/PF_DISC_PADRO_DE_RESPOSTA_DEFINITIVO__DEMAIS_CARGOS.PDF",
+          "reason": "padrao_de_resposta"
+        },
+        {
+          "title": "PROVA DISCURSIVA - demais cargos",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/PF_21_PROVA_DISCURSIVA_DEMAIS_CARGOS.PDF",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "PROVA DISCURSIVA - Delegado de Polícia Federal",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/PF_21_PROVA_DISCURSIVA_DELEGADO.PDF",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "Edital nº 4 – Convocação de candidatos sub judice para matrícula no CFP e para a atualização da Ficha de Informações Confidenciais – FIC, referentes aos concursos públicos regidos pelo Edital nº 1/2012 – DGP/DPF, de 14 de março de 2012, e suas alterações, e pelo Edital nº 1 – DGP/PF, de 15 de janeiro de 2021 .",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/3183068855B20D8A63585E5BF28624A662F922E1791FE6948C68763A4713C13C.pdf",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 3 - Retificação das datas constantes dos subitens 5.1 e 10.1 do Edital nº 2 – PF, concursos anteriores – de 30 de abril de 2026",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/1CA5762B21B857B5B6FBA64E7467C83D8DB9179EF66A6538C0D98FDCD5E17D92.pdf",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 2 – Convocação de candidatos sub judice para matrícula no CFP e para a atualização da Ficha de Informações Confidenciais – FIC, referente aos concursos públicos regidos pelo Edital nº 9/2012 – DGP/DPF; pelo Edital nº 10/2012 – DGP/DPF e pelo Edital nº 1-DGP/PF; e pelo Edital nº 1 – DGP/PF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/C156978FCCE628DB3E20B553BD265E903E0C981AA12996D06D49B0371D3C6D70.pdf",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 1 – Convocação de candidatos sub judice para matrícula no CFP, referentes aos concursos públicos regidos pelo Edital nº 24/2004 – DGP/DPF – Nacional, de 15 de julho de 2004; pelo Edital nº 15/2009-DGP/APF, de 24 de julho de 2009; pelo Edital nº 1-DGP/PF, de 14 de junho de 2018, e suas alterações; e pelo Edital nº 01 – DGP/PF, de 15 de janeiro de 2021, e alterações",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/3E76C0367BD2EFD1085E630458CFCD7F55B0C793AB4F0855C8FFF7BAA81FFA0B.pdf",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 112 – Reintegração de candidata sub judice.",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/ED_112_DPF_2021_REINT_SUB_JUDICE_JESSICA.PDF",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 111 – Inclusão de candidato sub judice.",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/ED_111_DPF_2021_INCL_SUB_JUDICE_RES_FINAL_1A_ETAPA_PAULO.PDF",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 109 - Convocação e matrícula no Curso de Formação Profissional (CFP), eliminação de candidatos, rematrículas e retificações",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/ED_109_SANEAMENTO_13454_.PDF",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 108 - Resultado final na avaliação psicológica (primeiro e segundo momentos) dos candidatos aos cargos de Delegado de Polícia Federal, Agente de Polícia Federal e de Escrivão de Polícia Federal matriculados no Curso de Formação Profissional",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/ED_108_PF_RES_FINAL_AVAL_PSICO_1_E_2_MOMENTOS.PDF",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 107 - Inclusão de candidatos no resultado provisório na avaliação psicológica (primeiro e segundo momentos)",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/ED_107_PF_INCLUSAO_DE_CANDIDATOS_NO_RES_PROV_AVAL_PSICO_1_E_2_MOMENTOS13375.PDF",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 106 - Resultado provisório na avaliação psicológica (primeiro e segundo momentos) dos candidatos aos cargos de Delegado de Polícia Federal, Agente de Polícia Federal e de Escrivão de Polícia Federal",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/ED_106_PF_RES_PROV_AVAL_PSICO_1_E_2_MOMENTOS.PDF",
+          "reason": "edital"
+        }
+      ]
+    },
+    {
+      "id": "pf_18",
+      "contest": "POLÍCIA FEDERAL",
+      "year": 2018,
+      "public_page_url": "https://www.cebraspe.org.br/concursos/pf_18",
+      "detail_api_url": "https://apis.cebraspe.org.br/cebraspe/eventos/pf_18",
+      "catalog_membership": true,
+      "roles": [
+        "Cargo 1: Delegado de Polícia Federal",
+        "Cargo 2: Perito Criminal Federal/Área 1",
+        "Cargo 3: Perito Criminal Federal/Área 2",
+        "Cargo 4: Perito Criminal Federal/Área 3",
+        "Cargo 5: Perito Criminal Federal/Área 4 (*)(**)",
+        "Cargo 6: Perito Criminal Federal/Área 5 (*)(**)",
+        "Cargo 7: Perito Criminal Federal/Área 6 (**)",
+        "Cargo 8: Perito Criminal Federal/Área 7",
+        "Cargo 9: Perito Criminal Federal/Área 9 (**)",
+        "Cargo 10: Perito Criminal Federal/Área 12 (*)(**)",
+        "Cargo 11: Perito Criminal Federal/Área 14 (**)",
+        "Cargo 12: Agente de Polícia Federal",
+        "Cargo 13: Escrivão de Polícia Federal",
+        "Cargo 14: Papiloscopista Policial Federal"
+      ],
+      "expected": [
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 4",
+          "filename": "GAB_DEFINITIVO_408_DGPPF004_ATUALIZADO.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/GAB_DEFINITIVO_408_DGPPF004_ATUALIZADO.PDF",
+          "pair_key": "cargo_4"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - PROVA OBJETIVA - CARGO 14",
+          "filename": "GAB_DEFINITIVO_408_DGPPF014__PAG_9.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/GAB_DEFINITIVO_408_DGPPF014__PAG_9.PDF",
+          "pair_key": "cargo_14"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - PROVA OBJETIVA - CARGO 13",
+          "filename": "GAB_DEFINITIVO_408_DGPPF013__PAG_8.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/GAB_DEFINITIVO_408_DGPPF013__PAG_8.PDF",
+          "pair_key": "cargo_13"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - PROVA OBJETIVA - CARGO 12",
+          "filename": "GAB_DEFINITIVO_408_DGPPF012__PAG_9.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/GAB_DEFINITIVO_408_DGPPF012__PAG_9.PDF",
+          "pair_key": "cargo_12"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 11",
+          "filename": "GAB_DEFINITIVO_408_DGPPF011__PAG_4.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/GAB_DEFINITIVO_408_DGPPF011__PAG_4.PDF",
+          "pair_key": "cargo_11"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 10",
+          "filename": "GAB_DEFINITIVO_408_DGPPF010__PAG_3.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/GAB_DEFINITIVO_408_DGPPF010__PAG_3.PDF",
+          "pair_key": "cargo_10"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 9",
+          "filename": "GAB_DEFINITIVO_408_DGPPF009__PAG_4.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/GAB_DEFINITIVO_408_DGPPF009__PAG_4.PDF",
+          "pair_key": "cargo_9"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 8",
+          "filename": "GAB_DEFINITIVO_408_DGPPF008__PAG_4.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/GAB_DEFINITIVO_408_DGPPF008__PAG_4.PDF",
+          "pair_key": "cargo_8"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 7",
+          "filename": "GAB_DEFINITIVO_408_DGPPF007__PAG_4.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/GAB_DEFINITIVO_408_DGPPF007__PAG_4.PDF",
+          "pair_key": "cargo_7"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 6",
+          "filename": "GAB_DEFINITIVO_408_DGPPF006__PAG_4.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/GAB_DEFINITIVO_408_DGPPF006__PAG_4.PDF",
+          "pair_key": "cargo_6"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 5",
+          "filename": "GAB_DEFINITIVO_408_DGPPF005__PAG_4.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/GAB_DEFINITIVO_408_DGPPF005__PAG_4.PDF",
+          "pair_key": "cargo_5"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 3",
+          "filename": "GAB_DEFINITIVO_408_DGPPF003__PAG_4.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/GAB_DEFINITIVO_408_DGPPF003__PAG_4.PDF",
+          "pair_key": "cargo_3"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 2",
+          "filename": "GAB_DEFINITIVO_408_DGPPF002__PAG_4.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/GAB_DEFINITIVO_408_DGPPF002__PAG_4.PDF",
+          "pair_key": "cargo_2"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - PROVA OBJETIVA - CARGO 1",
+          "filename": "GAB_DEFINITIVO_408_DGPPF001__PAG_8.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/GAB_DEFINITIVO_408_DGPPF001__PAG_8.PDF",
+          "pair_key": "cargo_1"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - PROVA OBJETIVA - CONHECIMENTOS BÁSICOS PARA OS CARGOS DE 2 A 11",
+          "filename": "GAB_DEFINITIVO_408_DGPPFCB1__PAG_4.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/GAB_DEFINITIVO_408_DGPPFCB1__PAG_4.PDF",
+          "pair_key": "conhecimentos_basicos"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 14",
+          "filename": "MATRIZ_408_DGPPF014__PAG_9.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/MATRIZ_408_DGPPF014__PAG_9.PDF",
+          "pair_key": "cargo_14"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 13",
+          "filename": "MATRIZ_408_DGPPF013__PAG_8.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/MATRIZ_408_DGPPF013__PAG_8.PDF",
+          "pair_key": "cargo_13"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 12",
+          "filename": "MATRIZ_408_DGPPF012__PAG_9.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/MATRIZ_408_DGPPF012__PAG_9.PDF",
+          "pair_key": "cargo_12"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 11/ÁREA 14",
+          "filename": "MATRIZ_408_DGPPF011__PAG_4.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/MATRIZ_408_DGPPF011__PAG_4.PDF",
+          "pair_key": "cargo_11"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 10/ÁREA 12",
+          "filename": "MATRIZ_408_DGPPF010__PAG_3.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/MATRIZ_408_DGPPF010__PAG_3.PDF",
+          "pair_key": "cargo_10"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 9/ÁREA 9",
+          "filename": "MATRIZ_408_DGPPF009__PAG_4.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/MATRIZ_408_DGPPF009__PAG_4.PDF",
+          "pair_key": "cargo_9"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 8/ÁREA 7",
+          "filename": "MATRIZ_408_DGPPF008__PAG_4.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/MATRIZ_408_DGPPF008__PAG_4.PDF",
+          "pair_key": "cargo_8"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 7/ÁREA 6",
+          "filename": "MATRIZ_408_DGPPF007__PAG_4.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/MATRIZ_408_DGPPF007__PAG_4.PDF",
+          "pair_key": "cargo_7"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 6/ÁREA 5",
+          "filename": "MATRIZ_408_DGPPF006__PAG_4.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/MATRIZ_408_DGPPF006__PAG_4.PDF",
+          "pair_key": "cargo_6"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 5/ÁREA 4",
+          "filename": "MATRIZ_408_DGPPF005__PAG_4.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/MATRIZ_408_DGPPF005__PAG_4.PDF",
+          "pair_key": "cargo_5"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 3/ÁREA 2",
+          "filename": "MATRIZ_408_DGPPF003__PAG_4.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/MATRIZ_408_DGPPF003__PAG_4.PDF",
+          "pair_key": "cargo_3"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 2/ÁREA 1",
+          "filename": "MATRIZ_408_DGPPF002__PAG_4.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/MATRIZ_408_DGPPF002__PAG_4.PDF",
+          "pair_key": "cargo_2"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 1",
+          "filename": "MATRIZ_408_DGPPF001__PAG_8.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/MATRIZ_408_DGPPF001__PAG_8.PDF",
+          "pair_key": "cargo_1"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS BÁSICOS PARA O CARGO 2 - TODAS AS ÁREAS",
+          "filename": "MATRIZ_408_DGPPFCB1__PAG_4.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/MATRIZ_408_DGPPFCB1__PAG_4.PDF",
+          "pair_key": "conhecimentos_basicos"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 4 - ÁREA 3",
+          "filename": "MATRIZ_408_DGPPF004__PAG_4.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/MATRIZ_408_DGPPF004__PAG_4.PDF",
+          "pair_key": "cargo_4"
+        }
+      ],
+      "rejected_examples": [
+        {
+          "title": "PROVA ORAL – 04/02/2024 – MALOTE 1 – SUB JUDICE",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/960_PF_DL_SUBJUDICE_ORAL_COMPADRAO.PDF",
+          "reason": "prova_oral"
+        },
+        {
+          "title": "PROVA ORAL – 25/10/2020 – MALOTE 1 – SUB JUDICE",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/MALOTE01_PF_ORAL_COM_PADRAO.PDF",
+          "reason": "prova_oral"
+        },
+        {
+          "title": "PROVA ORAL – 4/8/2019 – MALOTE 1 – SUB JUDICE",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/P_MALOTE01_DPF_ORAL_COMPADRAO.PDF",
+          "reason": "prova_oral"
+        },
+        {
+          "title": "PROVA ORAL – 16/6/2019 – MALOTE 1 – SUB JUDICE",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/P_476_MALOTE01_DGPPF_ORAL.PDF",
+          "reason": "prova_oral"
+        },
+        {
+          "title": "PROVA ORAL - 28/4/2019 - MALOTE 1 - SUB JUDICE",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/P_467_MALOTE01_DGPPF_ORAL_COMPADRAO.PDF",
+          "reason": "prova_oral"
+        },
+        {
+          "title": "PROVA ORAL - MALOTE 1 - SUB JUDICE",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/SUB_JUDICE_P_MALOTE01_DGPPF_ORAL.PDF",
+          "reason": "prova_oral"
+        },
+        {
+          "title": "PROVA ORAL - MALOTE 3",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/MALOTE03_DGPPF_ORAL.PDF",
+          "reason": "prova_oral"
+        },
+        {
+          "title": "PROVA ORAL - MALOTE 1",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/P_MALOTE01_DGPPF_ORAL.PDF",
+          "reason": "prova_oral"
+        },
+        {
+          "title": "PROVA ORAL - MALOTE 4",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/P_MALOTE04_DGPPF_ORAL.PDF",
+          "reason": "prova_oral"
+        },
+        {
+          "title": "PROVA ORAL - MALOTE 2",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/P_MALOTE02_DGPPF_ORAL.PDF",
+          "reason": "prova_oral"
+        },
+        {
+          "title": "PADRÃO DE RESPOSTA DEFINITIVO - PROVA DISCURSIVA - CARGO 14",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/PF_18_PADRO_DE_RESPOSTAS_CARGO_14.PDF",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "PADRÃO DE RESPOSTA DEFINITIVO - PROVA DISCURSIVA - CARGO 13",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/PF_18_PADRO_DE_RESPOSTAS_CARGO_13.PDF",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "Edital nº 3 - Retificação das datas constantes dos subitens 5.1 e 10.1 do Edital nº 2 – PF, concursos anteriores – de 30 de abril de 2026",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/1CA5762B21B857B5B6FBA64E7467C83D8DB9179EF66A6538C0D98FDCD5E17D92.pdf",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 2 – Convocação de candidatos sub judice para matrícula no CFP e para a atualização da Ficha de Informações Confidenciais – FIC, referente aos concursos públicos regidos pelo Edital nº 9/2012 – DGP/DPF; pelo Edital nº 10/2012 – DGP/DPF e pelo Edital nº 1-DGP/PF; e pelo Edital nº 1 – DGP/PF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/C156978FCCE628DB3E20B553BD265E903E0C981AA12996D06D49B0371D3C6D70.pdf",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 1 – Convocação de candidatos sub judice para matrícula no CFP, referentes aos concursos públicos regidos pelo Edital nº 24/2004 – DGP/DPF – Nacional, de 15 de julho de 2004; pelo Edital nº 15/2009-DGP/APF, de 24 de julho de 2009; pelo Edital nº 1-DGP/PF, de 14 de junho de 2018, e suas alterações; e pelo Edital nº 01 – DGP/PF, de 15 de janeiro de 2021, e alterações",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/3E76C0367BD2EFD1085E630458CFCD7F55B0C793AB4F0855C8FFF7BAA81FFA0B.pdf",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 110 – Torna sem efeito o Edital nº 137 – DGP/PF, de 30 de julho de 2020.",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/ED_110_PF_18_TORNA_SEM_EFEITO_ED_137.PDF",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 91 – Eliminação de candidato sub judice.",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/ED_91_DGP__ELIMINAO_FELIPE_MAIA_XIMENES.PDF",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 74 - Convocação de candidato sub judice para matrícula na segunda etapa",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/ED_74_PF___CONVOCAO_DE_SJ_ROMULLO_DA_SILVA_NOLASCO.PDF",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 58 - Convocação para o Curso de Formação Profissional (CFP) de candidatas sub judice.",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/ED_58_2022___MARIA_BASTOS_PELANDA___ERIKA___DENIELLE___2018.PDF",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 48 - Convocação para o Curso de Formação Profissional (CFP) de candidata sub judice, oriunda do concurso público regido pelo Edital nº 1/2018 – DGP/DPF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/ED_48_PF_18_CONV_SUB_JUDICE_CFP_DENIELLI.PDF",
+          "reason": "edital"
+        }
+      ]
+    }
+  ]
+}

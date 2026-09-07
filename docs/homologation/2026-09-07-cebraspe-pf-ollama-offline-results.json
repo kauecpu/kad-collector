@@ -1,0 +1,360 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-09-07T13:17:47.091339+00:00",
+  "commit": "35b8cd1-dirty",
+  "matrix": "tests/homologation/cebraspe-pf.v1.json",
+  "ollama": {
+    "available": false,
+    "qwen3_8b": false,
+    "mode": "offline_test"
+  },
+  "samples": [
+    {
+      "id": "pf_21",
+      "contest": "POLÍCIA FEDERAL",
+      "year": 2021,
+      "board_identified": "CEBRASPE",
+      "start_url": "https://www.cebraspe.org.br/concursos/pf_21",
+      "expected": [
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CARGO 1: DELEGADO DE POLÍCIA FEDERAL",
+          "filename": "CARGO_1_DELEGADO_DE_POLCIA_FEDERAL.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/CARGO_1_DELEGADO_DE_POLCIA_FEDERAL.PDF",
+          "pair_key": "cargo_1"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CARGO 2: AGENTE DE POLÍCIA FEDERAL",
+          "filename": "CARGO_2_AGENTE_DE_POLCIA_FEDERAL.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/CARGO_2_AGENTE_DE_POLCIA_FEDERAL.PDF",
+          "pair_key": "cargo_2"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CARGO 3: ESCRIVÃO DE POLÍCIA FEDERAL",
+          "filename": "CARGO_3_ESCRIVO_DE_POLCIA_FEDERAL.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/CARGO_3_ESCRIVO_DE_POLCIA_FEDERAL.PDF",
+          "pair_key": "cargo_3"
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CARGO 4: PAPILOSCOPISTA DE POLÍCIA FEDERAL",
+          "filename": "CARGO_4_PAPILOSCOPISTA_POLICIAL_FEDERAL.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/CARGO_4_PAPILOSCOPISTA_POLICIAL_FEDERAL.PDF",
+          "pair_key": "cargo_4"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CARGO 1: DELEGADO DE POLÍCIA FEDERAL",
+          "filename": "GAB_DEFINITIVO_MATRIZ_577_PF_001_00.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/GAB_DEFINITIVO_MATRIZ_577_PF_001_00.PDF",
+          "pair_key": "cargo_1"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CARGO 2: AGENTE DE POLÍCIA FEDERAL",
+          "filename": "GAB_DEFINITIVO_MATRIZ_577_PF_002_00.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/GAB_DEFINITIVO_MATRIZ_577_PF_002_00.PDF",
+          "pair_key": "cargo_2"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CARGO 3: ESCRIVÃO DE POLÍCIA FEDERAL",
+          "filename": "GAB_DEFINITIVO_MATRIZ_577_PF_003_00.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/GAB_DEFINITIVO_MATRIZ_577_PF_003_00.PDF",
+          "pair_key": "cargo_3"
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CARGO 4: PAPILOSCOPISTA DE POLÍCIA FEDERAL",
+          "filename": "GAB_DEFINITIVO_MATRIZ_577_PF_004_00.PDF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/GAB_DEFINITIVO_MATRIZ_577_PF_004_00.PDF",
+          "pair_key": "cargo_4"
+        }
+      ],
+      "expected_count": 8,
+      "found_count": 8,
+      "exam_count": 4,
+      "answer_key_count": 4,
+      "accepted": [
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CARGO 3: ESCRIVÃO DE POLÍCIA FEDERAL",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/CARGO_3_ESCRIVO_DE_POLCIA_FEDERAL.PDF",
+          "filename": "CARGO_3_ESCRIVO_DE_POLCIA_FEDERAL.PDF",
+          "sha256": "d10ff2dae65cd8614e076d5e318b8258f12aa7dcf60b858f1738d574b01e7d31",
+          "size_bytes": 673291,
+          "discovery": "deterministic_browser",
+          "ocr": null
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CARGO 1: DELEGADO DE POLÍCIA FEDERAL",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/CARGO_1_DELEGADO_DE_POLCIA_FEDERAL.PDF",
+          "filename": "CARGO_1_DELEGADO_DE_POLCIA_FEDERAL.PDF",
+          "sha256": "70543026c4d36f8fd4c0642b5023df69a268a958fe147a48d2fac2a201dc3bfa",
+          "size_bytes": 432916,
+          "discovery": "deterministic_browser",
+          "ocr": null
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CARGO 2: AGENTE DE POLÍCIA FEDERAL",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/CARGO_2_AGENTE_DE_POLCIA_FEDERAL.PDF",
+          "filename": "CARGO_2_AGENTE_DE_POLCIA_FEDERAL.PDF",
+          "sha256": "5464654f02abfcafe921eaa65c4f30bf9c267d80e667b7b35a8ca9e3f115b42f",
+          "size_bytes": 688936,
+          "discovery": "deterministic_browser",
+          "ocr": null
+        },
+        {
+          "kind": "exam",
+          "title": "PROVA OBJETIVA - CARGO 4: PAPILOSCOPISTA DE POLÍCIA FEDERAL",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/CARGO_4_PAPILOSCOPISTA_POLICIAL_FEDERAL.PDF",
+          "filename": "CARGO_4_PAPILOSCOPISTA_POLICIAL_FEDERAL.PDF",
+          "sha256": "99b59dac252614f67877bdd2dc82888807089796a630dc0f8dcef0d6f0c82c75",
+          "size_bytes": 737962,
+          "discovery": "deterministic_browser",
+          "ocr": null
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CARGO 1: DELEGADO DE POLÍCIA FEDERAL",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/GAB_DEFINITIVO_MATRIZ_577_PF_001_00.PDF",
+          "filename": "GAB_DEFINITIVO_MATRIZ_577_PF_001_00.PDF",
+          "sha256": "9bbaa7651a4fe7e236b20bea89313f30e9a45158f5946a255aca45afc4a07fda",
+          "size_bytes": 46208,
+          "discovery": "deterministic_browser",
+          "ocr": null
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CARGO 2: AGENTE DE POLÍCIA FEDERAL",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/GAB_DEFINITIVO_MATRIZ_577_PF_002_00.PDF",
+          "filename": "GAB_DEFINITIVO_MATRIZ_577_PF_002_00.PDF",
+          "sha256": "36c70e3ad6bce79ae872333b0bc4cbb4848cd843b6ed7f56516b8a16902dbe3b",
+          "size_bytes": 46338,
+          "discovery": "deterministic_browser",
+          "ocr": null
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CARGO 3: ESCRIVÃO DE POLÍCIA FEDERAL",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/GAB_DEFINITIVO_MATRIZ_577_PF_003_00.PDF",
+          "filename": "GAB_DEFINITIVO_MATRIZ_577_PF_003_00.PDF",
+          "sha256": "46805ba4e7f83506a73d4ea21b8ecfd7fd83e28c6536cbcc424f687f44cbb6c7",
+          "size_bytes": 46894,
+          "discovery": "deterministic_browser",
+          "ocr": null
+        },
+        {
+          "kind": "answer_key",
+          "title": "GABARITO DEFINITIVO - CARGO 4: PAPILOSCOPISTA DE POLÍCIA FEDERAL",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/GAB_DEFINITIVO_MATRIZ_577_PF_004_00.PDF",
+          "filename": "GAB_DEFINITIVO_MATRIZ_577_PF_004_00.PDF",
+          "sha256": "0013fbfa3a74e4ebe0e6d8a9bbd403dcc377724c36f976cfba2fd01683c89e7a",
+          "size_bytes": 46206,
+          "discovery": "deterministic_browser",
+          "ocr": null
+        }
+      ],
+      "rejected_examples": [
+        {
+          "title": "PROVA ORAL - CARGO DELEGADO (APLICADO DIA 19/7/2026) SUB JUDICE",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/B46611F19D70F07B019A795D3367C491A414D10BDA1A195E23AFF756A8FE9CE4.pdf",
+          "reason": "prova_oral"
+        },
+        {
+          "title": "PROVA ORAL E PADRÃO DE RESPOSTAS - CARGO DELEGADO (APLICADO EM 11/08/2024) SUB JUDICE",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/999_PF_ORAL_001_COMPADRAO.PDF",
+          "reason": "prova_oral"
+        },
+        {
+          "title": "PROVA ORAL E PADRÃO DE RESPOSTAS SUB JUDICE - DELEGADO (APLICADO EM 22/01/23)",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/794_PF_21_ORAL_SUBJUDICE_001_COMPADRO.PDF",
+          "reason": "prova_oral"
+        },
+        {
+          "title": "PROVA ORAL E PADRÃO DE RESPOSTAS SUB JUDICE - CARGO DE DELEGADO",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/753_DGP_PF_ORAL_001_COMPADRAO.PDF",
+          "reason": "prova_oral"
+        },
+        {
+          "title": "PROVA ORAL E PADRÃO DE RESPOSTAS - CARGO DE DELEGADO",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/616_PF_DELEGADO_ORAL_COM_PADRO.PDF",
+          "reason": "prova_oral"
+        },
+        {
+          "title": "PROVA DE DIGITAÇÃO - CARGO DE ESCRIVÃO",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/PF_ESCRIVO_617.PDF",
+          "reason": "prova_de_digitacao"
+        },
+        {
+          "title": "PADRÃO DE RESPOSTA DEFINITIVO - DELEGADO DE POLÍCIA FEDERAL - ATUALIZADO EM 14/6/2021",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/PF_21_PADRO_DE_RESPOSTA_DEFINITIVO_COMPLETO_VF.PDF",
+          "reason": "padrao_de_resposta"
+        },
+        {
+          "title": "PADRÃO DE RESPOSTA DEFINITIVO - DEMAIS CARGOS",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/PF_DISC_PADRO_DE_RESPOSTA_DEFINITIVO__DEMAIS_CARGOS.PDF",
+          "reason": "padrao_de_resposta"
+        },
+        {
+          "title": "PROVA DISCURSIVA - demais cargos",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/PF_21_PROVA_DISCURSIVA_DEMAIS_CARGOS.PDF",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "PROVA DISCURSIVA - Delegado de Polícia Federal",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/PF_21_PROVA_DISCURSIVA_DELEGADO.PDF",
+          "reason": "prova_discursiva"
+        },
+        {
+          "title": "Edital nº 4 – Convocação de candidatos sub judice para matrícula no CFP e para a atualização da Ficha de Informações Confidenciais – FIC, referentes aos concursos públicos regidos pelo Edital nº 1/2012 – DGP/DPF, de 14 de março de 2012, e suas alterações, e pelo Edital nº 1 – DGP/PF, de 15 de janeiro de 2021 .",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/3183068855B20D8A63585E5BF28624A662F922E1791FE6948C68763A4713C13C.pdf",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 3 - Retificação das datas constantes dos subitens 5.1 e 10.1 do Edital nº 2 – PF, concursos anteriores – de 30 de abril de 2026",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/1CA5762B21B857B5B6FBA64E7467C83D8DB9179EF66A6538C0D98FDCD5E17D92.pdf",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 2 – Convocação de candidatos sub judice para matrícula no CFP e para a atualização da Ficha de Informações Confidenciais – FIC, referente aos concursos públicos regidos pelo Edital nº 9/2012 – DGP/DPF; pelo Edital nº 10/2012 – DGP/DPF e pelo Edital nº 1-DGP/PF; e pelo Edital nº 1 – DGP/PF",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/C156978FCCE628DB3E20B553BD265E903E0C981AA12996D06D49B0371D3C6D70.pdf",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 1 – Convocação de candidatos sub judice para matrícula no CFP, referentes aos concursos públicos regidos pelo Edital nº 24/2004 – DGP/DPF – Nacional, de 15 de julho de 2004; pelo Edital nº 15/2009-DGP/APF, de 24 de julho de 2009; pelo Edital nº 1-DGP/PF, de 14 de junho de 2018, e suas alterações; e pelo Edital nº 01 – DGP/PF, de 15 de janeiro de 2021, e alterações",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/3E76C0367BD2EFD1085E630458CFCD7F55B0C793AB4F0855C8FFF7BAA81FFA0B.pdf",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 112 – Reintegração de candidata sub judice.",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/ED_112_DPF_2021_REINT_SUB_JUDICE_JESSICA.PDF",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 111 – Inclusão de candidato sub judice.",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/ED_111_DPF_2021_INCL_SUB_JUDICE_RES_FINAL_1A_ETAPA_PAULO.PDF",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 109 - Convocação e matrícula no Curso de Formação Profissional (CFP), eliminação de candidatos, rematrículas e retificações",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/ED_109_SANEAMENTO_13454_.PDF",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 108 - Resultado final na avaliação psicológica (primeiro e segundo momentos) dos candidatos aos cargos de Delegado de Polícia Federal, Agente de Polícia Federal e de Escrivão de Polícia Federal matriculados no Curso de Formação Profissional",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/ED_108_PF_RES_FINAL_AVAL_PSICO_1_E_2_MOMENTOS.PDF",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 107 - Inclusão de candidatos no resultado provisório na avaliação psicológica (primeiro e segundo momentos)",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/ED_107_PF_INCLUSAO_DE_CANDIDATOS_NO_RES_PROV_AVAL_PSICO_1_E_2_MOMENTOS13375.PDF",
+          "reason": "edital"
+        },
+        {
+          "title": "Edital nº 106 - Resultado provisório na avaliação psicológica (primeiro e segundo momentos) dos candidatos aos cargos de Delegado de Polícia Federal, Agente de Polícia Federal e de Escrivão de Polícia Federal",
+          "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/ED_106_PF_RES_PROV_AVAL_PSICO_1_E_2_MOMENTOS.PDF",
+          "reason": "edital"
+        }
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "prohibited_accepted": [],
+      "precision": 1.0,
+      "coverage": 1.0,
+      "pairings": [
+        {
+          "pair_key": "cargo_1",
+          "exam_files": [
+            "CARGO_1_DELEGADO_DE_POLCIA_FEDERAL.PDF"
+          ],
+          "answer_key_files": [
+            "GAB_DEFINITIVO_MATRIZ_577_PF_001_00.PDF"
+          ],
+          "exam_found": true,
+          "answer_key_found": true,
+          "associated": true
+        },
+        {
+          "pair_key": "cargo_2",
+          "exam_files": [
+            "CARGO_2_AGENTE_DE_POLCIA_FEDERAL.PDF"
+          ],
+          "answer_key_files": [
+            "GAB_DEFINITIVO_MATRIZ_577_PF_002_00.PDF"
+          ],
+          "exam_found": true,
+          "answer_key_found": true,
+          "associated": true
+        },
+        {
+          "pair_key": "cargo_3",
+          "exam_files": [
+            "CARGO_3_ESCRIVO_DE_POLCIA_FEDERAL.PDF"
+          ],
+          "answer_key_files": [
+            "GAB_DEFINITIVO_MATRIZ_577_PF_003_00.PDF"
+          ],
+          "exam_found": true,
+          "answer_key_found": true,
+          "associated": true
+        },
+        {
+          "pair_key": "cargo_4",
+          "exam_files": [
+            "CARGO_4_PAPILOSCOPISTA_POLICIAL_FEDERAL.PDF"
+          ],
+          "answer_key_files": [
+            "GAB_DEFINITIVO_MATRIZ_577_PF_004_00.PDF"
+          ],
+          "exam_found": true,
+          "answer_key_found": true,
+          "associated": true
+        }
+      ],
+      "pairing_rate": 1.0,
+      "paths": [
+        "deterministic_browser"
+      ],
+      "pages_visited": [
+        "https://www.cebraspe.org.br/robots.txt",
+        "https://cdn.cebraspe.org.br/robots.txt"
+      ],
+      "qwen_calls": [],
+      "duration_seconds": 23.706,
+      "ocr_attempted": 0,
+      "ocr_succeeded": 0,
+      "documents_still_needing_ocr": 0,
+      "failures": [],
+      "warnings": [],
+      "duplicate_documents": 0,
+      "manifest": "data/homologation/cebraspe-pf-ollama-offline/pf_21/manifests/download-20260907T131747Z-b5a0323f.json",
+      "extraction_manifest": null
+    }
+  ],
+  "summary": {
+    "precision": 1.0,
+    "coverage": 1.0,
+    "pairing_rate": 1.0,
+    "ocr_success_rate": null,
+    "false_positives": 0,
+    "false_negatives": 0,
+    "prohibited_accepted": 0,
+    "expected_documents": 8,
+    "found_documents": 8,
+    "exams_found": 4,
+    "answer_keys_found": 4,
+    "deterministic_decisions": 8,
+    "qwen_decisions": 0,
+    "qwen_proposals_accepted": 0,
+    "qwen_proposals_refused": 0,
+    "average_seconds_per_source": 23.706,
+    "sources_without_intervention_rate": 1.0,
+    "sources": 1
+  },
+  "idempotency": null
+}
