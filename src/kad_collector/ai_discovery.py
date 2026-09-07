@@ -213,9 +213,7 @@ class OllamaDiscoveryPlanner:
                 continue
             seen_documents.add(choice.index)
             item = candidates[choice.index - 1]
-            selected = DiscoveredLink(
-                url=item.url, title=item.title, declared_type=choice.kind
-            )
+            selected = DiscoveredLink(url=item.url, title=item.title, declared_type=choice.kind)
             if _looks_like_download(selected.url):
                 documents.append(selected)
             else:
@@ -224,10 +222,7 @@ class OllamaDiscoveryPlanner:
         for index in [*parsed.navigation, *navigation_from_documents]:
             if len(navigation_urls) >= 10:
                 break
-            if (
-                index > len(candidates)
-                or index in seen_navigation
-            ):
+            if index > len(candidates) or index in seen_navigation:
                 continue
             seen_navigation.add(index)
             item = candidates[index - 1]
@@ -255,12 +250,16 @@ def document_choice_is_allowed(item: DiscoveredLink, source: SourceDefinition) -
         re.search(pattern, candidate) for pattern in source.exclude_patterns
     ):
         return False
+    if source.include_patterns and not any(
+        re.search(pattern, value)
+        for pattern in source.include_patterns
+        for value in (item.url, candidate)
+    ):
+        return False
     parsed = urlsplit(item.url)
     document_evidence = f"{item.title}\n{parsed.path.rsplit('/', 1)[-1]}\n{parsed.query}"
     expected_patterns = (
-        source.exam_patterns
-        if item.declared_type == "exam"
-        else source.answer_key_patterns
+        source.exam_patterns if item.declared_type == "exam" else source.answer_key_patterns
     )
     if not any(re.search(pattern, document_evidence) for pattern in expected_patterns):
         return False
@@ -287,22 +286,12 @@ def _candidate_priority(item: DiscoveredLink, source: SourceDefinition) -> int:
     score = 0
     if _looks_like_download(item.url):
         score += 100
-    if any(
-        re.search(pattern, value)
-        for pattern in source.include_patterns
-        for value in values
-    ):
+    if any(re.search(pattern, value) for pattern in source.include_patterns for value in values):
         score += 80
-    if any(
-        re.search(pattern, value)
-        for pattern in source.pagination_patterns
-        for value in values
-    ):
+    if any(re.search(pattern, value) for pattern in source.pagination_patterns for value in values):
         score += 70
     if any(
-        re.search(pattern, value)
-        for pattern in source.collection_url_patterns
-        for value in values
+        re.search(pattern, value) for pattern in source.collection_url_patterns for value in values
     ):
         score += 65
     if any(

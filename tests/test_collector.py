@@ -118,10 +118,7 @@ class LinkParsingTests(unittest.TestCase):
         )
 
     def test_extracts_public_data_url_when_anchor_has_javascript_placeholder(self) -> None:
-        html = (
-            '<a href="javascript:void(0);" data-url="/prova.pdf">'
-            "Compartilhar prova</a>"
-        )
+        html = '<a href="javascript:void(0);" data-url="/prova.pdf">Compartilhar prova</a>'
         self.assertEqual(
             extract_links(
                 html,
@@ -936,9 +933,7 @@ class LinkParsingTests(unittest.TestCase):
             "https://arq.pciconcursos.com.br/provas/29658981/2e4bb8b74228/"
             "escriturario_agente_comercial.pdf"
         )
-        key_url = (
-            "https://arq.pciconcursos.com.br/provas/29658981/444cd7f0bc5d/gabarito.pdf"
-        )
+        key_url = "https://arq.pciconcursos.com.br/provas/29658981/444cd7f0bc5d/gabarito.pdf"
         fixture = (FIXTURES / "pci_banco_brasil_js_links.html").read_bytes()
 
         class FixtureClient:
@@ -1255,7 +1250,11 @@ class SecurityTests(unittest.TestCase):
             source for source in config.sources if source.id == "cesgranrio_banco_brasil"
         )
         self.assertEqual(banco_brasil.allowed_hosts, ["bb.com.br", "www.bb.com.br"])
-        self.assertEqual(cesgranrio.discovery_strategies, ["json"])
+        self.assertEqual(cesgranrio.discovery_strategies, ["html", "sitemap", "json"])
+        self.assertEqual(cesgranrio.source_tier, "official")
+        self.assertIn("https://www.cesgranrio.org.br/sitemap.xml", cesgranrio.sitemap_urls)
+        self.assertIn("inscricao.cesgranrio.com.br", cesgranrio.allowed_hosts)
+        self.assertEqual(pci.source_tier, "secondary")
         self.assertTrue(
             all("sig=" not in url for url in banco_brasil.start_urls + cesgranrio.start_urls)
         )

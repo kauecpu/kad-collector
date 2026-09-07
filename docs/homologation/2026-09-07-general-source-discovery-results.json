@@ -1,0 +1,399 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-07",
+  "matrix": "tests/homologation/general-source-discovery.v1.toml",
+  "summary": {
+    "accepted_documents": 51,
+    "expected_documents": 51,
+    "precision_percent": 100.0,
+    "coverage_percent": 100.0,
+    "false_positives": 0,
+    "false_negatives": 0,
+    "official_documents": 51,
+    "secondary_documents": 0,
+    "cesgranrio_exam_key_association_percent": 100.0,
+    "cesgranrio_associated_variants": 20,
+    "cesgranrio_expected_variants": 20,
+    "sources_without_intervention_percent": 100.0,
+    "sources_without_intervention": 3,
+    "sources_total": 3,
+    "average_wall_time_seconds": 37.2,
+    "qwen_calls": 4,
+    "qwen_proposed_documents": 16,
+    "qwen_accepted_documents": 0,
+    "qwen_selected_navigation_urls": 5
+  },
+  "idempotency": {
+    "sample_id": "cesgranrio_banco_brasil_2023",
+    "first_manifest_local": "data/homologation/general-discovery-isolated-cesgranrio-v2/manifests/download-20260907T050709Z-7654e727.json",
+    "second_manifest_local": "data/homologation/general-discovery-isolated-cesgranrio-v2/manifests/download-20260907T051724Z-a0dc92c4.json",
+    "same_url_and_sha256_set": true,
+    "documents_first": 24,
+    "documents_second": 24
+  },
+  "ollama_offline": {
+    "manifest_local": "data/homologation/general-discovery-cesgranrio-ollama-offline/manifests/download-20260907T051912Z-fcae18c7.json",
+    "endpoint": "loopback port without service",
+    "documents": 24,
+    "failures": 0,
+    "inventory_coverage_percent": 100.0,
+    "unavailable_event_recorded": true
+  },
+  "runs": [
+    {
+      "sample_id": "cesgranrio_banco_brasil_2023",
+      "manifest_local": "data/homologation/general-discovery-isolated-cesgranrio-v3/manifests/download-20260907T052128Z-8496a529.json",
+      "source_id": "cesgranrio_banco_brasil",
+      "documents": 24,
+      "exams": 20,
+      "answer_keys": 4,
+      "filtered_out": 24,
+      "duplicates": 0,
+      "failures": 0,
+      "inventory": {
+        "expected_documents": 24,
+        "downloaded_documents": 24,
+        "missing_documents": 0,
+        "coverage_percent": 100.0,
+        "expected_variants": 20,
+        "downloaded_variants": 20,
+        "variant_coverage_percent": 100.0,
+        "complete": true
+      },
+      "qwen_calls": 2,
+      "qwen_decisions": [
+        {
+          "outcome": "empty",
+          "duration_ms": 311,
+          "detail": "model=qwen3:8b; candidates=0; proposed_documents=0; accepted_documents=0; navigation=0; reason=no_documents; selected_document_urls=; selected_navigation_urls="
+        },
+        {
+          "outcome": "empty",
+          "duration_ms": 10469,
+          "detail": "model=qwen3:8b; candidates=51; proposed_documents=2; accepted_documents=0; navigation=0; reason=no_documents; selected_document_urls=; selected_navigation_urls="
+        }
+      ],
+      "telemetry_duration_ms": 110128,
+      "files": [
+        {
+          "document_type": "answer_key",
+          "original_url": "https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf%2Fbb0122%2Fgabarito%2FGABARITO+-+23-04-2023+-+PROVA+A+-+ESCRITUR%C3%81RIO+-+AGENTE+COMERCIAL.pdf",
+          "sha256": "88a9b692ad61c119a39212b29ae4007079820eabe8c17b93af1c4fc99c1e1aa5"
+        },
+        {
+          "document_type": "answer_key",
+          "original_url": "https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf%2Fbb0122%2Fgabarito%2FGABARITO+-+23-04-2023+-+PROVA+B+-+ESCRITUR%C3%81RIO+-+AGENTE+COMERCIAL.pdf",
+          "sha256": "f6e9b202a3d5a4ecdb8bee140d9f0eca068ecb8a1565560ff21b13ac3036848f"
+        },
+        {
+          "document_type": "answer_key",
+          "original_url": "https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf%2Fbb0122%2Fgabarito%2FGABARITO+-+23-04-2023+-+PROVA+C+-+ESCRITUR%C3%81RIO+-+AGENTE+COMERCIAL.pdf",
+          "sha256": "05d723bc1d7730494a31b6d7797b1bdedcc091a09903db37880c1a06d3297dc8"
+        },
+        {
+          "document_type": "answer_key",
+          "original_url": "https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf%2Fbb0122%2Fgabarito%2FGABARITO+-+23-04-2023+-+PROVA+-+AGENTE+DE+TECNOLOGIA+-+MICRORREGIAO+158+-+TI.pdf",
+          "sha256": "16c4447b06af019cefd17febd41252628149c6e23cdf78d6a8e15f43b2e836df"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf%2Fbb0122%2Fprovas%2FPROVA+A+-+AGENTE+COMERCIAL+-+GABARITO+1.pdf",
+          "sha256": "81c163b1d25d38bf7e11f5273b90a156efebee2e1390944fc6dc0fc5697afcec"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf%2Fbb0122%2Fprovas%2FPROVA+A+-+AGENTE+COMERCIAL+-+GABARITO+2.pdf",
+          "sha256": "eaa3560831a0685fb3d4a0c4c3cb5056691a39fe99190e4f65b37d8fb7e70b91"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf%2Fbb0122%2Fprovas%2FPROVA+A+-+AGENTE+COMERCIAL+-+GABARITO+3.pdf",
+          "sha256": "8f6b73f8fc422801b0607476c48b3c6bacaaaec641e64bd8ce1953b721bc0119"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf%2Fbb0122%2Fprovas%2FPROVA+A+-+AGENTE+COMERCIAL+-+GABARITO+4.pdf",
+          "sha256": "fae69306dc418c8b7ba3c93d5ea1d4d416cc4611e2f5361a77a94b095dbf4f69"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf%2Fbb0122%2Fprovas%2FPROVA+A+-+AGENTE+COMERCIAL+-+GABARITO+5.pdf",
+          "sha256": "7d1895762bb711aed60ddaa9e771f8bed2dfcfb0b9bd5ba68147f50418ad29be"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf%2Fbb0122%2Fprovas%2FPROVA+B+-+AGENTE+COMERCIAL+-+GABARITO+1.pdf",
+          "sha256": "15058613557e35ef83c4507b32906b2ec13c2ad0c0af8d1274a2b6afd1ac1812"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf%2Fbb0122%2Fprovas%2FPROVA+B+-+AGENTE+COMERCIAL+-+GABARITO+2.pdf",
+          "sha256": "5209a7b1db51b35ebeede80cd47bf166bfb5502245c9beb576d832cb8589a8c0"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf%2Fbb0122%2Fprovas%2FPROVA+B+-+AGENTE+COMERCIAL+-+GABARITO+3.pdf",
+          "sha256": "6d1f83260a19d3d5dc9b676b8761da3dc6634857a06831ada5d9027c18b3d0e1"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf%2Fbb0122%2Fprovas%2FPROVA+B+-+AGENTE+COMERCIAL+-+GABARITO+4.pdf",
+          "sha256": "a1c57c29b22deeaf8bdb309c349429201e72332acd87db45b70df38393c34b4a"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf%2Fbb0122%2Fprovas%2FPROVA+B+-+AGENTE+COMERCIAL+-+GABARITO+5.pdf",
+          "sha256": "8f20a5932d258ffd173dbf4f0fa275cf93d08c2e7f249674aad449b1c65ed665"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf%2Fbb0122%2Fprovas%2FPROVA+C+-+AGENTE+COMERCIAL+-+GABARITO+1.pdf",
+          "sha256": "11ec22e814fbe7a599b2ed6e69af0549e8d89a4a4d8621eee21af2e48c6a67a2"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf%2Fbb0122%2Fprovas%2FPROVA+C+-+AGENTE+COMERCIAL+-+GABARITO+2.pdf",
+          "sha256": "f56ca3758830276ddab2b9f5eac047ff40efafa288ee2820838b7db690830f87"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf%2Fbb0122%2Fprovas%2FPROVA+C+-+AGENTE+COMERCIAL+-+GABARITO+3.pdf",
+          "sha256": "d8b678891c2b9517918623837a85e6834e783a6bcc2c26db54eeb5e0c3a289b8"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf%2Fbb0122%2Fprovas%2FPROVA+C+-+AGENTE+COMERCIAL+-+GABARITO+4.pdf",
+          "sha256": "2bf69cf62166da7369bc6464e64a0b08a48eff11af0fcaeec6c8e80329980d16"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf%2Fbb0122%2Fprovas%2FPROVA+C+-+AGENTE+COMERCIAL+-+GABARITO+5.pdf",
+          "sha256": "f62cbf43393e78987a1311bd7ece34c52c7c6b9636e727c820a292367970a3b2"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf%2Fbb0122%2Fprovas%2FAGENTE+DE+TECNOLOGIA+-+Microrregi%C3%A3o+158+-+TI+-+GABARITO+1.pdf",
+          "sha256": "9f7d363b66a8cb66f7f3bd67c75411a0671e4e3dd67366b1338c98d188fa6097"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf%2Fbb0122%2Fprovas%2FAGENTE+DE+TECNOLOGIA+-+Microrregi%C3%A3o+158+-+TI+-+GABARITO+2.pdf",
+          "sha256": "1b5d9642f0793e4fab3a96136c16b0965186fb8e8a05458be18a525a0ccfd220"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf%2Fbb0122%2Fprovas%2FAGENTE+DE+TECNOLOGIA+-+Microrregi%C3%A3o+158+-+TI+-+GABARITO+3.pdf",
+          "sha256": "acda4bd63c7228f7054ca70c22ec9d37ee0fb1347fa7c12a38eb21f63da9db23"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf%2Fbb0122%2Fprovas%2FAGENTE+DE+TECNOLOGIA+-+Microrregi%C3%A3o+158+-+TI+-+GABARITO+4.pdf",
+          "sha256": "fc0b65752530718c27b2b600e81f61034bfca8349a087f85ee226a8958e9ee34"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf%2Fbb0122%2Fprovas%2FAGENTE+DE+TECNOLOGIA+-+Microrregi%C3%A3o+158+-+TI+-+GABARITO+5.pdf",
+          "sha256": "24979f1883e4d539dda9f8320fcdf9a739c8bcb66525e82b482da6e22fc62a60"
+        }
+      ]
+    },
+    {
+      "sample_id": "fgv_receita_federal_2023",
+      "manifest_local": "data/homologation/general-discovery-isolated-fgv-v4/manifests/download-20260907T051132Z-07bce72e.json",
+      "source_id": "fgv_conhecimento",
+      "documents": 23,
+      "exams": 18,
+      "answer_keys": 5,
+      "filtered_out": 10,
+      "duplicates": 0,
+      "failures": 0,
+      "inventory": {
+        "expected_documents": 23,
+        "downloaded_documents": 23,
+        "missing_documents": 0,
+        "coverage_percent": 100.0,
+        "expected_variants": 4,
+        "downloaded_variants": 4,
+        "variant_coverage_percent": 100.0,
+        "complete": true
+      },
+      "qwen_calls": 0,
+      "qwen_decisions": [],
+      "telemetry_duration_ms": 83669,
+      "files": [
+        {
+          "document_type": "answer_key",
+          "original_url": "https://conhecimento.fgv.br/sites/default/files/concursos/rfb-gabarito-para-publicacao-v20231113-1743.pdf",
+          "sha256": "bec8e2407ffe8565aea554f285bd16ccad678b95e2148010ffd90383dd176673"
+        },
+        {
+          "document_type": "answer_key",
+          "original_url": "https://conhecimento.fgv.br/sites/default/files/concursos/rfb-gabarito-para-publicacao.pdf",
+          "sha256": "65bb865dbd1535606daa332d501567be81970966d23e10b229c37114c784e9ce"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://conhecimento.fgv.br/sites/default/files/concursos/cns101-auditor-fiscal-da-receita-federal-do-brasil-afrfbcns101-tipo-1_0.pdf",
+          "sha256": "0857854685d47b61ff5e8adfe5aa9f00dcad0adba218713ab497515a34becd65"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://conhecimento.fgv.br/sites/default/files/concursos/cns201-analista-tributario-da-receita-federal-do-brasil-atrfbcns201-tipo-1.pdf",
+          "sha256": "614f8c2a09543112a3b83e5953c55ba50a2c0026e44af729b13631018b0514b9"
+        },
+        {
+          "document_type": "answer_key",
+          "original_url": "https://conhecimento.fgv.br/sites/default/files/concursos/serfb-gabarito-defintivo-auditor-_0.pdf",
+          "sha256": "0ed2b2aba1fcf103d6c9bd6dd06ef38b012aea111d73255a928ec414aa0b6a28"
+        },
+        {
+          "document_type": "answer_key",
+          "original_url": "https://conhecimento.fgv.br/sites/default/files/concursos/gabarito-definitivo-rfb_analista-_0.pdf",
+          "sha256": "637eb6ce1f55ab85fe8251241a01cc202c56a0d80311f6840431934b2e33b023"
+        },
+        {
+          "document_type": "answer_key",
+          "original_url": "https://conhecimento.fgv.br/sites/default/files/concursos/serfb-01-gabaritos-para-publicacao-20230320.pdf",
+          "sha256": "85119a7917509050789a66bb18f0cc8d20bfd55cef56f682f04a1abb1b85e470"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://conhecimento.fgv.br/sites/default/files/concursos/cns101-auditor-fiscal-da-receita-federal-do-brasil-afrfbcns101-tipo-1.pdf",
+          "sha256": "e8e9018cd3b63c8af73e3a4646ff6219dcf424b58490393e33a001807be6e751"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://conhecimento.fgv.br/sites/default/files/concursos/cns101-auditor-fiscal-da-receita-federal-do-brasil-afrfbcns101-tipo-2.pdf",
+          "sha256": "828c34ea13ead168c347859ec376ed53ed14dea1e1f927541832546cd378dc22"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://conhecimento.fgv.br/sites/default/files/concursos/cns101-auditor-fiscal-da-receita-federal-do-brasil-afrfbcns101-tipo-3.pdf",
+          "sha256": "9db18069b200632ef8b80f9dd297c4d622f2e76ad8e0f5b0c1ea354d15a452ba"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://conhecimento.fgv.br/sites/default/files/concursos/cns101-auditor-fiscal-da-receita-federal-do-brasil-afrfbcns101-tipo-4.pdf",
+          "sha256": "248e9c90a6f6fcbbaa636348c1eee3fc8a5fcce4966512b52b95bf4179b014dc"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://conhecimento.fgv.br/sites/default/files/concursos/cns201-auditor-fiscal-da-receita-federal-do-brasil-afrfbcns201-tipo-1.pdf",
+          "sha256": "df9cf3786c15957ba48a8bd2a31efae3b6f8a6ebf0bcbfcc7bcc441a622d0eff"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://conhecimento.fgv.br/sites/default/files/concursos/cns201-auditor-fiscal-da-receita-federal-do-brasil-afrfbcns201-tipo-2.pdf",
+          "sha256": "20168f61285e57bab23693f930613958d553d919e9cee2071fb5176bd077d75f"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://conhecimento.fgv.br/sites/default/files/concursos/cns201-auditor-fiscal-da-receita-federal-do-brasil-afrfbcns201-tipo-3.pdf",
+          "sha256": "0f46baaa08b7cd495a80d15979f437e8f5cc947142550ecc61a637207d9c2f10"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://conhecimento.fgv.br/sites/default/files/concursos/cns201-auditor-fiscal-da-receita-federal-do-brasil-afrfbcns201-tipo-4.pdf",
+          "sha256": "2a723aab6430835b3f66a6f0c1320feaa31e3ffc99a984b580268ffadf480086"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://conhecimento.fgv.br/sites/default/files/concursos/cns102-analista-tributario-da-receita-federal-do-brasil-atrfbcns102-tipo-1.pdf",
+          "sha256": "d9b051f7d8ffe91e4ed5d62a2eb56a70e8b2ac61a9138830d9a84595b7f6a404"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://conhecimento.fgv.br/sites/default/files/concursos/cns102-analista-tributario-da-receita-federal-do-brasil-atrfbcns102-tipo-2.pdf",
+          "sha256": "902a10165b6e9c07ad937f2e4ff1a5fea3e9a5a9363425fe2ad90866506969b0"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://conhecimento.fgv.br/sites/default/files/concursos/cns102-analista-tributario-da-receita-federal-do-brasil-atrfbcns102-tipo-3.pdf",
+          "sha256": "f2eb0ca095e451e829c67031ea77cee4eff0a8cb6e824221364b77ff19b7978b"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://conhecimento.fgv.br/sites/default/files/concursos/cns102-analista-tributario-da-receita-federal-do-brasil-atrfbcns102-tipo-4.pdf",
+          "sha256": "a2a8f4f78f234e52295b46b290c5beef5f619c3b11d441dec81d09a0c227fbc4"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://conhecimento.fgv.br/sites/default/files/concursos/cns202-analista-tributario-da-receita-federal-do-brasil-atrfbcns202-tipo-1.pdf",
+          "sha256": "8bba7135349c9347383a848244c4226eabf2bb1c4fe3ca910adcbe0249e2d491"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://conhecimento.fgv.br/sites/default/files/concursos/cns202-analista-tributario-da-receita-federal-do-brasil-atrfbcns202-tipo-2.pdf",
+          "sha256": "c7a24cb3ba537ea0111f1ee1e50b36b78e65cb5aefaa25ab3b7b2d84c8fbbb65"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://conhecimento.fgv.br/sites/default/files/concursos/cns202-analista-tributario-da-receita-federal-do-brasil-atrfbcns202-tipo-3.pdf",
+          "sha256": "cd73e53bed00ee55c8d87e50e4208a81a9cc108d31b4f78956d1201cfcbbe49a"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://conhecimento.fgv.br/sites/default/files/concursos/cns202-analista-tributario-da-receita-federal-do-brasil-atrfbcns202-tipo-4.pdf",
+          "sha256": "e81cc944e960ef8313a1fc8ea26db8719d6d755ff70418d13a40afcee7045b0d"
+        }
+      ]
+    },
+    {
+      "sample_id": "fuvest_2026",
+      "manifest_local": "data/homologation/general-discovery-isolated-fuvest-v5/manifests/download-20260907T052603Z-35a74e2d.json",
+      "source_id": "fuvest_vestibular",
+      "documents": 4,
+      "exams": 4,
+      "answer_keys": 0,
+      "filtered_out": 6,
+      "duplicates": 0,
+      "failures": 0,
+      "inventory": {
+        "expected_documents": 4,
+        "downloaded_documents": 4,
+        "missing_documents": 0,
+        "coverage_percent": 100.0,
+        "expected_variants": 0,
+        "downloaded_variants": 0,
+        "variant_coverage_percent": null,
+        "complete": true
+      },
+      "qwen_calls": 2,
+      "qwen_decisions": [
+        {
+          "outcome": "selected",
+          "duration_ms": 16932,
+          "detail": "model=qwen3:8b; candidates=104; proposed_documents=7; accepted_documents=0; navigation=2; reason=no_documents; selected_document_urls=; selected_navigation_urls=https://www.fuvest.br/vestibular-da-usp,https://www.fuvest.br/vestibular-da-usp/2/"
+        },
+        {
+          "outcome": "selected",
+          "duration_ms": 16715,
+          "detail": "model=qwen3:8b; candidates=103; proposed_documents=7; accepted_documents=0; navigation=3; reason=no_documents; selected_document_urls=; selected_navigation_urls=https://www.fuvest.br/acervo-vestibular,https://www.fuvest.br/vestibular-da-usp/2/,https://www.fuvest.br/vestibular-da-usp/3/"
+        }
+      ],
+      "telemetry_duration_ms": 55660,
+      "files": [
+        {
+          "document_type": "exam",
+          "original_url": "https://www.fuvest.br/wp-content/uploads/fuvest2026-fase1-prova-V1.pdf",
+          "sha256": "93b417ad6ea7e81a3b6adc46337920fd71c213306849846723f13583074f9025"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://www.fuvest.br/wp-content/uploads/fuvest2026-fase1-prova-V2.pdf",
+          "sha256": "09cfe455d038fb6db70b270445175b781572fc334a9e21bbdadb2327dbf081b2"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://www.fuvest.br/wp-content/uploads/fuvest2026-fase1-prova-V3.pdf",
+          "sha256": "6d6a486ab5d10ce8711c7c75a0194aed0514c99306f5d9596d740719512d87b8"
+        },
+        {
+          "document_type": "exam",
+          "original_url": "https://www.fuvest.br/wp-content/uploads/fuvest2026-fase1-prova-V4.pdf",
+          "sha256": "e9bb51ec5f21512c9025411e08c47b32ee23a5952fb419d1baee37beba3a9864"
+        }
+      ]
+    }
+  ]
+}

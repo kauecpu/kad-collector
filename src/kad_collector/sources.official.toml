@@ -369,34 +369,40 @@ banca = "CESGRANRIO"
 orgao = "Banco do Brasil"
 cargo = "Escriturario"
 
-# Catalogo publico atual da Fundacao Cesgranrio. A API e um ponto inicial
-# estavel; links temporarios dos PDFs nunca sao gravados na configuracao. Na
-# homologacao de 2021/2023, o catalogo atual e consultado para comprovar se o
-# concurso historico ainda esta publicado.
+# Superficies publicas atuais e historicas da Fundacao Cesgranrio. O sitemap
+# oficial permite descobrir concursos antigos sem cadastrar a URL final de cada
+# certame. Links temporarios dos PDFs nunca sao gravados na configuracao.
 [[sources]]
 id = "cesgranrio_banco_brasil"
 name = "Fundacao Cesgranrio - Banco do Brasil"
 enabled = true
-start_urls = ["https://concursos.cesgranrio.org.br/"]
+start_urls = [
+  "https://concursos.cesgranrio.org.br/",
+  "https://www.cesgranrio.org.br/",
+]
 allowed_hosts = [
   "cesgranrio.org.br",
   "www.cesgranrio.org.br",
   "concursos.cesgranrio.org.br",
+  "inscricao.cesgranrio.com.br",
 ]
 robots_policy = "enforce"
 crawl_delay_policy = "enforce"
-discovery_strategies = ["json"]
+discovery_strategies = ["html", "sitemap", "json"]
+sitemap_urls = ["https://www.cesgranrio.org.br/sitemap.xml"]
 include_patterns = [
-  "(?is)(?:prova.?objetiva|caderno.?de.?quest(?:ao|oes|ão|ões)|gabarito).+\\.pdf(?:$|[?#])",
+  "(?is)(?:prova|caderno.?de.?quest(?:ao|oes|ão|ões)|gabarito).+(?:\\.pdf(?:$|[?#])|storage\\.ashx)",
 ]
 exclude_patterns = [
-  "(?i)(edital|resultado|classificacao|convocacao|comunicado|cronograma|cartao.?de.?inscricao|lista.?de.?candidatos|recurso)",
+  "(?i)(edital|resultado|classificacao|convocacao|comunicado|cronograma|cartao.?de.?inscricao|lista.?de.?candidatos|recurso|gabaritos?.?alterados?)",
 ]
-exam_patterns = ["(?i)(prova.?objetiva|caderno.?de.?quest(?:ao|oes|ão|ões))"]
+exam_patterns = ["(?i)(prova|caderno.?de.?quest(?:ao|oes|ão|ões))"]
 answer_key_patterns = ["(?i)(gabarito.?preliminar|gabarito.?definitivo|gabarito)"]
-collection_url_patterns = []
+collection_url_patterns = [
+  "(?i)^https://(?:www\\.)?cesgranrio\\.org\\.br/concurso/[a-z0-9-]+/?(?:[?#].*)?$",
+]
 pagination_patterns = []
-max_pages_per_run = 2
+max_pages_per_run = 12
 request_interval_seconds = 2.0
 access_mode = "content"
 authorization_basis = "Catalogo e documentos publicos da Fundacao Cesgranrio; coleta interna com origem e hash preservados, sem autenticacao e sem publicacao automatica."
@@ -421,6 +427,7 @@ cargo = "Escriturario - Agente Comercial ou Agente de Tecnologia"
 [[sources]]
 id = "pci_concursos"
 name = "PCI Concursos - Banco do Brasil"
+source_tier = "secondary"
 enabled = true
 start_urls = ["https://www.pciconcursos.com.br/provas/banco-do-brasil"]
 allowed_hosts = ["www.pciconcursos.com.br", "arq.pciconcursos.com.br"]

@@ -661,6 +661,13 @@ browser_enabled = true
 - `json` usa somente endpoints GET publicos declarados na fonte;
 - `browser` executa JavaScript com Playwright e Edge/Chromium sem modo stealth.
 
+O motor consulta sitemaps antes de percorrer o HTML e usa orgao, banca, cargo, ano e aliases
+conhecidos para escolher paginas de acervo. `Cebraspe` e `Cespe`, por exemplo, pertencem ao mesmo
+grupo de busca. A pagina escolhida gera um inventario de provas, gabaritos, grupos e versoes antes
+dos downloads. O manifesto compara esse inventario com os PDFs validados e separa a cobertura de
+fontes oficiais e secundarias. Uma fonte secundaria que encontra documentos ausentes na fonte
+oficial gera um aviso de cobertura; ela nao substitui a origem do documento.
+
 O navegador bloqueia navegacao fora dos hosts da fonte e identifica CAPTCHA, login e acesso
 negado como `manual_action_required`. Na interface desktop, o desafio muda a atividade para
 `awaiting_manual_action`; o usuario resolve o desafio no Chromium visivel e usa a acao de retomada.
@@ -684,17 +691,18 @@ Cabecalhos `Authorization`, `Cookie` e `Proxy-Authorization` sao rejeitados na c
 
 #### Fallback local com Qwen
 
-O motor deterministico continua sendo o caminho principal. Quando ele nao encontra nenhum
-documento em uma pagina, `ai_discovery_enabled = true` permite que o Qwen local analise uma
-lista numerada de links ja limitada aos hosts autorizados. O modelo pode marcar indices como
-prova, gabarito ou pagina intermediaria; ele nao cria URLs, nao executa cliques arbitrarios e
-nao baixa arquivos diretamente.
+O motor deterministico continua sendo o caminho principal. Quando uma pagina nao entrega
+documentos ou deixa itens do inventario sem candidato, `ai_discovery_enabled = true` permite que
+o Qwen local analise uma lista numerada de links ja limitada aos hosts autorizados. O modelo pode
+marcar indices como prova, gabarito ou pagina intermediaria; ele nao cria URLs, nao executa cliques
+arbitrarios e nao baixa arquivos diretamente.
 
-O executor aplica novamente as exclusoes da fonte, os filtros, a politica de `robots.txt`, os
-limites de paginas e a validacao real do PDF. Login, CAPTCHA, administracao e hosts externos
-continuam bloqueados. A configuracao oficial usa `qwen3:8b`, no maximo 120 links por pagina e
-tres decisoes por fonte. Se o Ollama estiver desligado ou responder de forma invalida, a coleta
-deterministica continua e a indisponibilidade fica registrada nos avisos e na telemetria.
+O executor aplica novamente as listas de inclusao e exclusao da fonte, os filtros, a politica de
+`robots.txt`, os limites de paginas e a validacao real do PDF. Login, CAPTCHA, administracao e hosts
+externos continuam bloqueados. A configuracao oficial usa `qwen3:8b`, no maximo 120 links por pagina
+e tres decisoes por fonte. A telemetria registra o motivo da chamada, a quantidade de candidatos,
+as escolhas propostas, as escolhas aceitas e as paginas indicadas. Se o Ollama estiver desligado ou
+responder de forma invalida, a coleta deterministica continua e a indisponibilidade fica registrada.
 
 ```toml
 ai_discovery_enabled = true

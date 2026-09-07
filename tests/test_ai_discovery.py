@@ -14,6 +14,7 @@ from kad_collector.ai_discovery import (
 from kad_collector.collector import collect_documents
 from kad_collector.discovery import DiscoveredLink
 from kad_collector.models import AppConfig, CollectorSettings, SourceDefinition
+from kad_collector.ollama_ai_provider import OllamaUnavailableError
 from kad_collector.security import HttpResult, SafeHttpClient
 
 
@@ -24,7 +25,7 @@ def source_definition(**changes: object) -> SourceDefinition:
         "enabled": True,
         "start_urls": ["https://provas.example.gov.br/inicio"],
         "allowed_hosts": ["provas.example.gov.br"],
-        "include_patterns": [r"(?i)\.pdf(?:$|\?)"],
+        "include_patterns": [r"(?i)(?:\.pdf(?:$|\?)|/download(?:$|\?))"],
         "exclude_patterns": [r"(?i)edital|resultado"],
         "exam_patterns": [r"(?i)prova|caderno"],
         "answer_key_patterns": [r"(?i)gabarito|resposta"],
@@ -84,11 +85,34 @@ class FakePlanner:
         raise AssertionError("o coletor nao deve fechar um planner injetado")
 
 
+class EmptyPlanner:
+    model = "qwen3:8b"
+
+    def __init__(self, *, unavailable: bool = False) -> None:
+        self.pages: list[str] = []
+        self.unavailable = unavailable
+
+    def plan(
+        self,
+        *,
+        page_url: str,
+        source: SourceDefinition,
+        links: list[DiscoveredLink],
+        visited_urls: set[str],
+    ) -> AIDiscoveryDecision:
+        del source, links, visited_urls
+        self.pages.append(page_url)
+        if self.unavailable:
+            raise OllamaUnavailableError("Ollama offline")
+        return AIDiscoveryDecision([], [], 2)
+
+    def close(self) -> None:
+        return
+
+
 class AIDiscoveryTests(unittest.TestCase):
     def test_qwen_can_only_select_safe_numbered_links(self) -> None:
-        client = FakeOllamaClient(
-            '{"documents":[{"index":1,"kind":"exam"}],"navigation":[2,99]}'
-        )
+        client = FakeOllamaClient('{"documents":[{"index":1,"kind":"exam"}],"navigation":[2,99]}')
         planner = OllamaDiscoveryPlanner(client=client, max_links=20)
         source = source_definition()
 
@@ -112,9 +136,10 @@ class AIDiscoveryTests(unittest.TestCase):
             visited_urls={source.start_urls[0]},
         )
 
-        self.assertEqual([item.url for item in decision.documents], [
-            "https://provas.example.gov.br/download?id=7"
-        ])
+        self.assertEqual(
+            [item.url for item in decision.documents],
+            ["https://provas.example.gov.br/download?id=7"],
+        )
         self.assertEqual(
             decision.navigation_urls,
             ["https://provas.example.gov.br/acervo/2025"],
@@ -134,11 +159,22 @@ class AIDiscoveryTests(unittest.TestCase):
                 source,
             )
         )
+        strict_source = source_definition(
+            include_patterns=[r"(?i)fuvest2026-fase1-prova-v[1-4]\.pdf$"]
+        )
+        self.assertFalse(
+            document_choice_is_allowed(
+                DiscoveredLink(
+                    url="https://provas.example.gov.br/provao2026_chamada_1.pdf",
+                    title="Convocados para matricula",
+                    declared_type="exam",
+                ),
+                strict_source,
+            )
+        )
 
     def test_archive_selected_as_document_is_downgraded_to_navigation(self) -> None:
-        client = FakeOllamaClient(
-            '{"documents":[{"index":1,"kind":"exam"}],"navigation":[]}'
-        )
+        client = FakeOllamaClient('{"documents":[{"index":1,"kind":"exam"}],"navigation":[]}')
         planner = OllamaDiscoveryPlanner(client=client)
         source = source_definition()
 
@@ -264,14 +300,119 @@ class AIDiscoveryTests(unittest.TestCase):
             with patch("kad_collector.collector.SafeHttpClient", FixtureClient):
                 manifest, _ = collect_documents(config, ai_discovery_planner=planner)
 
-        self.assertEqual(planner.pages, [start_url, archive_url])
+        self.assertEqual(planner.pages, [start_url])
         self.assertEqual([item.original_url for item in manifest.documents], [pdf_url])
-        self.assertEqual(manifest.documents[0].metadata["discovery"], "qwen_fallback")
+        self.assertNotIn("discovery", manifest.documents[0].metadata)
         self.assertEqual(
             [item.outcome for item in manifest.telemetry if item.strategy == "ai_fallback"],
-            ["selected", "selected"],
+            ["selected"],
         )
         self.assertEqual(manifest.failures, [])
+
+    def test_partial_inventory_gap_triggers_qwen_and_remains_incomplete(self) -> None:
+        start_url = "https://provas.example.gov.br/inicio"
+        exam_url = "https://provas.example.gov.br/prova.pdf"
+
+        class FixtureClient(SafeHttpClient):
+            def __init__(self, user_agent: str, timeout: float, interval_seconds: float) -> None:
+                del user_agent, timeout, interval_seconds
+
+            def get(self, url: str, allowed_hosts: list[str], max_bytes: int) -> HttpResult:
+                del allowed_hosts, max_bytes
+                headers = Message()
+                if url == start_url:
+                    headers["Content-Type"] = "text/html; charset=utf-8"
+                    body = (
+                        f'<h2>Provas e Gabaritos</h2><a href="{exam_url}">Prova 2025</a>'
+                        '<a href="https://outside.example/gabarito.pdf">Gabarito 2025</a>'
+                    ).encode()
+                elif url == exam_url:
+                    headers["Content-Type"] = "application/pdf"
+                    body = b"%PDF-1.4\nfixture\n%%EOF"
+                else:
+                    raise AssertionError(f"URL inesperada: {url}")
+                return HttpResult(url=url, status_code=200, headers=headers, body=body)
+
+            def close(self) -> None:
+                return
+
+        planner = EmptyPlanner()
+        with tempfile.TemporaryDirectory() as temporary:
+            config = AppConfig(
+                collector=CollectorSettings(
+                    data_dir=temporary,
+                    request_interval_seconds=0,
+                    ai_discovery_enabled=True,
+                ),
+                sources=[
+                    source_definition(
+                        robots_policy="ignore",
+                        crawl_delay_policy="ignore",
+                    )
+                ],
+            )
+            with patch("kad_collector.collector.SafeHttpClient", FixtureClient):
+                manifest, _ = collect_documents(config, ai_discovery_planner=planner)
+
+        self.assertEqual(planner.pages, [start_url])
+        self.assertEqual(len(manifest.documents), 1)
+        ai_event = next(item for item in manifest.telemetry if item.strategy == "ai_fallback")
+        self.assertIn("reason=inventory_gap", ai_event.detail or "")
+        summary = manifest.collection_policy["discovery_inventory_summary"]
+        self.assertEqual(summary["coverage_percent"], 50.0)
+        self.assertFalse(summary["complete"])
+
+    def test_ollama_unavailable_keeps_deterministic_document(self) -> None:
+        start_url = "https://provas.example.gov.br/inicio"
+        exam_url = "https://provas.example.gov.br/prova.pdf"
+
+        class FixtureClient(SafeHttpClient):
+            def __init__(self, user_agent: str, timeout: float, interval_seconds: float) -> None:
+                del user_agent, timeout, interval_seconds
+
+            def get(self, url: str, allowed_hosts: list[str], max_bytes: int) -> HttpResult:
+                del allowed_hosts, max_bytes
+                headers = Message()
+                if url == start_url:
+                    headers["Content-Type"] = "text/html; charset=utf-8"
+                    body = (
+                        f'<h2>Provas e Gabaritos</h2><a href="{exam_url}">Prova 2025</a>'
+                        '<a href="https://outside.example/gabarito.pdf">Gabarito 2025</a>'
+                    ).encode()
+                elif url == exam_url:
+                    headers["Content-Type"] = "application/pdf"
+                    body = b"%PDF-1.4\nfixture\n%%EOF"
+                else:
+                    raise AssertionError(f"URL inesperada: {url}")
+                return HttpResult(url=url, status_code=200, headers=headers, body=body)
+
+            def close(self) -> None:
+                return
+
+        planner = EmptyPlanner(unavailable=True)
+        with tempfile.TemporaryDirectory() as temporary:
+            config = AppConfig(
+                collector=CollectorSettings(
+                    data_dir=temporary,
+                    request_interval_seconds=0,
+                    ai_discovery_enabled=True,
+                ),
+                sources=[
+                    source_definition(
+                        robots_policy="ignore",
+                        crawl_delay_policy="ignore",
+                    )
+                ],
+            )
+            with patch("kad_collector.collector.SafeHttpClient", FixtureClient):
+                manifest, _ = collect_documents(config, ai_discovery_planner=planner)
+
+        self.assertEqual(len(manifest.documents), 1)
+        self.assertTrue(any("Ollama offline" in warning for warning in manifest.warnings))
+        self.assertEqual(
+            next(item for item in manifest.telemetry if item.strategy == "ai_fallback").outcome,
+            "unavailable",
+        )
 
 
 if __name__ == "__main__":

@@ -124,6 +124,7 @@ class CollectionFilters(StrictModel):
 class SourceDefinition(StrictModel):
     id: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]{1,63}$")
     name: str = Field(min_length=2)
+    source_tier: Literal["official", "secondary"] = "official"
     enabled: bool = False
     start_urls: list[str] = Field(min_length=1)
     allowed_hosts: list[str] = Field(min_length=1)
