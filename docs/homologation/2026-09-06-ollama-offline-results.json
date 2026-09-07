@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-09-06T23:27:33.650322+00:00",
+  "commit": "16635f4-dirty",
+  "matrix": "tests\\homologation\\live-sources.v1.toml",
+  "ollama_offline": true,
+  "sources": [
+    {
+      "id": "inep_enem",
+      "scenario": "Acervo anual em data-url; fallback Qwen e PDF textual",
+      "start_url": "https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/enem/provas-e-gabaritos",
+      "expected": [
+        {
+          "kind": "exam",
+          "pattern": "(?i)2025_PV_impresso_D1_CD1\\.pdf"
+        },
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)2025_GB_impresso_D1_CD1\\.pdf"
+        }
+      ],
+      "actual": [
+        {
+          "kind": "answer_key",
+          "title": "Gabarito",
+          "url": "https://download.inep.gov.br/enem/provas_e_gabaritos/2025_GB_impresso_D1_CD1.pdf",
+          "sha256": "583ac1950cd1927c42c971c270f96c0e33816844084fd5866a13bf94d8e08a81",
+          "mode": "deterministic"
+        },
+        {
+          "kind": "exam",
+          "title": "Prova",
+          "url": "https://download.inep.gov.br/enem/provas_e_gabaritos/2025_PV_impresso_D1_CD1.pdf",
+          "sha256": "a0f19f878d4ef3ba94c3e0f5ef9e57c13fb046d4bb362f72651898b473ddb7c8",
+          "mode": "deterministic"
+        }
+      ],
+      "accepted": [
+        {
+          "kind": "answer_key",
+          "title": "Gabarito",
+          "url": "https://download.inep.gov.br/enem/provas_e_gabaritos/2025_GB_impresso_D1_CD1.pdf",
+          "sha256": "583ac1950cd1927c42c971c270f96c0e33816844084fd5866a13bf94d8e08a81",
+          "mode": "deterministic"
+        },
+        {
+          "kind": "exam",
+          "title": "Prova",
+          "url": "https://download.inep.gov.br/enem/provas_e_gabaritos/2025_PV_impresso_D1_CD1.pdf",
+          "sha256": "a0f19f878d4ef3ba94c3e0f5ef9e57c13fb046d4bb362f72651898b473ddb7c8",
+          "mode": "deterministic"
+        }
+      ],
+      "rejected": [],
+      "prohibited_accepted": [],
+      "false_positives": [],
+      "false_negatives": [],
+      "precision": 1.0,
+      "coverage": 1.0,
+      "pairing_required": true,
+      "pairing_success": true,
+      "paths": [
+        "deterministic"
+      ],
+      "pages_visited": [
+        "https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/enem/provas-e-gabaritos",
+        "https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/enem/provas-e-gabaritos/2025",
+        "https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/enem/provas-e-gabaritos/2024"
+      ],
+      "qwen_calls": [
+        {
+          "occurred_at": "2026-09-06T23:27:27.963797Z",
+          "source_id": "inep_enem",
+          "url": "https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/enem/provas-e-gabaritos",
+          "strategy": "ai_fallback",
+          "outcome": "unavailable",
+          "status_code": null,
+          "duration_ms": 2394,
+          "bytes_received": 0,
+          "attempt": 1,
+          "wait_seconds": 0.0,
+          "cache_status": "disabled",
+          "detail": "Ollama local indisponível durante o preflight"
+        }
+      ],
+      "duration_seconds": 6.549,
+      "ocr_attempted": 0,
+      "ocr_succeeded": 0,
+      "documents_still_needing_ocr": 0,
+      "failures": [],
+      "warnings": [
+        "inep_enem: fallback Qwen indisponivel: Ollama local indisponível durante o preflight",
+        "inep_enem: paginacao limitada a 3 paginas",
+        "inep_enem: robots.txt ignorado por politica administrativa explicita",
+        "inep_enem: Crawl-delay ignorado por politica administrativa explicita"
+      ],
+      "manifest": "data\\live-ollama-offline-20260906\\inep_enem\\manifests\\download-20260906T232731Z-d522128f.json",
+      "extraction_manifest": "data\\live-ollama-offline-20260906\\inep_enem\\manifests\\download-20260906T232731Z-d522128f-extracted.json"
+    }
+  ],
+  "summary": {
+    "precision": 1.0,
+    "coverage": 1.0,
+    "pairing_rate": 1.0,
+    "ocr_success_rate": null,
+    "false_positives": 0,
+    "false_negatives": 0,
+    "average_seconds_per_source": 6.549,
+    "sources_without_intervention_rate": 1.0,
+    "sources": 1
+  },
+  "idempotency": null
+}

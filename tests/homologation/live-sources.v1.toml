@@ -1,0 +1,100 @@
+schema_version = 1
+
+[[sources]]
+id = "fuvest_vestibular"
+scenario = "PDF direto; prova e gabarito separados"
+start_url = "https://www.fuvest.br/acervo-vestibular-2026/"
+[[sources.expected]]
+kind = "exam"
+pattern = "(?i)fuvest2026-fase1-prova-V1\\.pdf"
+[[sources.expected]]
+kind = "answer_key"
+pattern = "(?i)fuvest2026-fase1-gabarito\\.pdf"
+
+[[sources]]
+id = "coperve_ufsc_2026"
+scenario = "Página oficial com prova e gabarito"
+start_url = "https://vestibularunificado2026.ufsc.br/provas-e-gabaritos-definitivos/"
+[[sources.expected]]
+kind = "exam"
+pattern = "(?i)p1_amarela\\.pdf"
+[[sources.expected]]
+kind = "answer_key"
+pattern = "(?i)novo_gabarito_p1_amarela\\.pdf"
+
+[[sources]]
+id = "fgv_conhecimento"
+scenario = "Página com muitos editais e resultados"
+start_url = "https://conhecimento.fgv.br/concursos/rfb22"
+[[sources.expected]]
+kind = "exam"
+pattern = "(?i)auditor-fiscal-frb100-tipo-1\\.pdf"
+[[sources.expected]]
+kind = "answer_key"
+pattern = "(?i)analista-tributario-e-auditor-fiscal\\.pdf"
+
+[[sources]]
+id = "inep_enem"
+scenario = "Acervo anual em data-url; fallback Qwen e PDF textual"
+start_url = "https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/enem/provas-e-gabaritos"
+[[sources.expected]]
+kind = "exam"
+pattern = "(?i)2025_PV_impresso_D1_CD1\\.pdf"
+[[sources.expected]]
+kind = "answer_key"
+pattern = "(?i)2025_GB_impresso_D1_CD1\\.pdf"
+
+[[sources]]
+id = "inep_enade"
+scenario = "Acervo anual e paginação lógica"
+start_url = "https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/enade/provas-e-gabaritos"
+[[sources.expected]]
+kind = "exam"
+pattern = "(?i)2025_administracao_PV_1\\.pdf"
+[[sources.expected]]
+kind = "answer_key"
+pattern = "(?i)2025_administracao_GB_1\\.pdf"
+
+[[sources]]
+id = "comvest_unicamp"
+scenario = "Acervo com subpáginas e fallback Qwen"
+start_url = "https://www.comvest.unicamp.br/vestibulares-anteriores/"
+[[sources.expected]]
+kind = "exam"
+pattern = "(?i)F1_2026_Prova-Q\\.pdf"
+[[sources.expected]]
+kind = "exam"
+pattern = "(?i)F2_1o-dia_todos\\.pdf"
+
+[[sources]]
+id = "obmep_referencias"
+scenario = "Referências públicas do Google Drive; download proibido"
+start_url = "https://www.obmep.org.br/provas-2025.htm"
+[[sources.expected]]
+kind = "exam"
+pattern = "(?i)PROVA"
+[[sources.expected]]
+kind = "answer_key"
+pattern = "(?i)SOLUÇÃO"
+
+[[sources]]
+id = "uerj_vestibular"
+scenario = "Falha TLS da fonte deve ficar isolada"
+start_url = "https://sistema.vestibular.uerj.br/portal_vestibular_uerj/busca_rapida/provas_e_gabaritos.html"
+[[sources.expected]]
+kind = "exam"
+pattern = "(?i)prova"
+[[sources.expected]]
+kind = "answer_key"
+pattern = "(?i)gabarito"
+
+[[sources]]
+id = "pci_concursos"
+scenario = "Página de acervo, detalhe e data-url; desafio sem contorno"
+start_url = "https://www.pciconcursos.com.br/provas/banco-do-brasil"
+[[sources.expected]]
+kind = "exam"
+pattern = "(?i)escriturario.*\\.pdf"
+[[sources.expected]]
+kind = "answer_key"
+pattern = "(?i)gabarito.*\\.pdf"

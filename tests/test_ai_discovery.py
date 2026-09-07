@@ -170,6 +170,52 @@ class AIDiscoveryTests(unittest.TestCase):
             )
         )
 
+    def test_opaque_pdf_without_document_evidence_is_vetoed(self) -> None:
+        source = source_definition()
+        self.assertFalse(
+            document_choice_is_allowed(
+                DiscoveredLink(
+                    url="https://provas.example.gov.br/media/arquivo-123.pdf",
+                    title="arquivo-123.pdf",
+                    declared_type="exam",
+                ),
+                source,
+            )
+        )
+
+    def test_relevant_archive_links_are_ranked_before_navigation_chrome(self) -> None:
+        client = FakeOllamaClient('{"documents":[],"navigation":[1]}')
+        planner = OllamaDiscoveryPlanner(client=client, max_links=2)
+        source = source_definition(
+            pagination_patterns=[r"(?i)/provas-e-gabaritos/\d{4}/?$"],
+        )
+
+        decision = planner.plan(
+            page_url=source.start_urls[0],
+            source=source,
+            links=[
+                DiscoveredLink(
+                    url=f"https://provas.example.gov.br/menu/{index}",
+                    title=f"Item de navegação {index}",
+                )
+                for index in range(150)
+            ]
+            + [
+                DiscoveredLink(
+                    url="https://provas.example.gov.br/provas-e-gabaritos/2025",
+                    title="2025",
+                )
+            ],
+            visited_urls={source.start_urls[0]},
+        )
+
+        self.assertEqual(
+            decision.navigation_urls,
+            ["https://provas.example.gov.br/provas-e-gabaritos/2025"],
+        )
+        prompt = client.payloads[0]["messages"][1]["content"]
+        self.assertIn("provas-e-gabaritos/2025", prompt.splitlines()[4])
+
     def test_collector_uses_ai_only_to_recover_a_dead_end(self) -> None:
         start_url = "https://provas.example.gov.br/inicio"
         archive_url = "https://provas.example.gov.br/acervo/2025"
