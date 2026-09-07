@@ -49,6 +49,11 @@ from .question_equivalence import run_question_equivalence_migration
 from .regression import RegressionError, run_regression
 from .review import approve_batch
 from .review_server import serve_review_application
+from .structured_questions import (
+    DEFAULT_OLLAMA_ENDPOINT,
+    DEFAULT_QWEN_MODEL,
+    build_structured_question_package,
+)
 from .supabase_benchmark_export import (
     DEFAULT_REFERENCE_REVIEW,
     DEFAULT_SNAPSHOT_PATH,
@@ -147,6 +152,17 @@ def build_parser() -> argparse.ArgumentParser:
     extract = subparsers.add_parser("extract", help="extrai texto dos PDFs de um manifesto")
     extract.add_argument("manifest", type=_path)
     extract.add_argument("--output", type=_path)
+
+    structure = subparsers.add_parser(
+        "structure-pdfs",
+        help="transforma provas e gabaritos coletados em pacote local para revisão",
+    )
+    structure.add_argument("manifest", type=_path, nargs="+")
+    structure.add_argument("--output", type=_path, required=True)
+    structure.add_argument("--extraction-dir", type=_path)
+    structure.add_argument("--ollama-endpoint", default=DEFAULT_OLLAMA_ENDPOINT)
+    structure.add_argument("--qwen-model", default=DEFAULT_QWEN_MODEL)
+    structure.add_argument("--disable-ollama", action="store_true")
 
     process = subparsers.add_parser("process", help="estrutura questoes com IA")
     process.add_argument("extraction", type=_path)
@@ -480,6 +496,23 @@ def _run(args: argparse.Namespace) -> int:
     if args.command == "extract":
         extraction_manifest, path = extract_manifest(args.manifest, args.output)
         print(f"Extracao: {path} ({len(extraction_manifest.documents)} documentos)")
+        return 0
+    if args.command == "structure-pdfs":
+        structured = build_structured_question_package(
+            args.manifest,
+            args.output,
+            extraction_dir=args.extraction_dir,
+            ollama_endpoint=args.ollama_endpoint,
+            qwen_model=args.qwen_model,
+            enable_ollama=not args.disable_ollama,
+        )
+        structured_metrics = structured.metrics
+        print(
+            f"Pacote estruturado: {args.output} ({structured_metrics.accepted_questions} aceitas, "
+            f"{structured_metrics.quarantined_questions} em quarentena, "
+            f"{structured_metrics.rejected_questions} rejeitadas, "
+            f"SHA-256 {structured.content_sha256})"
+        )
         return 0
     if args.command == "process":
         paths = process_extraction_manifest(

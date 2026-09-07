@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "source_id": "cebraspe_policia_federal",
+  "contest": "PF 21",
+  "year": 2021,
+  "source_page": "https://www.cebraspe.org.br/concursos/pf_21",
+  "answer_key_policy": "gabarito oficial definitivo",
+  "question_format": "true_false",
+  "expected_pairs": [
+    {
+      "pair_key": "cargo_1",
+      "role": "Delegado de Polícia Federal",
+      "first_question": 1,
+      "last_question": 120,
+      "expected_questions": 120
+    },
+    {
+      "pair_key": "cargo_2",
+      "role": "Agente de Polícia Federal",
+      "first_question": 1,
+      "last_question": 120,
+      "expected_questions": 120
+    },
+    {
+      "pair_key": "cargo_3",
+      "role": "Escrivão de Polícia Federal",
+      "first_question": 1,
+      "last_question": 120,
+      "expected_questions": 120
+    },
+    {
+      "pair_key": "cargo_4",
+      "role": "Papiloscopista de Polícia Federal",
+      "first_question": 1,
+      "last_question": 120,
+      "expected_questions": 120
+    }
+  ],
+  "acceptance": {
+    "segmentation_precision_min": 0.95,
+    "segmentation_coverage_min": 0.90,
+    "answer_association_min": 0.98,
+    "duplicates_max": 0,
+    "publish_automatically": false
+  }
+}

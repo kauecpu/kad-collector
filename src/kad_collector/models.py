@@ -263,6 +263,10 @@ class ExtractedPage(StrictModel):
     number: int = Field(ge=1)
     text: str
     character_count: int = Field(ge=0)
+    extraction_method: Literal["text", "ocr", "unreadable"] = "text"
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    duration_ms: int = Field(default=0, ge=0)
+    ocr_reason: str | None = None
 
 
 class ExtractedDocument(StrictModel):
