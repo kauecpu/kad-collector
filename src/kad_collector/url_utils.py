@@ -16,10 +16,83 @@ _TRACKING_PARAMETER_NAMES = frozenset(
     }
 )
 
+# Azure SAS and common download-token parameters are temporary credentials, not
+# part of the identity of a public document.  Cesgranrio currently uses the SAS
+# names below for its public PDF links.  Keeping them out of manifests, cache
+# metadata and checkpoints also prevents a fresh signature from looking like a
+# new document on every run.
+_SIGNED_PARAMETER_NAMES = frozenset(
+    {
+        "sig",
+        "signature",
+        "token",
+        "access_token",
+        "x-amz-algorithm",
+        "x-amz-credential",
+        "x-amz-date",
+        "x-amz-expires",
+        "x-amz-security-token",
+        "x-amz-signature",
+        "x-amz-signedheaders",
+        "se",
+        "sp",
+        "sr",
+        "st",
+        "sv",
+        "skoid",
+        "sktid",
+        "skt",
+        "ske",
+        "sks",
+        "skv",
+    }
+)
+
 
 def _is_tracking_parameter(name: str) -> bool:
     normalized = name.casefold()
     return normalized.startswith("utm_") or normalized in _TRACKING_PARAMETER_NAMES
+
+
+def _is_signed_parameter(name: str) -> bool:
+    return name.casefold() in _SIGNED_PARAMETER_NAMES
+
+
+def is_temporary_signed_url(url: str) -> bool:
+    """Return whether an HTTP(S) URL carries a known temporary signature."""
+
+    parsed = urlsplit(url.strip())
+    if parsed.scheme.casefold() not in {"http", "https"}:
+        return False
+    return any(_is_signed_parameter(name) for name, _value in parse_qsl(parsed.query))
+
+
+def redact_url_secrets(url: str) -> str:
+    """Remove temporary credentials while preserving the public resource URL."""
+
+    raw = url.strip()
+    parsed = urlsplit(raw)
+    if parsed.scheme.casefold() not in {"http", "https"} or not parsed.hostname:
+        return raw
+    query = urlencode(
+        [
+            (name, value)
+            for name, value in parse_qsl(parsed.query, keep_blank_values=True)
+            if not _is_signed_parameter(name)
+        ],
+        doseq=True,
+    )
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, query, parsed.fragment))
+
+
+def redact_text_secrets(text: str) -> str:
+    """Redact signed parameters from HTTP(S) URLs embedded in diagnostic text."""
+
+    return re.sub(
+        r"https?://[^\s\"'<>]+",
+        lambda match: redact_url_secrets(match.group(0)),
+        text,
+    )
 
 
 def canonicalize_url(url: str) -> str:
@@ -52,7 +125,7 @@ def canonicalize_url(url: str) -> str:
     query_pairs = [
         (key, value)
         for key, value in parse_qsl(parsed.query, keep_blank_values=True)
-        if not _is_tracking_parameter(key)
+        if not _is_tracking_parameter(key) and not _is_signed_parameter(key)
     ]
     query = urlencode(sorted(query_pairs, key=lambda pair: (pair[0], pair[1])), doseq=True)
     return urlunsplit((scheme, netloc, path, query, ""))

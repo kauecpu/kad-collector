@@ -52,7 +52,12 @@ from .models import (
 )
 from .ollama_ai_provider import OllamaUnavailableError
 from .security import FetchError, HttpResult, SafeHttpClient, UnsafeUrlError, validate_public_url
-from .url_utils import canonicalize_url
+from .url_utils import (
+    canonicalize_url,
+    is_temporary_signed_url,
+    redact_text_secrets,
+    redact_url_secrets,
+)
 
 _ORIGINAL_SAFE_HTTP_CLIENT = SafeHttpClient
 
@@ -534,6 +539,12 @@ def select_document_links(
         if source.access_mode == "content" and document_type == "other":
             continue
         selected.append((url, title or Path(urlsplit(url).path).name, document_type))
+    if source.id == "pci_concursos":
+        direct_downloads = [
+            item for item in selected if item[1].strip().casefold().startswith("baixar ")
+        ]
+        if direct_downloads:
+            return direct_downloads
     return selected
 
 
@@ -712,8 +723,8 @@ def _store_document(
         source_name=source.name,
         document_type=document_type,
         title=title,
-        original_url=original_url,
-        resolved_url=result.url,
+        original_url=redact_url_secrets(original_url),
+        resolved_url=redact_url_secrets(result.url),
         local_path=_relative_or_absolute(destination),
         sha256=digest,
         content_type=content_type,
@@ -758,8 +769,8 @@ def _store_engine_document(
         source_name=source.name,
         document_type=document_type,
         title=title,
-        original_url=original_url,
-        resolved_url=result.url,
+        original_url=redact_url_secrets(original_url),
+        resolved_url=redact_url_secrets(result.url),
         local_path=_relative_or_absolute(destination),
         sha256=result.sha256,
         content_type=content_type,
@@ -799,8 +810,8 @@ def _store_engine_body_document(
         source_name=source.name,
         document_type=document_type,
         title=title,
-        original_url=original_url,
-        resolved_url=result.url,
+        original_url=redact_url_secrets(original_url),
+        resolved_url=redact_url_secrets(result.url),
         local_path=_relative_or_absolute(destination),
         sha256=digest,
         content_type="application/pdf",
@@ -814,6 +825,51 @@ def _store_engine_body_document(
 
 def _within_limit(current: int, limit: int | None) -> bool:
     return limit is None or current < limit
+
+
+def _sanitize_manifest_urls(manifest: DownloadManifest) -> DownloadManifest:
+    """Keep temporary download credentials out of persisted manifests."""
+
+    return manifest.model_copy(
+        update={
+            "documents": [
+                item.model_copy(
+                    update={
+                        "original_url": redact_url_secrets(item.original_url),
+                        "resolved_url": redact_url_secrets(item.resolved_url),
+                    }
+                )
+                for item in manifest.documents
+            ],
+            "references": [
+                item.model_copy(update={"url": redact_url_secrets(item.url)})
+                for item in manifest.references
+            ],
+            "failures": [
+                item.model_copy(
+                    update={
+                        "url": redact_url_secrets(item.url),
+                        "message": redact_text_secrets(item.message),
+                    }
+                )
+                for item in manifest.failures
+            ],
+            "warnings": [redact_text_secrets(item) for item in manifest.warnings],
+            "telemetry": [
+                item.model_copy(
+                    update={
+                        "url": redact_url_secrets(item.url),
+                        "detail": (
+                            redact_text_secrets(item.detail)
+                            if item.detail is not None
+                            else None
+                        ),
+                    }
+                )
+                for item in manifest.telemetry
+            ],
+        }
+    )
 
 
 def _download_pdf_candidate(
@@ -895,6 +951,66 @@ def _matches_source_link(
     if item.declared_type in {"exam", "answer_key", "other"}:
         document_type = item.declared_type  # type: ignore[assignment]
     return item.url, title, document_type
+
+
+def _refresh_temporary_signed_link(
+    expired_url: str,
+    source: SourceDefinition,
+    client: CollectionHttpClient | _LegacyClientAdapter,
+    robots: RobotsPolicy,
+    settings: CollectorSettings,
+    interval_seconds: float,
+) -> tuple[str, str, DocumentType] | None:
+    """Rediscover a public document after its temporary signature expires.
+
+    The configured starts and JSON endpoints remain stable.  Only a freshly
+    discovered URL is used for the retry, and the same canonical resource path
+    must be present so a different document can never be substituted.
+    """
+
+    expected_identity = canonicalize_url(expired_url)
+    candidates: list[DiscoveredLink] = []
+
+    for endpoint in source.json_endpoints:
+        if not robots.can_fetch(endpoint.url, source.allowed_hosts):
+            continue
+        result = client.get(
+            endpoint.url,
+            source.allowed_hosts,
+            settings.max_html_bytes,
+            strategy="signed_url_refresh",
+            interval_seconds=interval_seconds,
+            extra_headers=endpoint.headers,
+        )
+        items, _next_page = parse_json_links(result.body, result.url, endpoint)
+        candidates.extend(items)
+
+    for start_url in source.start_urls:
+        if is_temporary_signed_url(start_url) or not robots.can_fetch(
+            start_url, source.allowed_hosts
+        ):
+            continue
+        result = client.get(
+            start_url,
+            source.allowed_hosts,
+            settings.max_html_bytes,
+            strategy="signed_url_refresh",
+            interval_seconds=interval_seconds,
+        )
+        if not _is_html_page(result):
+            continue
+        charset = result.headers.get_content_charset() or "utf-8"
+        html = result.body.decode(charset, errors="replace")
+        candidates.extend(
+            DiscoveredLink(url=url, title=title, declared_type=kind)
+            for url, title, kind in select_document_links(html, result.url, source)
+        )
+
+    for item in safe_discovered_links(candidates, source):
+        selected = _matches_source_link(item, source)
+        if selected is not None and canonicalize_url(selected[0]) == expected_identity:
+            return selected
+    return None
 
 
 def collect_documents(
@@ -1572,7 +1688,17 @@ def collect_documents(
                             )
                             add_candidates(items)
                         except (FetchError, UnsafeUrlError, OSError, ValueError) as exc:
-                            warnings.append(f"{source.id}: endpoint JSON interrompido: {exc}")
+                            message = f"{source.id}: endpoint JSON interrompido: {exc}"
+                            warnings.append(message)
+                            failures.append(
+                                CollectionFailure(
+                                    source_id=source.id,
+                                    url=json_page_url or endpoint.url,
+                                    stage="discovery",
+                                    message=message,
+                                    retryable=_is_retryable(exc),
+                                )
+                            )
                             break
 
             # A estrategia de navegador e um fallback de descoberta. Se o HTML
@@ -1679,17 +1805,47 @@ def collect_documents(
                 _link_metadata: dict[str, dict[str, str]] = link_metadata,
             ) -> DocumentRecord:
                 url, title, document_type = item
-                document = _download_pdf_candidate(
-                    source=_source,
-                    url=url,
-                    title=title,
-                    document_type=document_type,
-                    client=_client,
-                    robots=_robots,
-                    settings=settings,
-                    raw_dir=raw_dir,
-                    interval_seconds=_interval,
-                )
+                try:
+                    document = _download_pdf_candidate(
+                        source=_source,
+                        url=url,
+                        title=title,
+                        document_type=document_type,
+                        client=_client,
+                        robots=_robots,
+                        settings=settings,
+                        raw_dir=raw_dir,
+                        interval_seconds=_interval,
+                    )
+                except FetchError as exc:
+                    if exc.status_code not in {401, 403} or not is_temporary_signed_url(url):
+                        raise
+                    refreshed = _refresh_temporary_signed_link(
+                        url,
+                        _source,
+                        _client,
+                        _robots,
+                        settings,
+                        _interval,
+                    )
+                    if refreshed is None:
+                        raise FetchError(
+                            "assinatura temporaria expirada e o documento nao foi "
+                            "reencontrado na pagina oficial",
+                            exc.status_code,
+                        ) from exc
+                    refreshed_url, refreshed_title, refreshed_type = refreshed
+                    document = _download_pdf_candidate(
+                        source=_source,
+                        url=refreshed_url,
+                        title=refreshed_title or title,
+                        document_type=refreshed_type,
+                        client=_client,
+                        robots=_robots,
+                        settings=settings,
+                        raw_dir=raw_dir,
+                        interval_seconds=_interval,
+                    )
                 year = _link_years.get(url)
                 stage = _link_stages.get(url)
                 variant = _link_variants.get(url)
@@ -1794,6 +1950,7 @@ def collect_documents(
             },
         },
     )
+    manifest = _sanitize_manifest_urls(manifest)
     timestamp = manifest.created_at.strftime("%Y%m%dT%H%M%SZ")
     manifest_path = manifest_dir / f"download-{timestamp}-{active_run_id[:8]}.json"
     write_json(manifest_path, manifest.model_dump(mode="json"))
@@ -2074,6 +2231,7 @@ def _collect_documents_legacy(
         failures=failures,
         warnings=warnings,
     )
+    manifest = _sanitize_manifest_urls(manifest)
     timestamp = manifest.created_at.strftime("%Y%m%dT%H%M%SZ")
     manifest_path = manifest_dir / f"download-{timestamp}.json"
     write_json(manifest_path, manifest.model_dump(mode="json"))

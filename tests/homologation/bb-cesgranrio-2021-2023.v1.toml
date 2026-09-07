@@ -1,0 +1,62 @@
+schema_version = 1
+organization = "Banco do Brasil"
+board = "CESGRANRIO"
+years = [2021, 2023]
+
+[[sources]]
+id = "banco_brasil_selecoes"
+kind = "official"
+start_urls = [
+  "https://www.bb.com.br/site/concurso-bb/",
+  "https://www.bb.com.br/site/concurso-bb/convocacao-e-posse-de-novos-funcionarios/",
+]
+
+[[sources]]
+id = "cesgranrio_banco_brasil"
+kind = "official"
+start_urls = ["https://concursos.cesgranrio.org.br/"]
+
+[[sources]]
+id = "pci_concursos"
+kind = "secondary"
+start_urls = ["https://www.pciconcursos.com.br/provas/banco-do-brasil"]
+
+[[expected]]
+year = 2021
+role = "Escriturario - Agente Comercial"
+document_type = "exam"
+
+[[expected]]
+year = 2021
+role = "Escriturario - Agente Comercial"
+document_type = "answer_key"
+
+[[expected]]
+year = 2021
+role = "Escriturario - Agente de Tecnologia"
+document_type = "exam"
+
+[[expected]]
+year = 2021
+role = "Escriturario - Agente de Tecnologia"
+document_type = "answer_key"
+
+[[expected]]
+year = 2023
+role = "Escriturario - Agente Comercial"
+document_type = "exam"
+
+[[expected]]
+year = 2023
+role = "Escriturario - Agente Comercial"
+document_type = "answer_key"
+
+[[expected]]
+year = 2023
+role = "Escriturario - Agente de Tecnologia"
+document_type = "exam"
+
+[[expected]]
+year = 2023
+role = "Escriturario - Agente de Tecnologia"
+document_type = "answer_key"

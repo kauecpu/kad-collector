@@ -27,7 +27,12 @@ from kad_collector.discovery import (
 )
 from kad_collector.models import JsonDiscoveryEndpoint
 from kad_collector.security import FetchError
-from kad_collector.url_utils import canonicalize_url
+from kad_collector.url_utils import (
+    canonicalize_url,
+    is_temporary_signed_url,
+    redact_text_secrets,
+    redact_url_secrets,
+)
 
 
 class FakeScraplingSession:
@@ -565,6 +570,30 @@ class CollectionEngineTests(unittest.TestCase):
             canonicalize_url(original),
             "https://example.test/provas/arquivo.pdf?download=1&version=2",
         )
+
+    def test_signed_download_url_has_stable_identity_and_safe_diagnostics(self) -> None:
+        first = (
+            "https://concursos.example.test/media/prova.pdf?sv=2025-01-05&"
+            "se=2030-01-01T00%3A00%3A00Z&sp=r&sr=c&sig=FIRST_SECRET&version=2"
+        )
+        refreshed = (
+            "https://concursos.example.test/media/prova.pdf?sig=SECOND_SECRET&"
+            "sr=c&sp=r&se=2031-01-01T00%3A00%3A00Z&sv=2025-01-05&version=2"
+        )
+
+        self.assertTrue(is_temporary_signed_url(first))
+        self.assertEqual(
+            canonicalize_url(first),
+            "https://concursos.example.test/media/prova.pdf?version=2",
+        )
+        self.assertEqual(canonicalize_url(first), canonicalize_url(refreshed))
+        self.assertEqual(
+            redact_url_secrets(first),
+            "https://concursos.example.test/media/prova.pdf?version=2",
+        )
+        diagnostic = redact_text_secrets(f"falha ao acessar {first}")
+        self.assertNotIn("FIRST_SECRET", diagnostic)
+        self.assertNotIn("sig=", diagnostic)
 
     def test_development_cache_replays_by_canonical_url_without_network(self) -> None:
         original = "https://example.test/page?item=1&utm_source=primeira#topo"

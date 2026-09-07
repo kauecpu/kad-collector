@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -23,6 +24,24 @@ from .ocr import (
     ocr_pdf_pages,
     page_requires_ocr,
 )
+
+_BOOKLET_VARIANT_PATTERN = re.compile(r"\bGABARITO\s+(\d{1,2})\b", re.IGNORECASE)
+
+
+def _enrich_document_metadata(record: DocumentRecord, text: str) -> DocumentRecord:
+    """Preserve booklet variants that are printed inside a collected PDF."""
+    variants = sorted(
+        {int(match) for match in _BOOKLET_VARIANT_PATTERN.findall(text)},
+    )
+    if not variants:
+        return record
+
+    metadata = dict(record.metadata)
+    if record.document_type == "exam" and "variant" not in metadata:
+        metadata["variant"] = f"Tipo {variants[0]}"
+    elif record.document_type == "answer_key" and "available_variants" not in metadata:
+        metadata["available_variants"] = ", ".join(f"Tipo {item}" for item in variants)
+    return record.model_copy(update={"metadata": metadata})
 
 
 def _verify_local_document(document: NormalizedDocument) -> None:
@@ -118,8 +137,9 @@ def _extract_document(
     combined = "\n\n".join(
         f"--- Pagina {page.number} ---\n{page.text}" for page in pages if page.text
     )
+    enriched_record = _enrich_document_metadata(record, combined)
     return ExtractedDocument(
-        document=record,
+        document=enriched_record,
         pages=pages,
         text=combined,
         needs_ocr=needs_ocr,

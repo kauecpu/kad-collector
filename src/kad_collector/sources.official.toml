@@ -16,6 +16,7 @@ conditional_cache = true
 development_cache = false
 resume_downloads = true
 disk_quota_bytes = 5000000000
+cloudflare_bypass_enabled = true
 # O Qwen local entra somente quando as regras da pagina nao encontram nenhum
 # documento. Ele escolhe indices de links permitidos; o motor continua
 # validando dominio, exclusoes, robots.txt e o PDF baixado.
@@ -330,6 +331,88 @@ banca = "UERJ"
 orgao = "Universidade do Estado do Rio de Janeiro"
 cargo = "Vestibular"
 
+# Paginas institucionais do Banco do Brasil que identificam as selecoes externas
+# de 2021 e 2023 e a banca Cesgranrio. A fonte nao aceita editais, resultados ou
+# convocacoes como provas; se o acervo oficial nao oferecer os cadernos antigos,
+# a ausencia fica registrada em vez de ser preenchida por uma URL presumida.
+[[sources]]
+id = "banco_brasil_selecoes"
+name = "Banco do Brasil - Selecoes Externas 2021 e 2023"
+enabled = true
+start_urls = [
+  "https://www.bb.com.br/site/concurso-bb/",
+  "https://www.bb.com.br/site/concurso-bb/convocacao-e-posse-de-novos-funcionarios/",
+]
+allowed_hosts = ["bb.com.br", "www.bb.com.br"]
+robots_policy = "enforce"
+crawl_delay_policy = "enforce"
+include_patterns = [
+  "(?is)(?:prova.?objetiva|caderno.?de.?quest(?:ao|oes|ão|ões)|gabarito).+\\.pdf(?:$|[?#])",
+]
+exclude_patterns = [
+  "(?i)(edital|resultado|classificacao|convocacao|comunicado|cronograma|cartao.?de.?inscricao|lista.?de.?candidatos)",
+]
+exam_patterns = ["(?i)(prova.?objetiva|caderno.?de.?quest(?:ao|oes|ão|ões))"]
+answer_key_patterns = ["(?i)(gabarito.?preliminar|gabarito.?definitivo|gabarito)"]
+collection_url_patterns = [
+  "(?i)^https://(?:www\\.)?bb\\.com\\.br/site/concurso-bb(?:/[^?#]*)?/?(?:[?#].*)?$",
+]
+pagination_patterns = []
+max_pages_per_run = 4
+request_interval_seconds = 3.0
+access_mode = "content"
+authorization_basis = "Paginas e documentos publicos do Banco do Brasil sobre as selecoes externas de 2021 e 2023; coleta interna, revisavel e sem publicacao automatica."
+terms_url = "https://www.bb.com.br/site/concurso-bb/"
+
+[sources.metadata]
+banca = "CESGRANRIO"
+orgao = "Banco do Brasil"
+cargo = "Escriturario"
+
+# Catalogo publico atual da Fundacao Cesgranrio. A API e um ponto inicial
+# estavel; links temporarios dos PDFs nunca sao gravados na configuracao. Na
+# homologacao de 2021/2023, o catalogo atual e consultado para comprovar se o
+# concurso historico ainda esta publicado.
+[[sources]]
+id = "cesgranrio_banco_brasil"
+name = "Fundacao Cesgranrio - Banco do Brasil"
+enabled = true
+start_urls = ["https://concursos.cesgranrio.org.br/"]
+allowed_hosts = [
+  "cesgranrio.org.br",
+  "www.cesgranrio.org.br",
+  "concursos.cesgranrio.org.br",
+]
+robots_policy = "enforce"
+crawl_delay_policy = "enforce"
+discovery_strategies = ["json"]
+include_patterns = [
+  "(?is)(?:prova.?objetiva|caderno.?de.?quest(?:ao|oes|ão|ões)|gabarito).+\\.pdf(?:$|[?#])",
+]
+exclude_patterns = [
+  "(?i)(edital|resultado|classificacao|convocacao|comunicado|cronograma|cartao.?de.?inscricao|lista.?de.?candidatos|recurso)",
+]
+exam_patterns = ["(?i)(prova.?objetiva|caderno.?de.?quest(?:ao|oes|ão|ões))"]
+answer_key_patterns = ["(?i)(gabarito.?preliminar|gabarito.?definitivo|gabarito)"]
+collection_url_patterns = []
+pagination_patterns = []
+max_pages_per_run = 2
+request_interval_seconds = 2.0
+access_mode = "content"
+authorization_basis = "Catalogo e documentos publicos da Fundacao Cesgranrio; coleta interna com origem e hash preservados, sem autenticacao e sem publicacao automatica."
+terms_url = "https://concursos.cesgranrio.org.br/"
+
+[[sources.json_endpoints]]
+url = "https://concursos.cesgranrio.org.br/api/PortalEventos"
+items_path = "data.items"
+url_field = "codigo"
+title_field = "nomeFantasia"
+
+[sources.metadata]
+banca = "CESGRANRIO"
+orgao = "Banco do Brasil"
+cargo = "Escriturario - Agente Comercial ou Agente de Tecnologia"
+
 # O PCI Concursos funciona como indice de provas publicas. A pagina do Banco
 # do Brasil aponta para os PDFs de cada cargo, ano, caderno e gabarito; o
 # Collector preserva esses vinculos como evidencia e so exporta depois da
@@ -346,10 +429,10 @@ crawl_delay_policy = "ignore"
 page_transport = "scrapling"
 include_patterns = ["(?i)\\.pdf(?:$|[?#])"]
 exclude_patterns = [
-  "(?i)(apostila|edital|resultado|classificacao|inscricao|noticia|comentario|gabarito.?extraoficial)",
+  "(?i)(?:apostila|edital|resultado|classificacao|inscricao|noticia|comentario|gabarito.?extraoficial)",
 ]
-exam_patterns = ["(?i)(prova|caderno|quest(?:ao|oes))"]
-answer_key_patterns = ["(?i)(gabarito|respostas?|padrao.?de.?resposta)"]
+exam_patterns = ["(?i)(prova|caderno|quest(?:ao|oes)|escriturario[^/]*\\.pdf)"]
+answer_key_patterns = ["(?i)(gab(?:a)?rito|respostas?|padrao.?de.?resposta)"]
 collection_url_patterns = [
   "(?i)^https://www\\.pciconcursos\\.com\\.br/provas/(?:banco-do-brasil|download/[a-z0-9-]+)(?:/?[?#].*)?$",
 ]
