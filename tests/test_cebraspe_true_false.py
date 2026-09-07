@@ -108,3 +108,47 @@ def test_true_false_exam_is_detected_without_multiple_choice_alternatives() -> N
     )
 
     assert result.decision == "exam"
+
+
+def test_cebraspe_section_pdf_uses_answer_format_and_block_heading() -> None:
+    pages = [
+        {
+            "page_number": 1,
+            "text": (
+                "CEBRASPE – PF – Edital: 2025\n"
+                "-- CONHECIMENTOS ESPECÍFICOS – BLOCO III --\n"
+                "Julgue os itens subsequentes.\n"
+                "97 A primeira afirmação está completa.\n"
+                "98 A segunda afirmação também está completa.\n"
+            ),
+        }
+    ]
+
+    result = parse_question_document(
+        pages,
+        BankParsingContext(
+            document_id="section",
+            board="Cebraspe",
+            expected_numbers=(97, 98),
+            question_format="true_false",
+        ),
+    )
+
+    assert [question.number for question in result.objective_questions] == [97, 98]
+    assert result.status == "completed"
+
+
+def test_cebraspe_grid_keeps_last_partial_row_with_zero_padding() -> None:
+    text = (
+        "CEBRASPE POLÍCIA FEDERAL GABARITO DEFINITIVO\n"
+        "51 52 53 54 55 56 57 58 59 60\n"
+        "C E C E C E C E C E\n"
+        "61 62 63 64 65 0 0 0 0 0\n"
+        "E C X C E 0 0 0 0 0\n"
+        "Obs.: ( X ) item anulado.\n"
+    )
+
+    entries = parse_answer_key(text)
+
+    assert list(entries) == list(range(51, 66))
+    assert entries[63].annulled

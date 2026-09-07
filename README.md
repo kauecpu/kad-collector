@@ -1106,6 +1106,30 @@ PDFs ao Git. Prepare os arquivos e execute o mesmo pipeline usado pelo aplicativ
 O manifesto, as métricas e o procedimento de atualização estão descritos em
 [`docs/real-pdf-homologation.md`](docs/real-pdf-homologation.md).
 
+### PDF para questões estruturadas
+
+O comando `structure-pdfs` recebe um ou mais manifestos já coletados, usa a extração de
+texto/OCR e os parsers do Collector, associa cada prova ao gabarito oficial e grava um pacote
+JSON versionado para revisão. Ele não publica no KAD nem no Supabase.
+
+```powershell
+.venv\Scripts\kad-collector.exe structure-pdfs `
+  data\manifests\concurso.json `
+  --output data\structured\concurso.json
+```
+
+Cada questão inclui origem, hashes dos PDFs, páginas, método de extração, versão do parser,
+resposta associada e estado de validação. Itens anulados, dependentes de figuras/tabelas ou
+com evidência incompleta ficam em `quarantined`; somente itens sem ressalvas entram em
+`accepted`. O Qwen local é apenas fallback e toda chamada aparece em `qwen.calls`. A ausência
+do Ollama não interrompe o caminho determinístico; use `--disable-ollama` para testar esse
+cenário explicitamente. PDFs, extrações e pacotes completos permanecem em `data/`, fora do Git.
+
+A matriz congelada do piloto PF 2021 está em
+[`tests/homologation/cebraspe-pf21-structured.v1.json`](tests/homologation/cebraspe-pf21-structured.v1.json),
+e o resultado da homologação ampliada está documentado em
+[`docs/homologation/2026-09-07-pf-structured-questions-report.md`](docs/homologation/2026-09-07-pf-structured-questions-report.md).
+
 ### Revalidação obrigatória de gabaritos
 
 O banco local pode simular e aplicar a migração de vínculos antigos para

@@ -43,6 +43,14 @@ _SECTION_RESET = re.compile(
     re.IGNORECASE,
 )
 _CEBRASPE_ITEM_LINE = re.compile(r"^\s*(?P<number>\d{1,3})\s+(?P<text>\S.*)$")
+_CEBRASPE_OBJECTIVE_HEADING = re.compile(
+    r"(?i)^\s*[\-–—]*\s*(?:PROVA\s+OBJETIVA|"
+    r"CONHECIMENTOS\s+(?:BÁSICOS|BASICOS|ESPECÍFICOS|ESPECIFICOS)"
+    r"(?:\s*[\-–—]+\s*BLOCO\s+[IVX]+)?)\s*[\-–—]*\s*$"
+)
+_CEBRASPE_NON_OBJECTIVE_HEADING = re.compile(
+    r"(?i)^\s*[\-–—]*\s*(?:PROVA\s+DISCURSIVA|REDAÇÃO)\s*[\-–—]*\s*$"
+)
 _CEBRASPE_TRUE_FALSE_NOTE = (
     "item CERTO/ERRADO; A representa Certo e B representa Errado no formato interno"
 )
@@ -63,6 +71,18 @@ class QuestionSectionContext:
     block_id: str
     page_number: int
     path: TaxonomyPath
+
+
+@dataclass(frozen=True)
+class CebraspeQuestionContext:
+    block: str | None
+    supporting_text: str | None
+
+
+@dataclass(frozen=True)
+class _CebraspeLine:
+    page_number: int
+    text: str
 
 
 def map_question_sections(
@@ -369,10 +389,137 @@ def _supports_cebraspe_true_false(
     owner = " ".join(filter(None, (context.board, context.provider))).casefold()
     if "cebraspe" not in owner and "cespe" not in owner:
         return False
+    if context.question_format == "true_false":
+        return True
+    if context.question_format == "multiple_choice":
+        return False
     opening = " ".join(
-        str(page["text"]) for page in pages[:3]
+        " ".join(str(page["text"]).split()) for page in pages[:3]
     ).casefold()
     return "caso julgue o item certo" in opening and "caso julgue o item errado" in opening
+
+
+def _cebraspe_objective_lines(
+    pages: list[dict[str, Any]],
+) -> tuple[list[_CebraspeLine], bool]:
+    lines: list[_CebraspeLine] = []
+    all_lines: list[_CebraspeLine] = []
+    in_objective_section = False
+    objective_heading_found = False
+    for page in pages:
+        page_number = int(page["page_number"])
+        for raw_line in str(page["text"]).splitlines():
+            line = " ".join(raw_line.split())
+            all_lines.append(_CebraspeLine(page_number=page_number, text=line))
+            if _CEBRASPE_OBJECTIVE_HEADING.search(line):
+                in_objective_section = True
+                objective_heading_found = True
+                block_match = re.search(r"(?i)\bBLOCO\s+([IVX]+)\b", line)
+                if block_match is not None:
+                    lines.append(
+                        _CebraspeLine(
+                            page_number=page_number,
+                            text=f"BLOCO {block_match.group(1).upper()}",
+                        )
+                    )
+                continue
+            if in_objective_section and _CEBRASPE_NON_OBJECTIVE_HEADING.search(line):
+                return lines, objective_heading_found
+            if in_objective_section:
+                lines.append(_CebraspeLine(page_number=page_number, text=line))
+    if not objective_heading_found:
+        for start in range(len(all_lines)):
+            instruction = ""
+            for end in range(start, min(len(all_lines), start + 5)):
+                instruction = f"{instruction} {all_lines[end].text}".casefold()
+                if (
+                    "caso julgue o item certo" in instruction
+                    and "caso julgue o item errado" in instruction
+                ):
+                    return all_lines[end + 1 :], True
+    return lines, objective_heading_found
+
+
+def _cebraspe_question_starts(
+    lines: list[_CebraspeLine], expected_numbers: tuple[int, ...] | None
+) -> list[tuple[int, int, str]]:
+    sequence = tuple(sorted(set(expected_numbers or ())))
+    cursor = 0
+    expected = sequence[0] if sequence else 1
+    starts: list[tuple[int, int, str]] = []
+    for index, item in enumerate(lines):
+        match = _CEBRASPE_ITEM_LINE.match(item.text)
+        if match is None or int(match.group("number")) != expected:
+            continue
+        number = int(match.group("number"))
+        starts.append((index, number, match.group("text").strip()))
+        if sequence:
+            cursor += 1
+            if cursor >= len(sequence):
+                break
+            expected = sequence[cursor]
+        else:
+            expected += 1
+    return starts
+
+
+def _cebraspe_statement_end(
+    lines: list[_CebraspeLine], line_index: int, end: int, inline: str
+) -> int:
+    terminal = re.compile(r"[.!?][\"'\u00bb)]?$")
+    if terminal.search(inline):
+        return line_index + 1
+    for index in range(line_index + 1, end):
+        if lines[index].text and terminal.search(lines[index].text):
+            return index + 1
+    return end
+
+
+def _cebraspe_context_lines(lines: list[_CebraspeLine]) -> tuple[list[str], str | None]:
+    content: list[str] = []
+    block: str | None = None
+    for item in lines:
+        line = item.text.strip()
+        block_match = re.fullmatch(r"(?i)BLOCO\s+([IVX]+)", line)
+        if block_match is not None:
+            block = f"Bloco {block_match.group(1).upper()}"
+            continue
+        if (
+            not line
+            or re.fullmatch(r"(?i)ESPAÇO\s+LIVRE", line)
+            or re.match(r"(?i)^(?:CESPE\s*\|\s*)?CEBRASPE\s*[–—-]", line)
+            or re.match(r"(?i)^(?:MATRIZ_)?\d*_[A-Z0-9_]*PF[A-Z0-9_]*", line)
+        ):
+            continue
+        content.append(line)
+    return content, block
+
+
+def cebraspe_question_contexts(
+    pages: list[dict[str, Any]], *, expected_numbers: tuple[int, ...] | None = None
+) -> dict[int, CebraspeQuestionContext]:
+    """Return shared text and block evidence for Cebraspe objective items."""
+    lines, _heading_found = _cebraspe_objective_lines(pages)
+    starts = _cebraspe_question_starts(lines, expected_numbers)
+    contexts: dict[int, CebraspeQuestionContext] = {}
+    active_support: str | None = None
+    active_block: str | None = None
+    previous_statement_end = 0
+    for position, (line_index, number, inline) in enumerate(starts):
+        pending, block = _cebraspe_context_lines(lines[previous_statement_end:line_index])
+        if block is not None:
+            active_block = block
+        if pending:
+            active_support = _clean(pending)
+        contexts[number] = CebraspeQuestionContext(
+            block=active_block,
+            supporting_text=active_support,
+        )
+        next_start = starts[position + 1][0] if position + 1 < len(starts) else len(lines)
+        previous_statement_end = _cebraspe_statement_end(
+            lines, line_index, next_start, inline
+        )
+    return contexts
 
 
 def _parse_cebraspe_true_false_pages(
@@ -380,60 +527,53 @@ def _parse_cebraspe_true_false_pages(
 ) -> BankParsingResult:
     questions: list[QuestionRecord] = []
     warnings: list[str] = []
-    expected = 1
-    for page in pages:
-        page_number = int(page["page_number"])
-        lines = [" ".join(line.split()) for line in str(page["text"]).splitlines()]
-        starts: list[tuple[int, int, str]] = []
-        for index, line in enumerate(lines):
-            match = _CEBRASPE_ITEM_LINE.match(line)
-            if match is None:
-                continue
-            number = int(match.group("number"))
-            if number != expected:
-                continue
-            starts.append((index, number, match.group("text").strip()))
-            expected += 1
-        for position, (line_index, number, inline) in enumerate(starts):
-            end = starts[position + 1][0] if position + 1 < len(starts) else len(lines)
-            statement_lines = [inline]
-            for continuation in lines[line_index + 1 : end]:
-                if not continuation:
-                    continue
-                statement_lines.append(continuation)
-                if re.search(r"[.!?][\"'\u00bb)]?$", continuation):
-                    break
-            statement = _clean(statement_lines)
-            if len(statement) < 5:
-                warnings.append(f"questao {number}: enunciado incompleto")
-                continue
-            questions.append(
-                QuestionRecord(
-                    number=number,
-                    statement=statement,
-                    alternatives=[
-                        Alternative(letter="A", text="Certo"),
-                        Alternative(letter="B", text="Errado"),
-                    ],
-                    matter=None,
-                    subject=None,
-                    board=context.board or "Cebraspe",
-                    organization=None,
-                    role=context.role,
-                    year=None,
-                    source_pages=[page_number],
-                    answer_status="missing",
-                    correct_answer=None,
-                    review_notes=[_CEBRASPE_TRUE_FALSE_NOTE],
-                )
+    lines, objective_heading_found = _cebraspe_objective_lines(pages)
+    starts = _cebraspe_question_starts(lines, context.expected_numbers)
+    for position, (line_index, number, inline) in enumerate(starts):
+        end = starts[position + 1][0] if position + 1 < len(starts) else len(lines)
+        statement_end = _cebraspe_statement_end(lines, line_index, end, inline)
+        statement_lines = [
+            inline,
+            *(item.text for item in lines[line_index + 1 : statement_end]),
+        ]
+        statement = _clean(statement_lines)
+        if len(statement) < 5:
+            warnings.append(f"questao {number}: enunciado incompleto")
+            continue
+        source_pages = sorted(
+            {item.page_number for item in lines[line_index:statement_end]}
+        )
+        questions.append(
+            QuestionRecord(
+                number=number,
+                statement=statement,
+                alternatives=[
+                    Alternative(letter="A", text="Certo"),
+                    Alternative(letter="B", text="Errado"),
+                ],
+                matter=None,
+                subject=None,
+                board=context.board or "Cebraspe",
+                organization=None,
+                role=context.role,
+                year=None,
+                source_pages=source_pages,
+                answer_status="missing",
+                correct_answer=None,
+                review_notes=[_CEBRASPE_TRUE_FALSE_NOTE],
             )
-    if questions and [question.number for question in questions] != list(
-        range(1, questions[-1].number + 1)
-    ):
+        )
+    if not objective_heading_found:
+        warnings.append("seção de prova objetiva não identificada")
+    expected = list(context.expected_numbers or ())
+    found = [question.number for question in questions]
+    if expected and found != expected:
+        warnings.append("sequencia CERTO/ERRADO diverge do gabarito associado")
+    elif found and found != list(range(found[0], found[-1] + 1)):
         warnings.append("sequencia CERTO/ERRADO incompleta; conferir o PDF original")
     return BankParsingResult(
         adapter_id="cebraspe-true-false",
-        adapter_version="1.0",
+        adapter_version="2.0",
         profile_id=None,
         identity=FgvDocumentIdentity(
             role=context.role,
@@ -447,7 +587,7 @@ def _parse_cebraspe_true_false_pages(
         expected_intervals=(),
         exceptions=(),
         warnings=tuple(warnings),
-        status="completed",
+        status="completed" if questions and not warnings else "incomplete",
         summary={
             "objectiveFound": len(questions),
             "discursiveFound": 0,

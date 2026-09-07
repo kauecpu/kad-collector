@@ -125,6 +125,8 @@ class BankParsingContext:
     role: str | None = None
     shift: str | None = None
     booklet_type: int | None = None
+    expected_numbers: tuple[int, ...] | None = None
+    question_format: Literal["true_false", "multiple_choice"] | None = None
 
 
 @dataclass(frozen=True)

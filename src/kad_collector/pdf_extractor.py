@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import re
+import time
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
@@ -81,12 +83,27 @@ def _extract_document(
                 warnings=["PDF criptografado; extracao automatica nao realizada"],
             )
         for number, page in enumerate(reader.pages, start=1):
+            started = time.monotonic()
             try:
                 text = (page.extract_text() or "").replace("\x00", "").strip()
+                method: Literal["text", "ocr", "unreadable"] = "text"
             except Exception as exc:  # pypdf pode expor erros internos especificos por pagina
                 text = ""
+                method = "unreadable"
                 warnings.append(f"pagina {number}: falha de extracao ({type(exc).__name__})")
-            pages.append(ExtractedPage(number=number, text=text, character_count=len(text)))
+            requires_ocr = page_requires_ocr(text)
+            pages.append(
+                ExtractedPage(
+                    number=number,
+                    text=text,
+                    character_count=len(text),
+                    extraction_method=method,
+                    duration_ms=round((time.monotonic() - started) * 1000),
+                    ocr_reason=(
+                        "camada de texto ausente ou insuficiente" if requires_ocr else None
+                    ),
+                )
+            )
     except (OSError, PdfReadError) as exc:
         return ExtractedDocument(
             document=record,
@@ -111,7 +128,13 @@ def _extract_document(
                     continue
                 if result.usable:
                     pages[page_indexes[number]] = ExtractedPage(
-                        number=number, text=result.text, character_count=len(result.text)
+                        number=number,
+                        text=result.text,
+                        character_count=len(result.text),
+                        extraction_method="ocr",
+                        confidence=result.confidence,
+                        duration_ms=round(result.duration_seconds * 1000),
+                        ocr_reason="camada de texto ausente ou insuficiente",
                     )
                     confidence = (
                         f" ({result.confidence:.0%} de confianca media)"

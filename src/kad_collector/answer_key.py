@@ -124,27 +124,43 @@ def _parse_fcc_blocks(
 def _parse_cebraspe_grid(text: str) -> dict[int, AnswerEntry] | None:
     normalized = text.casefold()
     if (
-        "gabaritos oficiais" not in normalized
-        or "item anulado" not in normalized
-        or "cargo:" not in normalized
+        "gabarito" not in normalized
+        or not (
+            any(owner in normalized for owner in ("cebraspe", "cespe", "polícia federal"))
+            or ("gabaritos oficiais" in normalized and "cargo:" in normalized)
+        )
     ):
         return None
-    answer_rows = [
-        re.sub(r"\s+", "", line).upper()
-        for line in text.splitlines()
-        if _CEBRASPE_GRID_LINE.fullmatch(line.strip())
-    ]
-    answers = "".join(answer_rows)
-    if not 20 <= len(answers) <= 400 or any(answer not in "CEX*" for answer in answers):
-        return {}
-    return {
-        number: AnswerEntry(
-            number=number,
-            answer=None if answer in "X*" else answer,
-            annulled=answer in "X*",
-        )
-        for number, answer in enumerate(answers, start=1)
-    }
+    lines = [" ".join(line.split()) for line in text.splitlines()]
+    entries: dict[int, AnswerEntry] = {}
+    last_number = 0
+    for index, line in enumerate(lines[:-1]):
+        answer_line = lines[index + 1]
+        if not re.fullmatch(r"[CEX*0 ]+", answer_line, re.IGNORECASE):
+            continue
+        answers = re.findall(r"[CEX*]", answer_line.upper())
+        raw_numbers = [int(value) for value in re.findall(r"\d+", line)]
+        nonzero_numbers = [number for number in raw_numbers if number > 0]
+        if not nonzero_numbers or not answers:
+            continue
+        start = nonzero_numbers[0]
+        if start <= last_number:
+            continue
+        inferred_numbers = list(range(start, start + len(answers)))
+        visible_numbers = [number for number in nonzero_numbers if number <= inferred_numbers[-1]]
+        if any(number not in inferred_numbers for number in visible_numbers):
+            return {}
+        for number, answer in zip(inferred_numbers, answers, strict=True):
+            entry = AnswerEntry(
+                number=number,
+                answer=None if answer in "X*" else answer,
+                annulled=answer in "X*",
+            )
+            if number in entries and entries[number] != entry:
+                return {}
+            entries[number] = entry
+        last_number = inferred_numbers[-1]
+    return entries if len(entries) >= 10 else {}
 
 
 @dataclass

@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-07",
+  "branch": "codex/pdf-question-structured-pipeline",
+  "base_commit": "bb8046e",
+  "pilot": {
+    "contest": "PF 2021",
+    "exam_answer_key_pairs": 4,
+    "documents": 8,
+    "expected_questions": 480,
+    "detected_questions": 480,
+    "associated_answers": 480,
+    "accepted_questions": 447,
+    "quarantined_questions": 33,
+    "rejected_questions": 0,
+    "segmentation_precision": 1.0,
+    "segmentation_coverage": 1.0,
+    "answer_association_rate": 1.0,
+    "duplicate_questions": 0,
+    "ocr_pages": 0,
+    "qwen_calls": 0,
+    "intervention_free_rate": 1.0,
+    "semantic_sha256": "cf822429ef79d105fb0d1fc3d0abb41901ef43f3d520b1319e07ddf973b3d4db",
+    "same_hash_with_ollama_online_offline_and_repeat": true
+  },
+  "expanded_run": {
+    "years": [2018, 2021, 2025],
+    "exam_answer_key_pairs": 56,
+    "documents": 112,
+    "expected_questions": 4108,
+    "detected_questions": 4108,
+    "associated_answers": 4108,
+    "accepted_questions": 3840,
+    "quarantined_questions": 268,
+    "rejected_questions": 0,
+    "segmentation_precision": 1.0,
+    "segmentation_coverage": 1.0,
+    "answer_association_rate": 1.0,
+    "duplicate_questions": 0,
+    "ocr_pages": 0,
+    "qwen_calls": 0,
+    "intervention_free_rate": 1.0,
+    "duration_ms": 15812,
+    "semantic_sha256": "5f946b0ab11a03e8890c83eebad16e7ae2ca7ed3212f3e3da93d925afecc2490",
+    "errors": 0,
+    "by_year": [
+      {"year": 2018, "questions": 1230, "accepted": 1115, "quarantined": 115},
+      {"year": 2021, "questions": 480, "accepted": 447, "quarantined": 33},
+      {"year": 2025, "questions": 2398, "accepted": 2278, "quarantined": 120}
+    ],
+    "quarantine_reasons": {
+      "officially_annulled": 178,
+      "visual_dependency": 93,
+      "overlap_between_reasons": 3
+    }
+  },
+  "manual_sample": {
+    "strategy": "deterministic stratified sample across 2018, 2021 and 2025",
+    "questions_reviewed": 15,
+    "structurally_coherent": 15,
+    "semantic_answer_rejudgment_performed": false
+  },
+  "ocr_evidence": {
+    "pf_pages_requiring_ocr": 0,
+    "package_telemetry_regression": "passed",
+    "existing_real_scanned_corpus_pages_recovered": 41,
+    "existing_real_scanned_corpus_pages_total": 41,
+    "reference": "docs/homologation/2026-09-06-ocr-scanned-pdf-reliability.md"
+  },
+  "validation": {
+    "tests": "909 passed, 114 subtests passed",
+    "focused_ocr_pipeline_tests": "32 passed",
+    "ruff": "passed",
+    "mypy": "77 source files passed",
+    "wheel_build": "passed",
+    "clean_package_smoke": "passed"
+  },
+  "publication": {
+    "supabase": false,
+    "kad": false,
+    "automatic_publish": false
+  }
+}
