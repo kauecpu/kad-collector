@@ -62,6 +62,16 @@ class FilterTests(unittest.TestCase):
             )
         )
 
+    def test_question_filter_matches_policia_federal_role_abbreviation(self) -> None:
+        filters = CollectionFilters(roles=["APF"])
+
+        self.assertTrue(
+            question_matches_filters(
+                question(role="Agente de Polícia Federal"),
+                filters,
+            )
+        )
+
     def test_filter_merge_preserves_the_original_collection_request(self) -> None:
         collected = CollectionFilters(years=[2022], boards=["FGV", "FCC"])
         processed = CollectionFilters(boards=["FGV"], subjects=["Administrativo"])

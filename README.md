@@ -537,7 +537,22 @@ data de coleta, banca, orgao, cargo/exame e ano quando conhecido.
 | UERJ | `sistema.vestibular.uerj.br`; provas, gabaritos e padroes desde 1997 | Ate 30 paginas | `content`; aba por pagina/PDF ou `sync` |
 | Banco do Brasil | `bb.com.br`; paginas institucionais das selecoes externas de 2021 e 2023 | Ate 4 paginas | `content`; `robots.txt` aplicado; ausencia de cadernos antigos fica registrada |
 | Fundacao Cesgranrio | `concursos.cesgranrio.org.br`; catalogo publico e documentos de concursos | Ate 2 paginas JSON | `content`; URLs assinadas sao renovadas pela origem e gravadas sem assinatura |
+| Cebraspe - Policia Federal | `cebraspe.org.br`, API e CDN oficiais; provas objetivas e gabaritos definitivos de 2018, 2021 e 2025 | 4 paginas de concursos renderizadas por JavaScript | `content`; HTML primeiro, navegador deterministico como adaptador do portal e sem URLs finais de PDF cadastradas |
 | PCI Concursos - Banco do Brasil | `www.pciconcursos.com.br` para as paginas e `arq.pciconcursos.com.br` para os PDFs publicos; provas e gabaritos por cargo, ano, caderno e versao | Ate 20 paginas do indice | `content`; aba por pagina do concurso ou `sync` |
+
+#### Cebraspe e Policia Federal
+
+A fonte `cebraspe_policia_federal` usa as paginas publicas dos concursos PF 2018, PF 2021,
+PF 2025 administrativo e PF 2025 policial. O portal entrega uma aplicacao JavaScript e publica
+os arquivos pela API e pela CDN oficiais. Por isso a fonte tenta o HTML primeiro e, quando a
+casca nao apresenta os documentos, renderiza a pagina com o navegador deterministico. O Qwen
+nao e usado enquanto esse caminho encontrar os links.
+
+Somente provas objetivas, cadernos de prova e gabaritos preliminares ou definitivos entram na
+coleta. Editais, resultados, convocacoes, comunicados, recursos, provas orais, provas discursivas
+e padroes de resposta ficam de fora. A fonte aplica `robots.txt`, limita a rodada a quatro paginas
+e nao cadastra URLs finais de PDF. Os arquivos ficam para revisao local e nunca sao publicados
+automaticamente no KAD.
 
 #### Banco do Brasil e Fundacao Cesgranrio
 

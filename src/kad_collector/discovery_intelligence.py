@@ -14,6 +14,11 @@ from .url_utils import canonicalize_url, redact_url_secrets
 _ALIAS_GROUPS = (
     frozenset({"cebraspe", "cespe", "cespe unb", "cebraspe unb"}),
     frozenset({"policia federal", "pf", "departamento de policia federal"}),
+    frozenset({"delegado de policia federal", "delegado federal", "delegado pf"}),
+    frozenset({"agente de policia federal", "agente federal", "apf"}),
+    frozenset({"escrivao de policia federal", "escrivao federal", "epf"}),
+    frozenset({"papiloscopista policial federal", "papiloscopista federal", "ppf"}),
+    frozenset({"perito criminal federal", "perito federal", "pcf"}),
     frozenset({"banco do brasil", "bb"}),
     frozenset({"fundacao cesgranrio", "cesgranrio"}),
     frozenset({"fundacao getulio vargas", "fgv"}),

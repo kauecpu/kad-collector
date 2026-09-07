@@ -140,7 +140,11 @@ class DesktopCollectionTests(unittest.TestCase):
         self.assertTrue(catalog["comvest_unicamp"]["collectable"])
         self.assertFalse(catalog["obmep_referencias"]["collectable"])
         self.assertIn("robots.txt", catalog["obmep_referencias"]["notice"])
-        enforced = {"banco_brasil_selecoes", "cesgranrio_banco_brasil"}
+        enforced = {
+            "banco_brasil_selecoes",
+            "cesgranrio_banco_brasil",
+            "cebraspe_policia_federal",
+        }
         self.assertTrue(
             all(
                 source["engine"]["robotsPolicy"]

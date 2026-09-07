@@ -43,8 +43,16 @@ def source_definition(**changes: object) -> SourceDefinition:
 class DiscoveryIntelligenceTests(unittest.TestCase):
     def test_expands_common_board_and_organization_aliases(self) -> None:
         self.assertIn("cespe", expand_aliases("Cebraspe"))
+        self.assertIn("cebraspe", expand_aliases("CESPE"))
         self.assertIn("cebraspe", expand_aliases("CESPE/UnB"))
         self.assertIn("pf", expand_aliases("Polícia Federal"))
+
+    def test_expands_policia_federal_role_names_and_abbreviations(self) -> None:
+        self.assertIn("apf", expand_aliases("Agente de Polícia Federal"))
+        self.assertIn("escrivao de policia federal", expand_aliases("EPF"))
+        self.assertIn("ppf", expand_aliases("Papiloscopista Policial Federal"))
+        self.assertIn("perito criminal federal", expand_aliases("PCF"))
+        self.assertIn("delegado pf", expand_aliases("Delegado Federal"))
 
     def test_sitemap_candidate_uses_target_content_even_when_url_year_differs(self) -> None:
         source = source_definition()

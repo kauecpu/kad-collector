@@ -419,6 +419,54 @@ banca = "CESGRANRIO"
 orgao = "Banco do Brasil"
 cargo = "Escriturario - Agente Comercial ou Agente de Tecnologia"
 
+# Portal oficial do Cebraspe para os concursos policiais e administrativos da
+# Policia Federal. As paginas sao uma aplicacao JavaScript publica: o caminho
+# HTML continua primeiro e o navegador deterministico apenas renderiza os links
+# que a propria API oficial publica. Nenhuma URL de PDF e mantida na fonte.
+[[sources]]
+id = "cebraspe_policia_federal"
+name = "Cebraspe - Policia Federal"
+enabled = true
+start_urls = [
+  "https://www.cebraspe.org.br/concursos/pf_25",
+  "https://www.cebraspe.org.br/concursos/pf_25_adm",
+  "https://www.cebraspe.org.br/concursos/pf_21",
+  "https://www.cebraspe.org.br/concursos/pf_18",
+]
+allowed_hosts = [
+  "cebraspe.org.br",
+  "www.cebraspe.org.br",
+  "apis.cebraspe.org.br",
+  "cdn.cebraspe.org.br",
+]
+robots_policy = "enforce"
+crawl_delay_policy = "enforce"
+discovery_strategies = ["html", "browser"]
+browser_enabled = true
+include_patterns = [
+  "(?is)(?:prova\\s+objetiva|caderno\\s+de\\s+provas?|gabarito\\s+(?:oficial\\s+)?(?:preliminar|definitivo)).*\\.pdf(?:$|[?#])",
+]
+exclude_patterns = [
+  "(?i)(edital|resultado|classificacao|convocacao|comunicado|cronograma|recurso|justificativa|retificacao|inscricao|locais?.?de.?prova|demanda.?de.?candidatos|prova.?oral|prova.?discursiva|padrao.?de.?resposta|prova.?de.?digitacao)",
+]
+exam_patterns = ["(?i)(prova\\s+objetiva|caderno\\s+de\\s+provas?)"]
+answer_key_patterns = [
+  "(?i)gabarito\\s+(?:oficial\\s+)?(?:preliminar|definitivo)",
+]
+collection_url_patterns = [
+  "(?i)^https://(?:www\\.)?cebraspe\\.org\\.br/concursos/[a-z0-9][a-z0-9_-]*/?(?:[?#].*)?$",
+]
+pagination_patterns = []
+max_pages_per_run = 4
+request_interval_seconds = 2.0
+access_mode = "content"
+authorization_basis = "Provas e gabaritos de concursos da Policia Federal publicados no portal oficial e publico do Cebraspe; coleta interna com origem e hash preservados, sem autenticacao e sem publicacao automatica."
+terms_url = "https://www.cebraspe.org.br/concursos/"
+
+[sources.metadata]
+banca = "CEBRASPE"
+orgao = "Policia Federal"
+
 # O PCI Concursos funciona como indice de provas publicas. A pagina do Banco
 # do Brasil aponta para os PDFs de cada cargo, ano, caderno e gabarito; o
 # Collector preserva esses vinculos como evidencia e so exporta depois da
