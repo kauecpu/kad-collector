@@ -1,0 +1,51 @@
+schema_version = 1
+date = "2026-09-07"
+model = "qwen3:8b"
+
+[[samples]]
+id = "cesgranrio_banco_brasil_2023"
+source_id = "cesgranrio_banco_brasil"
+source_tier = "official"
+start_urls = [
+  "https://concursos.cesgranrio.org.br/",
+  "https://www.cesgranrio.org.br/",
+]
+filters = { year = 2023, board = "CESGRANRIO", organization = "Banco do Brasil" }
+expected_exams = 20
+expected_answer_keys = 4
+expected_groups = ["Prova A", "Prova B", "Prova C", "Agente de Tecnologia"]
+expected_variants_per_group = 5
+must_reject = ["edital", "resultado", "comunicado", "gabarito alterado"]
+required_discovery = ["sitemap", "html"]
+
+[[samples]]
+id = "fgv_receita_federal_2023"
+source_id = "fgv_conhecimento"
+source_tier = "official"
+start_urls = ["https://conhecimento.fgv.br/concursos/rfb22"]
+filters = { year = 2023, board = "FGV" }
+expected_exams = 18
+expected_answer_keys = 5
+must_reject = ["edital", "resultado", "certificado de aprovacao", "documentos de 2024 e 2025"]
+required_discovery = ["html"]
+
+[[samples]]
+id = "fuvest_2026"
+source_id = "fuvest_vestibular"
+source_tier = "official"
+start_urls = ["https://www.fuvest.br/vestibular-da-usp/"]
+filters = { year = 2026, board = "FUVEST" }
+expected_exams = 4
+expected_answer_keys = 0
+expected_variants = ["V1", "V2", "V3", "V4"]
+must_reject = ["convocados para matricula", "edital", "lista", "pagina de 2027"]
+required_discovery = ["html", "qwen_navigation"]
+
+[acceptance]
+minimum_precision_percent = 95
+minimum_coverage_percent = 85
+require_no_administrative_false_positive = true
+require_no_external_host = true
+require_valid_pdf = true
+require_source_isolation = true
+require_idempotency = true

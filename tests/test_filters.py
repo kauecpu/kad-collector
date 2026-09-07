@@ -52,6 +52,16 @@ class FilterTests(unittest.TestCase):
         )
         self.assertTrue(question_matches_filters(question(), filters))
 
+    def test_question_filter_matches_cebraspe_and_pf_aliases(self) -> None:
+        filters = CollectionFilters(boards=["CESPE"], organizations=["PF"])
+
+        self.assertTrue(
+            question_matches_filters(
+                question(board="Cebraspe", organization="Polícia Federal"),
+                filters,
+            )
+        )
+
     def test_filter_merge_preserves_the_original_collection_request(self) -> None:
         collected = CollectionFilters(years=[2022], boards=["FGV", "FCC"])
         processed = CollectionFilters(boards=["FGV"], subjects=["Administrativo"])

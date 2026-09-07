@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import unicodedata
 
+from .discovery_intelligence import expand_aliases
 from .models import CollectionFilters, QuestionRecord
 
 
@@ -20,7 +21,11 @@ def _text_matches(value: str | None, requested: list[str]) -> bool:
     if not value:
         return False
     normalized = _normalize(value)
-    return any(_normalize(item) in normalized for item in requested)
+    value_aliases = expand_aliases(value)
+    return any(
+        _normalize(item) in normalized or bool(value_aliases.intersection(expand_aliases(item)))
+        for item in requested
+    )
 
 
 def _metadata_value(metadata: dict[str, str], key: str) -> str | None:

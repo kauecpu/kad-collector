@@ -36,6 +36,13 @@ from .discovery import (
     parse_sitemap,
     safe_discovered_links,
 )
+from .discovery_intelligence import (
+    build_discovery_target,
+    extract_page_inventory,
+    finalize_discovery_inventory,
+    select_relevant_navigation_links,
+    summarize_discovery_inventory,
+)
 from .filters import document_might_match_filters
 from .json_utils import write_json
 from .models import (
@@ -504,6 +511,23 @@ def classify_document(url: str, title: str, source: SourceDefinition) -> Documen
     # look like an answer key.  Keep the visible title, filename and query,
     # which are the evidence that belongs to the document itself.
     candidate = f"{title}\n{Path(parsed.path).name}\n{parsed.query}"
+    normalized_title = " ".join(
+        "".join(
+            character
+            for character in unicodedata.normalize("NFKD", title)
+            if not unicodedata.combining(character)
+        )
+        .casefold()
+        .split()
+    )
+    numbered_variant = re.search(r"\bgabarito\s*[1-9]\d*\b", normalized_title)
+    exam_container = re.search(r"(?:^|/)provas?(?:/|$)", parsed.query.casefold())
+    if (
+        numbered_variant
+        and not normalized_title.startswith("gabarito")
+        and ("prova" in normalized_title or exam_container)
+    ):
+        return "exam"
     if any(re.search(pattern, candidate) for pattern in source.answer_key_patterns):
         return "answer_key"
     if any(re.search(pattern, candidate) for pattern in source.exam_patterns):
@@ -860,9 +884,7 @@ def _sanitize_manifest_urls(manifest: DownloadManifest) -> DownloadManifest:
                     update={
                         "url": redact_url_secrets(item.url),
                         "detail": (
-                            redact_text_secrets(item.detail)
-                            if item.detail is not None
-                            else None
+                            redact_text_secrets(item.detail) if item.detail is not None else None
                         ),
                     }
                 )
@@ -922,8 +944,7 @@ def _should_expand_collection_pages(source: SourceDefinition) -> bool:
     if source.id != "pci_concursos":
         return True
     return not all(
-        urlsplit(url).path.casefold().startswith("/provas/download/")
-        for url in source.start_urls
+        urlsplit(url).path.casefold().startswith("/provas/download/") for url in source.start_urls
     )
 
 
@@ -1044,6 +1065,7 @@ def collect_documents(
     warnings: list[str] = []
     filtered_out_documents = 0
     duplicate_documents = 0
+    discovery_inventory: list[dict[str, object]] = []
     seen_digests: set[str] = set()
     browser_runtime_checked = False
     browser_runtime_error: BrowserRuntimeError | None = None
@@ -1127,6 +1149,7 @@ def collect_documents(
         owns_source_ai_planner = False
         checkpoint_key = _checkpoint_key(source)
         expand_collection_pages = _should_expand_collection_pages(source)
+        discovery_target = build_discovery_target(source, active_filters)
 
         def check_paused(
             pending_pages: list[str],
@@ -1164,6 +1187,7 @@ def collect_documents(
             _source: SourceDefinition = source,
             _seen_links: set[str] = seen_links,
             _source_links: list[tuple[str, str, DocumentType]] = source_links,
+            _link_years: dict[str, str | None] = link_years,
         ) -> None:
             nonlocal filtered_out_documents
             for candidate in safe_discovered_links(candidates, _source):
@@ -1176,8 +1200,12 @@ def collect_documents(
                     continue
                 if canonical_url in _seen_links:
                     continue
+                candidate_metadata = dict(_source.metadata)
+                candidate_year = _link_years.get(selected[0])
+                if candidate_year is not None:
+                    candidate_metadata["ano"] = candidate_year
                 if not document_might_match_filters(
-                    selected[1], selected[0], _source.metadata, active_filters
+                    selected[1], selected[0], candidate_metadata, active_filters
                 ):
                     filtered_out_documents += 1
                     continue
@@ -1214,9 +1242,7 @@ def collect_documents(
                     filtered_out_documents += 1
                     continue
                 _seen_links.add(canonical_url)
-                _source_links.append(
-                    (candidate.url, title or _source.name, document_type)
-                )
+                _source_links.append((candidate.url, title or _source.name, document_type))
 
         def record_ai_event(
             page_url: str,
@@ -1233,6 +1259,26 @@ def collect_documents(
                 strategy="ai_fallback",
                 outcome=outcome,
                 duration_ms=duration_ms,
+                detail=detail,
+            )
+            state.add_event(active_run_id, event)
+            if progress_callback is not None:
+                progress_callback(event)
+
+        def record_navigation_event(
+            page_url: str,
+            strategy: str,
+            outcome: str,
+            detail: str,
+            *,
+            _source: SourceDefinition = source,
+        ) -> None:
+            event = CollectionTelemetryEvent(
+                occurred_at=datetime.now(UTC),
+                source_id=_source.id,
+                url=page_url,
+                strategy=strategy,
+                outcome=outcome,
                 detail=detail,
             )
             state.add_event(active_run_id, event)
@@ -1279,12 +1325,75 @@ def collect_documents(
                             if isinstance(key, str) and isinstance(value, str)
                         }
 
+            sitemap_navigation_pages: list[str] = []
+            if "sitemap" in source.discovery_strategies:
+                sitemap_queue = list(source.sitemap_urls)
+                if not sitemap_queue:
+                    for start_url in source.start_urls:
+                        parsed = urlsplit(start_url)
+                        sitemap_queue.append(
+                            urlunsplit((parsed.scheme, parsed.netloc, "/sitemap.xml", "", ""))
+                        )
+                seen_sitemaps: set[str] = set()
+                sitemap_urls_seen = 0
+                while sitemap_queue:
+                    check_paused(sitemap_queue, seen_sitemaps)
+                    sitemap_url = sitemap_queue.pop(0)
+                    if sitemap_url in seen_sitemaps:
+                        continue
+                    seen_sitemaps.add(sitemap_url)
+                    if not robots.can_fetch(sitemap_url, source.allowed_hosts):
+                        continue
+                    try:
+                        result = client.get(
+                            sitemap_url,
+                            source.allowed_hosts,
+                            settings.max_html_bytes,
+                            strategy="sitemap",
+                            interval_seconds=interval,
+                        )
+                        urls, children = parse_sitemap(
+                            result.body, result.url, max_bytes=settings.max_html_bytes
+                        )
+                        sitemap_urls_seen += len(urls)
+                        discovered = [DiscoveredLink(url=item, title="") for item in urls]
+                        add_candidates(discovered)
+                        navigation = select_relevant_navigation_links(
+                            discovered,
+                            discovery_target,
+                            source,
+                            limit=settings.ai_discovery_max_links_per_page,
+                        )
+                        for navigation_url, reason in navigation:
+                            if navigation_url not in sitemap_navigation_pages:
+                                sitemap_navigation_pages.append(navigation_url)
+                                record_navigation_event(
+                                    navigation_url,
+                                    "sitemap_navigation",
+                                    "queued",
+                                    f"from={sitemap_url}; reason={reason}",
+                                )
+                        for child in children:
+                            if child not in seen_sitemaps:
+                                sitemap_queue.append(child)
+                    except (FetchError, UnsafeUrlError, OSError, ValueError) as exc:
+                        warnings.append(f"{source.id}: sitemap ignorado: {exc}")
+                record_navigation_event(
+                    source.start_urls[0],
+                    "sitemap_navigation",
+                    "completed",
+                    (
+                        f"sitemaps={len(seen_sitemaps)}; urls={sitemap_urls_seen}; "
+                        f"navigation={len(sitemap_navigation_pages)}"
+                    ),
+                )
+
             if "html" in source.discovery_strategies:
                 restored_pending = checkpoint_payload.get("pending_pages", [])
                 pending_pages = (
                     [str(item) for item in restored_pending]
                     if isinstance(restored_pending, list) and restored_pending
-                    else list(dict.fromkeys(source.start_urls))
+                    else list(dict.fromkeys([*source.start_urls, *sitemap_navigation_pages]))
                 )
                 restored_seen = checkpoint_payload.get("seen_pages", [])
                 seen_pages = (
@@ -1463,12 +1572,62 @@ def collect_documents(
                                 link_variants[document_url] = variant
                             elif previous != variant:
                                 link_variants[document_url] = None
+                        raw_page_links = [
+                            DiscoveredLink(url=url, title=title)
+                            for url, title in extract_links(
+                                html,
+                                page.url,
+                                allow_data_url=True,
+                            )
+                        ]
+                        page_inventory = extract_page_inventory(html, page.url, source)
+                        in_scope_inventory = [
+                            item
+                            for item in page_inventory.expected
+                            if not discovery_target.years
+                            or item.year is None
+                            or item.year in discovery_target.years
+                        ]
+                        for item in page_inventory.expected:
+                            if item.year is not None:
+                                link_years[item.url] = str(item.year)
                         page_document_links = select_document_links(html, page.url, source)
                         add_candidates(
                             [
                                 DiscoveredLink(url=url, title=title, declared_type=kind)
                                 for url, title, kind in page_document_links
                             ]
+                        )
+                        discovered_on_page = {
+                            canonicalize_url(item[0]) for item in page_document_links
+                        }
+                        missing_inventory = [
+                            item
+                            for item in in_scope_inventory
+                            if canonicalize_url(item.url) not in discovered_on_page
+                        ]
+                        discovery_inventory.append(
+                            {
+                                "source_id": source.id,
+                                "source_tier": source.source_tier,
+                                "page_url": page.url,
+                                "method": "html",
+                                "target_terms": sorted(discovery_target.terms),
+                                "target_years": sorted(discovery_target.years),
+                                "expected": [item.as_dict() for item in in_scope_inventory],
+                                "expected_exams": sum(
+                                    item.document_type == "exam" for item in in_scope_inventory
+                                ),
+                                "expected_answer_keys": sum(
+                                    item.document_type == "answer_key"
+                                    for item in in_scope_inventory
+                                ),
+                                "discovered": len(page_document_links),
+                                "missing_candidates": [
+                                    item.as_dict() for item in missing_inventory
+                                ],
+                                "candidate_complete": not missing_inventory,
+                            }
                         )
                         page_metadata = extract_page_metadata(html)
                         for document_url, _title, _kind in page_document_links:
@@ -1480,7 +1639,7 @@ def collect_documents(
                         if (
                             settings.ai_discovery_enabled
                             and source.access_mode == "content"
-                            and not page_document_links
+                            and (not page_document_links or missing_inventory)
                             and "browser" not in source.discovery_strategies
                             and not source_ai_disabled
                             and not ai_runtime_unavailable
@@ -1495,39 +1654,73 @@ def collect_documents(
                                         max_links=settings.ai_discovery_max_links_per_page,
                                     )
                                     owns_source_ai_planner = True
-                                raw_links = [
-                                    DiscoveredLink(url=url, title=title)
-                                    for url, title in extract_links(
-                                        html,
-                                        page.url,
-                                        allow_data_url=True,
-                                    )
-                                ]
                                 decision = source_ai_planner.plan(
                                     page_url=page.url,
                                     source=source,
-                                    links=raw_links,
+                                    links=raw_page_links,
                                     visited_urls=seen_pages,
                                 )
-                                add_ai_candidates(decision.documents)
-                                for item in decision.documents:
-                                    if document_choice_is_allowed(item, source):
-                                        link_metadata[item.url] = {
-                                            **source.metadata,
-                                            **page_metadata,
-                                            "discovery": "qwen_fallback",
-                                        }
+                                accepted_ai_documents = [
+                                    item
+                                    for item in decision.documents
+                                    if document_choice_is_allowed(item, source)
+                                ]
+                                add_ai_candidates(accepted_ai_documents)
+                                for item in accepted_ai_documents:
+                                    link_metadata[item.url] = {
+                                        **source.metadata,
+                                        **page_metadata,
+                                        "discovery": "qwen_fallback",
+                                    }
                                 ai_navigation = decision.navigation_urls
+                                if (
+                                    discovery_target.organizations
+                                    or discovery_target.roles
+                                    or discovery_target.years
+                                ):
+                                    titles_by_url = {
+                                        item.url: item.title for item in raw_page_links
+                                    }
+                                    ai_navigation = [
+                                        url
+                                        for url, _reason in select_relevant_navigation_links(
+                                            [
+                                                DiscoveredLink(
+                                                    url=url,
+                                                    title=titles_by_url.get(url, ""),
+                                                )
+                                                for url in ai_navigation
+                                            ],
+                                            discovery_target,
+                                            source,
+                                        )
+                                    ]
                                 duration_ms = int((time.perf_counter() - started_at) * 1000)
+                                ai_reason = "inventory_gap" if missing_inventory else "no_documents"
                                 record_ai_event(
                                     page.url,
-                                    "selected" if decision.documents or ai_navigation else "empty",
+                                    (
+                                        "selected"
+                                        if accepted_ai_documents or ai_navigation
+                                        else "empty"
+                                    ),
                                     duration_ms,
                                     (
                                         f"model={source_ai_planner.model}; "
                                         f"candidates={decision.candidates_considered}; "
-                                        f"documents={len(decision.documents)}; "
-                                        f"navigation={len(ai_navigation)}"
+                                        f"proposed_documents={len(decision.documents)}; "
+                                        f"accepted_documents={len(accepted_ai_documents)}; "
+                                        f"navigation={len(ai_navigation)}; "
+                                        f"reason={ai_reason}; "
+                                        "selected_document_urls="
+                                        + ",".join(
+                                            redact_url_secrets(item.url)
+                                            for item in accepted_ai_documents[:10]
+                                        )
+                                        + "; selected_navigation_urls="
+                                        + ",".join(
+                                            redact_url_secrets(url) for url in ai_navigation[:10]
+                                        )
                                     ),
                                 )
                             except OllamaUnavailableError as exc:
@@ -1544,17 +1737,41 @@ def collect_documents(
                                 warnings.append(message)
                                 record_ai_event(page.url, "unavailable", duration_ms, str(exc))
                         if expand_collection_pages:
-                            for discovered_collection in select_collection_links(
-                                html, page.url, source
-                            ):
+                            collection_links = select_collection_links(html, page.url, source)
+                            specific_target = bool(
+                                discovery_target.organizations
+                                or discovery_target.roles
+                                or discovery_target.years
+                            )
+                            if specific_target:
+                                collection_set = {canonicalize_url(url) for url in collection_links}
+                                relevant_collections = select_relevant_navigation_links(
+                                    [
+                                        item
+                                        for item in safe_discovered_links(raw_page_links, source)
+                                        if canonicalize_url(item.url) in collection_set
+                                    ],
+                                    discovery_target,
+                                    source,
+                                    limit=settings.ai_discovery_max_links_per_page,
+                                )
+                            else:
+                                relevant_collections = [
+                                    (url, "configured_collection") for url in collection_links
+                                ]
+                            for discovered_collection, reason in relevant_collections:
                                 if (
                                     discovered_collection not in seen_pages
                                     and discovered_collection not in pending_pages
                                 ):
                                     pending_pages.append(discovered_collection)
-                            for discovered_page in select_pagination_links(
-                                html, page.url, source
-                            ):
+                                    record_navigation_event(
+                                        discovered_collection,
+                                        "collection_navigation",
+                                        "queued",
+                                        f"from={page.url}; reason={reason}",
+                                    )
+                            for discovered_page in select_pagination_links(html, page.url, source):
                                 if (
                                     discovered_page not in seen_pages
                                     and discovered_page not in pending_pages
@@ -1566,6 +1783,24 @@ def collect_documents(
                                     and discovered_page not in pending_pages
                                 ):
                                     pending_pages.append(discovered_page)
+                            semantic_navigation = select_relevant_navigation_links(
+                                raw_page_links,
+                                discovery_target,
+                                source,
+                                limit=settings.ai_discovery_max_links_per_page,
+                            )
+                            for discovered_page, reason in semantic_navigation:
+                                if (
+                                    discovered_page not in seen_pages
+                                    and discovered_page not in pending_pages
+                                ):
+                                    pending_pages.append(discovered_page)
+                                    record_navigation_event(
+                                        discovered_page,
+                                        "semantic_navigation",
+                                        "queued",
+                                        f"from={page.url}; reason={reason}",
+                                    )
                     except (FetchError, UnsafeUrlError, LookupError, OSError, ValueError) as exc:
                         message = f"{source.id}: falha ao ler {page_url}: {exc}"
                         warnings.append(message)
@@ -1607,40 +1842,6 @@ def collect_documents(
                 warnings.append(
                     f"{source.id}: paginacao limitada a {source.max_pages_per_run} paginas"
                 )
-
-            if "sitemap" in source.discovery_strategies:
-                sitemap_queue = list(source.sitemap_urls)
-                if not sitemap_queue:
-                    for start_url in source.start_urls:
-                        parsed = urlsplit(start_url)
-                        sitemap_queue.append(
-                            urlunsplit((parsed.scheme, parsed.netloc, "/sitemap.xml", "", ""))
-                        )
-                seen_sitemaps: set[str] = set()
-                while sitemap_queue:
-                    check_paused(sitemap_queue, seen_sitemaps)
-                    sitemap_url = sitemap_queue.pop(0)
-                    if sitemap_url in seen_sitemaps:
-                        continue
-                    seen_sitemaps.add(sitemap_url)
-                    if not robots.can_fetch(sitemap_url, source.allowed_hosts):
-                        continue
-                    try:
-                        result = client.get(
-                            sitemap_url,
-                            source.allowed_hosts,
-                            settings.max_html_bytes,
-                            strategy="sitemap",
-                        )
-                        urls, children = parse_sitemap(
-                            result.body, result.url, max_bytes=settings.max_html_bytes
-                        )
-                        add_candidates([DiscoveredLink(url=item, title="") for item in urls])
-                        for child in children:
-                            if child not in seen_sitemaps:
-                                sitemap_queue.append(child)
-                    except (FetchError, UnsafeUrlError, OSError, ValueError) as exc:
-                        warnings.append(f"{source.id}: sitemap ignorado: {exc}")
 
             if "feed" in source.discovery_strategies:
                 for feed_url in source.feed_urls:
@@ -1914,6 +2115,31 @@ def collect_documents(
                 transport_callback(None)
             client.close()
 
+    finalized_inventory = finalize_discovery_inventory(discovery_inventory, documents)
+    inventory_summary = summarize_discovery_inventory(finalized_inventory)
+    inventory_by_tier = {
+        tier: summarize_discovery_inventory(
+            [item for item in finalized_inventory if item.get("source_tier") == tier]
+        )
+        for tier in ("official", "secondary")
+    }
+    documents_by_source = {
+        source.id: sum(document.source_id == source.id for document in documents)
+        for source in enabled_sources
+    }
+    for secondary in (item for item in enabled_sources if item.source_tier == "secondary"):
+        secondary_org = build_discovery_target(secondary, CollectionFilters()).organizations
+        if not secondary_org or not documents_by_source.get(secondary.id, 0):
+            continue
+        for official in (item for item in enabled_sources if item.source_tier == "official"):
+            official_org = build_discovery_target(official, CollectionFilters()).organizations
+            if secondary_org.isdisjoint(official_org) or documents_by_source.get(official.id, 0):
+                continue
+            warnings.append(
+                f"{official.id}: cobertura oficial incompleta; a fonte secundaria "
+                f"{secondary.id} encontrou documentos para o mesmo orgao"
+            )
+
     telemetry = state.events(active_run_id)
     manifest = DownloadManifest(
         created_at=datetime.now(UTC),
@@ -1937,12 +2163,15 @@ def collect_documents(
             "resume_downloads": settings.resume_downloads,
             "ai_discovery_enabled": settings.ai_discovery_enabled,
             "ai_discovery_model": settings.ai_discovery_model,
-            "ai_discovery_max_steps_per_source": (
-                settings.ai_discovery_max_steps_per_source
-            ),
+            "ai_discovery_max_steps_per_source": (settings.ai_discovery_max_steps_per_source),
             "ai_discovery_max_links_per_page": settings.ai_discovery_max_links_per_page,
+            "discovery_inventory": finalized_inventory,
+            "discovery_inventory_summary": inventory_summary,
+            "discovery_inventory_by_tier": inventory_by_tier,
+            "documents_by_source": documents_by_source,
             "source_policies": {
                 source.id: {
+                    "source_tier": source.source_tier,
                     "robots_policy": source.robots_policy,
                     "crawl_delay_policy": source.crawl_delay_policy,
                 }
