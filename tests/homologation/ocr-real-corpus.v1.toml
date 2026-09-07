@@ -1,0 +1,35 @@
+schema_version = "1.0"
+description = "Provas oficiais integralmente digitalizadas usadas na homologacao local de OCR."
+
+[[documents]]
+id = "fuvest-1984-fase1"
+source_page = "https://www.fuvest.br/acervo-vestibular-1984/"
+url = "https://www.fuvest.br/wp-content/uploads/fuvest_1984_prova_primeira_fase.pdf"
+local_filename = "fuvest-1984-5337cb40.pdf"
+sha256 = "5337cb40c5458b55379b45d66b7eb180aca1b4f25b737d9921df478647141092"
+expected_pages = 13
+expected_questions = 96
+answer_key_available = true
+expected_text_layer_pages = 0
+
+[[documents]]
+id = "fuvest-1985-fase1"
+source_page = "https://www.fuvest.br/acervo-vestibular-1985/"
+url = "https://www.fuvest.br/wp-content/uploads/fuvest_1985_prova_primeira_fase.pdf"
+local_filename = "fuvest-1985-528f74f3.pdf"
+sha256 = "528f74f3f22420468e16e4239c643442d9151caefd9febbf2640f6543622baea"
+expected_pages = 13
+expected_questions = 96
+answer_key_available = true
+expected_text_layer_pages = 0
+
+[[documents]]
+id = "fuvest-1987-fase1"
+source_page = "https://www.fuvest.br/acervo-vestibular-1987/"
+url = "https://www.fuvest.br/wp-content/uploads/fuvest_1987_prova_primeira_fase.pdf"
+local_filename = "fuvest-1987-fase1.pdf"
+sha256 = "dcc95f397d4cba853e8a98ff56f5082275f9be123e19b7792544aec788a146a3"
+expected_pages = 15
+expected_questions = 96
+answer_key_available = true
+expected_text_layer_pages = 0

@@ -40,7 +40,7 @@ from .editorial_taxonomy import EditorialTaxonomy
 from .fgv_parser import BankParsingContext
 from .fgv_turn import extract_fgv_turn_evidence, normalize_fgv_turn
 from .models import QuestionRecord
-from .ocr import OCR_MIN_TEXT_CHARACTERS, OcrEngine, OcrError, ocr_pdf_pages
+from .ocr import OcrEngine, OcrError, ocr_pdf_pages
 from .semantic_identity import (
     AssociationCandidate,
     DocumentAssociationDecision,
@@ -759,7 +759,7 @@ class DesktopProcessor:
                     for page in self.store.pages(document_id)
                 }
                 for number, result in recovered.items():
-                    if len(result.text) >= OCR_MIN_TEXT_CHARACTERS:
+                    if result.usable:
                         self.store.save_page(
                             document_id, number, result.text, status="ocr_text"
                         )
@@ -769,7 +769,9 @@ class DesktopProcessor:
                             else ""
                         )
                         warnings.append(
-                            f"página {number}: texto recuperado por OCR local{confidence}"
+                            f"página {number}: texto recuperado por OCR local{confidence}; "
+                            f"estratégia={result.strategy}; qualidade={result.quality_score:.0%}; "
+                            f"tentativas={result.attempts}"
                         )
                     elif result.error:
                         previous = current_pages[number]

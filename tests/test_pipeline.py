@@ -299,6 +299,32 @@ class PipelineTests(unittest.TestCase):
             self.assertIn("QUESTAO 1", document.text)
             self.assertTrue(any("OCR local" in item for item in document.warnings))
 
+    def test_scanned_pdf_with_corrupted_ocr_remains_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            pdf_path = root / "digitalizado-corrompido.pdf"
+            write_scanned_pdf(pdf_path)
+            record = document_record(str(pdf_path))
+            record.size_bytes = pdf_path.stat().st_size
+            record.sha256 = hashlib.sha256(pdf_path.read_bytes()).hexdigest()
+            manifest = DownloadManifest(created_at=datetime.now(UTC), documents=[record])
+            manifest_path = root / "manifest.json"
+            write_json(manifest_path, manifest.model_dump(mode="json"))
+
+            class CorruptedOcr:
+                def __call__(self, _image: object) -> SimpleNamespace:
+                    return SimpleNamespace(
+                        txts=("||||||||||||||||||||||||||||||||||||||||",),
+                        scores=(0.99,),
+                    )
+
+            result, _ = extract_manifest(manifest_path, ocr_engine=CorruptedOcr())
+
+            document = result.documents[0]
+            self.assertTrue(document.needs_ocr)
+            self.assertNotIn("||||", document.text)
+            self.assertTrue(any("repeticao" in item for item in document.warnings))
+
     def test_pdf_integrity_mismatch_stops_extraction(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

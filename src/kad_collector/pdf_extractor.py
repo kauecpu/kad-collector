@@ -16,7 +16,13 @@ from .models import (
     ExtractedPage,
     ExtractionManifest,
 )
-from .ocr import OCR_MIN_TEXT_CHARACTERS, OcrEngine, OcrError, ocr_pdf_pages
+from .ocr import (
+    OCR_MIN_TEXT_CHARACTERS,
+    OcrEngine,
+    OcrError,
+    ocr_pdf_pages,
+    page_requires_ocr,
+)
 
 
 def _verify_local_document(document: NormalizedDocument) -> None:
@@ -74,7 +80,7 @@ def _extract_document(
     ocr_page_numbers = [
         page.number
         for page in pages
-        if page.character_count < OCR_MIN_TEXT_CHARACTERS
+        if page_requires_ocr(page.text)
     ]
     if ocr_page_numbers:
         try:
@@ -84,7 +90,7 @@ def _extract_document(
                 result = recovered.get(number)
                 if result is None:
                     continue
-                if len(result.text) >= OCR_MIN_TEXT_CHARACTERS:
+                if result.usable:
                     pages[page_indexes[number]] = ExtractedPage(
                         number=number, text=result.text, character_count=len(result.text)
                     )
@@ -93,7 +99,11 @@ def _extract_document(
                         if result.confidence is not None
                         else ""
                     )
-                    warnings.append(f"pagina {number}: texto recuperado por OCR local{confidence}")
+                    warnings.append(
+                        f"pagina {number}: texto recuperado por OCR local{confidence}; "
+                        f"estrategia={result.strategy}; qualidade={result.quality_score:.0%}; "
+                        f"tentativas={result.attempts}"
+                    )
                 elif result.error:
                     warnings.append(f"pagina {number}: {result.error}")
         except OcrError as exc:
