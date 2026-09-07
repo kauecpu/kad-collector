@@ -12,8 +12,8 @@ Fonte oficial -> coleta controlada -> PDFs -> extracao -> parser/IA -> gabarito
 ## Estado atual
 
 O repositorio fornece o mecanismo generico. O arquivo `config/sources.example.toml` nao
-habilita fontes. O arquivo opt-in `config/sources.official.toml` cadastra onze fontes oficiais
-conferidas: dez de conteudo e uma somente de referencias. Revise o contato do `user_agent`,
+habilita fontes. O arquivo opt-in `config/sources.official.toml` cadastra treze fontes
+conferidas: doze de conteudo e uma somente de referencias. Revise o contato do `user_agent`,
 termos, `robots.txt` e limites antes da primeira execucao no ambiente da equipe.
 
 O MVP processa paginas HTML que contenham links para PDFs. Fontes selecionadas podem usar
@@ -535,7 +535,24 @@ data de coleta, banca, orgao, cargo/exame e ano quando conhecido.
 | COMVEST/Unicamp | `comvest.unicamp.br`; acervo historico e provas comentadas | Ate 20 paginas | `content`; reproducao parcial com fonte e ano citados |
 | OBMEP | `obmep.org.br`; provas e solucoes de 2005 a 2025 | 20 paginas anuais | `reference_only`; arquivos recentes usam rota do Drive bloqueada pelo `robots.txt` |
 | UERJ | `sistema.vestibular.uerj.br`; provas, gabaritos e padroes desde 1997 | Ate 30 paginas | `content`; aba por pagina/PDF ou `sync` |
+| Banco do Brasil | `bb.com.br`; paginas institucionais das selecoes externas de 2021 e 2023 | Ate 4 paginas | `content`; `robots.txt` aplicado; ausencia de cadernos antigos fica registrada |
+| Fundacao Cesgranrio | `concursos.cesgranrio.org.br`; catalogo publico e documentos de concursos | Ate 2 paginas JSON | `content`; URLs assinadas sao renovadas pela origem e gravadas sem assinatura |
 | PCI Concursos - Banco do Brasil | `www.pciconcursos.com.br` para as paginas e `arq.pciconcursos.com.br` para os PDFs publicos; provas e gabaritos por cargo, ano, caderno e versao | Ate 20 paginas do indice | `content`; aba por pagina do concurso ou `sync` |
+
+#### Banco do Brasil e Fundacao Cesgranrio
+
+As fontes `banco_brasil_selecoes` e `cesgranrio_banco_brasil` priorizam os dominios
+oficiais e aplicam `robots.txt`. O cadastro usa apenas paginas institucionais e o ponto
+estavel do catalogo publico da Cesgranrio; uma URL assinada de PDF nunca vira `start_url`.
+Quando uma assinatura publica expira com HTTP 401 ou 403, o Collector consulta novamente
+a origem oficial e aceita somente um link novo com o mesmo host e a mesma identidade
+canonica. Parametros de assinatura sao removidos de manifestos, checkpoints, cache,
+telemetria e mensagens de erro.
+
+O acervo atual da Cesgranrio pode nao listar concursos historicos. Nesse caso a execucao
+termina sem inventar endpoints ou confundir a ausencia do documento com falha do motor. O
+PCI permanece secundario: sua origem e identificada no manifesto e um bloqueio por CAPTCHA
+vira falha isolada, sem substituicao silenciosa de um documento oficial.
 
 #### Piloto PCI Concursos (Banco do Brasil)
 
@@ -550,16 +567,21 @@ o modo `html` reutiliza uma unica `StealthySession` do Scrapling durante o lote 
 renderizado ao mesmo parsing anterior. Depois que a propria pagina libera os arquivos, alguns
 controles ainda mantem `href="javascript:void(0)"`, mas passam a expor a URL publica do PDF em
 `data-url`; o parser do PCI usa esse atributo apenas quando o `href` e um placeholder. Se a
-resposta ainda contiver Turnstile ou outro desafio, o Collector nao clica no controle nem chama o
-endpoint de liberacao. Se o PCI apresentar CAPTCHA, Cloudflare ou outro desafio durante uma
-coleta pela interface, o Collector pausa somente a atividade, abre um Chromium visivel e marca
+resposta ainda contiver Turnstile ou outro desafio depois do resolvedor autorizado para o PCI, o
+Collector nao executa cliques arbitrarios nem tenta liberar endpoints desconhecidos. Na interface,
+ele pausa somente a atividade, abre um Chromium visivel e marca
 `awaiting_manual_action`. Depois de concluir a verificacao, clique em **Continuar após verificação**
 para que o Collector recarregue a pagina e retome do checkpoint. Sem essa acao, a atividade expira
-apos cinco minutos e fica em `needs_attention`. O Collector nao tenta contornar autenticacao,
-CAPTCHA, Cloudflare ou bloqueios. Por decisao administrativa explicita do
+apos cinco minutos e fica em `needs_attention`. Autenticacao e outros bloqueios permanecem fora
+do resolvedor. Por decisao administrativa explicita do
 responsavel em 2026-08-29, esta fonte usa `ignore` para `robots.txt` e `Crawl-delay`; essa
 decisao fica registrada no manifesto e na telemetria. Nao ha um
 limitador artificial adicional criado para o PCI.
+
+A configuracao oficial mantem `cloudflare_bypass_enabled = true` por autorizacao explicita do
+responsavel. O resolvedor e usado somente no transporte HTML do PCI; downloads continuam no
+cliente HTTP com validacao de host. Se o desafio permanecer, ele e registrado como acao manual
+necessaria e a coleta segue para as demais fontes.
 
 Os PDFs ficam fora da exportacao normal ate a revisao editorial confirmar a origem e a permissao
 de republicacao. O piloto nao publica nem importa conteudo no KAD.
@@ -615,11 +637,12 @@ Cada fonte aceita `enforce`, `observe` ou `ignore`. `enforce` consulta e aplica 
 `observe` consulta e registra o que teria sido bloqueado sem interromper a coleta; `ignore`
 nao consulta o arquivo nem aplica o atraso. O modelo e as fontes de exemplo continuam usando
 `enforce` como padrao seguro. Por decisao administrativa explicita do responsavel em
-2026-08-18, todas as fontes do manifesto oficial usam `ignore` tanto para `robots.txt` quanto
-para `Crawl-delay`; a escolha aparece na tela e fica registrada por fonte no manifesto, nos
-avisos e na telemetria. Os intervalos, a concorrencia e os demais limites internos continuam
-independentes dessas duas politicas. Nenhum desses modos autoriza atravessar login, CAPTCHA,
-autenticacao ou um bloqueio explicito do servidor.
+2026-08-18, as fontes historicas do manifesto oficial usam `ignore` para `robots.txt` e
+`Crawl-delay`; Banco do Brasil e Cesgranrio usam `enforce`. A escolha aparece na tela e fica
+registrada por fonte no manifesto, nos avisos e na telemetria. Os intervalos, a concorrencia e os
+demais limites internos continuam independentes dessas duas politicas. Nenhum desses modos, por
+si so, autoriza atravessar login, CAPTCHA, autenticacao ou um bloqueio explicito do servidor; o
+resolvedor limitado ao PCI depende da autorizacao separada documentada no piloto.
 
 ### Estrategias de descoberta
 
@@ -694,8 +717,9 @@ se quiser reconstruir cache, telemetria e checkpoints. Essa remocao nao apaga qu
 `collector.sqlite3`.
 
 A arquitetura tomou como referencia conceitos de cache, backoff e renderizacao publicados no
-artigo da Bright Data sobre bloqueios de scraping. O projeto nao incorporou proxies, falsificacao
-de TLS, navegadores stealth ou solucionadores de CAPTCHA.
+artigo da Bright Data sobre bloqueios de scraping. O projeto nao incorporou proxies nem
+falsificacao de TLS. O resolvedor de Cloudflare fica restrito ao PCI e depende da autorizacao
+administrativa documentada acima.
 
 Os gabaritos da COPERVE podem usar respostas numericas por soma de proposicoes, enquanto o
 schema atual aceita alternativas A-H. Esses casos entram em `exception` e nao podem ser
@@ -1097,5 +1121,6 @@ de ordem ou numero fora do intervalo mantem as questoes extraidas, registra exce
 estruturadas e impede que o documento seja marcado como processado.
 
 Artefatos dentro de `data/` podem conter material protegido e nao devem ser enviados ao
-GitHub. Nunca contorne autenticacao, CAPTCHA, bloqueios, paywalls ou restricoes tecnicas.
+GitHub. Nao contorne autenticacao, CAPTCHA, bloqueios, paywalls ou restricoes tecnicas fora de
+uma integracao explicitamente autorizada, limitada e auditavel.
 Veja também [Preparação e Qwen por escopo](docs/scoped-preparation-qwen.md) para o contrato de seleção, prévias auditáveis e testes locais.

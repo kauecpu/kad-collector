@@ -9,13 +9,25 @@ from pathlib import Path
 from typing import Any
 
 from .models import CollectionTelemetryEvent
-from .url_utils import canonicalize_url
+from .url_utils import canonicalize_url, redact_text_secrets, redact_url_secrets
 
 _SCHEMA_VERSION = "2"
 
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _sanitize_persisted_value(value: Any) -> Any:
+    """Remove temporary URL credentials from local operational state."""
+
+    if isinstance(value, str):
+        return redact_url_secrets(value)
+    if isinstance(value, list):
+        return [_sanitize_persisted_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _sanitize_persisted_value(item) for key, item in value.items()}
+    return value
 
 
 class CollectionStateStore:
@@ -195,8 +207,8 @@ class CollectionStateStore:
                 """,
                 (
                     canonical_url,
-                    url.strip(),
-                    final_url,
+                    redact_url_secrets(url),
+                    redact_url_secrets(final_url),
                     etag,
                     last_modified,
                     sha256,
@@ -249,7 +261,11 @@ class CollectionStateStore:
                     checkpoint_key,
                     source_id,
                     status,
-                    json.dumps(payload, ensure_ascii=False, sort_keys=True),
+                    json.dumps(
+                        _sanitize_persisted_value(payload),
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    ),
                     timestamp,
                     timestamp,
                 ),
@@ -286,7 +302,7 @@ class CollectionStateStore:
                     run_id,
                     event.occurred_at.isoformat(),
                     event.source_id,
-                    event.url,
+                    redact_url_secrets(event.url),
                     event.strategy,
                     event.outcome,
                     event.status_code,
@@ -295,7 +311,7 @@ class CollectionStateStore:
                     event.attempt,
                     event.wait_seconds,
                     event.cache_status,
-                    event.detail,
+                    redact_text_secrets(event.detail) if event.detail is not None else None,
                 ),
             )
             connection.commit()

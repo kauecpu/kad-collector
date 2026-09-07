@@ -31,6 +31,7 @@ from kad_collector.models import (
     AppConfig,
     CollectionFilters,
     CollectorSettings,
+    JsonDiscoveryEndpoint,
     SourceDefinition,
 )
 from kad_collector.security import (
@@ -235,12 +236,137 @@ class LinkParsingTests(unittest.TestCase):
             )
         )
 
+    def test_cesgranrio_rules_accept_only_proofs_and_answer_keys(self) -> None:
+        config = load_config(PROJECT_ROOT / "config" / "sources.official.toml")
+        source = next(item for item in config.sources if item.id == "cesgranrio_banco_brasil")
+        base = "https://concursos.cesgranrio.org.br/portal/evento"
+        signed = "?sv=TEST&se=2099-01-01&sp=r&sr=c&sig=TEST_SIGNATURE"
+        html = (
+            f'<a href="/media/prova-1.pdf{signed}">Prova objetiva - Caderno 1</a>'
+            f'<a href="/media/gabarito-preliminar.pdf{signed}">Gabarito preliminar</a>'
+            f'<a href="/media/gabarito-definitivo.pdf{signed}">Gabarito definitivo</a>'
+            f'<a href="/media/edital.pdf{signed}">Edital de abertura</a>'
+            f'<a href="/media/resultado.pdf{signed}">Resultado final</a>'
+            '<a href="https://outside.example/prova.pdf">Prova externa</a>'
+        )
+
+        selected = select_document_links(html, base, source)
+
+        self.assertEqual(
+            [(title, kind) for _url, title, kind in selected],
+            [
+                ("Prova objetiva - Caderno 1", "exam"),
+                ("Gabarito preliminar", "answer_key"),
+                ("Gabarito definitivo", "answer_key"),
+            ],
+        )
+
+    def test_expired_signed_link_is_refreshed_from_official_endpoint(self) -> None:
+        endpoint_url = "https://concursos.example.test/api/documents"
+        old_url = (
+            "https://concursos.example.test/media/prova.pdf?sv=TEST&se=2000-01-01&"
+            "sp=r&sr=c&sig=EXPIRED_SIGNATURE"
+        )
+        fresh_url = (
+            "https://concursos.example.test/media/prova.pdf?sv=TEST&se=2099-01-01&"
+            "sp=r&sr=c&sig=FRESH_SIGNATURE"
+        )
+        pdf = b"%PDF-1.4\nfixture\n%%EOF"
+
+        class FixtureClient:
+            endpoint_calls = 0
+
+            def __init__(self, user_agent: str, timeout: float, interval_seconds: float) -> None:
+                pass
+
+            def get(self, url: str, allowed_hosts: list[str], max_bytes: int) -> HttpResult:
+                headers = Message()
+                if url.endswith("/robots.txt"):
+                    headers["Content-Type"] = "text/plain; charset=utf-8"
+                    return HttpResult(
+                        url=url,
+                        status_code=200,
+                        headers=headers,
+                        body=b"User-agent: *\nAllow: /\n",
+                    )
+                if url == endpoint_url:
+                    FixtureClient.endpoint_calls += 1
+                    selected_url = old_url if FixtureClient.endpoint_calls == 1 else fresh_url
+                    headers["Content-Type"] = "application/json"
+                    body = (
+                        '{"data":{"items":[{"url":"'
+                        + selected_url
+                        + '","title":"Prova objetiva","type":"exam"}]}}'
+                    ).encode()
+                    return HttpResult(url=url, status_code=200, headers=headers, body=body)
+                if url == old_url:
+                    raise FetchError(f"HTTP 403 ao acessar {old_url}", 403)
+                if url == fresh_url:
+                    headers["Content-Type"] = "application/pdf"
+                    return HttpResult(url=url, status_code=200, headers=headers, body=pdf)
+                raise AssertionError(f"URL inesperada: {url}")
+
+        source = source_definition(
+            id="cesgranrio_teste",
+            start_urls=[endpoint_url],
+            allowed_hosts=["concursos.example.test"],
+            discovery_strategies=["json"],
+            json_endpoints=[
+                JsonDiscoveryEndpoint(
+                    url=endpoint_url,
+                    items_path="data.items",
+                    url_field="url",
+                    title_field="title",
+                    type_field="type",
+                )
+            ],
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            config = AppConfig(
+                collector=CollectorSettings(data_dir=temporary),
+                sources=[source],
+            )
+            with patch("kad_collector.collector.SafeHttpClient", FixtureClient):
+                manifest, manifest_path = collect_documents(config)
+
+            persisted = manifest_path.read_text(encoding="utf-8")
+
+        self.assertEqual(len(manifest.documents), 1)
+        self.assertEqual(
+            manifest.documents[0].original_url,
+            "https://concursos.example.test/media/prova.pdf",
+        )
+        self.assertNotIn("EXPIRED_SIGNATURE", persisted)
+        self.assertNotIn("FRESH_SIGNATURE", persisted)
+        self.assertFalse(manifest.failures)
+
     def test_pci_public_data_urls_mark_rendered_challenge_as_released(self) -> None:
         url = "https://www.pciconcursos.com.br/provas/download/exemplo"
         html = (FIXTURES / "pci_banco_brasil_js_links.html").read_text(encoding="utf-8")
         html = html.replace("<body>", '<body><div class="cf-turnstile"></div>')
 
         self.assertIsNone(detect_access_challenge("PCI Concursos", html, url))
+
+    def test_pci_keeps_one_download_and_accepts_legacy_gabrito_typo(self) -> None:
+        config = load_config(PROJECT_ROOT / "config" / "sources.official.toml")
+        source = next(item for item in config.sources if item.id == "pci_concursos")
+        page = "https://www.pciconcursos.com.br/provas/download/exemplo"
+        html = (
+            '<a href="/provas/a/prova.pdf">Ver escriturario.pdf</a>'
+            '<a href="/provas/b/prova.pdf">Baixar escriturario.pdf</a>'
+            '<a href="/provas/c/prova.pdf">Compartilhar escriturario.pdf</a>'
+            '<a href="/provas/d/gabrito.pdf">Baixar gabrito.pdf</a>'
+        )
+
+        selected = select_document_links(html, page, source)
+
+        self.assertEqual(
+            [(title, kind) for _url, title, kind in selected],
+            [
+                ("Baixar escriturario.pdf", "exam"),
+                ("Baixar gabrito.pdf", "answer_key"),
+            ],
+        )
 
     def test_pci_detail_page_does_not_expand_to_index_or_pagination(self) -> None:
         detail = "https://www.pciconcursos.com.br/provas/download/exemplo"
@@ -354,6 +480,72 @@ class LinkParsingTests(unittest.TestCase):
         self.assertEqual([item.original_url for item in manifest.documents], [pdf_url])
         self.assertEqual(len(manifest.failures), 1)
         self.assertIn("acao manual necessaria", manifest.failures[0].message)
+
+    def test_cesgranrio_unavailable_does_not_stop_other_sources(self) -> None:
+        endpoint_url = "https://concursos.cesgranrio.example/api/PortalEventos"
+        healthy_url = "https://outro.example.gov.br/lista"
+        pdf_url = "https://outro.example.gov.br/prova.pdf"
+
+        class FixtureClient:
+            def __init__(self, user_agent: str, timeout: float, interval_seconds: float) -> None:
+                pass
+
+            def get(self, url: str, allowed_hosts: list[str], max_bytes: int) -> HttpResult:
+                headers = Message()
+                if url.endswith("/robots.txt"):
+                    headers["Content-Type"] = "text/plain; charset=utf-8"
+                    return HttpResult(
+                        url=url,
+                        status_code=200,
+                        headers=headers,
+                        body=b"User-agent: *\nAllow: /\n",
+                    )
+                if url == endpoint_url:
+                    raise FetchError("servico temporariamente indisponivel", 503)
+                if url == healthy_url:
+                    headers["Content-Type"] = "text/html; charset=utf-8"
+                    return HttpResult(
+                        url=url,
+                        status_code=200,
+                        headers=headers,
+                        body=b'<a href="/prova.pdf">Prova</a>',
+                    )
+                if url == pdf_url:
+                    headers["Content-Type"] = "application/pdf"
+                    return HttpResult(
+                        url=url,
+                        status_code=200,
+                        headers=headers,
+                        body=b"%PDF-1.4\nfixture\n%%EOF",
+                    )
+                raise AssertionError(f"URL inesperada: {url}")
+
+        cesgranrio = source_definition(
+            id="cesgranrio_banco_brasil",
+            name="Fundacao Cesgranrio",
+            start_urls=["https://concursos.cesgranrio.example/"],
+            allowed_hosts=["concursos.cesgranrio.example"],
+            discovery_strategies=["json"],
+            json_endpoints=[JsonDiscoveryEndpoint(url=endpoint_url)],
+        )
+        healthy = source_definition(
+            id="fonte_saudavel",
+            name="Fonte saudavel",
+            start_urls=[healthy_url],
+            allowed_hosts=["outro.example.gov.br"],
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            config = AppConfig(
+                collector=CollectorSettings(data_dir=temporary),
+                sources=[cesgranrio, healthy],
+            )
+            with patch("kad_collector.collector.SafeHttpClient", FixtureClient):
+                manifest, _ = collect_documents(config)
+
+        self.assertEqual([item.original_url for item in manifest.documents], [pdf_url])
+        self.assertEqual(len(manifest.failures), 1)
+        self.assertEqual(manifest.failures[0].source_id, "cesgranrio_banco_brasil")
+        self.assertTrue(manifest.failures[0].retryable)
 
     def test_missing_browser_runtime_does_not_stop_http_sources(self) -> None:
         browser_url = "https://browser.example.gov.br/lista"
@@ -1025,6 +1217,7 @@ class SecurityTests(unittest.TestCase):
 
     def test_official_configuration_registers_authorized_sources(self) -> None:
         config = load_config(PROJECT_ROOT / "config" / "sources.official.toml")
+        self.assertTrue(config.collector.cloudflare_bypass_enabled)
         self.assertEqual(
             {source.id for source in config.sources},
             {
@@ -1038,16 +1231,34 @@ class SecurityTests(unittest.TestCase):
                 "comvest_unicamp",
                 "obmep_referencias",
                 "uerj_vestibular",
+                "banco_brasil_selecoes",
+                "cesgranrio_banco_brasil",
                 "pci_concursos",
             },
         )
         self.assertTrue(all(source.enabled for source in config.sources))
-        legacy_sources = [source for source in config.sources if source.id != "pci_concursos"]
+        legacy_sources = [
+            source
+            for source in config.sources
+            if source.id
+            not in {"pci_concursos", "banco_brasil_selecoes", "cesgranrio_banco_brasil"}
+        ]
         self.assertTrue(all(source.robots_policy == "ignore" for source in legacy_sources))
         self.assertTrue(all(source.crawl_delay_policy == "ignore" for source in legacy_sources))
         pci = next(source for source in config.sources if source.id == "pci_concursos")
         self.assertEqual(pci.robots_policy, "ignore")
         self.assertEqual(pci.crawl_delay_policy, "ignore")
+        banco_brasil = next(
+            source for source in config.sources if source.id == "banco_brasil_selecoes"
+        )
+        cesgranrio = next(
+            source for source in config.sources if source.id == "cesgranrio_banco_brasil"
+        )
+        self.assertEqual(banco_brasil.allowed_hosts, ["bb.com.br", "www.bb.com.br"])
+        self.assertEqual(cesgranrio.discovery_strategies, ["json"])
+        self.assertTrue(
+            all("sig=" not in url for url in banco_brasil.start_urls + cesgranrio.start_urls)
+        )
         obmep = next(source for source in config.sources if source.id == "obmep_referencias")
         self.assertEqual(obmep.access_mode, "reference_only")
         fuvest = next(source for source in config.sources if source.id == "fuvest_vestibular")

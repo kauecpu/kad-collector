@@ -140,11 +140,20 @@ class DesktopCollectionTests(unittest.TestCase):
         self.assertTrue(catalog["comvest_unicamp"]["collectable"])
         self.assertFalse(catalog["obmep_referencias"]["collectable"])
         self.assertIn("robots.txt", catalog["obmep_referencias"]["notice"])
+        enforced = {"banco_brasil_selecoes", "cesgranrio_banco_brasil"}
         self.assertTrue(
-            all(source["engine"]["robotsPolicy"] == "ignore" for source in catalog.values())
+            all(
+                source["engine"]["robotsPolicy"]
+                == ("enforce" if source_id in enforced else "ignore")
+                for source_id, source in catalog.items()
+            )
         )
         self.assertTrue(
-            all(source["engine"]["crawlDelayPolicy"] == "ignore" for source in catalog.values())
+            all(
+                source["engine"]["crawlDelayPolicy"]
+                == ("enforce" if source_id in enforced else "ignore")
+                for source_id, source in catalog.items()
+            )
         )
 
     def test_packaged_interface_contains_link_collection_tab(self) -> None:

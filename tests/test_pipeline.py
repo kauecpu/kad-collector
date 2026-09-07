@@ -27,7 +27,7 @@ from kad_collector.models import (
     ExtractedDocument,
     ExtractedPage,
 )
-from kad_collector.pdf_extractor import extract_manifest
+from kad_collector.pdf_extractor import _enrich_document_metadata, extract_manifest
 from kad_collector.review import approve_batch
 from kad_collector.validation import verify_approved_batch
 
@@ -76,6 +76,40 @@ def ai_question(number: int) -> AIQuestion:
         year=None,
         source_pages=[1],
     )
+
+
+class PdfMetadataEnrichmentTests(unittest.TestCase):
+    def test_exam_variant_is_recovered_from_pdf_text(self) -> None:
+        record = document_record()
+
+        enriched = _enrich_document_metadata(
+            record,
+            "BANCO DO BRASIL\nESCRITURARIO - AGENTE COMERCIAL\nGABARITO 1",
+        )
+
+        self.assertEqual(enriched.metadata["variant"], "Tipo 1")
+
+    def test_consolidated_answer_key_preserves_all_variants(self) -> None:
+        record = document_record().model_copy(update={"document_type": "answer_key"})
+
+        enriched = _enrich_document_metadata(
+            record,
+            "GABARITO 5\nGABARITO 1\nGABARITO 3\nGABARITO 2\nGABARITO 4",
+        )
+
+        self.assertEqual(
+            enriched.metadata["available_variants"],
+            "Tipo 1, Tipo 2, Tipo 3, Tipo 4, Tipo 5",
+        )
+
+    def test_existing_variant_is_not_overwritten(self) -> None:
+        record = document_record().model_copy(
+            update={"metadata": {"variant": "Caderno Azul"}}
+        )
+
+        enriched = _enrich_document_metadata(record, "GABARITO 1")
+
+        self.assertEqual(enriched.metadata["variant"], "Caderno Azul")
 
 
 class FakeExtractor:

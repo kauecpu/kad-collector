@@ -1,0 +1,173 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-09-07T03:50:00Z",
+  "base_commit": "3c765d33a6e2",
+  "matrix": "tests/homologation/bb-cesgranrio-2021-2023.v1.toml",
+  "authorization_note": "The repository owner explicitly authorized the configured PCI Cloudflare resolver during this homologation.",
+  "scope": {
+    "organization": "Banco do Brasil",
+    "board": "CESGRANRIO",
+    "years": [2021, 2023],
+    "roles": [
+      "Escriturario - Agente Comercial",
+      "Escriturario - Agente de Tecnologia"
+    ]
+  },
+  "summary": {
+    "expected_documents": 8,
+    "found_documents": 8,
+    "accepted_exams": 4,
+    "accepted_answer_keys": 4,
+    "coverage": 1.0,
+    "precision": 1.0,
+    "false_positives": 0,
+    "false_negatives": 0,
+    "pairing_rate": 1.0,
+    "official_documents_rate": 0.0,
+    "pci_dependent_rate": 1.0,
+    "sources_without_human_intervention_rate": 0.6666666667,
+    "average_seconds_per_source": 51.962,
+    "qwen_calls": 0,
+    "redirects": 8,
+    "ocr_attempted": 0,
+    "ocr_success_rate": null,
+    "text_extraction_success_rate": 1.0,
+    "prohibited_documents_accepted": 0,
+    "external_hosts_accepted": 0,
+    "invalid_pdfs_accepted": 0,
+    "exam_variant_coverage": 0.2,
+    "missing_exam_variants": 16
+  },
+  "sources": [
+    {
+      "id": "banco_brasil_selecoes",
+      "origin": "official",
+      "start_urls": [
+        "https://www.bb.com.br/site/concurso-bb/",
+        "https://www.bb.com.br/site/concurso-bb/convocacao-e-posse-de-novos-funcionarios/"
+      ],
+      "pages_visited": [],
+      "documents_found": 0,
+      "qwen_calls": 0,
+      "redirects": 0,
+      "duration_seconds": 3.013,
+      "status": "blocked_by_robots",
+      "failures": 2,
+      "manifest": "data/homologation/bb-cesgranrio-live/banco_brasil_selecoes/manifests/download-20260907T031137Z-78adfe9f.json"
+    },
+    {
+      "id": "cesgranrio_banco_brasil",
+      "origin": "official",
+      "start_urls": ["https://concursos.cesgranrio.org.br/"],
+      "pages_visited": ["https://concursos.cesgranrio.org.br/api/PortalEventos"],
+      "documents_found": 0,
+      "qwen_calls": 0,
+      "redirects": 0,
+      "duration_seconds": 2.155,
+      "status": "completed_historic_events_absent",
+      "failures": 0,
+      "manifest": "data/homologation/bb-cesgranrio-live/cesgranrio_banco_brasil/manifests/download-20260907T031139Z-a149b9eb.json"
+    },
+    {
+      "id": "pci_concursos",
+      "origin": "secondary",
+      "pages_visited": 4,
+      "documents_found": 8,
+      "accepted_exams": 4,
+      "accepted_answer_keys": 4,
+      "qwen_calls": 0,
+      "redirects": 8,
+      "duration_seconds": 150.717,
+      "status": "completed_with_authorized_cloudflare_resolver",
+      "failures": 0,
+      "path": "deterministic",
+      "manifest": "data/homologation/bb-cesgranrio-live/pci-authorized/manifests/download-20260907T034212Z-06d175d0.json"
+    }
+  ],
+  "documents": [
+    {
+      "year": 2023,
+      "role": "Escriturario - Agente Comercial",
+      "type": "exam",
+      "variant": "Tipo 1",
+      "origin": "PCI",
+      "pages": 17,
+      "sha256": "7f2440c079b81c68441f6e3494986016b827e734759860a60e5712d1a41643e7"
+    },
+    {
+      "year": 2023,
+      "role": "Escriturario - Agente Comercial",
+      "type": "answer_key",
+      "available_variants": ["Tipo 1", "Tipo 2", "Tipo 3", "Tipo 4", "Tipo 5"],
+      "origin": "PCI",
+      "pages": 10,
+      "sha256": "44ed01ed4ce4edb5848a168348a4026b40d56929ac339a75cc08ad7969cf7090"
+    },
+    {
+      "year": 2023,
+      "role": "Escriturario - Agente de Tecnologia",
+      "type": "exam",
+      "variant": "Tipo 1",
+      "origin": "PCI",
+      "pages": 27,
+      "sha256": "7837a948042ead3cfac369efba1abbf7c2feadf091450c38030d81d89763b6ae"
+    },
+    {
+      "year": 2023,
+      "role": "Escriturario - Agente de Tecnologia",
+      "type": "answer_key",
+      "available_variants": ["Tipo 1", "Tipo 2", "Tipo 3", "Tipo 4", "Tipo 5"],
+      "origin": "PCI",
+      "pages": 10,
+      "sha256": "39ae770a86f15b0d380f5ac707c4591e19d96897bc13fdcb17bf51d24a5b4e7a"
+    },
+    {
+      "year": 2021,
+      "role": "Escriturario - Agente Comercial",
+      "type": "exam",
+      "variant": "Tipo 1",
+      "origin": "PCI",
+      "pages": 17,
+      "sha256": "6090ecf04050e9e4f2058a90866cd498eda593bf2b090b1a24a76afc45a9522c"
+    },
+    {
+      "year": 2021,
+      "role": "Escriturario - Agente Comercial",
+      "type": "answer_key",
+      "available_variants": ["Tipo 1", "Tipo 2", "Tipo 3", "Tipo 4", "Tipo 5"],
+      "origin": "PCI",
+      "pages": 10,
+      "sha256": "eb18dd53082d29876b139a62c15a54e33bf092c4b16a1dae263065d61cdc21c3"
+    },
+    {
+      "year": 2021,
+      "role": "Escriturario - Agente de Tecnologia",
+      "type": "exam",
+      "variant": "Tipo 1",
+      "origin": "PCI",
+      "pages": 27,
+      "sha256": "671c10f6e2234e938901a12e72bf0122b4f286ce44e33cc4518d4ad4510534e2"
+    },
+    {
+      "year": 2021,
+      "role": "Escriturario - Agente de Tecnologia",
+      "type": "answer_key",
+      "available_variants": ["Tipo 1", "Tipo 2", "Tipo 3", "Tipo 4", "Tipo 5"],
+      "origin": "PCI",
+      "pages": 10,
+      "sha256": "a70f5530c31bee0b512d56a1b7d022b4cda88980f3f2fbe17387930b47d73c4b"
+    }
+  ],
+  "idempotency": {
+    "first_manifest": "data/homologation/bb-cesgranrio-live/pci-authorized/manifests/download-20260907T034212Z-06d175d0.json",
+    "repeat_manifest": "data/homologation/bb-cesgranrio-live/pci-authorized/manifests/download-20260907T034955Z-4a03f867.json",
+    "first_document_count": 8,
+    "repeat_document_count": 8,
+    "stable_canonical_identities": true,
+    "stable_content_after_dynamic_watermark_removal": true,
+    "stable_raw_hashes": false,
+    "raw_hash_note": "PCI embeds a per-download pcimarkpci timestamp/IP watermark; raw SHA-256 therefore changes while canonical identity and normalized extracted content remain stable.",
+    "logical_duplicates": 0,
+    "status": "approved_at_logical_document_level"
+  }
+}
