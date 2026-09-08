@@ -166,6 +166,7 @@ def build_review_batches(
     run_id: str,
     manifest: DownloadManifest,
     package: StructuredQuestionPackage,
+    max_batch_size: int | None = None,
 ) -> list[OperatorReviewBatch]:
     """Create resumable review batches for one validated structured package.
 
@@ -191,6 +192,9 @@ def build_review_batches(
     exception_dir = review_root / "exceptions"
     entries: list[OperatorReviewBatch] = []
 
+    if max_batch_size is not None and max_batch_size < 1:
+        raise ValueError("max_batch_size precisa ser positivo")
+
     for exam_sha256 in sorted(grouped):
         states = grouped[exam_sha256]
         source = documents.get(exam_sha256)
@@ -201,76 +205,120 @@ def build_review_batches(
         if len(numbers) != len(set(numbers)):
             raise ValueError(f"prova {exam_sha256} possui números de questão duplicados")
 
-        batch_id = f"operator-{exam_sha256[:24]}"
-        rejected = [_exception(question) for question in states["rejected"]]
-        exceptions_path = exception_dir / f"{batch_id}.json"
-        write_json(
-            exceptions_path,
-            [item.model_dump(mode="json", by_alias=True) for item in rejected],
-        )
-
-        batch_path: Path | None = None
-        session_path: Path | None = None
-        if active:
-            answer_key_sha256s = {question.answer_key_sha256 for question in active}
-            if len(answer_key_sha256s) != 1:
-                raise ValueError(
-                    f"prova {exam_sha256} possui mais de um gabarito associado no mesmo lote"
-                )
-            answer_key_sha256 = next(iter(answer_key_sha256s))
-            answer_key = documents.get(answer_key_sha256)
-            if answer_key is None:
-                raise ValueError(f"gabarito {answer_key_sha256} não está presente no manifesto")
-            review_questions = [
-                _question_record(question, state="accepted")
-                for question in states["accepted"]
-            ] + [
-                _question_record(question, state="quarantined")
-                for question in states["quarantined"]
+        active.sort(key=lambda item: item.original_number)
+        chunks = (
+            [active]
+            if max_batch_size is None or len(active) <= max_batch_size
+            else [
+                active[index : index + max_batch_size]
+                for index in range(0, len(active), max_batch_size)
             ]
-            review_questions.sort(key=lambda item: item.number)
-            batch = QuestionBatch(
-                batch_id=batch_id,
-                created_at=manifest.created_at,
-                model=f"structured:{package.parser_version}",
-                source_document=_annotated_document(
-                    source, run_id=run_id, package=package, document_type="exam"
-                ),
-                answer_key_document=_annotated_document(
-                    answer_key,
-                    run_id=run_id,
-                    package=package,
-                    document_type="answer_key",
-                ),
-                questions=review_questions,
-                filters=manifest.filters,
-                processing_warnings=[
-                    f"Execução de origem: {run_id}.",
-                    f"Pacote estruturado: {package.content_sha256}.",
-                    f"{len(states['quarantined'])} questão(ões) exigem atenção estrutural.",
-                    f"{len(states['rejected'])} questão(ões) foram mantidas nas exceções.",
-                ],
-                review=ReviewState(),
-                validation=validate_questions(review_questions),
-            )
-            batch_path = batch_dir / f"{batch_id}.json"
-            write_json(batch_path, batch.model_dump(mode="json"))
-            version = batch_content_sha256(batch)[:12]
-            session_path = session_dir / f"{batch_id}-{version}.json"
-            load_or_create_review_session(batch_path, session_path)
-
-        entries.append(
-            OperatorReviewBatch(
-                batch_id=batch_id,
-                exam_sha256=exam_sha256,
-                batch_path=str(batch_path) if batch_path is not None else None,
-                session_path=str(session_path) if session_path is not None else None,
-                exceptions_path=str(exceptions_path),
-                accepted=len(states["accepted"]),
-                quarantined=len(states["quarantined"]),
-                rejected=len(states["rejected"]),
-            )
         )
+        if not chunks:
+            chunks = [[]]
+        rejected_remaining = list(states["rejected"])
+
+        for chunk_index, chunk in enumerate(chunks, start=1):
+            suffix = f"-p{chunk_index:02d}" if len(chunks) > 1 else ""
+            batch_id = f"operator-{exam_sha256[:24]}{suffix}"
+            if chunk:
+                lower = min(item.original_number for item in chunk)
+                upper = max(item.original_number for item in chunk)
+                chunk_rejected = [
+                    item
+                    for item in rejected_remaining
+                    if lower <= item.original_number <= upper
+                ]
+                if chunk_index == len(chunks):
+                    chunk_rejected.extend(
+                        item
+                        for item in rejected_remaining
+                        if item not in chunk_rejected
+                    )
+                rejected_remaining = [
+                    item for item in rejected_remaining if item not in chunk_rejected
+                ]
+            else:
+                chunk_rejected = rejected_remaining
+                rejected_remaining = []
+            rejected = [_exception(question) for question in chunk_rejected]
+            exceptions_path = exception_dir / f"{batch_id}.json"
+            write_json(
+                exceptions_path,
+                [item.model_dump(mode="json", by_alias=True) for item in rejected],
+            )
+
+            batch_path: Path | None = None
+            session_path: Path | None = None
+            if chunk:
+                chunk_states = {
+                    state: [item for item in chunk if item in states[state]]
+                    for state in ("accepted", "quarantined")
+                }
+                answer_key_sha256s = {
+                    question.answer_key_sha256 for question in chunk
+                }
+                if len(answer_key_sha256s) != 1:
+                    raise ValueError(
+                        f"prova {exam_sha256} possui mais de um gabarito associado no mesmo lote"
+                    )
+                answer_key_sha256 = next(iter(answer_key_sha256s))
+                answer_key = documents.get(answer_key_sha256)
+                if answer_key is None:
+                    raise ValueError(
+                        f"gabarito {answer_key_sha256} não está presente no manifesto"
+                    )
+                review_questions = [
+                    _question_record(question, state="accepted")
+                    for question in chunk_states["accepted"]
+                ] + [
+                    _question_record(question, state="quarantined")
+                    for question in chunk_states["quarantined"]
+                ]
+                review_questions.sort(key=lambda item: item.number)
+                batch = QuestionBatch(
+                    batch_id=batch_id,
+                    created_at=manifest.created_at,
+                    model=f"structured:{package.parser_version}",
+                    source_document=_annotated_document(
+                        source, run_id=run_id, package=package, document_type="exam"
+                    ),
+                    answer_key_document=_annotated_document(
+                        answer_key,
+                        run_id=run_id,
+                        package=package,
+                        document_type="answer_key",
+                    ),
+                    questions=review_questions,
+                    filters=manifest.filters,
+                    processing_warnings=[
+                        f"Execução de origem: {run_id}.",
+                        f"Pacote estruturado: {package.content_sha256}.",
+                        f"{len(chunk_states['quarantined'])} questão(ões) exigem "
+                        "atenção estrutural.",
+                        f"{len(chunk_rejected)} questão(ões) foram mantidas nas exceções.",
+                    ],
+                    review=ReviewState(),
+                    validation=validate_questions(review_questions),
+                )
+                batch_path = batch_dir / f"{batch_id}.json"
+                write_json(batch_path, batch.model_dump(mode="json"))
+                version = batch_content_sha256(batch)[:12]
+                session_path = session_dir / f"{batch_id}-{version}.json"
+                load_or_create_review_session(batch_path, session_path)
+
+            entries.append(
+                OperatorReviewBatch(
+                    batch_id=batch_id,
+                    exam_sha256=exam_sha256,
+                    batch_path=str(batch_path) if batch_path is not None else None,
+                    session_path=str(session_path) if session_path is not None else None,
+                    exceptions_path=str(exceptions_path),
+                    accepted=len(chunk_states["accepted"]) if chunk else 0,
+                    quarantined=len(chunk_states["quarantined"]) if chunk else 0,
+                    rejected=len(chunk_rejected),
+                )
+            )
     return entries
 
 

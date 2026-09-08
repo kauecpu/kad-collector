@@ -37,6 +37,16 @@ function statusLabel(status) {
   return { pending: 'Pendente', deferred: 'Adiada', approved: 'Aprovada', rejected: 'Rejeitada' }[status];
 }
 
+function classificationAudit(question) {
+  const prefix = 'Classificação automática:';
+  const note = (question.review_notes || []).find((item) => item.startsWith(prefix));
+  if (!note) return { method: 'unresolved', label: 'Sem classificação automática registrada' };
+  const method = note.includes('método=qwen_unresolved;') ? 'unresolved'
+    : note.includes('método=qwen;') ? 'qwen'
+      : note.includes('método=deterministic;') ? 'deterministic' : 'unresolved';
+  return { method, label: note.slice(prefix.length).trim() };
+}
+
 function showNotice(message, kind = 'info') {
   const notice = byId('notice');
   notice.textContent = message;
@@ -72,10 +82,23 @@ function renderQuestionList() {
     const status = decisionFor(question.number).status;
     const contest = byId('filter-contest').value.trim().toLocaleLowerCase('pt-BR');
     const board = byId('filter-board').value.trim().toLocaleLowerCase('pt-BR');
+    const organization = byId('filter-organization').value.trim().toLocaleLowerCase('pt-BR');
+    const role = byId('filter-role').value.trim().toLocaleLowerCase('pt-BR');
+    const discipline = byId('filter-discipline').value.trim().toLocaleLowerCase('pt-BR');
+    const matter = byId('filter-matter').value.trim().toLocaleLowerCase('pt-BR');
+    const subject = byId('filter-subject').value.trim().toLocaleLowerCase('pt-BR');
+    const classification = byId('filter-classification').value;
     const year = Number(byId('filter-year').value) || null;
+    const audit = classificationAudit(question);
     return (state.filter === 'all' || status === state.filter)
       && (!contest || (question.concurso || '').toLocaleLowerCase('pt-BR').includes(contest))
       && (!board || (question.board || '').toLocaleLowerCase('pt-BR').includes(board))
+      && (!organization || (question.organization || '').toLocaleLowerCase('pt-BR').includes(organization))
+      && (!role || (question.role || '').toLocaleLowerCase('pt-BR').includes(role))
+      && (!discipline || (question.discipline || '').toLocaleLowerCase('pt-BR').includes(discipline))
+      && (!matter || (question.matter || '').toLocaleLowerCase('pt-BR').includes(matter))
+      && (!subject || (question.subject || '').toLocaleLowerCase('pt-BR').includes(subject))
+      && (!classification || audit.method === classification)
       && (!year || question.year === year);
   });
   if (!questions.length) {
@@ -200,6 +223,9 @@ function renderEditor() {
   byId('year').value = question.year || '';
   byId('level').value = question.level || '';
   byId('difficulty').value = question.difficulty || '';
+  const audit = classificationAudit(question);
+  byId('classification-audit').textContent = audit.label;
+  byId('classification-audit').dataset.method = audit.method;
   byId('explanation').value = question.explanation || '';
   byId('source-pages').value = question.source_pages.join(', ');
   byId('review-notes').value = question.review_notes.join('\n');
@@ -321,7 +347,9 @@ byId('reject-button').addEventListener('click', guarded(() => decide('rejected')
 byId('defer-button').addEventListener('click', guarded(() => decide('deferred')));
 byId('approve-ready-button').addEventListener('click', guarded(approveReady));
 byId('export-button').addEventListener('click', guarded(exportApproved));
-[byId('filter-contest'), byId('filter-board'), byId('filter-year')].forEach((input) => {
+[byId('filter-contest'), byId('filter-board'), byId('filter-year'),
+  byId('filter-organization'), byId('filter-role'), byId('filter-discipline'),
+  byId('filter-matter'), byId('filter-subject'), byId('filter-classification')].forEach((input) => {
   input.addEventListener('input', renderQuestionList);
 });
 document.querySelectorAll('.filter').forEach((button) => {

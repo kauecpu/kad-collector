@@ -29,6 +29,7 @@ from .config import load_config
 from .consolidated_review import build_consolidated_review
 from .database import stage_batch
 from .desktop_store import DesktopStore
+from .editorial_campaign import export_campaign_dry_run, run_editorial_campaign
 from .editorial_export import export_admin_package
 from .guided_test import run_guided_test
 from .json_utils import read_json, write_json
@@ -190,6 +191,28 @@ def build_parser() -> argparse.ArgumentParser:
     consolidate.add_argument("--output", type=_path, required=True)
     consolidate.add_argument("--report-json", type=_path)
     consolidate.add_argument("--report-markdown", type=_path)
+
+    campaign = subparsers.add_parser(
+        "editorial-campaign",
+        help="classifica um acervo consolidado e prepara a revisão humana",
+    )
+    campaign.add_argument("spec", type=_path)
+    campaign.add_argument("--output", type=_path, required=True)
+    campaign.add_argument("--report-json", type=_path)
+    campaign.add_argument("--report-markdown", type=_path)
+    campaign.add_argument("--disable-qwen", action="store_true")
+    campaign.add_argument(
+        "--limit",
+        type=int,
+        help="limita questões processadas nesta execução para testar pausa e retomada",
+    )
+
+    campaign_export = subparsers.add_parser(
+        "campaign-export",
+        help="gera um pacote draft somente com decisões humanas aprovadas",
+    )
+    campaign_export.add_argument("index", type=_path)
+    campaign_export.add_argument("--output", type=_path, required=True)
 
     process = subparsers.add_parser("process", help="estrutura questoes com IA")
     process.add_argument("extraction", type=_path)
@@ -690,6 +713,31 @@ def _run(args: argparse.Namespace) -> int:
             f"{inventory.total.ready_for_export} aptas para exportação)"
         )
         return 0
+    if args.command == "editorial-campaign":
+        report, path = run_editorial_campaign(
+            args.spec,
+            args.output,
+            enable_qwen=not args.disable_qwen,
+            limit=args.limit,
+            report_json_path=args.report_json,
+            report_markdown_path=args.report_markdown,
+        )
+        print(
+            f"Campanha: {path} ({report.counts.raw_questions} ocorrências, "
+            f"{report.counts.unique_questions} únicas, "
+            f"{report.counts.waiting_human_review} aguardando revisão, "
+            f"{report.counts.ready_for_export} aptas para exportação)"
+        )
+        if report.next_batch_id:
+            print(f"Próximo lote: {report.next_batch_id}")
+        return 0
+    if args.command == "campaign-export":
+        manifest = export_campaign_dry_run(args.index, args.output)
+        print(
+            f"Pacote draft: {args.output} ({manifest['questions']} questões, "
+            f"{manifest['exceptions']} exceções)"
+        )
+        return 0
     if args.command == "process":
         paths = process_extraction_manifest(
             args.extraction,
@@ -750,8 +798,8 @@ def _run(args: argparse.Namespace) -> int:
         )
         return 0
     if args.command == "regression":
-        report = run_regression(args.manifest, args.report)
-        summary = report["summary"]
+        regression_report = run_regression(args.manifest, args.report)
+        summary = regression_report["summary"]
         if not isinstance(summary, dict):
             raise RegressionError("relatório de regressão sem resumo")
         print(
@@ -759,7 +807,7 @@ def _run(args: argparse.Namespace) -> int:
             f"{summary['passed']}/{summary['supported']} casos suportados passaram; "
             f"{summary['planned']} lacunas planejadas. Relatório: {args.report}"
         )
-        coverage = report["coverage"]
+        coverage = regression_report["coverage"]
         if not isinstance(coverage, list):
             raise RegressionError("relatório de regressão sem matriz de cobertura")
         for row in coverage:

@@ -38,6 +38,17 @@
           <input id="filter-contest" placeholder="Concurso" aria-label="Filtrar por concurso">
           <input id="filter-board" placeholder="Banca" aria-label="Filtrar por banca">
           <input id="filter-year" type="number" min="1900" max="2100" placeholder="Ano" aria-label="Filtrar por ano">
+          <input id="filter-organization" placeholder="Órgão" aria-label="Filtrar por órgão">
+          <input id="filter-role" placeholder="Cargo" aria-label="Filtrar por cargo">
+          <input id="filter-discipline" placeholder="Disciplina" aria-label="Filtrar por disciplina">
+          <input id="filter-matter" placeholder="Matéria" aria-label="Filtrar por matéria">
+          <input id="filter-subject" placeholder="Assunto" aria-label="Filtrar por assunto">
+          <select id="filter-classification" aria-label="Filtrar por origem da classificação">
+            <option value="">Toda classificação</option>
+            <option value="deterministic">Regras locais</option>
+            <option value="qwen">Qwen</option>
+            <option value="unresolved">Não resolvida</option>
+          </select>
         </div>
         <nav id="question-list" class="question-list" aria-label="Questões do lote"></nav>
       </aside>
@@ -112,6 +123,7 @@
 
           <section class="editor-card">
             <div class="section-heading"><div><h3>Classificação</h3><p>Confirme os metadados produzidos pela IA.</p></div></div>
+            <p id="classification-audit" class="classification-audit"></p>
             <div class="field-grid three">
               <label>Disciplina<input id="discipline"></label>
               <label>Matéria específica<input id="matter"></label>
