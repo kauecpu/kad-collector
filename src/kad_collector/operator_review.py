@@ -62,7 +62,15 @@ def _question_record(question: StructuredQuestion, *, state: str) -> QuestionRec
         f"Identificador estruturado: {question.stable_id}.",
         f"SHA-256 da prova: {question.exam_sha256}.",
         f"SHA-256 do gabarito: {question.answer_key_sha256}.",
+        f"URL oficial da prova: {question.exam_url}.",
+        f"URL oficial do gabarito: {question.answer_key_url}.",
+        "Páginas de origem: " + ", ".join(str(page) for page in question.source_pages) + ".",
         f"Extração: {question.extraction_method}; parser: {question.parser_version}.",
+        (
+            "OCR utilizado."
+            if question.extraction_method in {"ocr", "mixed"}
+            else "OCR dispensado para esta questão."
+        ),
         (
             "Associação de gabarito: "
             f"{question.answer_association.answer_key_id}; "
@@ -110,14 +118,14 @@ def _question_record(question: StructuredQuestion, *, state: str) -> QuestionRec
 def _annotated_document(
     document: DocumentRecord,
     *,
-    run: OperatorRunState,
+    run_id: str,
     package: StructuredQuestionPackage,
     document_type: Literal["exam", "answer_key"],
 ) -> DocumentRecord:
     metadata = {
         **document.metadata,
         "operator_original_document_type": document.document_type,
-        "operator_run_id": run.run_id,
+        "operator_run_id": run_id,
         "operator_package_sha256": package.content_sha256,
         "operator_review_bridge": OPERATOR_REVIEW_VERSION,
     }
@@ -152,9 +160,20 @@ def _load_inputs(
     return state, manifest, package
 
 
-def build_operator_review_index(output_dir: Path) -> tuple[OperatorReviewIndex, Path]:
-    output_dir = output_dir.resolve()
-    run, manifest, package = _load_inputs(output_dir)
+def build_review_batches(
+    review_root: Path,
+    *,
+    run_id: str,
+    manifest: DownloadManifest,
+    package: StructuredQuestionPackage,
+) -> list[OperatorReviewBatch]:
+    """Create resumable review batches for one validated structured package.
+
+    The operator flow and the consolidated corpus flow deliberately share this
+    adapter. Keeping the batch identifier tied to the official exam hash makes
+    reruns stable without collapsing legitimate appearances in different PDFs.
+    """
+
     documents = {document.sha256: document for document in manifest.documents}
     grouped: dict[str, dict[str, list[StructuredQuestion]]] = defaultdict(
         lambda: {"accepted": [], "quarantined": [], "rejected": []}
@@ -167,14 +186,10 @@ def build_operator_review_index(output_dir: Path) -> tuple[OperatorReviewIndex, 
         for question in questions:
             grouped[question.exam_sha256][state].append(question)
 
-    review_root = output_dir / "review"
     batch_dir = review_root / "batches"
     session_dir = review_root / "sessions"
     exception_dir = review_root / "exceptions"
     entries: list[OperatorReviewBatch] = []
-    pending_total = 0
-    quarantined_total = 0
-    rejected_total = 0
 
     for exam_sha256 in sorted(grouped):
         states = grouped[exam_sha256]
@@ -219,18 +234,18 @@ def build_operator_review_index(output_dir: Path) -> tuple[OperatorReviewIndex, 
                 created_at=manifest.created_at,
                 model=f"structured:{package.parser_version}",
                 source_document=_annotated_document(
-                    source, run=run, package=package, document_type="exam"
+                    source, run_id=run_id, package=package, document_type="exam"
                 ),
                 answer_key_document=_annotated_document(
                     answer_key,
-                    run=run,
+                    run_id=run_id,
                     package=package,
                     document_type="answer_key",
                 ),
                 questions=review_questions,
                 filters=manifest.filters,
                 processing_warnings=[
-                    f"Execução do operador: {run.run_id}.",
+                    f"Execução de origem: {run_id}.",
                     f"Pacote estruturado: {package.content_sha256}.",
                     f"{len(states['quarantined'])} questão(ões) exigem atenção estrutural.",
                     f"{len(states['rejected'])} questão(ões) foram mantidas nas exceções.",
@@ -256,9 +271,22 @@ def build_operator_review_index(output_dir: Path) -> tuple[OperatorReviewIndex, 
                 rejected=len(states["rejected"]),
             )
         )
-        pending_total += len(active)
-        quarantined_total += len(states["quarantined"])
-        rejected_total += len(states["rejected"])
+    return entries
+
+
+def build_operator_review_index(output_dir: Path) -> tuple[OperatorReviewIndex, Path]:
+    output_dir = output_dir.resolve()
+    run, manifest, package = _load_inputs(output_dir)
+    review_root = output_dir / "review"
+    entries = build_review_batches(
+        review_root,
+        run_id=run.run_id,
+        manifest=manifest,
+        package=package,
+    )
+    pending_total = sum(entry.accepted + entry.quarantined for entry in entries)
+    quarantined_total = sum(entry.quarantined for entry in entries)
+    rejected_total = sum(entry.rejected for entry in entries)
 
     fingerprint_payload = {
         "operator_run_id": run.run_id,

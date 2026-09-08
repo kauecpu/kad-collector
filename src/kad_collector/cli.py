@@ -26,6 +26,7 @@ from .canonical_classification import (
 from .canonical_identity import run_canonical_identity_migration
 from .collector import collect_documents
 from .config import load_config
+from .consolidated_review import build_consolidated_review
 from .database import stage_batch
 from .desktop_store import DesktopStore
 from .editorial_export import export_admin_package
@@ -180,6 +181,15 @@ def build_parser() -> argparse.ArgumentParser:
     structure.add_argument("--ollama-endpoint", default=DEFAULT_OLLAMA_ENDPOINT)
     structure.add_argument("--qwen-model", default=DEFAULT_QWEN_MODEL)
     structure.add_argument("--disable-ollama", action="store_true")
+
+    consolidate = subparsers.add_parser(
+        "consolidate-review",
+        help="reúne pacotes estruturados locais em uma fila editorial retomável",
+    )
+    consolidate.add_argument("spec", type=_path)
+    consolidate.add_argument("--output", type=_path, required=True)
+    consolidate.add_argument("--report-json", type=_path)
+    consolidate.add_argument("--report-markdown", type=_path)
 
     process = subparsers.add_parser("process", help="estrutura questoes com IA")
     process.add_argument("extraction", type=_path)
@@ -665,6 +675,19 @@ def _run(args: argparse.Namespace) -> int:
             f"{structured_metrics.quarantined_questions} em quarentena, "
             f"{structured_metrics.rejected_questions} rejeitadas, "
             f"SHA-256 {structured.content_sha256})"
+        )
+        return 0
+    if args.command == "consolidate-review":
+        inventory, path = build_consolidated_review(
+            args.spec,
+            args.output,
+            report_json_path=args.report_json,
+            report_markdown_path=args.report_markdown,
+        )
+        print(
+            f"Inventário: {path} ({inventory.total.questions_extracted} estruturadas, "
+            f"{inventory.total.ready_for_review} na revisão, "
+            f"{inventory.total.ready_for_export} aptas para exportação)"
         )
         return 0
     if args.command == "process":

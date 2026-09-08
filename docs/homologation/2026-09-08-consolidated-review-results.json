@@ -1,0 +1,1602 @@
+{
+  "schema_version": "1.0",
+  "corpus_id": "pf-bb-2018-2025",
+  "base_commit": "dcb4d245db96da2fb6d3a29ddf33be4b134b3b1c",
+  "branch": "codex/consolidated-editorial-inventory",
+  "created_at": "2026-09-07T23:25:42.107936Z",
+  "packages": [
+    {
+      "id": "pf-cebraspe",
+      "label": "Polícia Federal / Cebraspe",
+      "package_path": "data/structured/pf-all/final.json",
+      "package_file_sha256": "c53b76fec76444088ceb27d1ba7a88acb1dac127952a6991caae9ca0c0fa4417",
+      "package_content_sha256": "5f946b0ab11a03e8890c83eebad16e7ae2ca7ed3212f3e3da93d925afecc2490",
+      "content_hash_policy": "legacy-with-manifest",
+      "parser_version": "cebraspe-true-false-2.0",
+      "manifest_paths": [
+        "data/homologation/cebraspe-pf-20260907/pf_18/manifests/download-20260907T133705Z-ba8f5d96.json",
+        "data/homologation/cebraspe-pf-20260907/pf_21/manifests/download-20260907T133551Z-40527516.json",
+        "data/homologation/cebraspe-pf-20260907/pf_25/manifests/download-20260907T133358Z-a5b8720e.json",
+        "data/homologation/cebraspe-pf-20260907/pf_25_adm/manifests/download-20260907T133520Z-b16dcaca.json"
+      ],
+      "manifest_sha256s": [
+        "18bfc84e99d7bc43f87f787fea73dd8cfe491c748e933413447b61b9f6d1a6c0",
+        "71b3e4191acb5111327953098365c7a66de0df96ad7bc1832ad6bbaa9d03fe75",
+        "48c99f5dcedb69fb1068dd5839d1e539b744b3aa988d480356e6afab06563833",
+        "904df797cd913db98fb2e217c09b73dd45f87e3eee380dd4744dbc23f231522c"
+      ],
+      "origin": "Portal oficial do Cebraspe",
+      "period": "2018/2021/2025",
+      "documents": 112,
+      "exams": 56,
+      "answer_keys": 56,
+      "documents_used_by_package": 112,
+      "unused_documents": 0,
+      "structured_exams": 56,
+      "manifest_years": [
+        2018,
+        2021,
+        2025
+      ],
+      "structured_years": [
+        2018,
+        2021,
+        2025
+      ],
+      "expected_structured_years": [
+        2018,
+        2021,
+        2025
+      ],
+      "quarantine_reasons": {
+        "item anulado no gabarito oficial": 178,
+        "elemento visual exige revisão": 93
+      },
+      "expected_quarantine_reasons": {
+        "item anulado no gabarito oficial": 178,
+        "elemento visual exige revisão": 93
+      },
+      "questions": 4108,
+      "accepted": 3840,
+      "quarantined": 268,
+      "rejected": 0,
+      "integrity": "verified"
+    },
+    {
+      "id": "bb-cesgranrio",
+      "label": "Banco do Brasil / Cesgranrio",
+      "package_path": "data/homologation/operator-run-bb-2021-2023/review-package.json",
+      "package_file_sha256": "0a2021c6e345989cd34598810c7a57720434a48ed2ba72246bd6c7a93324695e",
+      "package_content_sha256": "4561eb36ecaec4adbabaa3bb5e2f7cb2b58c6d41b0f26544bf69749704b118cf",
+      "content_hash_policy": "current",
+      "parser_version": "cebraspe-true-false-2.0",
+      "manifest_paths": [
+        "data/homologation/operator-run-bb-2021-2023/manifest.json"
+      ],
+      "manifest_sha256s": [
+        "7c93079760d47e92f412deb78e23867d92b3b68d5bafb004e9cb06a42d5ac6e7"
+      ],
+      "origin": "Portal oficial da Cesgranrio e acervo autorizado PCI Concursos",
+      "period": "referência 2021/2023",
+      "documents": 40,
+      "exams": 36,
+      "answer_keys": 4,
+      "documents_used_by_package": 23,
+      "unused_documents": 17,
+      "structured_exams": 19,
+      "manifest_years": [
+        2021,
+        2023
+      ],
+      "structured_years": [
+        2021
+      ],
+      "expected_structured_years": [
+        2021,
+        2023
+      ],
+      "quarantine_reasons": {
+        "texto de apoio não associado": 130,
+        "elemento visual exige revisão": 5
+      },
+      "expected_quarantine_reasons": {
+        "quantidade inválida de alternativas": 19,
+        "elemento visual exige revisão": 8,
+        "incompatibilidade entre alternativas e gabarito": 3
+      },
+      "questions": 1312,
+      "accepted": 1177,
+      "quarantined": 135,
+      "rejected": 0,
+      "integrity": "verified"
+    }
+  ],
+  "batches": [
+    {
+      "batch_id": "operator-0134f118a9a439f7a2785407",
+      "exam_sha256": "0134f118a9a439f7a2785407acbb6ce473865940c6cad777300dd8e8266f2e72",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-0134f118a9a439f7a2785407.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-0134f118a9a439f7a2785407-aecf3425b625.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-0134f118a9a439f7a2785407.json",
+      "accepted": 67,
+      "quarantined": 3,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-0517d1e62644c0ccc6a9b529",
+      "exam_sha256": "0517d1e62644c0ccc6a9b52908e56d2bd07d8de94e716433cf8009aaa4db4afd",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-0517d1e62644c0ccc6a9b529.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-0517d1e62644c0ccc6a9b529-df6e53084b52.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-0517d1e62644c0ccc6a9b529.json",
+      "accepted": 60,
+      "quarantined": 9,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-07a8b28f1734a96760c94cdd",
+      "exam_sha256": "07a8b28f1734a96760c94cdd860a4d12d666b89593a5addfdd965b9ba16aa917",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-07a8b28f1734a96760c94cdd.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-07a8b28f1734a96760c94cdd-2a030fbbb6c5.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-07a8b28f1734a96760c94cdd.json",
+      "accepted": 66,
+      "quarantined": 4,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-08574b971d557f9eba566567",
+      "exam_sha256": "08574b971d557f9eba566567bab3dc48594ca9b86647530e6576cf5bd1d172bb",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-08574b971d557f9eba566567.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-08574b971d557f9eba566567-58d37bbb7bfc.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-08574b971d557f9eba566567.json",
+      "accepted": 46,
+      "quarantined": 4,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-0a4c75f95d736cc3c60ab823",
+      "exam_sha256": "0a4c75f95d736cc3c60ab823172bbb7235135adfd162b38e297d4deb97b9125f",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-0a4c75f95d736cc3c60ab823.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-0a4c75f95d736cc3c60ab823-209c75663823.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-0a4c75f95d736cc3c60ab823.json",
+      "accepted": 68,
+      "quarantined": 2,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-0db90f82694c174092c4a127",
+      "exam_sha256": "0db90f82694c174092c4a1271d94acae54b19ad86e093be1abc2f1e38ef1c937",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-0db90f82694c174092c4a127.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-0db90f82694c174092c4a127-32c401b8f1b2.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-0db90f82694c174092c4a127.json",
+      "accepted": 109,
+      "quarantined": 11,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-120216a86e22ea76a387b2c6",
+      "exam_sha256": "120216a86e22ea76a387b2c6cbd9629c88766c448009eb4594cab41833ed6ade",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-120216a86e22ea76a387b2c6.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-120216a86e22ea76a387b2c6-50164561d794.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-120216a86e22ea76a387b2c6.json",
+      "accepted": 62,
+      "quarantined": 8,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-128c7fe23f87fb3111d2e48b",
+      "exam_sha256": "128c7fe23f87fb3111d2e48b22268dbea164790109fc63dff9f2b1602b954d37",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-128c7fe23f87fb3111d2e48b.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-128c7fe23f87fb3111d2e48b-41c0d5ea9399.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-128c7fe23f87fb3111d2e48b.json",
+      "accepted": 23,
+      "quarantined": 1,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-14ce7411792862935d61c863",
+      "exam_sha256": "14ce7411792862935d61c863aaea74e2dd8e27b502a312845fe7ac7776c13254",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-14ce7411792862935d61c863.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-14ce7411792862935d61c863-23c88e746c5e.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-14ce7411792862935d61c863.json",
+      "accepted": 66,
+      "quarantined": 4,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-163fc806c8db7c68ca8ba370",
+      "exam_sha256": "163fc806c8db7c68ca8ba370d4d562d6dae6255015de1bfbd459777357a24c36",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-163fc806c8db7c68ca8ba370.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-163fc806c8db7c68ca8ba370-ac08d1e6f07d.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-163fc806c8db7c68ca8ba370.json",
+      "accepted": 70,
+      "quarantined": 0,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-1730ef15691188f10d4eaf8f",
+      "exam_sha256": "1730ef15691188f10d4eaf8f31e2e15f19ce4d29a79b9f8077b6405b0a04adce",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-1730ef15691188f10d4eaf8f.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-1730ef15691188f10d4eaf8f-dac8bacf9b1f.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-1730ef15691188f10d4eaf8f.json",
+      "accepted": 55,
+      "quarantined": 15,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-1766f5e59b484b09c9b491ed",
+      "exam_sha256": "1766f5e59b484b09c9b491ed62c9fc713bc2721a5d66fe29a93b749a79106e26",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-1766f5e59b484b09c9b491ed.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-1766f5e59b484b09c9b491ed-4a16bd9aa708.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-1766f5e59b484b09c9b491ed.json",
+      "accepted": 61,
+      "quarantined": 8,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-1ff455f29adf6e0182fdfcd6",
+      "exam_sha256": "1ff455f29adf6e0182fdfcd6aaf36628804f4404dbbdc1ab5efff4be5c038f9b",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-1ff455f29adf6e0182fdfcd6.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-1ff455f29adf6e0182fdfcd6-809f814bc41f.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-1ff455f29adf6e0182fdfcd6.json",
+      "accepted": 61,
+      "quarantined": 8,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-20737595a80a81d0c98d73db",
+      "exam_sha256": "20737595a80a81d0c98d73db63a174e0f844fed233467835cd3f50c12f5e1dca",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-20737595a80a81d0c98d73db.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-20737595a80a81d0c98d73db-b27c67beb5bd.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-20737595a80a81d0c98d73db.json",
+      "accepted": 66,
+      "quarantined": 4,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-209eb37df001f0b73cd85d1a",
+      "exam_sha256": "209eb37df001f0b73cd85d1a6dbff7b9193a9ba045302b3bb8478264f5c0fe92",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-209eb37df001f0b73cd85d1a.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-209eb37df001f0b73cd85d1a-878390188105.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-209eb37df001f0b73cd85d1a.json",
+      "accepted": 64,
+      "quarantined": 4,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-20ab0219fc2cf088f610a725",
+      "exam_sha256": "20ab0219fc2cf088f610a725c392813cda000abe48b3a12c49a73ef931584a59",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-20ab0219fc2cf088f610a725.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-20ab0219fc2cf088f610a725-b180f2097ebf.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-20ab0219fc2cf088f610a725.json",
+      "accepted": 56,
+      "quarantined": 14,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-23893ecc10c9ef948f3af220",
+      "exam_sha256": "23893ecc10c9ef948f3af22089bc088cfcef94cd96107da3aea67772cbc58e07",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-23893ecc10c9ef948f3af220.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-23893ecc10c9ef948f3af220-aae8753c8a24.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-23893ecc10c9ef948f3af220.json",
+      "accepted": 55,
+      "quarantined": 15,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-244a4feca8bcd6be89b703d0",
+      "exam_sha256": "244a4feca8bcd6be89b703d01fa6298ce99d421e74b37313316fe3c1947fe62c",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-244a4feca8bcd6be89b703d0.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-244a4feca8bcd6be89b703d0-72dadc7e830d.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-244a4feca8bcd6be89b703d0.json",
+      "accepted": 61,
+      "quarantined": 9,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-25c6783ccbfc3d72fbb0913d",
+      "exam_sha256": "25c6783ccbfc3d72fbb0913da58372e344ba45fc6e1ba74250727fa3e56e51f3",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-25c6783ccbfc3d72fbb0913d.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-25c6783ccbfc3d72fbb0913d-113d6acc6e2e.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-25c6783ccbfc3d72fbb0913d.json",
+      "accepted": 31,
+      "quarantined": 5,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-2801bf8d85ebd35aad40fda3",
+      "exam_sha256": "2801bf8d85ebd35aad40fda33cf87633b0bd4e8b8e68382cacdf19275f8a70af",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-2801bf8d85ebd35aad40fda3.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-2801bf8d85ebd35aad40fda3-ee0a908beef3.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-2801bf8d85ebd35aad40fda3.json",
+      "accepted": 23,
+      "quarantined": 1,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-282659632592cb616425e4f1",
+      "exam_sha256": "282659632592cb616425e4f15a6c22a6f86d5d47869893e9b81489d73291ba72",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-282659632592cb616425e4f1.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-282659632592cb616425e4f1-9c0d47efaf6b.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-282659632592cb616425e4f1.json",
+      "accepted": 49,
+      "quarantined": 1,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-2ad0e11becb8ac952ba15ac9",
+      "exam_sha256": "2ad0e11becb8ac952ba15ac931e290396051e0dc08e33c476fe17310643d7a97",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-2ad0e11becb8ac952ba15ac9.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-2ad0e11becb8ac952ba15ac9-464a425f9e77.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-2ad0e11becb8ac952ba15ac9.json",
+      "accepted": 48,
+      "quarantined": 2,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-3e6cc0dbe3f6e95fccbd5712",
+      "exam_sha256": "3e6cc0dbe3f6e95fccbd5712dc169c64694bc9c050a52f506b44b5e1bba8d133",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-3e6cc0dbe3f6e95fccbd5712.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-3e6cc0dbe3f6e95fccbd5712-adfc6c2fb137.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-3e6cc0dbe3f6e95fccbd5712.json",
+      "accepted": 65,
+      "quarantined": 4,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-3f132798cdc431ba11bdbd35",
+      "exam_sha256": "3f132798cdc431ba11bdbd35cfbc40a6b2c334ea5fd40ddc162ba1a37cd66bc5",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-3f132798cdc431ba11bdbd35.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-3f132798cdc431ba11bdbd35-839965b96026.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-3f132798cdc431ba11bdbd35.json",
+      "accepted": 69,
+      "quarantined": 1,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-427a2567fb89ceca56f76f7b",
+      "exam_sha256": "427a2567fb89ceca56f76f7ba36729736781dd838dfbd9bfa371b7dabf1e6751",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-427a2567fb89ceca56f76f7b.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-427a2567fb89ceca56f76f7b-509e1af74a88.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-427a2567fb89ceca56f76f7b.json",
+      "accepted": 67,
+      "quarantined": 3,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-43213b8121512dca1e41472c",
+      "exam_sha256": "43213b8121512dca1e41472c0a62d7472f27b8e28b8c15d7b743413399568952",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-43213b8121512dca1e41472c.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-43213b8121512dca1e41472c-5ab5e8869852.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-43213b8121512dca1e41472c.json",
+      "accepted": 61,
+      "quarantined": 8,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-435b3c4e79f54f2df21d41a9",
+      "exam_sha256": "435b3c4e79f54f2df21d41a9068f8e22b83671ed1d3f9f0517e91bac59545318",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-435b3c4e79f54f2df21d41a9.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-435b3c4e79f54f2df21d41a9-5686b78e1d5e.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-435b3c4e79f54f2df21d41a9.json",
+      "accepted": 56,
+      "quarantined": 14,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-43f01f62df2b140abf3c5611",
+      "exam_sha256": "43f01f62df2b140abf3c561191103bd2f6fb3e56777e4ddc0f90b451383ccae0",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-43f01f62df2b140abf3c5611.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-43f01f62df2b140abf3c5611-3aaa0cbab1ff.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-43f01f62df2b140abf3c5611.json",
+      "accepted": 57,
+      "quarantined": 13,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-4a9103f066b7dd67e05e4db3",
+      "exam_sha256": "4a9103f066b7dd67e05e4db3652a538a7318bc45ea8123d2dd9a0b3b4f547267",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-4a9103f066b7dd67e05e4db3.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-4a9103f066b7dd67e05e4db3-4fb115a65a20.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-4a9103f066b7dd67e05e4db3.json",
+      "accepted": 63,
+      "quarantined": 7,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-4ae5fd6fa0f336c4feae7bb4",
+      "exam_sha256": "4ae5fd6fa0f336c4feae7bb4d0af02ae07a555f2624c49960ab814b5dcf09c69",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-4ae5fd6fa0f336c4feae7bb4.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-4ae5fd6fa0f336c4feae7bb4-7383730a17c4.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-4ae5fd6fa0f336c4feae7bb4.json",
+      "accepted": 68,
+      "quarantined": 2,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-4e40a25f525281521b346785",
+      "exam_sha256": "4e40a25f525281521b34678513e174403faf795c5a776bf5f9bc4229169a548c",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-4e40a25f525281521b346785.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-4e40a25f525281521b346785-3f74b400fb26.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-4e40a25f525281521b346785.json",
+      "accepted": 66,
+      "quarantined": 4,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-516c412a8f5e716ae9098756",
+      "exam_sha256": "516c412a8f5e716ae9098756a4e966c827c0c069737efcabe7bfddecd258fa37",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-516c412a8f5e716ae9098756.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-516c412a8f5e716ae9098756-c422613300ea.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-516c412a8f5e716ae9098756.json",
+      "accepted": 66,
+      "quarantined": 4,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-524d5ab9fdb0bdf34df99cb8",
+      "exam_sha256": "524d5ab9fdb0bdf34df99cb8f505e2ece1d7767c7053914beb95dc4007623be8",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-524d5ab9fdb0bdf34df99cb8.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-524d5ab9fdb0bdf34df99cb8-7f6de631cdbe.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-524d5ab9fdb0bdf34df99cb8.json",
+      "accepted": 61,
+      "quarantined": 8,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-5464654f02abfcafe921eaa6",
+      "exam_sha256": "5464654f02abfcafe921eaa65c4f30bf9c267d80e667b7b35a8ca9e3f115b42f",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-5464654f02abfcafe921eaa6.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-5464654f02abfcafe921eaa6-8b327a7b0fc5.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-5464654f02abfcafe921eaa6.json",
+      "accepted": 110,
+      "quarantined": 10,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-548305f1a6036a32035f1ea4",
+      "exam_sha256": "548305f1a6036a32035f1ea413d0c489a194862b25036e38dc55935a4875b042",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-548305f1a6036a32035f1ea4.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-548305f1a6036a32035f1ea4-fba50124ad13.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-548305f1a6036a32035f1ea4.json",
+      "accepted": 50,
+      "quarantined": 0,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-564cd42252b5d53a35e6ac02",
+      "exam_sha256": "564cd42252b5d53a35e6ac02261d251b0c401e4098b99a0972fdb4da072d8636",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-564cd42252b5d53a35e6ac02.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-564cd42252b5d53a35e6ac02-18a51915429b.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-564cd42252b5d53a35e6ac02.json",
+      "accepted": 54,
+      "quarantined": 16,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-5692ec0eba5e76d81c24f51b",
+      "exam_sha256": "5692ec0eba5e76d81c24f51b207c66f95e31d6c99389ff47014ddd198dc150a9",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-5692ec0eba5e76d81c24f51b.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-5692ec0eba5e76d81c24f51b-653f5adfbc6b.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-5692ec0eba5e76d81c24f51b.json",
+      "accepted": 68,
+      "quarantined": 2,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-5a932204f0dfd6f710123d69",
+      "exam_sha256": "5a932204f0dfd6f710123d696a14f4eef2b50b0f6d78c59bc4b82d690ef7191b",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-5a932204f0dfd6f710123d69.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-5a932204f0dfd6f710123d69-c78b93dec07f.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-5a932204f0dfd6f710123d69.json",
+      "accepted": 68,
+      "quarantined": 2,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-61c731f9638643a84a21188a",
+      "exam_sha256": "61c731f9638643a84a21188a0bcd6e9b85949604e8ba75051c971411641890a7",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-61c731f9638643a84a21188a.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-61c731f9638643a84a21188a-45ab83f264e7.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-61c731f9638643a84a21188a.json",
+      "accepted": 58,
+      "quarantined": 2,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-6a7b292bb0a498a80081fb92",
+      "exam_sha256": "6a7b292bb0a498a80081fb928c5e9fdfa6cdf70ee57ea34264a6cf03b1989e1f",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-6a7b292bb0a498a80081fb92.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-6a7b292bb0a498a80081fb92-a7f89a79fa98.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-6a7b292bb0a498a80081fb92.json",
+      "accepted": 60,
+      "quarantined": 8,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-6f4c4cdd1387eaf01cdc2dc6",
+      "exam_sha256": "6f4c4cdd1387eaf01cdc2dc6716039cdc2b46bc067684e7eb0be3ba14701d8df",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-6f4c4cdd1387eaf01cdc2dc6.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-6f4c4cdd1387eaf01cdc2dc6-48e73d687911.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-6f4c4cdd1387eaf01cdc2dc6.json",
+      "accepted": 62,
+      "quarantined": 8,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-70543026c4d36f8fd4c0642b",
+      "exam_sha256": "70543026c4d36f8fd4c0642b5023df69a268a958fe147a48d2fac2a201dc3bfa",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-70543026c4d36f8fd4c0642b.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-70543026c4d36f8fd4c0642b-65229c3bc40c.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-70543026c4d36f8fd4c0642b.json",
+      "accepted": 116,
+      "quarantined": 4,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-7095c473f11e1427a602d1d5",
+      "exam_sha256": "7095c473f11e1427a602d1d5156d58eb2844c58df31414fa9a8aeed30221cc43",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-7095c473f11e1427a602d1d5.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-7095c473f11e1427a602d1d5-8ccd1e00087b.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-7095c473f11e1427a602d1d5.json",
+      "accepted": 116,
+      "quarantined": 4,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-71740e6bb7bef2697eff245d",
+      "exam_sha256": "71740e6bb7bef2697eff245d6a08b38d370084dd7f0dd89eeb96600ca9824e03",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-71740e6bb7bef2697eff245d.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-71740e6bb7bef2697eff245d-faf015a9ed64.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-71740e6bb7bef2697eff245d.json",
+      "accepted": 64,
+      "quarantined": 6,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-742cf814a63a125cf3f7877e",
+      "exam_sha256": "742cf814a63a125cf3f7877e720d04669ecfb71adb856a5de1a2045fe02bc94b",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-742cf814a63a125cf3f7877e.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-742cf814a63a125cf3f7877e-219554619889.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-742cf814a63a125cf3f7877e.json",
+      "accepted": 61,
+      "quarantined": 8,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-800ab460c31b1954a88a9ab6",
+      "exam_sha256": "800ab460c31b1954a88a9ab6f8712a25777c0a329736113e0d9c1c56e55cb4a5",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-800ab460c31b1954a88a9ab6.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-800ab460c31b1954a88a9ab6-87091013be14.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-800ab460c31b1954a88a9ab6.json",
+      "accepted": 60,
+      "quarantined": 8,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-86953efa56ddf1ca3e629a16",
+      "exam_sha256": "86953efa56ddf1ca3e629a160c81758e9bf3fd9b41587ee32f7a6d5e4eac733e",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-86953efa56ddf1ca3e629a16.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-86953efa56ddf1ca3e629a16-b278a2370e0d.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-86953efa56ddf1ca3e629a16.json",
+      "accepted": 69,
+      "quarantined": 1,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-8a7134566d26bdec5ef9d5d6",
+      "exam_sha256": "8a7134566d26bdec5ef9d5d6c02d8477a3ce5f3dea003958acd07c3dcfe05af2",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-8a7134566d26bdec5ef9d5d6.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-8a7134566d26bdec5ef9d5d6-b681777019ba.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-8a7134566d26bdec5ef9d5d6.json",
+      "accepted": 68,
+      "quarantined": 2,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-8b3b0e8fd407ec24bcf37985",
+      "exam_sha256": "8b3b0e8fd407ec24bcf37985518c9bcff14882416befb61faa3448cfac8f1f97",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-8b3b0e8fd407ec24bcf37985.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-8b3b0e8fd407ec24bcf37985-cb572db8e61f.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-8b3b0e8fd407ec24bcf37985.json",
+      "accepted": 69,
+      "quarantined": 1,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-8c41972904bafb8a241d6c66",
+      "exam_sha256": "8c41972904bafb8a241d6c662580809b2849a2d190b2143059af45e4db76af09",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-8c41972904bafb8a241d6c66.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-8c41972904bafb8a241d6c66-c8acb12d5ea7.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-8c41972904bafb8a241d6c66.json",
+      "accepted": 67,
+      "quarantined": 3,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-8ca853afcc63b52801be6e64",
+      "exam_sha256": "8ca853afcc63b52801be6e6450c0f121ff36c2093e45016bdd81c8e8e8b7eb55",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-8ca853afcc63b52801be6e64.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-8ca853afcc63b52801be6e64-45573f988ff2.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-8ca853afcc63b52801be6e64.json",
+      "accepted": 60,
+      "quarantined": 9,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-8f5962ae0dde2d3cf2652c3e",
+      "exam_sha256": "8f5962ae0dde2d3cf2652c3eff3e3c263c12486952f45ab4761b7dc0d1550f06",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-8f5962ae0dde2d3cf2652c3e.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-8f5962ae0dde2d3cf2652c3e-1dd7a1e80bb7.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-8f5962ae0dde2d3cf2652c3e.json",
+      "accepted": 21,
+      "quarantined": 3,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-933ce683210a1e095ec12a40",
+      "exam_sha256": "933ce683210a1e095ec12a4017ee64d399de1c4ae669910410a94548e7071b7d",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-933ce683210a1e095ec12a40.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-933ce683210a1e095ec12a40-b19f34b971e7.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-933ce683210a1e095ec12a40.json",
+      "accepted": 70,
+      "quarantined": 0,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-99b59dac252614f67877bdd2",
+      "exam_sha256": "99b59dac252614f67877bdd2dc82888807089796a630dc0f8dcef0d6f0c82c75",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-99b59dac252614f67877bdd2.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-99b59dac252614f67877bdd2-8f4e172bd8be.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-99b59dac252614f67877bdd2.json",
+      "accepted": 111,
+      "quarantined": 9,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-9b34d8ecb683dbe6411b558b",
+      "exam_sha256": "9b34d8ecb683dbe6411b558b985d94e4f04bfb5838c6e56f9bd7a982d93af27a",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-9b34d8ecb683dbe6411b558b.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-9b34d8ecb683dbe6411b558b-8f6eef3b23a3.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-9b34d8ecb683dbe6411b558b.json",
+      "accepted": 115,
+      "quarantined": 5,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-9b38106d8b388807551afe4b",
+      "exam_sha256": "9b38106d8b388807551afe4bcf73814eddec880e8cbb4360919a570f380f1199",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-9b38106d8b388807551afe4b.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-9b38106d8b388807551afe4b-a054af852d35.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-9b38106d8b388807551afe4b.json",
+      "accepted": 69,
+      "quarantined": 1,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-9efb1d9708f715a8607c75bd",
+      "exam_sha256": "9efb1d9708f715a8607c75bd29880b72d5f94fde1e601059c3f7e694dd567cb7",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-9efb1d9708f715a8607c75bd.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-9efb1d9708f715a8607c75bd-6a3f9f020822.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-9efb1d9708f715a8607c75bd.json",
+      "accepted": 67,
+      "quarantined": 3,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-a01e9687e65880e9105a6ed6",
+      "exam_sha256": "a01e9687e65880e9105a6ed645d62e3908ba3ccaa33eba6ed315311ad912b326",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-a01e9687e65880e9105a6ed6.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-a01e9687e65880e9105a6ed6-f72d32cbc965.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-a01e9687e65880e9105a6ed6.json",
+      "accepted": 62,
+      "quarantined": 8,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-a49b7c33194c416bbeafa2ed",
+      "exam_sha256": "a49b7c33194c416bbeafa2edb31b7ae3531e7dbea7bd131c30125acab5f19669",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-a49b7c33194c416bbeafa2ed.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-a49b7c33194c416bbeafa2ed-395f8fa94a69.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-a49b7c33194c416bbeafa2ed.json",
+      "accepted": 113,
+      "quarantined": 7,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-aeaa15548963cec7af7a0a6b",
+      "exam_sha256": "aeaa15548963cec7af7a0a6b7cdca5ae40cabe5cbae9f154f69bf31a4f73ab78",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-aeaa15548963cec7af7a0a6b.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-aeaa15548963cec7af7a0a6b-5812ecd5b454.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-aeaa15548963cec7af7a0a6b.json",
+      "accepted": 66,
+      "quarantined": 4,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-c21c9f4fd42351e2f04c5472",
+      "exam_sha256": "c21c9f4fd42351e2f04c5472a6e4a768c29422c23e0978443478b8f666646152",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-c21c9f4fd42351e2f04c5472.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-c21c9f4fd42351e2f04c5472-c86150c36328.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-c21c9f4fd42351e2f04c5472.json",
+      "accepted": 62,
+      "quarantined": 8,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-c421c7a7c7fdf42647ace50b",
+      "exam_sha256": "c421c7a7c7fdf42647ace50b8c32569c085daf263c4253a46b195bdd42f83cb1",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-c421c7a7c7fdf42647ace50b.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-c421c7a7c7fdf42647ace50b-8c91fdcd425b.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-c421c7a7c7fdf42647ace50b.json",
+      "accepted": 67,
+      "quarantined": 3,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-c4d7213f251b8aec08618d9b",
+      "exam_sha256": "c4d7213f251b8aec08618d9be7ab415bfb9636ae3c1900734eb711b60465dbee",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-c4d7213f251b8aec08618d9b.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-c4d7213f251b8aec08618d9b-68f4ab478bc7.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-c4d7213f251b8aec08618d9b.json",
+      "accepted": 62,
+      "quarantined": 8,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-c8705c2e6fdee3f3a53e5e6d",
+      "exam_sha256": "c8705c2e6fdee3f3a53e5e6dd935eeff8348da53f9b73fe8751ceb1e81dc0d1b",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-c8705c2e6fdee3f3a53e5e6d.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-c8705c2e6fdee3f3a53e5e6d-3357b1e88a5f.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-c8705c2e6fdee3f3a53e5e6d.json",
+      "accepted": 66,
+      "quarantined": 4,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-c9609c3ca4d019ecbd8c944e",
+      "exam_sha256": "c9609c3ca4d019ecbd8c944ec9d76edbbbf2c75807b320c589df9717cabecb43",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-c9609c3ca4d019ecbd8c944e.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-c9609c3ca4d019ecbd8c944e-6604832c8080.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-c9609c3ca4d019ecbd8c944e.json",
+      "accepted": 65,
+      "quarantined": 4,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-c987fed23486f6fd7551a629",
+      "exam_sha256": "c987fed23486f6fd7551a629e5169658b49889edfbb0fbee3144f56d0ba5a8ed",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-c987fed23486f6fd7551a629.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-c987fed23486f6fd7551a629-0dc08152796e.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-c987fed23486f6fd7551a629.json",
+      "accepted": 69,
+      "quarantined": 1,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-cdc5f886c152804ad849a349",
+      "exam_sha256": "cdc5f886c152804ad849a349235d16c6049fd9dddb42488cc2c9bc9dfbbcfbbb",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-cdc5f886c152804ad849a349.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-cdc5f886c152804ad849a349-d156ddeac635.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-cdc5f886c152804ad849a349.json",
+      "accepted": 67,
+      "quarantined": 3,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-d10ff2dae65cd8614e076d5e",
+      "exam_sha256": "d10ff2dae65cd8614e076d5e318b8258f12aa7dcf60b858f1738d574b01e7d31",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-d10ff2dae65cd8614e076d5e.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-d10ff2dae65cd8614e076d5e-ebd331bb1900.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-d10ff2dae65cd8614e076d5e.json",
+      "accepted": 110,
+      "quarantined": 10,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-d7b1bfe02538b25ab821baa9",
+      "exam_sha256": "d7b1bfe02538b25ab821baa94a2c9613f7a11745131d3bfa9589b3d727bbe5b5",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-d7b1bfe02538b25ab821baa9.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-d7b1bfe02538b25ab821baa9-5590d3297154.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-d7b1bfe02538b25ab821baa9.json",
+      "accepted": 63,
+      "quarantined": 5,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-d7c53857284a19112106e51a",
+      "exam_sha256": "d7c53857284a19112106e51aba63038d9a5393fd2a48fe3683c4b459c63cb83d",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-d7c53857284a19112106e51a.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-d7c53857284a19112106e51a-471d6ce36065.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-d7c53857284a19112106e51a.json",
+      "accepted": 67,
+      "quarantined": 3,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-d9aa55a55d8c5c8f51577aad",
+      "exam_sha256": "d9aa55a55d8c5c8f51577aad926751c37d73dd30d24d669cb8848701aea746ab",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-d9aa55a55d8c5c8f51577aad.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-d9aa55a55d8c5c8f51577aad-ddb83bd1230c.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-d9aa55a55d8c5c8f51577aad.json",
+      "accepted": 65,
+      "quarantined": 4,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-e6e6592f9beb5e7e3702aaa0",
+      "exam_sha256": "e6e6592f9beb5e7e3702aaa0265d5e2ba612877973b0d3b80c5478c71a2a6d70",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-e6e6592f9beb5e7e3702aaa0.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-e6e6592f9beb5e7e3702aaa0-ca5bf5e9caf0.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-e6e6592f9beb5e7e3702aaa0.json",
+      "accepted": 67,
+      "quarantined": 3,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-f1d9c67259455041cd883bad",
+      "exam_sha256": "f1d9c67259455041cd883bad8c706284685eb5b1e12c08cfcf8989392b706c98",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-f1d9c67259455041cd883bad.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-f1d9c67259455041cd883bad-928a397c8e2b.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-f1d9c67259455041cd883bad.json",
+      "accepted": 69,
+      "quarantined": 1,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-f486b7d16c70981141660b30",
+      "exam_sha256": "f486b7d16c70981141660b3067c36ef96e5be23c9f00a2a8ef2922882981814d",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-f486b7d16c70981141660b30.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-f486b7d16c70981141660b30-7f31eb13eba7.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-f486b7d16c70981141660b30.json",
+      "accepted": 114,
+      "quarantined": 6,
+      "rejected": 0
+    },
+    {
+      "batch_id": "operator-f9a7025ec245ae54ed0ded29",
+      "exam_sha256": "f9a7025ec245ae54ed0ded29fa6f3df23c9253a567a0390113aab914de32be97",
+      "batch_path": "data/consolidated/pf-bb/review/batches/operator-f9a7025ec245ae54ed0ded29.json",
+      "session_path": "data/consolidated/pf-bb/review/sessions/operator-f9a7025ec245ae54ed0ded29-049c885c5275.json",
+      "exceptions_path": "data/consolidated/pf-bb/review/exceptions/operator-f9a7025ec245ae54ed0ded29.json",
+      "accepted": 64,
+      "quarantined": 6,
+      "rejected": 0
+    }
+  ],
+  "total": {
+    "documents": 152,
+    "exams": 92,
+    "answer_keys": 60,
+    "questions_extracted": 5420,
+    "structurally_accepted": 5017,
+    "quarantined": 403,
+    "rejected": 0,
+    "annulled": 178,
+    "ready_for_review": 5420,
+    "classified": 0,
+    "editorial_decisions": 0,
+    "ready_for_export": 0,
+    "exported": 0
+  },
+  "homologation_sample": {
+    "documents": 0,
+    "exams": 0,
+    "answer_keys": 0,
+    "questions_extracted": 1792,
+    "structurally_accepted": 1624,
+    "quarantined": 168,
+    "rejected": 0,
+    "annulled": 18,
+    "ready_for_review": 1792,
+    "classified": 0,
+    "editorial_decisions": 0,
+    "ready_for_export": 0,
+    "exported": 0
+  },
+  "open_batch": {
+    "documents": 0,
+    "exams": 0,
+    "answer_keys": 0,
+    "questions_extracted": 70,
+    "structurally_accepted": 67,
+    "quarantined": 3,
+    "rejected": 0,
+    "annulled": 2,
+    "ready_for_review": 70,
+    "classified": 0,
+    "editorial_decisions": 0,
+    "ready_for_export": 0,
+    "exported": 0
+  },
+  "open_batch_id": "operator-0134f118a9a439f7a2785407",
+  "classification": {
+    "taxonomy_version": "2.0.1",
+    "trace_path": "data/consolidated/pf-bb/classification/traces.jsonl",
+    "deterministic": 0,
+    "qwen": 0,
+    "unresolved": 5420,
+    "qwen_calls": 0,
+    "sample_size": 0,
+    "minimum_precision": 0.95,
+    "precision_by_field": {
+      "discipline": null,
+      "matter": null,
+      "subject": null,
+      "level": null
+    },
+    "accepted_without_correction": false
+  },
+  "grouped": {
+    "órgão": [
+      {
+        "value": "Banco do Brasil",
+        "questions": 1312,
+        "accepted": 1177,
+        "quarantined": 135,
+        "rejected": 0,
+        "annulled": 0
+      },
+      {
+        "value": "Policia Federal",
+        "questions": 4108,
+        "accepted": 3840,
+        "quarantined": 268,
+        "rejected": 0,
+        "annulled": 178
+      }
+    ],
+    "banca": [
+      {
+        "value": "CEBRASPE",
+        "questions": 4108,
+        "accepted": 3840,
+        "quarantined": 268,
+        "rejected": 0,
+        "annulled": 178
+      },
+      {
+        "value": "CESGRANRIO",
+        "questions": 1312,
+        "accepted": 1177,
+        "quarantined": 135,
+        "rejected": 0,
+        "annulled": 0
+      }
+    ],
+    "concurso": [
+      {
+        "value": "PF 25",
+        "questions": 1248,
+        "accepted": 1171,
+        "quarantined": 77,
+        "rejected": 0,
+        "annulled": 66
+      },
+      {
+        "value": "PF 25 ADM",
+        "questions": 1150,
+        "accepted": 1107,
+        "quarantined": 43,
+        "rejected": 0,
+        "annulled": 39
+      },
+      {
+        "value": "POLÍCIA FEDERAL",
+        "questions": 1710,
+        "accepted": 1562,
+        "quarantined": 148,
+        "rejected": 0,
+        "annulled": 73
+      },
+      {
+        "value": "bb0121",
+        "questions": 1312,
+        "accepted": 1177,
+        "quarantined": 135,
+        "rejected": 0,
+        "annulled": 0
+      }
+    ],
+    "ano": [
+      {
+        "value": "2018",
+        "questions": 1230,
+        "accepted": 1115,
+        "quarantined": 115,
+        "rejected": 0,
+        "annulled": 55
+      },
+      {
+        "value": "2021",
+        "questions": 1792,
+        "accepted": 1624,
+        "quarantined": 168,
+        "rejected": 0,
+        "annulled": 18
+      },
+      {
+        "value": "2025",
+        "questions": 2398,
+        "accepted": 2278,
+        "quarantined": 120,
+        "rejected": 0,
+        "annulled": 105
+      }
+    ],
+    "cargo": [
+      {
+        "value": "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 1",
+        "questions": 68,
+        "accepted": 60,
+        "quarantined": 8,
+        "rejected": 0,
+        "annulled": 0
+      },
+      {
+        "value": "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 2",
+        "questions": 68,
+        "accepted": 60,
+        "quarantined": 8,
+        "rejected": 0,
+        "annulled": 0
+      },
+      {
+        "value": "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 3",
+        "questions": 69,
+        "accepted": 60,
+        "quarantined": 9,
+        "rejected": 0,
+        "annulled": 0
+      },
+      {
+        "value": "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 4",
+        "questions": 69,
+        "accepted": 60,
+        "quarantined": 9,
+        "rejected": 0,
+        "annulled": 0
+      },
+      {
+        "value": "CARGO 1: DELEGADO DE POLÍCIA FEDERAL",
+        "questions": 120,
+        "accepted": 116,
+        "quarantined": 4,
+        "rejected": 0,
+        "annulled": 4
+      },
+      {
+        "value": "CARGO 2: AGENTE DE POLÍCIA FEDERAL",
+        "questions": 120,
+        "accepted": 110,
+        "quarantined": 10,
+        "rejected": 0,
+        "annulled": 5
+      },
+      {
+        "value": "CARGO 3: ESCRIVÃO DE POLÍCIA FEDERAL",
+        "questions": 120,
+        "accepted": 110,
+        "quarantined": 10,
+        "rejected": 0,
+        "annulled": 5
+      },
+      {
+        "value": "CARGO 4: PAPILOSCOPISTA DE POLÍCIA FEDERAL",
+        "questions": 120,
+        "accepted": 111,
+        "quarantined": 9,
+        "rejected": 0,
+        "annulled": 4
+      },
+      {
+        "value": "CONHECIMENTOS BÁSICOS PARA O CARGO 15",
+        "questions": 50,
+        "accepted": 50,
+        "quarantined": 0,
+        "rejected": 0,
+        "annulled": 0
+      },
+      {
+        "value": "CONHECIMENTOS BÁSICOS PARA O CARGO 2 - TODAS AS ÁREAS",
+        "questions": 50,
+        "accepted": 48,
+        "quarantined": 2,
+        "rejected": 0,
+        "annulled": 2
+      },
+      {
+        "value": "CONHECIMENTOS BÁSICOS PARA OS CARGOS DE 1 A 14",
+        "questions": 50,
+        "accepted": 49,
+        "quarantined": 1,
+        "rejected": 0,
+        "annulled": 1
+      },
+      {
+        "value": "CONHECIMENTOS BÁSICOS PARA TODOS OS CARGOS DE PERITO CRIMINAL FEDERAL",
+        "questions": 50,
+        "accepted": 46,
+        "quarantined": 4,
+        "rejected": 0,
+        "annulled": 4
+      },
+      {
+        "value": "CONHECIMENTOS BÁSICOS – BLOCO I – PARA OS CARGOS 15, 16 E 17",
+        "questions": 60,
+        "accepted": 58,
+        "quarantined": 2,
+        "rejected": 0,
+        "annulled": 2
+      },
+      {
+        "value": "CONHECIMENTOS BÁSICOS – BLOCO II – PARA OS CARGOS 15, 16 E 17",
+        "questions": 36,
+        "accepted": 31,
+        "quarantined": 5,
+        "rejected": 0,
+        "annulled": 5
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 1",
+        "questions": 120,
+        "accepted": 116,
+        "quarantined": 4,
+        "rejected": 0,
+        "annulled": 4
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 10/ÁREA 12",
+        "questions": 70,
+        "accepted": 66,
+        "quarantined": 4,
+        "rejected": 0,
+        "annulled": 4
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 11/ÁREA 14",
+        "questions": 70,
+        "accepted": 56,
+        "quarantined": 14,
+        "rejected": 0,
+        "annulled": 2
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 12",
+        "questions": 120,
+        "accepted": 109,
+        "quarantined": 11,
+        "rejected": 0,
+        "annulled": 6
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 13",
+        "questions": 120,
+        "accepted": 115,
+        "quarantined": 5,
+        "rejected": 0,
+        "annulled": 2
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 14",
+        "questions": 120,
+        "accepted": 113,
+        "quarantined": 7,
+        "rejected": 0,
+        "annulled": 0
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 2/ÁREA 1",
+        "questions": 70,
+        "accepted": 69,
+        "quarantined": 1,
+        "rejected": 0,
+        "annulled": 1
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 3/ÁREA 2",
+        "questions": 70,
+        "accepted": 69,
+        "quarantined": 1,
+        "rejected": 0,
+        "annulled": 1
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 4 - ÁREA 3",
+        "questions": 70,
+        "accepted": 56,
+        "quarantined": 14,
+        "rejected": 0,
+        "annulled": 11
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 5/ÁREA 4",
+        "questions": 70,
+        "accepted": 67,
+        "quarantined": 3,
+        "rejected": 0,
+        "annulled": 3
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 6/ÁREA 5",
+        "questions": 70,
+        "accepted": 55,
+        "quarantined": 15,
+        "rejected": 0,
+        "annulled": 10
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 7/ÁREA 6",
+        "questions": 70,
+        "accepted": 54,
+        "quarantined": 16,
+        "rejected": 0,
+        "annulled": 2
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 8/ÁREA 7",
+        "questions": 70,
+        "accepted": 55,
+        "quarantined": 15,
+        "rejected": 0,
+        "annulled": 5
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 9/ÁREA 9",
+        "questions": 70,
+        "accepted": 67,
+        "quarantined": 3,
+        "rejected": 0,
+        "annulled": 2
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 1",
+        "questions": 190,
+        "accepted": 183,
+        "quarantined": 7,
+        "rejected": 0,
+        "annulled": 7
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 10",
+        "questions": 140,
+        "accepted": 136,
+        "quarantined": 4,
+        "rejected": 0,
+        "annulled": 4
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 11",
+        "questions": 140,
+        "accepted": 129,
+        "quarantined": 11,
+        "rejected": 0,
+        "annulled": 11
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 12",
+        "questions": 140,
+        "accepted": 132,
+        "quarantined": 8,
+        "rejected": 0,
+        "annulled": 8
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 13",
+        "questions": 140,
+        "accepted": 132,
+        "quarantined": 8,
+        "rejected": 0,
+        "annulled": 8
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 14",
+        "questions": 140,
+        "accepted": 133,
+        "quarantined": 7,
+        "rejected": 0,
+        "annulled": 7
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 15",
+        "questions": 94,
+        "accepted": 91,
+        "quarantined": 3,
+        "rejected": 0,
+        "annulled": 3
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 16",
+        "questions": 24,
+        "accepted": 21,
+        "quarantined": 3,
+        "rejected": 0,
+        "annulled": 3
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 17",
+        "questions": 24,
+        "accepted": 23,
+        "quarantined": 1,
+        "rejected": 0,
+        "annulled": 1
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 2",
+        "questions": 140,
+        "accepted": 124,
+        "quarantined": 16,
+        "rejected": 0,
+        "annulled": 9
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 3",
+        "questions": 140,
+        "accepted": 139,
+        "quarantined": 1,
+        "rejected": 0,
+        "annulled": 1
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 4",
+        "questions": 140,
+        "accepted": 135,
+        "quarantined": 5,
+        "rejected": 0,
+        "annulled": 5
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 5",
+        "questions": 140,
+        "accepted": 132,
+        "quarantined": 8,
+        "rejected": 0,
+        "annulled": 8
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 6",
+        "questions": 140,
+        "accepted": 130,
+        "quarantined": 10,
+        "rejected": 0,
+        "annulled": 6
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 7",
+        "questions": 140,
+        "accepted": 132,
+        "quarantined": 8,
+        "rejected": 0,
+        "annulled": 4
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 8",
+        "questions": 140,
+        "accepted": 135,
+        "quarantined": 5,
+        "rejected": 0,
+        "annulled": 5
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 9",
+        "questions": 140,
+        "accepted": 137,
+        "quarantined": 3,
+        "rejected": 0,
+        "annulled": 3
+      },
+      {
+        "value": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 1",
+        "questions": 68,
+        "accepted": 64,
+        "quarantined": 4,
+        "rejected": 0,
+        "annulled": 0
+      },
+      {
+        "value": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 2",
+        "questions": 69,
+        "accepted": 65,
+        "quarantined": 4,
+        "rejected": 0,
+        "annulled": 0
+      },
+      {
+        "value": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 3",
+        "questions": 69,
+        "accepted": 65,
+        "quarantined": 4,
+        "rejected": 0,
+        "annulled": 0
+      },
+      {
+        "value": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 4",
+        "questions": 69,
+        "accepted": 65,
+        "quarantined": 4,
+        "rejected": 0,
+        "annulled": 0
+      },
+      {
+        "value": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 5",
+        "questions": 68,
+        "accepted": 63,
+        "quarantined": 5,
+        "rejected": 0,
+        "annulled": 0
+      },
+      {
+        "value": "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 1",
+        "questions": 69,
+        "accepted": 61,
+        "quarantined": 8,
+        "rejected": 0,
+        "annulled": 0
+      },
+      {
+        "value": "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 2",
+        "questions": 69,
+        "accepted": 61,
+        "quarantined": 8,
+        "rejected": 0,
+        "annulled": 0
+      },
+      {
+        "value": "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 3",
+        "questions": 69,
+        "accepted": 61,
+        "quarantined": 8,
+        "rejected": 0,
+        "annulled": 0
+      },
+      {
+        "value": "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 4",
+        "questions": 69,
+        "accepted": 61,
+        "quarantined": 8,
+        "rejected": 0,
+        "annulled": 0
+      },
+      {
+        "value": "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 5",
+        "questions": 69,
+        "accepted": 61,
+        "quarantined": 8,
+        "rejected": 0,
+        "annulled": 0
+      },
+      {
+        "value": "PROVA C – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 1",
+        "questions": 70,
+        "accepted": 62,
+        "quarantined": 8,
+        "rejected": 0,
+        "annulled": 0
+      },
+      {
+        "value": "PROVA C – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 2",
+        "questions": 70,
+        "accepted": 62,
+        "quarantined": 8,
+        "rejected": 0,
+        "annulled": 0
+      },
+      {
+        "value": "PROVA C – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 3",
+        "questions": 70,
+        "accepted": 62,
+        "quarantined": 8,
+        "rejected": 0,
+        "annulled": 0
+      },
+      {
+        "value": "PROVA C – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 4",
+        "questions": 70,
+        "accepted": 62,
+        "quarantined": 8,
+        "rejected": 0,
+        "annulled": 0
+      },
+      {
+        "value": "PROVA C – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 5",
+        "questions": 70,
+        "accepted": 62,
+        "quarantined": 8,
+        "rejected": 0,
+        "annulled": 0
+      }
+    ],
+    "estado": [
+      {
+        "value": "accepted",
+        "questions": 5017,
+        "accepted": 5017,
+        "quarantined": 0,
+        "rejected": 0,
+        "annulled": 0
+      },
+      {
+        "value": "quarantined",
+        "questions": 403,
+        "accepted": 0,
+        "quarantined": 403,
+        "rejected": 0,
+        "annulled": 178
+      },
+      {
+        "value": "rejected",
+        "questions": 0,
+        "accepted": 0,
+        "quarantined": 0,
+        "rejected": 0,
+        "annulled": 0
+      }
+    ]
+  },
+  "quarantine_reasons": {
+    "item anulado no gabarito oficial": 178,
+    "elemento visual exige revisão": 98,
+    "texto de apoio não associado": 130
+  },
+  "quarantine_exclusive_combinations": {
+    "item anulado no gabarito oficial": 175,
+    "elemento visual exige revisão": 95,
+    "elemento visual exige revisão + item anulado no gabarito oficial": 3,
+    "texto de apoio não associado": 130
+  },
+  "lineage_warnings": [
+    "Banco do Brasil / Cesgranrio: anos estruturados [2021] diferem dos esperados [2021, 2023].",
+    "Banco do Brasil / Cesgranrio: 17 documento(s) do manifesto não têm questão no pacote estruturado.",
+    "Banco do Brasil / Cesgranrio: a referência de quarentena para 'quantidade inválida de alternativas' é 19, mas o pacote final registra 0.",
+    "Banco do Brasil / Cesgranrio: a referência de quarentena para 'elemento visual exige revisão' é 8, mas o pacote final registra 5.",
+    "Banco do Brasil / Cesgranrio: a referência de quarentena para 'incompatibilidade entre alternativas e gabarito' é 3, mas o pacote final registra 0.",
+    "Banco do Brasil / Cesgranrio: o pacote final registra 130 ocorrência(s) de 'texto de apoio não associado', categoria ausente na referência fornecida."
+  ],
+  "duplicate_stable_ids": 0,
+  "content_sha256": "8ade7f46ed1df175f310d6ec375b44f6b899edd806a57e7d487ec047869851df",
+  "defects": [
+    {
+      "problem": "adaptador limitado a uma execução",
+      "cause": "geração de lotes acoplada ao operator run",
+      "resolution": "gerador comum reutilizado pelo inventário consolidado",
+      "status": "fixed"
+    },
+    {
+      "problem": "pacote histórico da PF usa política de hash anterior",
+      "cause": "hash histórico inclui hashes dos manifestos",
+      "resolution": "compatibilidade estrita registrada como legacy-with-manifest",
+      "status": "fixed"
+    },
+    {
+      "problem": "pacote BB rotulado como 2021/2023 contém somente questões de 2021",
+      "cause": "17 documentos de 2023 não foram associados e estruturados",
+      "resolution": "divergência preservada como alerta; conteúdo não foi inventado",
+      "status": "blocked"
+    }
+  ],
+  "validation": {
+    "focused_tests": "14 passed",
+    "full_suite": "945 passed, 114 subtests passed",
+    "lint": "passed",
+    "type_check": "80 source files passed",
+    "javascript_syntax": "passed",
+    "real_documents_sha256_verified": 152,
+    "active_batches": 75,
+    "rerun_changed_sessions": 0,
+    "ollama": {
+      "version": "0.33.3",
+      "qwen3_8b_quantization": "Q4_K_M",
+      "approved_digest": true,
+      "offline_inventory_hash_equal": true
+    },
+    "unapproved_export": "refused without creating import files",
+    "wheel": {
+      "name": "kad_collector-0.4.0-py3-none-any.whl",
+      "sha256": "29fd99d1ffb90e4109ed0d2d9f11a8da06bab7d4e03976b1c1ec061ea0224582",
+      "isolated_install": "passed"
+    },
+    "desktop_smoke": "passed",
+    "ocr_prepare": "passed",
+    "supabase_writes": 0,
+    "kad_publications": 0
+  }
+}
