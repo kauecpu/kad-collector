@@ -91,6 +91,25 @@ botão **Exportar aprovadas** gera `questoes.jsonl` no contrato editorial v2, se
 `publicationStatus: draft`, além das exceções, manifesto, relatório e PDFs de evidência. O
 Collector não recebe credenciais do Supabase e não escreve no banco do KAD.
 
+## Inventário editorial consolidado
+
+Use `consolidate-review` para reunir pacotes estruturados já existentes na mesma fila de
+revisão, sem copiar os PDFs para o Git e sem aprovar ou publicar questões automaticamente:
+
+```cmd
+kad-collector consolidate-review config\consolidated-pf-bb.v1.json ^
+  --output data\consolidated\pf-bb ^
+  --report-json docs\homologation\consolidated-review-results.json ^
+  --report-markdown docs\homologation\consolidated-review-report.md
+```
+
+A especificação fixa os pacotes, manifestos e totais esperados. Antes de criar os lotes, o
+comando confere os hashes dos manifestos e de todos os PDFs referenciados, rejeita IDs
+estáveis duplicados e registra documentos presentes no acervo que ainda não chegaram ao
+pacote estruturado. Repetir a consolidação preserva as sessões e decisões humanas existentes.
+Os relatórios podem ser versionados, mas os PDFs, rastros de classificação e sessões de
+revisão permanecem em `data/`.
+
 ## Instalacao no Windows (CMD)
 
 ```cmd
