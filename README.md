@@ -68,6 +68,29 @@ preserva o último manifesto verificado e registra a nova falha. O limite de arq
 com o período pedido, até o teto de 1.000 por fonte, sem remover os limites de navegação,
 host, tamanho, `robots.txt` ou segurança já configurados.
 
+Ao final, o comando também prepara lotes determinísticos para a revisão editorial existente.
+Questões aceitas e em quarentena entram sempre como pendentes; rejeições estruturais ficam em
+arquivos de exceção com seus motivos. Nenhuma decisão humana anterior é sobrescrita quando o
+mesmo pacote é preparado novamente. Para abrir o primeiro lote automaticamente:
+
+```cmd
+kad-collector run --orgao "Policia Federal" --banca CEBRASPE --ano-inicial 2021 --ano-final 2021 --open-review
+```
+
+No modo `--interactive`, o Collector pergunta se deve abrir a revisão depois de mostrar o
+resumo. Sem `--open-review`, ele imprime o comando completo para retomar o primeiro lote. O
+índice de todos os lotes fica em `review/index.json`; lotes, sessões, exceções e exportações
+permanecem dentro da pasta `review/` da execução.
+
+A revisão continua local em `127.0.0.1`. Aprovar exige campos editoriais e resposta oficial;
+rejeitar exige justificativa. Questões em quarentena mantêm bloqueios próprios, que não somem
+quando outro campo é editado. A tela permite filtrar por concurso, banca, ano e estado, adiar
+uma decisão e aprovar em lote somente as questões pendentes que estejam livres de bloqueios.
+Depois que todas as questões do lote recebem uma decisão final, o
+botão **Exportar aprovadas** gera `questoes.jsonl` no contrato editorial v2, sempre com
+`publicationStatus: draft`, além das exceções, manifesto, relatório e PDFs de evidência. O
+Collector não recebe credenciais do Supabase e não escreve no banco do KAD.
+
 ## Instalacao no Windows (CMD)
 
 ```cmd

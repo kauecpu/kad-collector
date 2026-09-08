@@ -43,6 +43,7 @@ from .ollama_preflight import (
     inspect_ollama_environment,
     probe_ollama_models,
 )
+from .operator_review import build_operator_review_index, first_reviewable_batch
 from .operator_run import OperatorParameters, default_operator_output, run_operator
 from .pdf_extractor import extract_manifest
 from .promotion import build_promotion_package, dry_run_promotion
@@ -130,6 +131,12 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--ollama-endpoint", default=DEFAULT_OLLAMA_ENDPOINT)
     run.add_argument("--qwen-model", default=DEFAULT_QWEN_MODEL)
     run.add_argument("--disable-ollama", action="store_true")
+    run.add_argument(
+        "--open-review",
+        action="store_true",
+        help="abre o primeiro lote na revisão local depois de estruturar as questões",
+    )
+    run.add_argument("--review-port", type=int, default=8765)
     run.add_argument("--model")
     run.add_argument("--max-chars", type=int, default=40_000)
     run.add_argument("--overlap-chars", type=int, default=3_000)
@@ -195,6 +202,10 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument("batch", type=_path)
     review.add_argument("--session", type=_path)
     review.add_argument("--output", type=_path)
+    review.add_argument("--exceptions", type=_path)
+    review.add_argument(
+        "--admin-output-dir", type=_path, default=Path("data/exports")
+    )
     review.add_argument("--port", type=int, default=8765)
     review.add_argument(
         "--open-browser",
@@ -508,10 +519,50 @@ def _operator_request_from_args(
 def _uses_operator_run(args: argparse.Namespace) -> bool:
     return bool(
         args.interactive
+        or args.open_review
         or args.resume is not None
         or args.ano_inicial is not None
         or args.ano_final is not None
         or (not args.url and not args.urls_file and (args.organizations or args.boards))
+    )
+
+
+def _finish_operator_review(args: argparse.Namespace, output_dir: Path) -> None:
+    index, index_path = build_operator_review_index(output_dir)
+    print("")
+    print(f"Fila editorial: {index_path}")
+    print(f"Questões aguardando decisão humana: {index.pending_questions}")
+    print(f"Questões com atenção estrutural: {index.quarantined_questions}")
+    print(f"Questões preservadas nas exceções: {index.rejected_questions}")
+    first = first_reviewable_batch(index)
+    if first is None:
+        print("Nenhum lote revisável foi produzido.")
+        return
+
+    open_review = bool(args.open_review)
+    if args.interactive:
+        answer = input("Abrir a revisão local agora? [s/N]: ").strip().casefold()
+        open_review = answer in {"s", "sim"}
+    if not open_review:
+        print("")
+        print("Para abrir o primeiro lote:")
+        print(
+            f'kad-collector review "{first.batch_path}" '
+            f'--session "{first.session_path}" '
+            f'--exceptions "{first.exceptions_path}" '
+            f'--admin-output-dir "{output_dir / "review" / "exports"}" --open-browser'
+        )
+        return
+
+    assert first.batch_path is not None
+    assert first.session_path is not None
+    serve_review_application(
+        Path(first.batch_path),
+        session_path=Path(first.session_path),
+        port=args.review_port,
+        open_browser=True,
+        admin_output_root=output_dir / "review" / "exports",
+        additional_exceptions_path=Path(first.exceptions_path),
     )
 
 
@@ -532,6 +583,8 @@ def _run(args: argparse.Namespace) -> int:
                 qwen_model=args.qwen_model,
                 enable_ollama=not args.disable_ollama,
             )
+            if operator_result.state.status == "completed":
+                _finish_operator_review(args, output_dir)
             return 2 if operator_result.state.status == "failed" else 0
         urls = read_requested_urls(args.url, args.urls_file)
         semiautomatic_report, path = run_semiautomatic(
@@ -653,6 +706,8 @@ def _run(args: argparse.Namespace) -> int:
             output_path=args.output,
             port=args.port,
             open_browser=args.open_browser,
+            admin_output_root=args.admin_output_dir,
+            additional_exceptions_path=args.exceptions,
         )
         return 0
     if args.command == "package":

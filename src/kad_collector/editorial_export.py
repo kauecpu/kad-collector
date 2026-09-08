@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 
 from pydantic import ConfigDict, Field
 
-from .json_utils import write_json, write_json_lines
+from .json_utils import read_json, write_json, write_json_lines
 from .models import DocumentRecord, QuestionBatch, QuestionRecord, StrictModel
 from .validation import validate_app_import_question, verify_approved_batch
 
@@ -170,6 +170,15 @@ class EditorialExportResult:
     exception_count: int
 
 
+def load_editorial_exceptions(path: Path | None) -> list[EditorialExportException]:
+    if path is None or not path.is_file():
+        return []
+    payload = read_json(path)
+    if not isinstance(payload, list):
+        raise ValueError("o arquivo de exceções editoriais deve conter uma lista")
+    return [EditorialExportException.model_validate(item) for item in payload]
+
+
 def _slug(value: str, *, maximum: int) -> str:
     decomposed = unicodedata.normalize("NFKD", value)
     ascii_value = "".join(
@@ -180,6 +189,8 @@ def _slug(value: str, *, maximum: int) -> str:
 
 
 def stable_question_id(batch: QuestionBatch, question: QuestionRecord) -> str:
+    if question.source_stable_id is not None:
+        return f"q-{question.source_stable_id}"
     provider = _slug(batch.source_document.source_id, maximum=72)
     proof = batch.source_document.sha256[:12]
     return f"q-{provider}-{proof}-{question.number}"

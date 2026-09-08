@@ -97,6 +97,10 @@ def validate_editorial_question(question: QuestionRecord) -> list[str]:
         required_text_fields=_EDITORIAL_TEXT_FIELDS,
         purpose="exportacao",
     )
+    errors.extend(
+        f"questao {question.number}: bloqueio editorial pendente: {reason}"
+        for reason in question.editorial_blocks
+    )
     if question.explanation is not None and len(question.explanation.strip()) < 10:
         errors.append(
             f"questao {question.number}: explicacao deve ter pelo menos 10 caracteres"
@@ -152,6 +156,14 @@ def validate_questions(
 
 
 def batch_content_sha256(batch: QuestionBatch) -> str:
+    question_payloads: list[dict[str, object]] = []
+    for question in batch.questions:
+        question_payload = question.model_dump(mode="json")
+        if question_payload.get("source_stable_id") is None:
+            question_payload.pop("source_stable_id", None)
+        if not question_payload.get("editorial_blocks"):
+            question_payload.pop("editorial_blocks", None)
+        question_payloads.append(question_payload)
     content = {
         "batch_id": batch.batch_id,
         "model": batch.model,
@@ -163,7 +175,7 @@ def batch_content_sha256(batch: QuestionBatch) -> str:
         ),
         "filters": batch.filters.model_dump(mode="json"),
         "filtered_out_questions": batch.filtered_out_questions,
-        "questions": [question.model_dump(mode="json") for question in batch.questions],
+        "questions": question_payloads,
     }
     canonical = json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

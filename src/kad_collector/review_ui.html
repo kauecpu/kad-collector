@@ -24,6 +24,7 @@
           <div class="pending"><strong id="summary-pending">—</strong><span>Pendentes</span></div>
           <div class="approved"><strong id="summary-approved">—</strong><span>Aprovadas</span></div>
           <div class="rejected"><strong id="summary-rejected">—</strong><span>Rejeitadas</span></div>
+          <div><strong id="summary-deferred">—</strong><span>Adiadas</span></div>
         </section>
 
         <div class="filter-row" role="group" aria-label="Filtrar questões">
@@ -31,6 +32,12 @@
           <button type="button" class="filter" data-filter="pending">Pendentes</button>
           <button type="button" class="filter" data-filter="approved">Aprovadas</button>
           <button type="button" class="filter" data-filter="rejected">Rejeitadas</button>
+          <button type="button" class="filter" data-filter="deferred">Adiadas</button>
+        </div>
+        <div class="metadata-filters" aria-label="Filtros editoriais">
+          <input id="filter-contest" placeholder="Concurso" aria-label="Filtrar por concurso">
+          <input id="filter-board" placeholder="Banca" aria-label="Filtrar por banca">
+          <input id="filter-year" type="number" min="1900" max="2100" placeholder="Ano" aria-label="Filtrar por ano">
         </div>
         <nav id="question-list" class="question-list" aria-label="Questões do lote"></nav>
       </aside>
@@ -52,6 +59,7 @@
           </label>
           <div class="toolbar-actions">
             <a id="source-link" class="button secondary" href="/source.pdf" target="_blank" rel="noreferrer">Abrir PDF</a>
+            <button id="approve-ready-button" type="button" class="button success">Aprovar válidas</button>
             <button id="export-button" type="button" class="button primary">Exportar aprovadas</button>
           </div>
         </section>
@@ -136,6 +144,9 @@
             <label class="wide">Avisos e observações da extração
               <textarea id="review-notes" rows="4" placeholder="Uma observação por linha"></textarea>
             </label>
+            <label class="wide">Bloqueios editoriais pendentes
+              <textarea id="editorial-blocks" rows="3" placeholder="Remova um bloqueio somente depois de resolver e conferir o problema"></textarea>
+            </label>
           </section>
 
           <section class="decision-card">
@@ -144,6 +155,7 @@
             </label>
             <div class="decision-actions">
               <button id="save-button" type="button" class="button secondary">Salvar alterações</button>
+              <button id="defer-button" type="button" class="button secondary">Adiar</button>
               <button id="reject-button" type="button" class="button danger">Rejeitar</button>
               <button id="approve-button" type="button" class="button success">Aprovar questão</button>
             </div>
