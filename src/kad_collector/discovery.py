@@ -185,7 +185,7 @@ def _looks_blocked(title: str, content: str, url: str) -> str | None:
         content,
         re.IGNORECASE,
     )
-    if login_path or password_field or login_form:
+    if not has_public_pdf_link and (login_path or password_field or login_form):
         return "login"
     return None
 

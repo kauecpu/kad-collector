@@ -8,6 +8,10 @@ connect_timeout_seconds = 10.0
 max_files_per_source = 40
 max_html_bytes = 5000000
 max_pdf_bytes = 50000000
+max_archive_bytes = 100000000
+max_archive_members = 250
+max_archive_uncompressed_bytes = 250000000
+max_archive_compression_ratio = 100.0
 max_concurrency = 4
 max_retries = 4
 retry_max_delay_seconds = 120.0
@@ -501,3 +505,154 @@ terms_url = "https://www.pciconcursos.com.br/"
 
 [sources.metadata]
 orgao = "Banco do Brasil"
+
+# Concursos publicos da Fundacao Carlos Chagas. O portal publico divulga os
+# documentos do certame; areas que redirecionam para o Portal do Candidato
+# permanecem registradas como limitacao, sem autenticacao automatizada.
+[[sources]]
+id = "fcc_concursos"
+name = "Fundacao Carlos Chagas - Concursos"
+enabled = true
+start_urls = [
+  "https://www.concursosfcc.com.br/concursos/dpeba125/index.html",
+  "https://www.concursosfcc.com.br/concursos/trt4r122/index.html",
+]
+allowed_hosts = ["concursosfcc.com.br", "www.concursosfcc.com.br"]
+robots_policy = "enforce"
+crawl_delay_policy = "enforce"
+include_patterns = [
+  "(?is)(?:prova|caderno|gabarito).*(?:\\.pdf(?:$|[?#])|portal_candidato)",
+]
+exclude_patterns = [
+  "(?i)(resultado|classificacao|convocacao|comunicado|cronograma|inscricao|isencao|recurso|retificacao|locais?.?de.?prova)",
+]
+exam_patterns = ["(?i)(prova|caderno)"]
+answer_key_patterns = ["(?i)gabarito"]
+collection_url_patterns = [
+  "(?i)^https://www\\.concursosfcc\\.com\\.br/concursos/[a-z0-9]+/[^?#]*(?:[?#].*)?$",
+]
+pagination_patterns = []
+max_pages_per_run = 3
+request_interval_seconds = 2.0
+access_mode = "content"
+authorization_basis = "Paginas publicas dos concursos da Fundacao Carlos Chagas; coleta interna para revisao, sem autenticar no Portal do Candidato e sem publicacao automatica."
+terms_url = "https://www.concursosfcc.com.br/"
+
+[sources.metadata]
+banca = "FCC"
+orgao = "Concursos publicos"
+
+# Paginas publicas de concursos organizados pela Fundacao Vunesp. O coletor nao
+# autentica na Area do Candidato; se provas e gabaritos exigirem login, a
+# limitacao e registrada em vez de contornada.
+[[sources]]
+id = "vunesp_concursos"
+name = "Fundacao Vunesp - Concursos"
+enabled = true
+start_urls = [
+  "https://www.vunesp.com.br/DPSP2202",
+  "https://www.vunesp.com.br/VUNE2403",
+]
+allowed_hosts = ["vunesp.com.br", "www.vunesp.com.br", "documento.vunesp.com.br"]
+robots_policy = "enforce"
+crawl_delay_policy = "enforce"
+include_patterns = [
+  "(?is)(?:prova|caderno|gabarito).*\\.pdf(?:$|[?#])",
+]
+exclude_patterns = [
+  "(?i)(edital|resultado|classificacao|convocacao|comunicado|cronograma|inscricao|recurso|vista.?de.?prova)",
+]
+exam_patterns = ["(?i)(prova|caderno)"]
+answer_key_patterns = ["(?i)gabarito"]
+collection_url_patterns = [
+  "(?i)^https://www\\.vunesp\\.com\\.br/[A-Z0-9]+/?(?:[?#].*)?$",
+]
+pagination_patterns = []
+max_pages_per_run = 2
+request_interval_seconds = 2.0
+access_mode = "content"
+authorization_basis = "Paginas publicas de concursos da Fundacao Vunesp; coleta interna sem login, CAPTCHA ou acesso a Area do Candidato."
+terms_url = "https://www.vunesp.com.br/"
+
+[sources.metadata]
+banca = "VUNESP"
+orgao = "Concursos publicos"
+
+# Arquivo publico do Instituto AOCP. Respostas de bloqueio sao tratadas como
+# limitacao da fonte; o transporte HTTP nao executa bypass nem login.
+[[sources]]
+id = "instituto_aocp_concursos"
+name = "Instituto AOCP - Concursos"
+enabled = true
+start_urls = [
+  "https://www.institutoaocp.org.br/concursos/26",
+]
+allowed_hosts = [
+  "institutoaocp.org.br",
+  "www.institutoaocp.org.br",
+  "arquivos-site.institutoaocp.org.br",
+]
+robots_policy = "enforce"
+crawl_delay_policy = "enforce"
+include_patterns = [
+  "(?is)(?:prova|caderno|gabarito).*\\.pdf(?:$|[?#])",
+]
+exclude_patterns = [
+  "(?i)(edital|resultado|classificacao|convocacao|comunicado|cronograma|inscricao|recurso|retificacao|local.?de.?prova)",
+]
+exam_patterns = ["(?i)(prova|caderno)"]
+answer_key_patterns = ["(?i)gabarito"]
+collection_url_patterns = [
+  "(?i)^https://www\\.institutoaocp\\.org\\.br/concursos/\\d+/?(?:[?#].*)?$",
+]
+pagination_patterns = []
+max_pages_per_run = 2
+request_interval_seconds = 2.0
+access_mode = "content"
+authorization_basis = "Publicacoes de concursos no portal oficial do Instituto AOCP; coleta interna sem contornar bloqueios, login ou CAPTCHA."
+terms_url = "https://www.institutoaocp.org.br/"
+
+[sources.metadata]
+banca = "INSTITUTO AOCP"
+orgao = "Concursos publicos"
+
+# Publicacoes oficiais do Instituto Quadrix. Alguns cadernos sao entregues em
+# ZIP; o coletor valida o arquivo, extrai somente PDFs seguros e preserva o
+# nome do membro e o hash do pacote como evidencia.
+[[sources]]
+id = "quadrix_concursos"
+name = "Instituto Quadrix - Concursos"
+enabled = true
+start_urls = [
+  "https://quadrix.org.br/informacoes/1018/",
+  "https://quadrix.org.br/informacoes/13/",
+]
+allowed_hosts = [
+  "quadrix.org.br",
+  "www.quadrix.org.br",
+  "anexos-r2.selecao.net.br",
+  "anexos.cdn.selecao.net.br",
+]
+robots_policy = "enforce"
+crawl_delay_policy = "enforce"
+include_patterns = [
+  "(?is)(?:provas?\\s+aplicadas?|gabarito\\s+(?:preliminar|definitivo)).*(?:\\.pdf|\\.zip)(?:$|[?#])",
+]
+exclude_patterns = [
+  "(?i)(resultado|classificacao|convocacao|comunicado|cronograma|inscricao|recurso|retificacao|local.?de.?prova|analise.?de.?recursos)",
+]
+exam_patterns = ["(?i)(provas?\\s+aplicadas?|prova|caderno)"]
+answer_key_patterns = ["(?i)gabarito"]
+collection_url_patterns = [
+  "(?i)^https://(?:www\\.)?quadrix\\.org\\.br/informacoes/\\d+/?(?:[?#].*)?$",
+]
+pagination_patterns = []
+max_pages_per_run = 2
+request_interval_seconds = 2.0
+access_mode = "content"
+authorization_basis = "Provas e gabaritos publicados nas paginas oficiais do Instituto Quadrix; coleta interna com origem e hashes preservados, sem publicacao automatica."
+terms_url = "https://quadrix.org.br/"
+
+[sources.metadata]
+banca = "QUADRIX"
+orgao = "Concursos publicos"

@@ -1212,6 +1212,34 @@ A matriz congelada do piloto PF 2021 está em
 e o resultado da homologação ampliada está documentado em
 [`docs/homologation/2026-09-07-pf-structured-questions-report.md`](docs/homologation/2026-09-07-pf-structured-questions-report.md).
 
+### Homologação FCC, Vunesp, Instituto AOCP e Quadrix
+
+As quatro fontes oficiais estão cadastradas com transporte HTTP, `robots.txt` em modo
+`enforce`, intervalo de dois segundos e navegação limitada a três páginas por amostra. A FCC
+expõe alguns arquivos por um visualizador oficial; o Collector recupera apenas a URL pública
+declarada em `file=` e volta a aplicar host permitido, `robots.txt` e validação do arquivo. A
+Vunesp e o Instituto AOCP não recebem login, cookies nem contorno de bloqueio. A Quadrix
+publica cadernos em ZIP: somente PDFs válidos são extraídos, com limites de tamanho, quantidade
+de membros e taxa de compressão; caminhos relativos maliciosos, conteúdo criptografado e PDFs
+inválidos são recusados.
+
+A matriz versionada define seis concursos e os documentos esperados antes da execução. Os PDFs,
+textos e pacotes completos ficam em `data/homologation/phase5-banks`, fora do Git:
+
+```powershell
+.venv\Scripts\python.exe scripts\run_live_source_homologation.py `
+  --matrix tests\homologation\phase5-banks.v1.toml `
+  --config config\sources.official.toml `
+  --data-dir data\homologation\phase5-banks `
+  --output docs\homologation\2026-09-08-phase5-banks-results.json `
+  --markdown docs\homologation\2026-09-08-phase5-banks-report.md `
+  --repeat-source quadrix_corepi_2026
+```
+
+Repita com `--ollama-offline` e caminhos de saída diferentes para provar que uma falha do Qwen
+não derruba a descoberta determinística. O relatório diferencia documento localizado de questão
+realmente pronta; nenhum resultado dessa homologação é enviado ao KAD ou ao Supabase.
+
 ### Revalidação obrigatória de gabaritos
 
 O banco local pode simular e aplicar a migração de vínculos antigos para

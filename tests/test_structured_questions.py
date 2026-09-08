@@ -6,6 +6,7 @@ from pathlib import Path
 from kad_collector.models import DocumentRecord, ExtractedDocument, ExtractedPage
 from kad_collector.structured_questions import (
     StructuredQuestionPackage,
+    _content_document_type,
     _pair_documents,
     _process_pair,
     build_structured_question_package,
@@ -49,7 +50,9 @@ def _document(
                 confidence=0.91 if method == "ocr" else None,
                 duration_ms=17,
                 ocr_reason=(
-                    "camada de texto ausente ou insuficiente" if method == "ocr" else None
+                    "camada de texto ausente ou insuficiente"
+                    if method == "ocr"
+                    else None
                 ),
             )
         ],
@@ -68,7 +71,10 @@ def test_package_is_review_first_and_semantically_idempotent(
         "3 A terceira afirmação está completa.\n"
     )
     exam = _document(
-        "exam", "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 1", "a", exam_text,
+        "exam",
+        "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 1",
+        "a",
+        exam_text,
         method="ocr",
     )
     answer_key = _document(
@@ -89,8 +95,12 @@ def test_package_is_review_first_and_semantically_idempotent(
         module, "_ollama_available", lambda *_args, **_kwargs: next(availability)
     )
 
-    first = build_structured_question_package([Path("manifest.json")], tmp_path / "a.json")
-    second = build_structured_question_package([Path("manifest.json")], tmp_path / "b.json")
+    first = build_structured_question_package(
+        [Path("manifest.json")], tmp_path / "a.json"
+    )
+    second = build_structured_question_package(
+        [Path("manifest.json")], tmp_path / "b.json"
+    )
 
     assert first.content_sha256 == second.content_sha256
     assert [item.stable_id for item in first.accepted] == [
@@ -102,11 +112,15 @@ def test_package_is_review_first_and_semantically_idempotent(
     assert first.metrics.qwen_calls == 0
     assert len(first.accepted) == 1
     assert len(first.quarantined) == 2
-    assert {reason for item in first.quarantined for reason in item.validation_reasons} == {
+    assert {
+        reason for item in first.quarantined for reason in item.validation_reasons
+    } == {
         "elemento visual exige revisão",
         "item anulado no gabarito oficial",
     }
-    StructuredQuestionPackage.model_validate_json((tmp_path / "a.json").read_text("utf-8"))
+    StructuredQuestionPackage.model_validate_json(
+        (tmp_path / "a.json").read_text("utf-8")
+    )
 
 
 def test_multiple_choice_answer_is_preserved() -> None:
@@ -116,9 +130,7 @@ def test_multiple_choice_answer_is_preserved() -> None:
         "d",
         "QUESTÃO 1\nQual alternativa está correta?\nA) Alfa\nB) Beta\nC) Gama\nD) Delta",
     )
-    answer_key = _document(
-        "answer_key", "GABARITO DEFINITIVO - CARGO 1", "e", "1 - D"
-    )
+    answer_key = _document("answer_key", "GABARITO DEFINITIVO - CARGO 1", "e", "1 - D")
 
     questions, metrics = _process_pair(exam, answer_key, [])
 
@@ -128,16 +140,16 @@ def test_multiple_choice_answer_is_preserved() -> None:
     assert questions[0].correct_answer_label == "Delta"
 
 
-def test_qwen_is_used_only_for_a_missing_deterministic_item(monkeypatch: object) -> None:
+def test_qwen_is_used_only_for_a_missing_deterministic_item(
+    monkeypatch: object,
+) -> None:
     exam = _document(
         "exam",
         "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 1",
         "f",
         "SEÇÃO NÃO RECONHECIDA\n1 A afirmação consta literalmente no PDF.",
     )
-    answer_key = _document(
-        "answer_key", "GABARITO DEFINITIVO - CARGO 1", "1", "1 - C"
-    )
+    answer_key = _document("answer_key", "GABARITO DEFINITIVO - CARGO 1", "1", "1 - C")
 
     class Response:
         def raise_for_status(self) -> None:
@@ -207,9 +219,7 @@ def _cesgranrio_document(
 
 def test_pairing_uses_pdf_structure_and_reuses_a_consolidated_answer_key() -> None:
     key_text = "\n".join(f"{number} - A" for number in range(1, 11))
-    key = _cesgranrio_document(
-        "exam", "PROVA A - AGENTE COMERCIAL", "2", key_text
-    )
+    key = _cesgranrio_document("exam", "PROVA A - AGENTE COMERCIAL", "2", key_text)
     exam_one = _cesgranrio_document(
         "answer_key",
         "PROVA A - AGENTE COMERCIAL - GABARITO 1",
@@ -237,6 +247,59 @@ def test_pairing_uses_pdf_structure_and_reuses_a_consolidated_answer_key() -> No
     assert {answer_key.document.sha256 for _exam, answer_key in pairs} == {"2" * 64}
 
 
+def test_pairing_reuses_one_definitive_aggregate_key_for_archive_members() -> None:
+    def quadrix_document(
+        kind: str, title: str, digest: str, text: str
+    ) -> ExtractedDocument:
+        document = _document(kind, title, digest, text)
+        return document.model_copy(
+            update={
+                "document": document.document.model_copy(
+                    update={
+                        "source_id": "quadrix_concursos",
+                        "original_url": f"https://quadrix.org.br/{digest}.pdf",
+                        "resolved_url": f"https://quadrix.org.br/{digest}.pdf",
+                        "metadata": {
+                            "banca": "QUADRIX",
+                            "orgao": "CORE-PI",
+                            "ano": "2026",
+                            "concurso": "CORE-PI 2026",
+                        },
+                    }
+                )
+            }
+        )
+
+    exams = [
+        quadrix_document("exam", "Provas aplicadas - 200 Assistente", "a", "1 Questão"),
+        quadrix_document("exam", "Provas aplicadas - 201 Fiscal", "b", "1 Questão"),
+    ]
+    preliminary = quadrix_document(
+        "answer_key", "Gabarito preliminar (prova objetiva)", "c", "1 - A"
+    )
+    definitive = quadrix_document(
+        "answer_key", "Gabarito definitivo (prova objetiva)", "d", "1 - B"
+    )
+    errors = []
+
+    pairs = _pair_documents([*exams, preliminary, definitive], errors)
+
+    assert not errors
+    assert len(pairs) == 2
+    assert {key.document.sha256 for _exam, key in pairs} == {"d" * 64}
+
+
+def test_short_aggregate_key_with_question_column_stays_answer_key() -> None:
+    document = _document(
+        "answer_key",
+        "Gabarito definitivo (prova objetiva)",
+        "e",
+        "QUESTÃO  GABARITO\n1 A\n2 B\n3 C\n4 D\n5 E",
+    )
+
+    assert _content_document_type(document) == "answer_key"
+
+
 def test_cesgranrio_pair_selects_the_exam_booklet_variant() -> None:
     exam = _cesgranrio_document(
         "exam",
@@ -260,8 +323,10 @@ def test_cesgranrio_pair_selects_the_exam_booklet_variant() -> None:
 
 
 def test_long_exam_with_incidental_answer_pairs_is_not_reclassified() -> None:
-    text = ("Texto extenso da questão e das alternativas. " * 1_000) + "\n" + "\n".join(
-        f"referência {number} - A em comentário" for number in range(1, 31)
+    text = (
+        ("Texto extenso da questão e das alternativas. " * 1_000)
+        + "\n"
+        + "\n".join(f"referência {number} - A em comentário" for number in range(1, 31))
     )
     exam = _document(
         "exam", "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 1", "7", text

@@ -1,0 +1,107 @@
+schema_version = 1
+
+# Baseline definida em 08/09/2026 antes da execução. Cada item descreve o
+# mínimo publicamente anunciado na própria página oficial; documentos extras
+# só contam como corretos quando continuam sendo prova ou gabarito.
+
+[[sources]]
+id = "fcc_dpeba_2026"
+source_id = "fcc_concursos"
+scenario = "FCC atual; visualizador oficial com PDF real em parâmetro file"
+start_url = "https://www.concursosfcc.com.br/concursos/dpeba125/index.html"
+max_files_per_source = 10
+[sources.metadata]
+ano = "2026"
+concurso = "DPE Bahia 2026"
+orgao = "Defensoria Publica do Estado da Bahia"
+[[sources.expected]]
+kind = "answer_key"
+pattern = "(?i)edital_dos_gabaritos_prova_objetiva\\.pdf"
+
+[[sources]]
+id = "fcc_trt4_2022"
+source_id = "fcc_concursos"
+scenario = "FCC histórico; gabarito individual em página HTML"
+start_url = "https://www.concursosfcc.com.br/concursos/trt4r122/index.html"
+max_files_per_source = 10
+[sources.metadata]
+ano = "2022"
+concurso = "TRT 4a Regiao 2022"
+orgao = "Tribunal Regional do Trabalho da 4a Regiao"
+[[sources.expected]]
+kind = "answer_key"
+pattern = "(?i)gabaritos/(?:todos|index)\\.html"
+
+[[sources]]
+id = "vunesp_dpsp_2022"
+source_id = "vunesp_concursos"
+scenario = "Vunesp; área de provas e gabaritos anunciada na página pública"
+start_url = "https://www.vunesp.com.br/DPSP2202"
+max_files_per_source = 10
+[sources.metadata]
+ano = "2022"
+concurso = "DPSP 2022 - Agente de Defensoria"
+orgao = "Defensoria Publica do Estado de Sao Paulo"
+[[sources.expected]]
+kind = "exam"
+pattern = "(?i)(?:DPSP2202|prova|caderno)"
+[[sources.expected]]
+kind = "answer_key"
+pattern = "(?i)(?:DPSP2202|gabarito)"
+
+[[sources]]
+id = "aocp_mpba_2014"
+source_id = "instituto_aocp_concursos"
+scenario = "AOCP histórico com muitos editais e dois gabaritos oficiais"
+start_url = "https://www.institutoaocp.org.br/concursos/26"
+max_files_per_source = 10
+[sources.metadata]
+ano = "2014"
+concurso = "MPBA 2014"
+orgao = "Ministerio Publico do Estado da Bahia"
+[[sources.expected]]
+kind = "answer_key"
+pattern = "(?i)Gabarito Preliminar MP - Manh[aã]"
+[[sources.expected]]
+kind = "answer_key"
+pattern = "(?i)Gabarito Preliminar MP - Tarde"
+
+[[sources]]
+id = "quadrix_corepi_2026"
+source_id = "quadrix_concursos"
+scenario = "Quadrix; cadernos em ZIP e gabarito em PDF separado"
+start_url = "https://quadrix.org.br/informacoes/1018/"
+max_files_per_source = 40
+[sources.metadata]
+ano = "2026"
+concurso = "CORE-PI 2026"
+orgao = "Conselho Regional dos Representantes Comerciais do Piaui"
+[[sources.expected]]
+kind = "exam"
+pattern = "(?i)Provas aplicadas"
+[[sources.expected]]
+kind = "answer_key"
+pattern = "(?i)Gabarito definitivo.*prova objetiva"
+[[sources.expected]]
+kind = "answer_key"
+pattern = "(?i)Gabarito preliminar.*prova objetiva"
+
+[[sources]]
+id = "quadrix_sessp_2025"
+source_id = "quadrix_concursos"
+scenario = "Quadrix; página com muitos resultados, cadernos em ZIP e gabarito separado"
+start_url = "https://quadrix.org.br/informacoes/13/"
+max_files_per_source = 40
+[sources.metadata]
+ano = "2025"
+concurso = "SES-SP 2025"
+orgao = "Secretaria de Estado de Saude de Sao Paulo"
+[[sources.expected]]
+kind = "exam"
+pattern = "(?i)Provas aplicadas"
+[[sources.expected]]
+kind = "answer_key"
+pattern = "(?i)gabarito definitivo-prova objetiva"
+[[sources.expected]]
+kind = "answer_key"
+pattern = "(?i)gabarito preliminar-prova objetiva"

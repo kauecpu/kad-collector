@@ -17,6 +17,7 @@ from kad_collector.collector import classify_document, collect_documents, extrac
 from kad_collector.config import load_config
 from kad_collector.models import AppConfig, DownloadManifest, SourceDefinition
 from kad_collector.pdf_extractor import extract_manifest
+from kad_collector.structured_questions import build_structured_question_package
 
 FORBIDDEN = re.compile(r"(?i)\b(edital|resultado|comunicado|convoca[cç][aã]o)\b")
 
@@ -194,15 +195,23 @@ def _run_one(
     *,
     suffix: str = "",
 ) -> dict[str, Any]:
-    source = next(item for item in base.sources if item.id == entry["id"])
-    source = source.model_copy(update={"start_urls": [entry["start_url"]], "max_pages_per_run": 3})
+    case_id = str(entry.get("case_id", entry["id"]))
+    source_id = str(entry.get("source_id", entry["id"]))
+    source = next(item for item in base.sources if item.id == source_id)
+    source = source.model_copy(
+        update={
+            "start_urls": [entry["start_url"]],
+            "max_pages_per_run": int(entry.get("max_pages_per_run", 3)),
+            "metadata": {**source.metadata, **dict(entry.get("metadata", {}))},
+        }
+    )
     settings = base.collector.model_copy(
         update={
-            "data_dir": str(data_dir / f"{source.id}{suffix}"),
+            "data_dir": str(data_dir / f"{case_id}{suffix}"),
             "request_interval_seconds": 0.25,
             "timeout_seconds": 30.0,
             "connect_timeout_seconds": 15.0,
-            "max_files_per_source": 2,
+            "max_files_per_source": int(entry.get("max_files_per_source", 40)),
             "max_retries": 1,
             "retry_max_delay_seconds": 1.0,
             "ai_discovery_enabled": True,
@@ -211,7 +220,7 @@ def _run_one(
     )
     started = time.perf_counter()
     manifest, manifest_path = collect_documents(AppConfig(collector=settings, sources=[source]))
-    return _source_result(
+    result = _source_result(
         entry,
         source,
         manifest,
@@ -219,6 +228,52 @@ def _run_one(
         data_dir,
         time.perf_counter() - started,
     )
+    result["id"] = case_id
+    result["source_id"] = source_id
+    package_path = Path(settings.data_dir) / "structured-review-package.json"
+    try:
+        package = build_structured_question_package(
+            [manifest_path],
+            package_path,
+            extraction_dir=Path(settings.data_dir) / "structured-extracted",
+            enable_ollama=os.environ.get("OLLAMA_BASE_URL") != "http://127.0.0.1:9",
+        )
+        result["structured"] = {
+            "package": str(package_path),
+            "content_sha256": package.content_sha256,
+            "documents_processed": package.metrics.documents_processed,
+            "exams_processed": package.metrics.exams_processed,
+            "answer_keys_processed": package.metrics.answer_keys_processed,
+            "questions_detected": package.metrics.detected_questions,
+            "questions_ready": package.metrics.accepted_questions,
+            "questions_quarantined": package.metrics.quarantined_questions,
+            "questions_rejected": package.metrics.rejected_questions,
+            "associated_answers": package.metrics.associated_answers,
+            "missing_answers": package.metrics.missing_answers,
+            "ocr_pages": package.metrics.ocr_pages,
+            "qwen_calls": package.metrics.qwen_calls,
+            "qwen_trace": package.qwen.model_dump(mode="json"),
+            "errors": [item.model_dump(mode="json") for item in package.errors],
+        }
+    except Exception as exc:  # noqa: BLE001 - registra e isola a estruturação da amostra
+        result["structured"] = {
+            "package": None,
+            "content_sha256": None,
+            "documents_processed": 0,
+            "exams_processed": 0,
+            "answer_keys_processed": 0,
+            "questions_detected": 0,
+            "questions_ready": 0,
+            "questions_quarantined": 0,
+            "questions_rejected": 0,
+            "associated_answers": 0,
+            "missing_answers": 0,
+            "ocr_pages": 0,
+            "qwen_calls": 0,
+            "qwen_trace": None,
+            "errors": [{"stage": "structuring", "message": f"{type(exc).__name__}: {exc}"}],
+        }
+    return result
 
 
 def _summary(results: list[dict[str, Any]]) -> dict[str, Any]:
@@ -228,6 +283,8 @@ def _summary(results: list[dict[str, Any]]) -> dict[str, Any]:
     covered = expected - sum(len(item["false_negatives"]) for item in results)
     pairs = [item for item in results if item["pairing_required"]]
     ocr_attempted = sum(item["ocr_attempted"] for item in results)
+    structured = [item.get("structured", {}) for item in results]
+    requested_banks = {item["source_id"] for item in results}
     return {
         "precision": accepted / actual if actual else 0.0,
         "coverage": covered / expected if expected else 0.0,
@@ -239,11 +296,48 @@ def _summary(results: list[dict[str, Any]]) -> dict[str, Any]:
         else None,
         "false_positives": sum(len(item["false_positives"]) for item in results),
         "false_negatives": sum(len(item["false_negatives"]) for item in results),
+        "prohibited_accepted": sum(len(item["prohibited_accepted"]) for item in results),
         "average_seconds_per_source": sum(item["duration_seconds"] for item in results)
         / len(results),
         "sources_without_intervention_rate": sum(not item["failures"] for item in results)
         / len(results),
         "sources": len(results),
+        "banks_executed": sorted(requested_banks),
+        "discovery_qwen_calls": sum(len(item["qwen_calls"]) for item in results),
+        "structuring_qwen_calls": sum(int(item.get("qwen_calls", 0)) for item in structured),
+        "questions_detected": sum(int(item.get("questions_detected", 0)) for item in structured),
+        "questions_ready": sum(int(item.get("questions_ready", 0)) for item in structured),
+        "questions_quarantined": sum(
+            int(item.get("questions_quarantined", 0)) for item in structured
+        ),
+        "questions_rejected": sum(int(item.get("questions_rejected", 0)) for item in structured),
+    }
+
+
+def _criteria(
+    summary: dict[str, Any],
+    results: list[dict[str, Any]],
+    repeat: dict[str, Any] | None,
+) -> dict[str, bool]:
+    expected_banks = {
+        "fcc_concursos",
+        "vunesp_concursos",
+        "instituto_aocp_concursos",
+        "quadrix_concursos",
+    }
+    return {
+        "precision_at_least_95_percent": summary["precision"] >= 0.95,
+        "coverage_at_least_85_percent": summary["coverage"] >= 0.85,
+        "all_four_banks_executed": expected_banks.issubset(summary["banks_executed"]),
+        "no_prohibited_document_accepted": summary["prohibited_accepted"] == 0,
+        "source_failures_were_isolated": len(results) == summary["sources"],
+        "repeat_is_idempotent": bool(
+            repeat
+            and repeat["stable_hashes"]
+            and repeat["stable_structured_content"]
+            and repeat["original_count"] == repeat["repeated_count"]
+        ),
+        "ocr_sample_completed": summary["ocr_success_rate"] is not None,
     }
 
 
@@ -263,10 +357,33 @@ def _markdown(report: dict[str, Any]) -> str:
         f"- Associação prova/gabarito: {summary['pairing_rate']:.1%}",
         f"- Falsos positivos: {summary['false_positives']}",
         f"- Falsos negativos: {summary['false_negatives']}",
+        f"- Documentos proibidos aceitos: {summary['prohibited_accepted']}",
+        (
+            "- Chamadas ao Qwen (descoberta/estruturação): "
+            f"{summary['discovery_qwen_calls']}/{summary['structuring_qwen_calls']}"
+        ),
         f"- Fontes sem intervenção: {summary['sources_without_intervention_rate']:.1%}",
         f"- Tempo médio por fonte: {summary['average_seconds_per_source']:.2f}s",
+        (
+            "- Questões detectadas/prontas: "
+            f"{summary['questions_detected']}/{summary['questions_ready']}"
+        ),
+        f"- Questões em quarentena: {summary['questions_quarantined']}",
+        "",
+        "## Critérios de aprovação",
         "",
     ]
+    lines.extend(
+        f"- {'APROVADO' if passed else 'NÃO ATENDIDO'} — {name}"
+        for name, passed in report["criteria"].items()
+    )
+    lines.extend(
+        [
+            "",
+            "## Resultados por amostra",
+            "",
+        ]
+    )
     for item in report["sources"]:
         document_counts = f"{len(item['expected'])}/{len(item['actual'])}/{len(item['accepted'])}"
         lines.extend(
@@ -279,10 +396,20 @@ def _markdown(report: dict[str, Any]) -> str:
                 f"- Caminho: {', '.join(item['paths'])}",
                 f"- Páginas visitadas: {len(item['pages_visited'])}",
                 f"- Chamadas ao Qwen: {len(item['qwen_calls'])}",
+                (
+                    "- Chamadas ao Qwen na estruturação: "
+                    f"{item.get('structured', {}).get('qwen_calls', 0)}"
+                ),
                 f"- Tempo: {item['duration_seconds']:.2f}s",
                 f"- OCR tentado/suficiente: {item['ocr_attempted']}/{item['ocr_succeeded']}",
                 f"- Falhas isoladas: {len(item['failures'])}",
                 f"- Arquivos rejeitados por regra: {len(item['rejected'])}",
+                (
+                    "- Questões detectadas/prontas/quarentena: "
+                    f"{item.get('structured', {}).get('questions_detected', 0)}/"
+                    f"{item.get('structured', {}).get('questions_ready', 0)}/"
+                    f"{item.get('structured', {}).get('questions_quarantined', 0)}"
+                ),
                 "",
             ]
         )
@@ -309,7 +436,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     entries = _load_matrix(args.matrix)
     if args.source:
         selected = set(args.source)
-        entries = [item for item in entries if item["id"] in selected]
+        entries = [item for item in entries if item.get("case_id", item["id"]) in selected]
     if not entries:
         raise SystemExit("nenhuma fonte selecionada")
     base = load_config(args.config)
@@ -326,6 +453,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 results.append(
                     {
                         "id": entry["id"],
+                        "source_id": entry.get("source_id", entry["id"]),
                         "scenario": entry["scenario"],
                         "start_url": entry["start_url"],
                         "expected": entry["expected"],
@@ -350,20 +478,44 @@ def main(argv: Sequence[str] | None = None) -> int:
                         "warnings": [],
                         "manifest": None,
                         "extraction_manifest": None,
+                        "structured": {
+                            "package": None,
+                            "content_sha256": None,
+                            "documents_processed": 0,
+                            "exams_processed": 0,
+                            "answer_keys_processed": 0,
+                            "questions_detected": 0,
+                            "questions_ready": 0,
+                            "questions_quarantined": 0,
+                            "questions_rejected": 0,
+                            "associated_answers": 0,
+                            "missing_answers": 0,
+                            "ocr_pages": 0,
+                            "qwen_calls": 0,
+                            "qwen_trace": None,
+                            "errors": [{"stage": "discovery", "message": str(exc)}],
+                        },
                     }
                 )
         repeat = None
         if args.repeat_source:
-            entry = next(item for item in entries if item["id"] == args.repeat_source)
+            entry = next(
+                item for item in entries if item.get("case_id", item["id"]) == args.repeat_source
+            )
             repeated = _run_one(base, entry, args.data_dir, suffix="-repeat")
             original = next(item for item in results if item["id"] == args.repeat_source)
             repeat = {
                 "source": args.repeat_source,
                 "stable_hashes": sorted(item["sha256"] for item in original["actual"])
                 == sorted(item["sha256"] for item in repeated["actual"]),
+                "stable_structured_content": original.get("structured", {}).get("content_sha256")
+                == repeated.get("structured", {}).get("content_sha256"),
+                "original_structured_sha256": original.get("structured", {}).get("content_sha256"),
+                "repeated_structured_sha256": repeated.get("structured", {}).get("content_sha256"),
                 "original_count": len(original["actual"]),
                 "repeated_count": len(repeated["actual"]),
             }
+        summary = _summary(results)
         report = {
             "schema_version": 1,
             "created_at": datetime.now(UTC).isoformat(),
@@ -371,8 +523,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             "matrix": str(args.matrix),
             "ollama_offline": args.ollama_offline,
             "sources": results,
-            "summary": _summary(results),
+            "summary": summary,
             "idempotency": repeat,
+            "criteria": _criteria(summary, results, repeat),
         }
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.markdown.parent.mkdir(parents=True, exist_ok=True)
