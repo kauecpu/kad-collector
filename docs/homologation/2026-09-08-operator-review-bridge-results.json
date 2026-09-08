@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-08",
+  "externalDownloads": 0,
+  "automaticApprovals": 0,
+  "externalPublications": 0,
+  "scenarios": [
+    {
+      "name": "Polícia Federal / Cebraspe / 2021",
+      "batches": 4,
+      "pending": 480,
+      "structurallyAccepted": 447,
+      "quarantined": 33,
+      "rejected": 0,
+      "importableBeforeHumanReview": 0,
+      "idempotent": true,
+      "indexSha256": "96b83fc9d1c333a7d36b4acae9a50ff516caac77b4785c3062203e0ff5d32a50"
+    },
+    {
+      "name": "Banco do Brasil / Cesgranrio / 2021–2023",
+      "batches": 19,
+      "pending": 1312,
+      "structurallyAccepted": 1177,
+      "quarantined": 135,
+      "rejected": 0,
+      "importableBeforeHumanReview": 0,
+      "idempotent": true,
+      "indexSha256": "8147945b54ef952ab5a2f0b8bb918a53ef31377a5ab723785514321debc5258b"
+    }
+  ],
+  "controlledExportRegression": {
+    "inputQuestions": 3,
+    "humanApproved": 1,
+    "humanRejected": 1,
+    "structurallyRejected": 1,
+    "exportedDraftRecords": 1,
+    "exportedExceptions": 2,
+    "contract": "editorial-question-import-v2",
+    "publicationStatus": "draft"
+  },
+  "security": {
+    "supabaseCredentialsRequired": false,
+    "supabaseWrites": false,
+    "automaticKadImport": false,
+    "automaticPublication": false,
+    "reviewHost": "127.0.0.1"
+  },
+  "validation": {
+    "collectorTestsPassed": 941,
+    "collectorSubtestsPassed": 114,
+    "kadImportTestsPassed": 9,
+    "ruff": "passed",
+    "mypyFiles": 79,
+    "javascriptSyntax": "passed",
+    "wheelBuild": "passed",
+    "isolatedInstall": "passed",
+    "reviewServerSmoke": "passed"
+  }
+}

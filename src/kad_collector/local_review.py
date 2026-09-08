@@ -19,8 +19,13 @@ from .validation import batch_content_sha256, validate_questions
 
 
 def question_content_sha256(question: QuestionRecord) -> str:
+    payload = question.model_dump(mode="json")
+    if payload.get("source_stable_id") is None:
+        payload.pop("source_stable_id", None)
+    if not payload.get("editorial_blocks"):
+        payload.pop("editorial_blocks", None)
     canonical = json.dumps(
-        question.model_dump(mode="json"),
+        payload,
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
@@ -74,6 +79,7 @@ def save_review_session(session: LocalReviewSession, path: Path) -> None:
 def review_summary(session: LocalReviewSession) -> dict[ReviewDecisionStatus, int]:
     summary: dict[ReviewDecisionStatus, int] = {
         "pending": 0,
+        "deferred": 0,
         "approved": 0,
         "rejected": 0,
     }
@@ -144,6 +150,69 @@ def decide_review_question(
     return LocalReviewSession.model_validate(updated.model_dump(mode="python"))
 
 
+def approve_review_questions(
+    session: LocalReviewSession,
+    question_numbers: list[int],
+    reviewer: str,
+    *,
+    notes: str | None = None,
+    now: datetime | None = None,
+) -> LocalReviewSession:
+    normalized = list(dict.fromkeys(question_numbers))
+    if not normalized:
+        raise ValueError("selecione ao menos uma questao para aprovar")
+    updated = session
+    decision_time = now or datetime.now(UTC)
+    for question_number in normalized:
+        decision = updated.decisions[_decision_index(updated, question_number)]
+        if decision.status != "pending":
+            raise ValueError(f"questao {question_number}: nao esta pendente")
+        question = updated.batch.questions[_question_index(updated, question_number)]
+        validation = validate_questions(
+            [question], require_answers=True, require_editorial=True
+        )
+        if not validation.valid:
+            raise ValueError(
+                f"questao {question_number}: nao pode entrar na aprovacao em lote: "
+                + "; ".join(validation.errors)
+            )
+    for question_number in normalized:
+        updated = decide_review_question(
+            updated,
+            question_number,
+            "approved",
+            reviewer,
+            notes=notes,
+            now=decision_time,
+        )
+    return updated
+
+
+def defer_review_question(
+    session: LocalReviewSession,
+    question_number: int,
+    reviewer: str,
+    *,
+    notes: str | None = None,
+    now: datetime | None = None,
+) -> LocalReviewSession:
+    reviewer = reviewer.strip()
+    if len(reviewer) < 2:
+        raise ValueError("informe o nome ou identificador do revisor")
+    updated = session.model_copy(deep=True)
+    question = updated.batch.questions[_question_index(updated, question_number)]
+    updated.decisions[_decision_index(updated, question_number)] = LocalQuestionDecision(
+        question_number=question_number,
+        status="deferred",
+        reviewed_by=reviewer,
+        reviewed_at=now or datetime.now(UTC),
+        content_sha256=question_content_sha256(question),
+        notes=(notes or "").strip() or "Decisao adiada para revisao posterior.",
+    )
+    updated.updated_at = now or datetime.now(UTC)
+    return LocalReviewSession.model_validate(updated.model_dump(mode="python"))
+
+
 def export_review_session(
     session: LocalReviewSession,
     reviewer: str,
@@ -153,7 +222,12 @@ def export_review_session(
 ) -> tuple[QuestionBatch, Path]:
     verify_review_session(session)
     summary = review_summary(session)
-    if summary["pending"]:
+    unresolved = summary["pending"] + summary["deferred"]
+    if unresolved:
+        if summary["deferred"]:
+            raise ValueError(
+                f"a revisao ainda possui {unresolved} questoes sem decisao final"
+            )
         raise ValueError(f"a revisao ainda possui {summary['pending']} questoes pendentes")
     approved_numbers = {
         decision.question_number

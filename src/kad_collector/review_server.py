@@ -18,10 +18,13 @@ from pydantic import ValidationError
 from .editorial_export import (
     EditorialExportResult,
     export_admin_package,
+    load_editorial_exceptions,
     rejected_question_exception,
 )
 from .local_review import (
+    approve_review_questions,
     decide_review_question,
+    defer_review_question,
     export_review_session,
     load_or_create_review_session,
     review_summary,
@@ -41,12 +44,15 @@ class ReviewApplication:
         session_path: Path | None = None,
         output_path: Path | None = None,
         admin_output_root: Path = Path("data/exports"),
+        additional_exceptions_path: Path | None = None,
     ) -> None:
         self.session, self.session_path = load_or_create_review_session(
             batch_path, session_path
         )
         self.output_path = output_path
         self.admin_output_root = admin_output_root
+        self.additional_exceptions_path = additional_exceptions_path
+        self.additional_exceptions = load_editorial_exceptions(additional_exceptions_path)
         self.token = secrets.token_urlsafe(32)
         self._lock = threading.Lock()
 
@@ -62,6 +68,7 @@ class ReviewApplication:
                     self.output_path
                     or Path("data/approved") / f"{self.session.batch.batch_id}.json"
                 ),
+                "preexisting_exception_count": len(self.additional_exceptions),
             }
 
     def source_path(self) -> Path:
@@ -91,6 +98,43 @@ class ReviewApplication:
             )
             save_review_session(self.session, self.session_path)
 
+    def approve_ready(self, reviewer: str, notes: str | None) -> int:
+        with self._lock:
+            pending = [
+                decision.question_number
+                for decision in self.session.decisions
+                if decision.status == "pending"
+            ]
+            eligible: list[int] = []
+            blocked: list[str] = []
+            for number in pending:
+                try:
+                    approve_review_questions(
+                        self.session, [number], reviewer, notes=notes
+                    )
+                except ValueError as exc:
+                    blocked.append(str(exc))
+                else:
+                    eligible.append(number)
+            if not eligible:
+                detail = "; ".join(blocked[:5])
+                raise ValueError(
+                    "nenhuma questao pendente esta livre de bloqueios"
+                    + (f": {detail}" if detail else "")
+                )
+            self.session = approve_review_questions(
+                self.session, eligible, reviewer, notes=notes
+            )
+            save_review_session(self.session, self.session_path)
+            return len(eligible)
+
+    def defer(self, question_number: int, reviewer: str, notes: str | None) -> None:
+        with self._lock:
+            self.session = defer_review_question(
+                self.session, question_number, reviewer, notes=notes
+            )
+            save_review_session(self.session, self.session_path)
+
     def export(self, reviewer: str, notes: str | None) -> tuple[Path, EditorialExportResult]:
         with self._lock:
             batch, path = export_review_session(
@@ -113,7 +157,7 @@ class ReviewApplication:
             result = export_admin_package(
                 batch,
                 output_root=self.admin_output_root,
-                additional_exceptions=rejected,
+                additional_exceptions=[*self.additional_exceptions, *rejected],
             )
             return path, result
 
@@ -136,6 +180,8 @@ def serve_review_application(
     output_path: Path | None = None,
     port: int = 8765,
     open_browser: bool = False,
+    admin_output_root: Path = Path("data/exports"),
+    additional_exceptions_path: Path | None = None,
 ) -> None:
     if not 0 <= port <= 65_535:
         raise ValueError("a porta deve estar entre 0 e 65535")
@@ -143,6 +189,8 @@ def serve_review_application(
         batch_path,
         session_path=session_path,
         output_path=output_path,
+        admin_output_root=admin_output_root,
+        additional_exceptions_path=additional_exceptions_path,
     )
     server = create_review_server(application, port=port)
     actual_port = cast(tuple[str, int], server.server_address)[1]
@@ -151,7 +199,13 @@ def serve_review_application(
     print(f"Sessao: {application.session_path}")
     print("Pressione Ctrl+C para encerrar.")
     if open_browser:
-        webbrowser.open(url)
+        try:
+            opened = webbrowser.open(url)
+        except (OSError, webbrowser.Error) as exc:
+            print(f"AVISO: não foi possível abrir o navegador: {exc}")
+        else:
+            if not opened:
+                print("AVISO: o navegador não abriu automaticamente; use o endereço acima.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -221,17 +275,30 @@ def _handler_for(application: ReviewApplication) -> type[BaseHTTPRequestHandler]
                 payload = self._read_json()
                 if decision_match is not None:
                     status_value = payload.get("status")
-                    if status_value not in {"approved", "rejected"}:
-                        raise ValueError("status deve ser approved ou rejected")
+                    if status_value not in {"approved", "rejected", "deferred"}:
+                        raise ValueError("status deve ser approved, rejected ou deferred")
                     reviewer = _required_text(payload, "reviewer")
                     notes = _optional_text(payload, "notes")
-                    application.decide(
-                        int(decision_match.group(1)),
-                        cast(ReviewDecisionStatus, status_value),
-                        reviewer,
-                        notes,
-                    )
+                    if status_value == "deferred":
+                        application.defer(
+                            int(decision_match.group(1)), reviewer, notes
+                        )
+                    else:
+                        application.decide(
+                            int(decision_match.group(1)),
+                            cast(ReviewDecisionStatus, status_value),
+                            reviewer,
+                            notes,
+                        )
                     self._send_json(application.payload())
+                    return
+                if path == "/api/decisions/approve-ready":
+                    reviewer = _required_text(payload, "reviewer")
+                    notes = _optional_text(payload, "notes")
+                    approved = application.approve_ready(reviewer, notes)
+                    response = application.payload()
+                    response["approved_now"] = approved
+                    self._send_json(response)
                     return
                 if path == "/api/export":
                     reviewer = _required_text(payload, "reviewer")

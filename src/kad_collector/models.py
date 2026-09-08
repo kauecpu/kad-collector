@@ -310,6 +310,9 @@ class AIChunkResult(StrictModel):
 
 
 class QuestionRecord(AIQuestion):
+    source_stable_id: str | None = Field(
+        default=None, pattern=r"^[a-f0-9]{64}$"
+    )
     discipline: str | None = None
     concurso: str | None = None
     level: Literal["Fundamental", "Médio", "Superior"] | None = None
@@ -318,6 +321,7 @@ class QuestionRecord(AIQuestion):
     correct_answer: str | None = Field(default=None, pattern=r"^[A-H]$")
     answer_status: Literal["missing", "matched", "annulled"] = "missing"
     review_notes: list[str] = Field(default_factory=list)
+    editorial_blocks: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def answer_state_must_be_consistent(self) -> QuestionRecord:
@@ -369,7 +373,7 @@ class QuestionBatch(StrictModel):
         return self
 
 
-ReviewDecisionStatus = Literal["pending", "approved", "rejected"]
+ReviewDecisionStatus = Literal["pending", "deferred", "approved", "rejected"]
 
 
 class LocalQuestionDecision(StrictModel):

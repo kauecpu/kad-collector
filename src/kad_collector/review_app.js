@@ -34,7 +34,7 @@ function questionFor(number) {
 }
 
 function statusLabel(status) {
-  return { pending: 'Pendente', approved: 'Aprovada', rejected: 'Rejeitada' }[status];
+  return { pending: 'Pendente', deferred: 'Adiada', approved: 'Aprovada', rejected: 'Rejeitada' }[status];
 }
 
 function showNotice(message, kind = 'info') {
@@ -52,6 +52,7 @@ function renderSummary() {
   byId('summary-pending').textContent = summary.pending;
   byId('summary-approved').textContent = summary.approved;
   byId('summary-rejected').textContent = summary.rejected;
+  byId('summary-deferred').textContent = summary.deferred;
 }
 
 function renderBatch() {
@@ -69,7 +70,13 @@ function renderQuestionList() {
   list.replaceChildren();
   const questions = currentSession().batch.questions.filter((question) => {
     const status = decisionFor(question.number).status;
-    return state.filter === 'all' || status === state.filter;
+    const contest = byId('filter-contest').value.trim().toLocaleLowerCase('pt-BR');
+    const board = byId('filter-board').value.trim().toLocaleLowerCase('pt-BR');
+    const year = Number(byId('filter-year').value) || null;
+    return (state.filter === 'all' || status === state.filter)
+      && (!contest || (question.concurso || '').toLocaleLowerCase('pt-BR').includes(contest))
+      && (!board || (question.board || '').toLocaleLowerCase('pt-BR').includes(board))
+      && (!year || question.year === year);
   });
   if (!questions.length) {
     const empty = document.createElement('p');
@@ -196,6 +203,7 @@ function renderEditor() {
   byId('explanation').value = question.explanation || '';
   byId('source-pages').value = question.source_pages.join(', ');
   byId('review-notes').value = question.review_notes.join('\n');
+  byId('editorial-blocks').value = (question.editorial_blocks || []).join('\n');
   byId('answer-status').value = question.answer_status;
   renderAlternatives(question.alternatives);
   byId('correct-answer').value = question.correct_answer || '';
@@ -228,6 +236,7 @@ function readQuestion() {
     answer_status: answerStatus,
     correct_answer: answerStatus === 'matched' ? (byId('correct-answer').value || null) : null,
     review_notes: byId('review-notes').value.split('\n').map((item) => item.trim()).filter(Boolean),
+    editorial_blocks: byId('editorial-blocks').value.split('\n').map((item) => item.trim()).filter(Boolean),
   };
 }
 
@@ -256,7 +265,23 @@ async function decide(status) {
   renderSummary();
   renderQuestionList();
   renderEditor();
-  showNotice(status === 'approved' ? 'Questão aprovada.' : 'Questão rejeitada.', 'success');
+  const message = status === 'approved' ? 'Questão aprovada.'
+    : status === 'rejected' ? 'Questão rejeitada.' : 'Decisão adiada.';
+  showNotice(message, 'success');
+}
+
+async function approveReady() {
+  const reviewer = byId('reviewer').value.trim();
+  if (!reviewer) throw new Error('Informe o revisor responsável no topo da página.');
+  state.payload = await request('/api/decisions/approve-ready', {
+    method: 'POST',
+    body: JSON.stringify({ reviewer, notes: byId('batch-notes').value.trim() }),
+  });
+  const approved = state.payload.approved_now;
+  renderSummary();
+  renderQuestionList();
+  renderEditor();
+  showNotice(`${approved} questão(ões) válida(s) aprovada(s). Itens bloqueados continuaram pendentes.`, 'success');
 }
 
 async function exportApproved() {
@@ -293,7 +318,12 @@ byId('answer-status').addEventListener('change', renderCorrectAnswers);
 byId('save-button').addEventListener('click', guarded(() => saveQuestion()));
 byId('approve-button').addEventListener('click', guarded(() => decide('approved')));
 byId('reject-button').addEventListener('click', guarded(() => decide('rejected')));
+byId('defer-button').addEventListener('click', guarded(() => decide('deferred')));
+byId('approve-ready-button').addEventListener('click', guarded(approveReady));
 byId('export-button').addEventListener('click', guarded(exportApproved));
+[byId('filter-contest'), byId('filter-board'), byId('filter-year')].forEach((input) => {
+  input.addEventListener('input', renderQuestionList);
+});
 document.querySelectorAll('.filter').forEach((button) => {
   button.addEventListener('click', () => {
     document.querySelectorAll('.filter').forEach((item) => item.classList.remove('active'));
