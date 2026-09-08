@@ -144,6 +144,10 @@ class DesktopCollectionTests(unittest.TestCase):
             "banco_brasil_selecoes",
             "cesgranrio_banco_brasil",
             "cebraspe_policia_federal",
+            "fcc_concursos",
+            "vunesp_concursos",
+            "instituto_aocp_concursos",
+            "quadrix_concursos",
         }
         self.assertTrue(
             all(

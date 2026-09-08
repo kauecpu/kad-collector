@@ -1,17 +1,23 @@
 from __future__ import annotations
 
 import gzip
+import io
 import re
 import tempfile
 import unittest
+import zipfile
 from email.message import Message
 from pathlib import Path
 from unittest.mock import patch
 
+from pypdf import PdfWriter
+
 from kad_collector.browser_runtime import BrowserRuntimeError
 from kad_collector.collection_state import CollectionStateStore
+from kad_collector.collection_transport import EngineDownload
 from kad_collector.collector import (
     RobotsPolicy,
+    _archive_pdf_documents,
     _checkpoint_key,
     _matches_source_link,
     _should_expand_collection_pages,
@@ -64,7 +70,100 @@ def source_definition(**changes: object) -> SourceDefinition:
     return SourceDefinition.model_validate(data)
 
 
+def archive_download(path: Path, body: bytes) -> EngineDownload:
+    path.write_bytes(body)
+    headers = Message()
+    headers["Content-Type"] = "application/zip"
+    return EngineDownload(
+        url="https://provas.example.gov.br/provas.zip",
+        status_code=200,
+        headers=headers,
+        path=path,
+        sha256="a" * 64,
+        size_bytes=len(body),
+        cache_status="miss",
+        resumed=False,
+        attempt=1,
+        duration_ms=1,
+    )
+
+
+def one_page_pdf() -> bytes:
+    output = io.BytesIO()
+    writer = PdfWriter()
+    writer.add_blank_page(width=100, height=100)
+    writer.write(output)
+    return output.getvalue()
+
+
 class LinkParsingTests(unittest.TestCase):
+    def test_safe_zip_expands_each_pdf_and_preserves_member_evidence(self) -> None:
+        payload = io.BytesIO()
+        with zipfile.ZipFile(payload, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("cargo-a/prova_tipo_1.pdf", one_page_pdf())
+            archive.writestr("cargo-a/leia-me.txt", "arquivo auxiliar")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            result = archive_download(root / ".archive.part", payload.getvalue())
+            documents = _archive_pdf_documents(
+                source=source_definition(),
+                original_url=result.url,
+                title="Provas aplicadas",
+                parent_document_type="exam",
+                result=result,
+                raw_dir=root,
+                settings=CollectorSettings(data_dir=temporary),
+            )
+
+            self.assertEqual(len(documents), 1)
+            self.assertEqual(documents[0].document_type, "exam")
+            self.assertEqual(documents[0].metadata["archive_member"], "cargo-a/prova_tipo_1.pdf")
+            self.assertEqual(documents[0].metadata["archive_sha256"], "a" * 64)
+            self.assertIn("archive_member=cargo-a%2Fprova_tipo_1.pdf", documents[0].resolved_url)
+            self.assertTrue(Path(documents[0].local_path).is_file())
+            self.assertFalse(result.path.exists())
+
+    def test_zip_rejects_traversal_before_writing_a_document(self) -> None:
+        payload = io.BytesIO()
+        with zipfile.ZipFile(payload, "w") as archive:
+            archive.writestr("../prova.pdf", one_page_pdf())
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            result = archive_download(root / ".archive.part", payload.getvalue())
+            with self.assertRaisesRegex(ValueError, "caminho inseguro"):
+                _archive_pdf_documents(
+                    source=source_definition(),
+                    original_url=result.url,
+                    title="Provas aplicadas",
+                    parent_document_type="exam",
+                    result=result,
+                    raw_dir=root,
+                    settings=CollectorSettings(data_dir=temporary),
+                )
+            self.assertFalse(any(root.glob("*.pdf")))
+            self.assertFalse(result.path.exists())
+
+    def test_zip_rejects_fake_pdf_member(self) -> None:
+        payload = io.BytesIO()
+        with zipfile.ZipFile(payload, "w") as archive:
+            archive.writestr("prova.pdf", b"not a pdf")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            result = archive_download(root / ".archive.part", payload.getvalue())
+            with self.assertRaisesRegex(ValueError, "assinatura PDF"):
+                _archive_pdf_documents(
+                    source=source_definition(),
+                    original_url=result.url,
+                    title="Provas aplicadas",
+                    parent_document_type="exam",
+                    result=result,
+                    raw_dir=root,
+                    settings=CollectorSettings(data_dir=temporary),
+                )
+
     def test_public_page_with_login_link_is_not_marked_as_authentication(self) -> None:
         html = """
         <!doctype html><html><body>
@@ -83,6 +182,21 @@ class LinkParsingTests(unittest.TestCase):
                 "https://provas.example.gov.br/login",
             ),
             "login",
+        )
+
+    def test_public_documents_win_over_an_unrelated_candidate_login_form(self) -> None:
+        html = """
+        <form id="candidate-login"><input type="password"></form>
+        <a href="/prova.pdf">Prova objetiva</a>
+        <a href="/gabarito.pdf">Gabarito definitivo</a>
+        """
+
+        self.assertIsNone(
+            detect_access_challenge(
+                "Concurso público",
+                html,
+                "https://provas.example.gov.br/concurso",
+            )
         )
 
     def test_challenge_after_twenty_kilobytes_is_detected(self) -> None:
@@ -116,6 +230,22 @@ class LinkParsingTests(unittest.TestCase):
         self.assertEqual(
             extract_links(html, "https://provas.example.gov.br/lista"),
             [("https://provas.example.gov.br/prova.pdf", "Prova objetiva")],
+        )
+
+    def test_extract_links_unwraps_public_pdf_viewer_file_parameter(self) -> None:
+        html = (
+            '<a href="/viewer/index.html?file=https%3A%2F%2Fprovas.example.gov.br%2F'
+            'concurso%2Fgabarito.pdf">Divulgação dos gabaritos</a>'
+        )
+
+        self.assertEqual(
+            extract_links(html, "https://provas.example.gov.br/concurso/index.html"),
+            [
+                (
+                    "https://provas.example.gov.br/concurso/gabarito.pdf",
+                    "Divulgação dos gabaritos",
+                )
+            ],
         )
 
     def test_extracts_public_data_url_when_anchor_has_javascript_placeholder(self) -> None:
@@ -1274,6 +1404,10 @@ class SecurityTests(unittest.TestCase):
                 "cesgranrio_banco_brasil",
                 "cebraspe_policia_federal",
                 "pci_concursos",
+                "fcc_concursos",
+                "vunesp_concursos",
+                "instituto_aocp_concursos",
+                "quadrix_concursos",
             },
         )
         self.assertTrue(all(source.enabled for source in config.sources))
@@ -1286,6 +1420,10 @@ class SecurityTests(unittest.TestCase):
                 "banco_brasil_selecoes",
                 "cesgranrio_banco_brasil",
                 "cebraspe_policia_federal",
+                "fcc_concursos",
+                "vunesp_concursos",
+                "instituto_aocp_concursos",
+                "quadrix_concursos",
             }
         ]
         self.assertTrue(all(source.robots_policy == "ignore" for source in legacy_sources))

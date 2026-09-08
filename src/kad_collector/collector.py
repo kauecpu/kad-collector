@@ -1,20 +1,24 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import re
 import threading
 import time
 import unicodedata
 import uuid
+import zipfile
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from html.parser import HTMLParser
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Protocol
-from urllib.parse import urljoin, urlsplit, urlunsplit
+from urllib.parse import parse_qs, quote, unquote, urljoin, urlsplit, urlunsplit
 from urllib.robotparser import RobotFileParser
+
+from pypdf import PdfReader
 
 from .ai_discovery import (
     AIDiscoveryError,
@@ -424,7 +428,18 @@ def extract_links(
 ) -> list[tuple[str, str]]:
     parser = _LinkParser(allow_data_url=allow_data_url)
     parser.feed(html)
-    return [(urljoin(page_url, href), title) for href, title in parser.links]
+    links: list[tuple[str, str]] = []
+    for href, title in parser.links:
+        url = urljoin(page_url, href)
+        # Alguns portais oficiais usam um visualizador PDF próprio e passam o
+        # arquivo público real em ``?file=``. Descobrir essa URL não contorna
+        # acesso: ela ainda passa pela allowlist, robots.txt e validação HTTP.
+        file_value = parse_qs(urlsplit(url).query).get("file", [""])[0]
+        unwrapped = unquote(file_value).strip()
+        if urlsplit(unwrapped).scheme in {"http", "https"}:
+            url = unwrapped
+        links.append((url, title))
+    return links
 
 
 def extract_dated_link_years(html: str, page_url: str) -> dict[str, str]:
@@ -894,7 +909,127 @@ def _sanitize_manifest_urls(manifest: DownloadManifest) -> DownloadManifest:
     )
 
 
-def _download_pdf_candidate(
+def _safe_archive_member_name(name: str) -> str:
+    normalized = name.replace("\\", "/")
+    path = PurePosixPath(normalized)
+    if (
+        path.is_absolute()
+        or not path.parts
+        or any(part in {"", ".", ".."} for part in path.parts)
+        or ":" in path.parts[0]
+    ):
+        raise ValueError(f"caminho inseguro no ZIP: {name}")
+    return path.as_posix()
+
+
+def _archive_pdf_documents(
+    *,
+    source: SourceDefinition,
+    original_url: str,
+    title: str,
+    parent_document_type: DocumentType,
+    result: EngineDownload,
+    raw_dir: Path,
+    settings: CollectorSettings,
+) -> list[DocumentRecord]:
+    try:
+        with zipfile.ZipFile(result.path) as archive:
+            members = [item for item in archive.infolist() if not item.is_dir()]
+            if len(members) > settings.max_archive_members:
+                raise ValueError(
+                    "ZIP excede o limite de membros "
+                    f"({len(members)} > {settings.max_archive_members})"
+                )
+            total_size = sum(item.file_size for item in members)
+            if total_size > settings.max_archive_uncompressed_bytes:
+                raise ValueError(
+                    "ZIP excede o limite descompactado "
+                    f"({total_size} > {settings.max_archive_uncompressed_bytes})"
+                )
+
+            pdf_members: list[tuple[zipfile.ZipInfo, str]] = []
+            for member in members:
+                safe_name = _safe_archive_member_name(member.filename)
+                if member.flag_bits & 0x1:
+                    raise ValueError(f"ZIP contem membro criptografado: {safe_name}")
+                if member.file_size > settings.max_pdf_bytes:
+                    raise ValueError(f"PDF do ZIP excede o limite: {safe_name}")
+                if member.file_size and member.compress_size == 0:
+                    raise ValueError(f"membro ZIP possui tamanho comprimido invalido: {safe_name}")
+                if member.compress_size:
+                    ratio = member.file_size / member.compress_size
+                    if ratio > settings.max_archive_compression_ratio:
+                        raise ValueError(
+                            f"membro ZIP excede a taxa de compressao segura: {safe_name}"
+                        )
+                if PurePosixPath(safe_name).suffix.casefold() == ".pdf":
+                    pdf_members.append((member, safe_name))
+
+            if not pdf_members:
+                raise ValueError("ZIP nao contem PDFs")
+
+            documents: list[DocumentRecord] = []
+            for member, safe_name in pdf_members:
+                with archive.open(member) as stream:
+                    body = stream.read(settings.max_pdf_bytes + 1)
+                if len(body) != member.file_size or len(body) > settings.max_pdf_bytes:
+                    raise ValueError(f"tamanho inconsistente para PDF do ZIP: {safe_name}")
+                if not body[:1024].lstrip().startswith(b"%PDF-"):
+                    raise ValueError(f"membro .pdf do ZIP nao possui assinatura PDF: {safe_name}")
+                try:
+                    reader = PdfReader(io.BytesIO(body), strict=False)
+                    if not reader.pages:
+                        raise ValueError("PDF sem paginas")
+                except Exception as exc:  # noqa: BLE001 - normaliza falhas do parser PDF
+                    raise ValueError(f"PDF invalido no ZIP: {safe_name}: {exc}") from exc
+
+                digest = hashlib.sha256(body).hexdigest()
+                member_title = PurePosixPath(safe_name).stem.replace("_", " ").strip()
+                full_title = f"{title} - {member_title}" if member_title else title
+                document_type = classify_document(safe_name, full_title, source)
+                if document_type == "other":
+                    document_type = parent_document_type
+                destination = raw_dir / f"{source.id}-{document_type}-{digest[:16]}.pdf"
+                if not destination.exists():
+                    temporary = raw_dir / f".{digest}.tmp"
+                    temporary.write_bytes(body)
+                    temporary.replace(destination)
+                fragment = f"archive_member={quote(safe_name, safe='')}"
+                metadata = dict(source.metadata)
+                metadata.update(
+                    {
+                        "archive_member": safe_name,
+                        "archive_sha256": result.sha256,
+                        "canonical_url": f"{canonicalize_url(result.url)}#{fragment}",
+                    }
+                )
+                documents.append(
+                    DocumentRecord(
+                        source_id=source.id,
+                        source_name=source.name,
+                        document_type=document_type,
+                        title=full_title,
+                        original_url=redact_url_secrets(f"{original_url}#{fragment}"),
+                        resolved_url=redact_url_secrets(f"{result.url}#{fragment}"),
+                        local_path=_relative_or_absolute(destination),
+                        sha256=digest,
+                        content_type="application/pdf",
+                        size_bytes=len(body),
+                        downloaded_at=datetime.now(UTC),
+                        authorization_basis=source.authorization_basis,
+                        terms_url=source.terms_url,
+                        metadata=metadata,
+                    )
+                )
+            return documents
+    except zipfile.BadZipFile as exc:
+        raise ValueError(f"ZIP invalido: {original_url}") from exc
+    finally:
+        if result.path.name.endswith(".part"):
+            result.path.unlink(missing_ok=True)
+
+
+def _download_document_candidate(
     *,
     source: SourceDefinition,
     url: str,
@@ -905,12 +1040,12 @@ def _download_pdf_candidate(
     settings: CollectorSettings,
     raw_dir: Path,
     interval_seconds: float,
-) -> DocumentRecord:
+) -> list[DocumentRecord]:
     effective_interval = max(interval_seconds, robots.crawl_delay(url) or 0.0)
     result = client.download(
         url,
         source.allowed_hosts,
-        settings.max_pdf_bytes,
+        max(settings.max_pdf_bytes, settings.max_archive_bytes),
         raw_dir,
         strategy="download",
         interval_seconds=effective_interval,
@@ -918,19 +1053,43 @@ def _download_pdf_candidate(
     )
     with result.path.open("rb") as stream:
         header = stream.read(1024).lstrip()
-    if result.headers.get_content_type() != "application/pdf" and not header.startswith(b"%PDF-"):
-        if result.path.name.endswith(".part"):
-            result.path.unlink(missing_ok=True)
-        raise ValueError(f"link nao retornou PDF: {url}")
-    return _store_engine_document(
-        source=source,
-        original_url=url,
-        title=title,
-        document_type=document_type,
-        result=result,
-        raw_dir=raw_dir,
-        client=client,
-    )
+    content_type = result.headers.get_content_type()
+    if content_type == "application/pdf" or header.startswith(b"%PDF-"):
+        if result.size_bytes > settings.max_pdf_bytes:
+            if result.path.name.endswith(".part"):
+                result.path.unlink(missing_ok=True)
+            raise ValueError(f"PDF excede o limite configurado: {url}")
+        return [
+            _store_engine_document(
+                source=source,
+                original_url=url,
+                title=title,
+                document_type=document_type,
+                result=result,
+                raw_dir=raw_dir,
+                client=client,
+            )
+        ]
+    if (
+        content_type in {"application/zip", "application/x-zip-compressed"}
+        or header.startswith((b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08"))
+    ):
+        if result.size_bytes > settings.max_archive_bytes:
+            if result.path.name.endswith(".part"):
+                result.path.unlink(missing_ok=True)
+            raise ValueError(f"ZIP excede o limite configurado: {url}")
+        return _archive_pdf_documents(
+            source=source,
+            original_url=url,
+            title=title,
+            parent_document_type=document_type,
+            result=result,
+            raw_dir=raw_dir,
+            settings=settings,
+        )
+    if result.path.name.endswith(".part"):
+        result.path.unlink(missing_ok=True)
+    raise ValueError(f"link nao retornou PDF nem ZIP de PDFs: {url}")
 
 
 def _checkpoint_key(source: SourceDefinition) -> str:
@@ -1442,7 +1601,7 @@ def collect_documents(
                                 continue
                             if not _within_limit(source_items, settings.max_files_per_source):
                                 continue
-                            record = _download_pdf_candidate(
+                            direct_records = _download_document_candidate(
                                 source=source,
                                 url=page_url,
                                 title=title,
@@ -1453,12 +1612,13 @@ def collect_documents(
                                 raw_dir=raw_dir,
                                 interval_seconds=interval,
                             )
-                            source_items += 1
-                            if record.sha256 in seen_digests:
-                                duplicate_documents += 1
-                            else:
-                                seen_digests.add(record.sha256)
-                                documents.append(record)
+                            for record in direct_records:
+                                source_items += 1
+                                if record.sha256 in seen_digests:
+                                    duplicate_documents += 1
+                                else:
+                                    seen_digests.add(record.sha256)
+                                    documents.append(record)
                             continue
                         challenge: str | None = None
                         for page_attempt in range(2):
@@ -2004,10 +2164,10 @@ def collect_documents(
                 _link_stages: dict[str, str | None] = link_stages,
                 _link_variants: dict[str, str | None] = link_variants,
                 _link_metadata: dict[str, dict[str, str]] = link_metadata,
-            ) -> DocumentRecord:
+            ) -> list[DocumentRecord]:
                 url, title, document_type = item
                 try:
-                    document = _download_pdf_candidate(
+                    downloaded = _download_document_candidate(
                         source=_source,
                         url=url,
                         title=title,
@@ -2036,7 +2196,7 @@ def collect_documents(
                             exc.status_code,
                         ) from exc
                     refreshed_url, refreshed_title, refreshed_type = refreshed
-                    document = _download_pdf_candidate(
+                    downloaded = _download_document_candidate(
                         source=_source,
                         url=refreshed_url,
                         title=refreshed_title or title,
@@ -2052,16 +2212,19 @@ def collect_documents(
                 variant = _link_variants.get(url)
                 page_metadata = _link_metadata.get(url, {})
                 if year is None and stage is None and variant is None and not page_metadata:
-                    return document
-                metadata = dict(document.metadata)
-                metadata.update(page_metadata)
-                if year is not None:
-                    metadata["ano_publicacao"] = year
-                if stage is not None:
-                    metadata["etapa"] = stage
-                if variant is not None:
-                    metadata["variant"] = variant
-                return document.model_copy(update={"metadata": metadata})
+                    return downloaded
+                enriched: list[DocumentRecord] = []
+                for document in downloaded:
+                    metadata = dict(document.metadata)
+                    metadata.update(page_metadata)
+                    if year is not None:
+                        metadata["ano_publicacao"] = year
+                    if stage is not None:
+                        metadata["etapa"] = stage
+                    if variant is not None:
+                        metadata["variant"] = variant
+                    enriched.append(document.model_copy(update={"metadata": metadata}))
+                return enriched
 
             with ThreadPoolExecutor(max_workers=concurrency) as pool:
                 futures = {pool.submit(download_one, item): item for item in downloadable}
@@ -2069,13 +2232,14 @@ def collect_documents(
                     check_paused([], set())
                     url, _title, _kind = futures[future]
                     try:
-                        record = future.result()
-                        source_items += 1
-                        if record.sha256 in seen_digests:
-                            duplicate_documents += 1
-                        else:
-                            seen_digests.add(record.sha256)
-                            documents.append(record)
+                        records = future.result()
+                        for record in records:
+                            source_items += 1
+                            if record.sha256 in seen_digests:
+                                duplicate_documents += 1
+                            else:
+                                seen_digests.add(record.sha256)
+                                documents.append(record)
                     except (FetchError, UnsafeUrlError, OSError, ValueError) as exc:
                         message = f"{source.id}: falha ao baixar {url}: {exc}"
                         warnings.append(message)

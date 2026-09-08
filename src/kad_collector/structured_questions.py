@@ -171,7 +171,9 @@ class StructuredQuestionPackage(StrictModel):
 
 
 def _canonical_sha256(value: object) -> str:
-    payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    payload = json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -278,7 +280,9 @@ def _variant(document: DocumentRecord) -> str | None:
     return f"Tipo {int(match.group(1))}" if match is not None else None
 
 
-def _content_document_type(document: ExtractedDocument) -> Literal["exam", "answer_key"]:
+def _content_document_type(
+    document: ExtractedDocument,
+) -> Literal["exam", "answer_key"]:
     """Classify by PDF structure when a portal's labels are misleading.
 
     Public archives sometimes call the booklet variant a "gabarito" and place
@@ -296,14 +300,24 @@ def _content_document_type(document: ExtractedDocument) -> Literal["exam", "answ
     answer_grid_headings = len(
         re.findall(r"(?im)^\s*GABARITO\s+[1-9]\d*\s*$", document.text)
     )
-    if len(entries) >= 10 and (
-        answer_grid_headings >= 2 or answer_density < 150
-    ):
+    explicit_question = re.search(
+        r"(?im)^\s*QUEST(?:ÃO|AO|\.)\s*\d{1,3}\b", document.text
+    )
+    alternative_lines = len(
+        re.findall(r"(?im)^\s*(?:\(?[A-E]\)|[A-E][.:-])\s+\S", document.text)
+    )
+    if document.document.document_type == "answer_key" and len(document.text) < 5_000:
+        # Gabaritos agregados de algumas bancas usam "QUESTÃO" como cabeçalho de
+        # coluna. Só revertemos a declaração do portal quando também existe a
+        # estrutura inequívoca de um enunciado com alternativas.
+        return (
+            "exam"
+            if explicit_question is not None and alternative_lines >= 2
+            else "answer_key"
+        )
+    if len(entries) >= 10 and (answer_grid_headings >= 2 or answer_density < 150):
         return "answer_key"
     if document.document.document_type == "answer_key":
-        explicit_question = re.search(
-            r"(?im)^\s*QUEST(?:ÃO|AO|\.)\s*\d{1,3}\b", document.text
-        )
         if len(document.text) >= 10_000 or explicit_question is not None:
             return "exam"
         return "answer_key"
@@ -341,6 +355,32 @@ def _area(role: str) -> str | None:
 
 def _identity(document: DocumentRecord) -> tuple[str, int, str]:
     return _contest_slug(document), _year(document), _pair_key(document)
+
+
+def _answer_key_version(
+    document: DocumentRecord,
+) -> Literal["definitive", "preliminary", "unknown"]:
+    value = _normalize(
+        f"{document.title} {document.original_url} {document.resolved_url}"
+    )
+    if "definitiv" in value:
+        return "definitive"
+    if "preliminar" in value:
+        return "preliminary"
+    return "unknown"
+
+
+def _single_preferred_key(
+    candidates: list[tuple[tuple[str, int, str], ExtractedDocument]],
+) -> tuple[tuple[str, int, str], ExtractedDocument] | None:
+    if len(candidates) == 1:
+        return candidates[0]
+    definitive = [
+        item
+        for item in candidates
+        if _answer_key_version(item[1].document) == "definitive"
+    ]
+    return definitive[0] if len(definitive) == 1 else None
 
 
 def _pair_documents(
@@ -381,11 +421,15 @@ def _pair_documents(
     remaining_keys = list(unmatched_keys)
     for exam_identity, exam in unmatched_exams:
         contest, year, pair_key = exam_identity
-        candidates = [
+        same_contest = [
             (identity, key)
             for identity, key in remaining_keys
             if identity[:2] == (contest, year)
-            and (
+        ]
+        exact = [
+            (identity, key)
+            for identity, key in same_contest
+            if (
                 identity[2] == pair_key
                 or (
                     pair_key.startswith("conhecimentos_basicos")
@@ -393,8 +437,9 @@ def _pair_documents(
                 )
             )
         ]
-        if len(candidates) == 1:
-            _key_identity, key = candidates[0]
+        selected = _single_preferred_key(exact) or _single_preferred_key(same_contest)
+        if selected is not None:
+            _key_identity, key = selected
             pairs.append((exam, key))
             continue
         errors.append(
@@ -403,13 +448,24 @@ def _pair_documents(
                 document_id=exam.document.sha256,
                 message=(
                     f"{exam_identity}: gabarito único não identificado; "
-                    f"{len(candidates)} candidatos compatíveis"
+                    f"{len(same_contest)} candidatos compatíveis"
                 ),
             )
         )
     paired_key_ids = {key.document.sha256 for _exam, key in pairs}
+    paired_definitive_contests = {
+        identity[:2]
+        for identity, key in remaining_keys
+        if key.document.sha256 in paired_key_ids
+        and _answer_key_version(key.document) == "definitive"
+    }
     for key_identity, key in remaining_keys:
         if key.document.sha256 in paired_key_ids:
+            continue
+        if (
+            key_identity[:2] in paired_definitive_contests
+            and _answer_key_version(key.document) == "preliminary"
+        ):
             continue
         errors.append(
             PackageError(
@@ -491,8 +547,7 @@ def _ollama_available(endpoint: str, model: str, enabled: bool) -> bool:
         return False
     models = payload.get("models", []) if isinstance(payload, dict) else []
     return any(
-        isinstance(item, dict)
-        and str(item.get("name", "")).split("@", 1)[0] == model
+        isinstance(item, dict) and str(item.get("name", "")).split("@", 1)[0] == model
         for item in models
     )
 
@@ -585,16 +640,17 @@ def _qwen_recover_missing(
             for item in decoded.get("questions", [])
             if isinstance(item, dict) and item.get("number") in missing_numbers
         ]
-        candidate_page_numbers = {
-            int(str(item["page_number"])) for item in candidates
-        }
+        candidate_page_numbers = {int(str(item["page_number"])) for item in candidates}
         candidate_text = _normalize(" ".join(str(item["text"]) for item in candidates))
         recovered = [
             item
             for item in proposed
             if set(item.source_pages) <= candidate_page_numbers
             and _normalize(item.statement) in candidate_text
-            and all(_normalize(value) in candidate_text for value in item.alternatives.values())
+            and all(
+                _normalize(value) in candidate_text
+                for value in item.alternatives.values()
+            )
             and (
                 item.supporting_text is None
                 or _normalize(item.supporting_text) in candidate_text
@@ -611,7 +667,13 @@ def _qwen_recover_missing(
             model=model,
         )
         return recovered, decision
-    except (httpx.HTTPError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+    except (
+        httpx.HTTPError,
+        KeyError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
         return [], QwenDecisionTrace(
             reason="números esperados ausentes após parsing determinístico",
             input_sha256=input_sha256,
@@ -634,7 +696,9 @@ def _load_extracted_documents(
             manifest_hash = _file_sha256(manifest_path)
             extraction_path = extraction_dir / f"{manifest_hash}-extracted.json"
             if extraction_path.is_file():
-                extraction = ExtractionManifest.model_validate(read_json(extraction_path))
+                extraction = ExtractionManifest.model_validate(
+                    read_json(extraction_path)
+                )
             else:
                 extraction, _path = extract_manifest(manifest_path, extraction_path)
         except Exception as exc:  # noqa: BLE001 - isolate one input manifest
@@ -760,11 +824,12 @@ def _process_pair(
     if not entries:
         raise ValueError("gabarito sem respostas reconhecíveis")
     expected_numbers = tuple(sorted(entries))
-    answer_values = {entry.answer for entry in entries.values() if entry.answer is not None}
+    answer_values = {
+        entry.answer for entry in entries.values() if entry.answer is not None
+    }
     true_false = bool(answer_values) and answer_values <= {"C", "E"}
     pages: list[dict[str, object]] = [
-        {"page_number": page.number, "text": page.text}
-        for page in exam.pages
+        {"page_number": page.number, "text": page.text} for page in exam.pages
     ]
     context = BankParsingContext(
         document_id=exam.document.sha256,
@@ -798,7 +863,9 @@ def _process_pair(
                 ),
                 block=item_context.block if item_context is not None else None,
                 internal_answer=(
-                    adapted.answer if adapted is not None and not adapted.annulled else None
+                    adapted.answer
+                    if adapted is not None and not adapted.annulled
+                    else None
                 ),
                 original_answer=entry.answer if entry is not None else None,
                 annulled=bool(entry and entry.annulled),
@@ -838,7 +905,9 @@ def _process_pair(
                 supporting_text=recovered_question.supporting_text,
                 block=recovered_question.block,
                 internal_answer=(
-                    adapted.answer if adapted is not None and not adapted.annulled else None
+                    adapted.answer
+                    if adapted is not None and not adapted.annulled
+                    else None
                 ),
                 original_answer=entry.answer if entry is not None else None,
                 annulled=bool(entry and entry.annulled),

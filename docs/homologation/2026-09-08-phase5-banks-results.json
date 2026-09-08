@@ -1,0 +1,641 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-09-08T19:49:27.303570+00:00",
+  "commit": "b073fb6-dirty",
+  "matrix": "tests\\homologation\\phase5-banks.v1.toml",
+  "ollama_offline": false,
+  "sources": [
+    {
+      "id": "fcc_dpeba_2026",
+      "scenario": "FCC atual; visualizador oficial com PDF real em parâmetro file",
+      "start_url": "https://www.concursosfcc.com.br/concursos/dpeba125/index.html",
+      "expected": [
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)edital_dos_gabaritos_prova_objetiva\\.pdf"
+        }
+      ],
+      "actual": [],
+      "accepted": [],
+      "rejected": [],
+      "prohibited_accepted": [],
+      "false_positives": [],
+      "false_negatives": [
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)edital_dos_gabaritos_prova_objetiva\\.pdf"
+        }
+      ],
+      "precision": 0.0,
+      "coverage": 0.0,
+      "pairing_required": false,
+      "pairing_success": true,
+      "paths": [
+        "deterministic"
+      ],
+      "pages_visited": [
+        "https://www.concursosfcc.com.br/robots.txt"
+      ],
+      "qwen_calls": [],
+      "duration_seconds": 0.419,
+      "ocr_attempted": 0,
+      "ocr_succeeded": 0,
+      "documents_still_needing_ocr": 0,
+      "failures": [
+        {
+          "source_id": "fcc_concursos",
+          "url": "https://www.concursosfcc.com.br/concursos/dpeba125/index.html",
+          "stage": "robots",
+          "message": "fcc_concursos: robots.txt bloqueou ou nao liberou https://www.concursosfcc.com.br/concursos/dpeba125/index.html",
+          "retryable": false
+        }
+      ],
+      "warnings": [
+        "fcc_concursos: robots.txt bloqueou ou nao liberou https://www.concursosfcc.com.br/concursos/dpeba125/index.html"
+      ],
+      "manifest": "data\\homologation\\phase5-banks-final\\fcc_dpeba_2026\\manifests\\download-20260908T194846Z-64a9aa22.json",
+      "extraction_manifest": null,
+      "source_id": "fcc_concursos",
+      "structured": {
+        "package": "data\\homologation\\phase5-banks-final\\fcc_dpeba_2026\\structured-review-package.json",
+        "content_sha256": "08d234c22e07df310abd93dec5aa24ebf61330ead0315395fa0ba09733035495",
+        "documents_processed": 0,
+        "exams_processed": 0,
+        "answer_keys_processed": 0,
+        "questions_detected": 0,
+        "questions_ready": 0,
+        "questions_quarantined": 0,
+        "questions_rejected": 0,
+        "associated_answers": 0,
+        "missing_answers": 0,
+        "ocr_pages": 0,
+        "qwen_calls": 0,
+        "qwen_trace": {
+          "endpoint": "http://127.0.0.1:11434",
+          "model": "qwen3:8b",
+          "available": true,
+          "calls": []
+        },
+        "errors": []
+      }
+    },
+    {
+      "id": "fcc_trt4_2022",
+      "scenario": "FCC histórico; gabarito individual em página HTML",
+      "start_url": "https://www.concursosfcc.com.br/concursos/trt4r122/index.html",
+      "expected": [
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)gabaritos/(?:todos|index)\\.html"
+        }
+      ],
+      "actual": [],
+      "accepted": [],
+      "rejected": [],
+      "prohibited_accepted": [],
+      "false_positives": [],
+      "false_negatives": [
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)gabaritos/(?:todos|index)\\.html"
+        }
+      ],
+      "precision": 0.0,
+      "coverage": 0.0,
+      "pairing_required": false,
+      "pairing_success": true,
+      "paths": [
+        "deterministic"
+      ],
+      "pages_visited": [
+        "https://www.concursosfcc.com.br/robots.txt"
+      ],
+      "qwen_calls": [],
+      "duration_seconds": 0.255,
+      "ocr_attempted": 0,
+      "ocr_succeeded": 0,
+      "documents_still_needing_ocr": 0,
+      "failures": [
+        {
+          "source_id": "fcc_concursos",
+          "url": "https://www.concursosfcc.com.br/concursos/trt4r122/index.html",
+          "stage": "robots",
+          "message": "fcc_concursos: robots.txt bloqueou ou nao liberou https://www.concursosfcc.com.br/concursos/trt4r122/index.html",
+          "retryable": false
+        }
+      ],
+      "warnings": [
+        "fcc_concursos: robots.txt bloqueou ou nao liberou https://www.concursosfcc.com.br/concursos/trt4r122/index.html"
+      ],
+      "manifest": "data\\homologation\\phase5-banks-final\\fcc_trt4_2022\\manifests\\download-20260908T194847Z-179ee2fb.json",
+      "extraction_manifest": null,
+      "source_id": "fcc_concursos",
+      "structured": {
+        "package": "data\\homologation\\phase5-banks-final\\fcc_trt4_2022\\structured-review-package.json",
+        "content_sha256": "08d234c22e07df310abd93dec5aa24ebf61330ead0315395fa0ba09733035495",
+        "documents_processed": 0,
+        "exams_processed": 0,
+        "answer_keys_processed": 0,
+        "questions_detected": 0,
+        "questions_ready": 0,
+        "questions_quarantined": 0,
+        "questions_rejected": 0,
+        "associated_answers": 0,
+        "missing_answers": 0,
+        "ocr_pages": 0,
+        "qwen_calls": 0,
+        "qwen_trace": {
+          "endpoint": "http://127.0.0.1:11434",
+          "model": "qwen3:8b",
+          "available": true,
+          "calls": []
+        },
+        "errors": []
+      }
+    },
+    {
+      "id": "vunesp_dpsp_2022",
+      "scenario": "Vunesp; área de provas e gabaritos anunciada na página pública",
+      "start_url": "https://www.vunesp.com.br/DPSP2202",
+      "expected": [
+        {
+          "kind": "exam",
+          "pattern": "(?i)(?:DPSP2202|prova|caderno)"
+        },
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)(?:DPSP2202|gabarito)"
+        }
+      ],
+      "actual": [],
+      "accepted": [],
+      "rejected": [],
+      "prohibited_accepted": [],
+      "false_positives": [],
+      "false_negatives": [
+        {
+          "kind": "exam",
+          "pattern": "(?i)(?:DPSP2202|prova|caderno)"
+        },
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)(?:DPSP2202|gabarito)"
+        }
+      ],
+      "precision": 0.0,
+      "coverage": 0.0,
+      "pairing_required": true,
+      "pairing_success": false,
+      "paths": [
+        "deterministic"
+      ],
+      "pages_visited": [
+        "https://www.vunesp.com.br/robots.txt"
+      ],
+      "qwen_calls": [],
+      "duration_seconds": 0.165,
+      "ocr_attempted": 0,
+      "ocr_succeeded": 0,
+      "documents_still_needing_ocr": 0,
+      "failures": [
+        {
+          "source_id": "vunesp_concursos",
+          "url": "https://www.vunesp.com.br/DPSP2202",
+          "stage": "robots",
+          "message": "vunesp_concursos: robots.txt bloqueou ou nao liberou https://www.vunesp.com.br/DPSP2202",
+          "retryable": false
+        }
+      ],
+      "warnings": [
+        "vunesp_concursos: robots.txt bloqueou ou nao liberou https://www.vunesp.com.br/DPSP2202",
+        "vunesp_concursos: robots.txt indisponivel para www.vunesp.com.br: HTTP 403 ao acessar https://www.vunesp.com.br/robots.txt"
+      ],
+      "manifest": "data\\homologation\\phase5-banks-final\\vunesp_dpsp_2022\\manifests\\download-20260908T194848Z-2ee32b54.json",
+      "extraction_manifest": null,
+      "source_id": "vunesp_concursos",
+      "structured": {
+        "package": "data\\homologation\\phase5-banks-final\\vunesp_dpsp_2022\\structured-review-package.json",
+        "content_sha256": "08d234c22e07df310abd93dec5aa24ebf61330ead0315395fa0ba09733035495",
+        "documents_processed": 0,
+        "exams_processed": 0,
+        "answer_keys_processed": 0,
+        "questions_detected": 0,
+        "questions_ready": 0,
+        "questions_quarantined": 0,
+        "questions_rejected": 0,
+        "associated_answers": 0,
+        "missing_answers": 0,
+        "ocr_pages": 0,
+        "qwen_calls": 0,
+        "qwen_trace": {
+          "endpoint": "http://127.0.0.1:11434",
+          "model": "qwen3:8b",
+          "available": true,
+          "calls": []
+        },
+        "errors": []
+      }
+    },
+    {
+      "id": "aocp_mpba_2014",
+      "scenario": "AOCP histórico com muitos editais e dois gabaritos oficiais",
+      "start_url": "https://www.institutoaocp.org.br/concursos/26",
+      "expected": [
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)Gabarito Preliminar MP - Manh[aã]"
+        },
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)Gabarito Preliminar MP - Tarde"
+        }
+      ],
+      "actual": [],
+      "accepted": [],
+      "rejected": [],
+      "prohibited_accepted": [],
+      "false_positives": [],
+      "false_negatives": [
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)Gabarito Preliminar MP - Manh[aã]"
+        },
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)Gabarito Preliminar MP - Tarde"
+        }
+      ],
+      "precision": 0.0,
+      "coverage": 0.0,
+      "pairing_required": false,
+      "pairing_success": true,
+      "paths": [
+        "deterministic"
+      ],
+      "pages_visited": [
+        "https://www.institutoaocp.org.br/robots.txt",
+        "https://www.institutoaocp.org.br/concursos/26"
+      ],
+      "qwen_calls": [],
+      "duration_seconds": 2.136,
+      "ocr_attempted": 0,
+      "ocr_succeeded": 0,
+      "documents_still_needing_ocr": 0,
+      "failures": [
+        {
+          "source_id": "instituto_aocp_concursos",
+          "url": "https://www.institutoaocp.org.br/concursos/26",
+          "stage": "discovery",
+          "message": "instituto_aocp_concursos: falha ao ler https://www.institutoaocp.org.br/concursos/26: HTTP 403 ao acessar https://www.institutoaocp.org.br/concursos/26",
+          "retryable": false
+        }
+      ],
+      "warnings": [
+        "instituto_aocp_concursos: falha ao ler https://www.institutoaocp.org.br/concursos/26: HTTP 403 ao acessar https://www.institutoaocp.org.br/concursos/26"
+      ],
+      "manifest": "data\\homologation\\phase5-banks-final\\aocp_mpba_2014\\manifests\\download-20260908T194851Z-1b2f8f2f.json",
+      "extraction_manifest": null,
+      "source_id": "instituto_aocp_concursos",
+      "structured": {
+        "package": "data\\homologation\\phase5-banks-final\\aocp_mpba_2014\\structured-review-package.json",
+        "content_sha256": "08d234c22e07df310abd93dec5aa24ebf61330ead0315395fa0ba09733035495",
+        "documents_processed": 0,
+        "exams_processed": 0,
+        "answer_keys_processed": 0,
+        "questions_detected": 0,
+        "questions_ready": 0,
+        "questions_quarantined": 0,
+        "questions_rejected": 0,
+        "associated_answers": 0,
+        "missing_answers": 0,
+        "ocr_pages": 0,
+        "qwen_calls": 0,
+        "qwen_trace": {
+          "endpoint": "http://127.0.0.1:11434",
+          "model": "qwen3:8b",
+          "available": true,
+          "calls": []
+        },
+        "errors": []
+      }
+    },
+    {
+      "id": "quadrix_corepi_2026",
+      "scenario": "Quadrix; cadernos em ZIP e gabarito em PDF separado",
+      "start_url": "https://quadrix.org.br/informacoes/1018/",
+      "expected": [
+        {
+          "kind": "exam",
+          "pattern": "(?i)Provas aplicadas"
+        },
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)Gabarito definitivo.*prova objetiva"
+        },
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)Gabarito preliminar.*prova objetiva"
+        }
+      ],
+      "actual": [
+        {
+          "kind": "answer_key",
+          "title": "Gabarito preliminar (prova objetiva) 22/06/2026",
+          "url": "https://anexos-r2.selecao.net.br/uploads/861/concursos/1018/anexos/6a2abd9c-19b0-4a51-b50c-d63c84925a3a.pdf",
+          "sha256": "a8fc493950f02c2fee23e14c39df6a21aa8c2f082c2f7d14c68915b9fe460f32",
+          "mode": "deterministic"
+        },
+        {
+          "kind": "answer_key",
+          "title": "Gabarito definitivo (prova objetiva) 20/07/2026",
+          "url": "https://anexos-r2.selecao.net.br/uploads/861/concursos/1018/anexos/bcc1e439-5a3b-43ca-9c58-c6d99f48a923.pdf",
+          "sha256": "d324fc6f8e060fff2dc0880f3cebbc1727d83a7d4d0e98c099284211a0ce9f07",
+          "mode": "deterministic"
+        },
+        {
+          "kind": "exam",
+          "title": "Provas aplicadas 22/06/2026 - 201 Fiscal QUADRIX Concurso-2026 CORE-PI Prova",
+          "url": "https://anexos-r2.selecao.net.br/uploads/861/concursos/1018/anexos/55114ca4-aa40-4a65-93a2-64b319ea21d2.zip#archive_member=201_Fiscal_QUADRIX_Concurso-2026_CORE-PI_Prova.pdf",
+          "sha256": "eeddb0b8e32a06722cf8dae0b59a4f301012d864f59b900a5884df3793dde653",
+          "mode": "deterministic"
+        },
+        {
+          "kind": "exam",
+          "title": "Provas aplicadas 22/06/2026 - 200 Assistente Administrativo QUADRIX Concurso-2026 CORE-PI Prova",
+          "url": "https://anexos-r2.selecao.net.br/uploads/861/concursos/1018/anexos/55114ca4-aa40-4a65-93a2-64b319ea21d2.zip#archive_member=200_Assistente%20Administrativo_QUADRIX_Concurso-2026_CORE-PI_Prova.pdf",
+          "sha256": "b355cd6b428270e0ef11042ce94be1edba0eeb1c5f976dc7edf885ede75437de",
+          "mode": "deterministic"
+        },
+        {
+          "kind": "exam",
+          "title": "Provas aplicadas 22/06/2026 - 401 Contador QUADRIX Concurso-2026 CORE-PI Prova",
+          "url": "https://anexos-r2.selecao.net.br/uploads/861/concursos/1018/anexos/55114ca4-aa40-4a65-93a2-64b319ea21d2.zip#archive_member=401_Contador_QUADRIX_Concurso-2026_CORE-PI_Prova.pdf",
+          "sha256": "2745553798fedfea40bcd1148e97dd7759ad5a8a9cba7498b480f7f79f7fb477",
+          "mode": "deterministic"
+        },
+        {
+          "kind": "exam",
+          "title": "Provas aplicadas 22/06/2026 - 400 Assistente Jurídico QUADRIX Concurso-2026 CORE-PI Prova",
+          "url": "https://anexos-r2.selecao.net.br/uploads/861/concursos/1018/anexos/55114ca4-aa40-4a65-93a2-64b319ea21d2.zip#archive_member=400_Assistente%20Jur%C3%ADdico_QUADRIX_Concurso-2026_CORE-PI_Prova.pdf",
+          "sha256": "af0731dfd90a2ca0944fd6d30934ab736e4fd05f209eecc5df505218197bf75f",
+          "mode": "deterministic"
+        }
+      ],
+      "accepted": [
+        {
+          "kind": "answer_key",
+          "title": "Gabarito preliminar (prova objetiva) 22/06/2026",
+          "url": "https://anexos-r2.selecao.net.br/uploads/861/concursos/1018/anexos/6a2abd9c-19b0-4a51-b50c-d63c84925a3a.pdf",
+          "sha256": "a8fc493950f02c2fee23e14c39df6a21aa8c2f082c2f7d14c68915b9fe460f32",
+          "mode": "deterministic"
+        },
+        {
+          "kind": "answer_key",
+          "title": "Gabarito definitivo (prova objetiva) 20/07/2026",
+          "url": "https://anexos-r2.selecao.net.br/uploads/861/concursos/1018/anexos/bcc1e439-5a3b-43ca-9c58-c6d99f48a923.pdf",
+          "sha256": "d324fc6f8e060fff2dc0880f3cebbc1727d83a7d4d0e98c099284211a0ce9f07",
+          "mode": "deterministic"
+        },
+        {
+          "kind": "exam",
+          "title": "Provas aplicadas 22/06/2026 - 201 Fiscal QUADRIX Concurso-2026 CORE-PI Prova",
+          "url": "https://anexos-r2.selecao.net.br/uploads/861/concursos/1018/anexos/55114ca4-aa40-4a65-93a2-64b319ea21d2.zip#archive_member=201_Fiscal_QUADRIX_Concurso-2026_CORE-PI_Prova.pdf",
+          "sha256": "eeddb0b8e32a06722cf8dae0b59a4f301012d864f59b900a5884df3793dde653",
+          "mode": "deterministic"
+        },
+        {
+          "kind": "exam",
+          "title": "Provas aplicadas 22/06/2026 - 200 Assistente Administrativo QUADRIX Concurso-2026 CORE-PI Prova",
+          "url": "https://anexos-r2.selecao.net.br/uploads/861/concursos/1018/anexos/55114ca4-aa40-4a65-93a2-64b319ea21d2.zip#archive_member=200_Assistente%20Administrativo_QUADRIX_Concurso-2026_CORE-PI_Prova.pdf",
+          "sha256": "b355cd6b428270e0ef11042ce94be1edba0eeb1c5f976dc7edf885ede75437de",
+          "mode": "deterministic"
+        },
+        {
+          "kind": "exam",
+          "title": "Provas aplicadas 22/06/2026 - 401 Contador QUADRIX Concurso-2026 CORE-PI Prova",
+          "url": "https://anexos-r2.selecao.net.br/uploads/861/concursos/1018/anexos/55114ca4-aa40-4a65-93a2-64b319ea21d2.zip#archive_member=401_Contador_QUADRIX_Concurso-2026_CORE-PI_Prova.pdf",
+          "sha256": "2745553798fedfea40bcd1148e97dd7759ad5a8a9cba7498b480f7f79f7fb477",
+          "mode": "deterministic"
+        },
+        {
+          "kind": "exam",
+          "title": "Provas aplicadas 22/06/2026 - 400 Assistente Jurídico QUADRIX Concurso-2026 CORE-PI Prova",
+          "url": "https://anexos-r2.selecao.net.br/uploads/861/concursos/1018/anexos/55114ca4-aa40-4a65-93a2-64b319ea21d2.zip#archive_member=400_Assistente%20Jur%C3%ADdico_QUADRIX_Concurso-2026_CORE-PI_Prova.pdf",
+          "sha256": "af0731dfd90a2ca0944fd6d30934ab736e4fd05f209eecc5df505218197bf75f",
+          "mode": "deterministic"
+        }
+      ],
+      "rejected": [],
+      "prohibited_accepted": [],
+      "false_positives": [],
+      "false_negatives": [],
+      "precision": 1.0,
+      "coverage": 1.0,
+      "pairing_required": true,
+      "pairing_success": true,
+      "paths": [
+        "deterministic"
+      ],
+      "pages_visited": [
+        "https://quadrix.org.br/robots.txt",
+        "https://quadrix.org.br/informacoes/1018/",
+        "https://anexos-r2.selecao.net.br/robots.txt"
+      ],
+      "qwen_calls": [],
+      "duration_seconds": 8.723,
+      "ocr_attempted": 0,
+      "ocr_succeeded": 0,
+      "documents_still_needing_ocr": 0,
+      "failures": [],
+      "warnings": [],
+      "manifest": "data\\homologation\\phase5-banks-final\\quadrix_corepi_2026\\manifests\\download-20260908T194900Z-1e7136a9.json",
+      "extraction_manifest": "data\\homologation\\phase5-banks-final\\quadrix_corepi_2026\\manifests\\download-20260908T194900Z-1e7136a9-extracted.json",
+      "source_id": "quadrix_concursos",
+      "structured": {
+        "package": "data\\homologation\\phase5-banks-final\\quadrix_corepi_2026\\structured-review-package.json",
+        "content_sha256": "633f2dc3777519e690c10dbcf341242928fd81ac160942a2af17feaf677ffe9b",
+        "documents_processed": 6,
+        "exams_processed": 4,
+        "answer_keys_processed": 1,
+        "questions_detected": 160,
+        "questions_ready": 141,
+        "questions_quarantined": 19,
+        "questions_rejected": 0,
+        "associated_answers": 160,
+        "missing_answers": 0,
+        "ocr_pages": 0,
+        "qwen_calls": 0,
+        "qwen_trace": {
+          "endpoint": "http://127.0.0.1:11434",
+          "model": "qwen3:8b",
+          "available": true,
+          "calls": []
+        },
+        "errors": [
+          {
+            "stage": "parsing",
+            "document_id": "af0731dfd90a2ca0944fd6d30934ab736e4fd05f209eecc5df505218197bf75f",
+            "message": "questao 3: menos de duas alternativas reconhecidas",
+            "isolated": true
+          },
+          {
+            "stage": "parsing",
+            "document_id": "2745553798fedfea40bcd1148e97dd7759ad5a8a9cba7498b480f7f79f7fb477",
+            "message": "questao 3: menos de duas alternativas reconhecidas",
+            "isolated": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "quadrix_sessp_2025",
+      "scenario": "Quadrix; página com muitos resultados, cadernos em ZIP e gabarito separado",
+      "start_url": "https://quadrix.org.br/informacoes/13/",
+      "expected": [
+        {
+          "kind": "exam",
+          "pattern": "(?i)Provas aplicadas"
+        },
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)gabarito definitivo-prova objetiva"
+        },
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)gabarito preliminar-prova objetiva"
+        }
+      ],
+      "actual": [],
+      "accepted": [],
+      "rejected": [],
+      "prohibited_accepted": [],
+      "false_positives": [],
+      "false_negatives": [
+        {
+          "kind": "exam",
+          "pattern": "(?i)Provas aplicadas"
+        },
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)gabarito definitivo-prova objetiva"
+        },
+        {
+          "kind": "answer_key",
+          "pattern": "(?i)gabarito preliminar-prova objetiva"
+        }
+      ],
+      "precision": 0.0,
+      "coverage": 0.0,
+      "pairing_required": true,
+      "pairing_success": false,
+      "paths": [
+        "deterministic"
+      ],
+      "pages_visited": [
+        "https://quadrix.org.br/robots.txt",
+        "https://quadrix.org.br/informacoes/13/",
+        "https://anexos.cdn.selecao.net.br/robots.txt"
+      ],
+      "qwen_calls": [],
+      "duration_seconds": 2.983,
+      "ocr_attempted": 0,
+      "ocr_succeeded": 0,
+      "documents_still_needing_ocr": 0,
+      "failures": [
+        {
+          "source_id": "quadrix_concursos",
+          "url": "https://anexos.cdn.selecao.net.br/uploads/861/concursos/13/anexos/ba2c194d-f4cf-419c-8a60-d6dc4304167f.pdf",
+          "stage": "robots",
+          "message": "quadrix_concursos: robots.txt bloqueou ou nao liberou https://anexos.cdn.selecao.net.br/uploads/861/concursos/13/anexos/ba2c194d-f4cf-419c-8a60-d6dc4304167f.pdf",
+          "retryable": false
+        },
+        {
+          "source_id": "quadrix_concursos",
+          "url": "https://anexos.cdn.selecao.net.br/uploads/861/concursos/13/anexos/3825d07a-bf0e-41cc-9b4f-e1f2a9cc6c4c.pdf",
+          "stage": "robots",
+          "message": "quadrix_concursos: robots.txt bloqueou ou nao liberou https://anexos.cdn.selecao.net.br/uploads/861/concursos/13/anexos/3825d07a-bf0e-41cc-9b4f-e1f2a9cc6c4c.pdf",
+          "retryable": false
+        },
+        {
+          "source_id": "quadrix_concursos",
+          "url": "https://anexos.cdn.selecao.net.br/uploads/861/concursos/13/anexos/300374ed-5b0c-4634-a027-c1b37d829949.zip",
+          "stage": "robots",
+          "message": "quadrix_concursos: robots.txt bloqueou ou nao liberou https://anexos.cdn.selecao.net.br/uploads/861/concursos/13/anexos/300374ed-5b0c-4634-a027-c1b37d829949.zip",
+          "retryable": false
+        }
+      ],
+      "warnings": [
+        "quadrix_concursos: robots.txt bloqueou ou nao liberou https://anexos.cdn.selecao.net.br/uploads/861/concursos/13/anexos/ba2c194d-f4cf-419c-8a60-d6dc4304167f.pdf",
+        "quadrix_concursos: robots.txt bloqueou ou nao liberou https://anexos.cdn.selecao.net.br/uploads/861/concursos/13/anexos/3825d07a-bf0e-41cc-9b4f-e1f2a9cc6c4c.pdf",
+        "quadrix_concursos: robots.txt bloqueou ou nao liberou https://anexos.cdn.selecao.net.br/uploads/861/concursos/13/anexos/300374ed-5b0c-4634-a027-c1b37d829949.zip"
+      ],
+      "manifest": "data\\homologation\\phase5-banks-final\\quadrix_sessp_2025\\manifests\\download-20260908T194910Z-19377927.json",
+      "extraction_manifest": null,
+      "source_id": "quadrix_concursos",
+      "structured": {
+        "package": "data\\homologation\\phase5-banks-final\\quadrix_sessp_2025\\structured-review-package.json",
+        "content_sha256": "08d234c22e07df310abd93dec5aa24ebf61330ead0315395fa0ba09733035495",
+        "documents_processed": 0,
+        "exams_processed": 0,
+        "answer_keys_processed": 0,
+        "questions_detected": 0,
+        "questions_ready": 0,
+        "questions_quarantined": 0,
+        "questions_rejected": 0,
+        "associated_answers": 0,
+        "missing_answers": 0,
+        "ocr_pages": 0,
+        "qwen_calls": 0,
+        "qwen_trace": {
+          "endpoint": "http://127.0.0.1:11434",
+          "model": "qwen3:8b",
+          "available": true,
+          "calls": []
+        },
+        "errors": []
+      }
+    }
+  ],
+  "summary": {
+    "precision": 1.0,
+    "coverage": 0.25,
+    "pairing_rate": 0.3333333333333333,
+    "ocr_success_rate": null,
+    "false_positives": 0,
+    "false_negatives": 9,
+    "prohibited_accepted": 0,
+    "average_seconds_per_source": 2.4468333333333336,
+    "sources_without_intervention_rate": 0.16666666666666666,
+    "sources": 6,
+    "banks_executed": [
+      "fcc_concursos",
+      "instituto_aocp_concursos",
+      "quadrix_concursos",
+      "vunesp_concursos"
+    ],
+    "discovery_qwen_calls": 0,
+    "structuring_qwen_calls": 0,
+    "questions_detected": 160,
+    "questions_ready": 141,
+    "questions_quarantined": 19,
+    "questions_rejected": 0
+  },
+  "idempotency": {
+    "source": "quadrix_corepi_2026",
+    "stable_hashes": true,
+    "stable_structured_content": true,
+    "original_structured_sha256": "633f2dc3777519e690c10dbcf341242928fd81ac160942a2af17feaf677ffe9b",
+    "repeated_structured_sha256": "633f2dc3777519e690c10dbcf341242928fd81ac160942a2af17feaf677ffe9b",
+    "original_count": 6,
+    "repeated_count": 6
+  },
+  "criteria": {
+    "precision_at_least_95_percent": true,
+    "coverage_at_least_85_percent": false,
+    "all_four_banks_executed": true,
+    "no_prohibited_document_accepted": true,
+    "source_failures_were_isolated": true,
+    "repeat_is_idempotent": true,
+    "ocr_sample_completed": false
+  }
+}
