@@ -43,6 +43,7 @@ from .ollama_preflight import (
     inspect_ollama_environment,
     probe_ollama_models,
 )
+from .operator_run import OperatorParameters, default_operator_output, run_operator
 from .pdf_extractor import extract_manifest
 from .promotion import build_promotion_package, dry_run_promotion
 from .question_equivalence import run_question_equivalence_migration
@@ -114,12 +115,21 @@ def build_parser() -> argparse.ArgumentParser:
     run = subparsers.add_parser(
         "run",
         aliases=["semi-auto"],
-        help="executa links informados e gera um relatorio local organizado",
+        help="coleta por órgão, banca e período ou executa links informados",
     )
-    run.add_argument("--config", type=_path, default=Path("config/sources.toml"))
+    run.add_argument(
+        "--config", type=_path, default=Path("config/sources.official.toml")
+    )
     run.add_argument("--url", action="append", default=[])
     run.add_argument("--urls-file", type=_path, action="append", default=[])
     run.add_argument("--output", type=_path)
+    run.add_argument("--interactive", action="store_true")
+    run.add_argument("--resume", type=_path)
+    run.add_argument("--ano-inicial", type=int)
+    run.add_argument("--ano-final", type=int)
+    run.add_argument("--ollama-endpoint", default=DEFAULT_OLLAMA_ENDPOINT)
+    run.add_argument("--qwen-model", default=DEFAULT_QWEN_MODEL)
+    run.add_argument("--disable-ollama", action="store_true")
     run.add_argument("--model")
     run.add_argument("--max-chars", type=int, default=40_000)
     run.add_argument("--overlap-chars", type=int, default=3_000)
@@ -431,8 +441,98 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _single_value(values: list[str], label: str) -> str:
+    if len(values) != 1:
+        raise ValueError(f"informe exatamente um valor para {label}")
+    return values[0]
+
+
+def _prompt_year(label: str) -> int:
+    raw = input(f"{label}: ").strip()
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{label.casefold()} deve ser um ano válido") from exc
+
+
+def _operator_request_from_args(
+    args: argparse.Namespace,
+) -> tuple[OperatorParameters | None, Path, bool]:
+    if args.resume is not None:
+        if args.output is not None:
+            raise ValueError("use --resume sem --output")
+        if args.interactive:
+            raise ValueError("use --resume sem --interactive")
+        return None, args.resume, True
+
+    if args.interactive:
+        if args.organizations or args.boards or args.ano_inicial or args.ano_final:
+            raise ValueError(
+                "o modo interativo solicita órgão, banca e período; não repita esses argumentos"
+            )
+        print("Operação guiada do KAD Collector")
+        organization = input("Órgão: ").strip()
+        board = input("Banca: ").strip()
+        start_year = _prompt_year("Ano inicial")
+        end_year = _prompt_year("Ano final")
+    else:
+        organization = _single_value(args.organizations or [], "--orgao")
+        board = _single_value(args.boards or [], "--banca")
+        if args.ano_inicial is None or args.ano_final is None:
+            raise ValueError("informe --ano-inicial e --ano-final")
+        start_year = args.ano_inicial
+        end_year = args.ano_final
+        if args.years:
+            raise ValueError("não combine --ano com --ano-inicial e --ano-final")
+
+    parameters = OperatorParameters(
+        organization=organization,
+        board=board,
+        start_year=start_year,
+        end_year=end_year,
+    )
+    output = args.output or default_operator_output(parameters)
+    print("")
+    print("Escopo da coleta")
+    print(f"Órgão: {parameters.organization}")
+    print(f"Banca: {parameters.board}")
+    print(f"Período: {parameters.start_year}–{parameters.end_year}")
+    print(f"Saída: {output}")
+    if args.interactive:
+        answer = input("Iniciar coleta? [s/N]: ").strip().casefold()
+        if answer not in {"s", "sim"}:
+            raise ValueError("coleta cancelada pelo usuário")
+    return parameters, output, False
+
+
+def _uses_operator_run(args: argparse.Namespace) -> bool:
+    return bool(
+        args.interactive
+        or args.resume is not None
+        or args.ano_inicial is not None
+        or args.ano_final is not None
+        or (not args.url and not args.urls_file and (args.organizations or args.boards))
+    )
+
+
 def _run(args: argparse.Namespace) -> int:
     if args.command in {"run", "semi-auto"}:
+        if _uses_operator_run(args):
+            if args.url or args.urls_file:
+                raise ValueError(
+                    "não combine links avulsos com a coleta por órgão, banca e período"
+                )
+            parameters, output_dir, resume = _operator_request_from_args(args)
+            operator_result = run_operator(
+                config_path=args.config,
+                output_dir=output_dir,
+                parameters=parameters,
+                resume=resume,
+                ollama_endpoint=args.ollama_endpoint,
+                qwen_model=args.qwen_model,
+                enable_ollama=not args.disable_ollama,
+            )
+            return 2 if operator_result.state.status == "failed" else 0
         urls = read_requested_urls(args.url, args.urls_file)
         semiautomatic_report, path = run_semiautomatic(
             config_path=args.config,
@@ -876,7 +976,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return _run(args)
     except KeyboardInterrupt:
-        print("\nTeste encerrado pelo usuario.")
+        print("\nOperação interrompida. Use --resume com o diretório da execução.")
         return 130
     except RegressionError as exc:
         print(f"ERRO DE REGRESSÃO: {exc}", file=sys.stderr)

@@ -7,7 +7,7 @@ import time
 import unicodedata
 from pathlib import Path
 from typing import Literal, cast
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import httpx
 from pydantic import Field
@@ -21,6 +21,7 @@ from .models import (
     DownloadManifest,
     ExtractedDocument,
     ExtractedPage,
+    ExtractionManifest,
     StrictModel,
 )
 from .pdf_extractor import extract_manifest
@@ -199,15 +200,30 @@ def _metadata_value(document: DocumentRecord, *keys: str) -> str | None:
 
 
 def _contest_slug(document: DocumentRecord) -> str:
-    url = document.resolved_url or document.original_url
-    match = re.search(r"(?i)/concursos/([a-z0-9_-]+)/", url)
-    if match is None:
-        raise ValueError("URL oficial não contém o identificador do concurso")
-    return match.group(1).casefold()
+    declared = _metadata_value(document, "contest", "concurso", "event", "evento")
+    if declared is not None:
+        return _normalize(declared).replace(" ", "_")
+
+    candidates = [
+        _metadata_value(document, "canonical_url"),
+        document.resolved_url,
+        document.original_url,
+    ]
+    for candidate in filter(None, candidates):
+        parsed = urlparse(candidate)
+        match = re.search(r"(?i)/concursos?/([a-z0-9_-]+)/?", parsed.path)
+        if match is not None:
+            return match.group(1).casefold()
+        file_value = parse_qs(parsed.query).get("file", [""])[0]
+        file_path = unquote(file_value).replace("\\", "/")
+        match = re.search(r"(?i)(?:^|/)([a-z]{2,}[a-z0-9_-]*\d{2,})(?:/|$)", file_path)
+        if match is not None:
+            return match.group(1).casefold()
+    raise ValueError("URL oficial não contém o identificador do concurso")
 
 
 def _year(document: DocumentRecord) -> int:
-    declared = _metadata_value(document, "year", "ano")
+    declared = _metadata_value(document, "year", "ano", "ano_publicacao")
     if declared is not None and re.fullmatch(r"(?:19|20)\d{2}", declared):
         return int(declared)
     slug = _contest_slug(document)
@@ -237,7 +253,76 @@ def _pair_key(document: DocumentRecord) -> str:
         return "conhecimentos_basicos"
     if cargo is not None:
         return f"cargo_{int(cargo.group(1))}"
+    generic = re.sub(
+        r"^(?:gabarito(?: oficial)?(?: preliminar| definitivo)?|prova objetiva)\s+",
+        "",
+        title,
+    )
+    generic = re.sub(r"\s+gabarito\s+\d{1,3}$", "", generic)
+    generic = re.sub(r"\s+tipo\s+\d{1,3}$", "", generic)
+    generic = re.sub(r"^prova\s+(?!(?:[a-z])\b)", "", generic)
+    generic = generic.strip()
+    if len(generic) >= 4:
+        return generic.replace(" ", "_")
     raise ValueError(f"identidade de prova/gabarito não reconhecida: {document.title}")
+
+
+def _variant(document: DocumentRecord) -> str | None:
+    declared = _metadata_value(document, "variant", "versao", "tipo", "booklet_type")
+    if declared is not None:
+        match = re.search(r"[1-9]\d*", declared)
+        if match is not None:
+            return f"Tipo {int(match.group(0))}"
+    title = _normalize(document.title)
+    match = re.search(r"(?:gabarito|tipo)\s+([1-9]\d*)$", title)
+    return f"Tipo {int(match.group(1))}" if match is not None else None
+
+
+def _content_document_type(document: ExtractedDocument) -> Literal["exam", "answer_key"]:
+    """Classify by PDF structure when a portal's labels are misleading.
+
+    Public archives sometimes call the booklet variant a "gabarito" and place
+    the consolidated answer grid under a path named "provas". Ten or more
+    unambiguous numbered answers are strong enough to treat the file as a key;
+    otherwise a declared key with substantial question text is treated as an
+    exam. The original title, URL and provenance remain untouched.
+    """
+    entries = parse_answer_key(
+        document.text,
+        variant=_variant(document.document),
+        role=_role(document.document),
+    )
+    answer_density = len(document.text) / max(1, len(entries))
+    answer_grid_headings = len(
+        re.findall(r"(?im)^\s*GABARITO\s+[1-9]\d*\s*$", document.text)
+    )
+    if len(entries) >= 10 and (
+        answer_grid_headings >= 2 or answer_density < 150
+    ):
+        return "answer_key"
+    if document.document.document_type == "answer_key":
+        explicit_question = re.search(
+            r"(?im)^\s*QUEST(?:ÃO|AO|\.)\s*\d{1,3}\b", document.text
+        )
+        if len(document.text) >= 10_000 or explicit_question is not None:
+            return "exam"
+        return "answer_key"
+    return "exam"
+
+
+def _with_content_document_type(document: ExtractedDocument) -> ExtractedDocument:
+    if document.document.document_type not in {"exam", "answer_key"}:
+        return document
+    detected = _content_document_type(document)
+    if detected == document.document.document_type:
+        return document
+    metadata = dict(document.document.metadata)
+    metadata["declared_document_type"] = document.document.document_type
+    metadata["document_type_evidence"] = "pdf_structure"
+    record = document.document.model_copy(
+        update={"document_type": detected, "metadata": metadata}
+    )
+    return document.model_copy(update={"document": record})
 
 
 def _role(document: DocumentRecord) -> str:
@@ -263,7 +348,8 @@ def _pair_documents(
 ) -> list[tuple[ExtractedDocument, ExtractedDocument]]:
     exams: dict[tuple[str, int, str], list[ExtractedDocument]] = {}
     keys: dict[tuple[str, int, str], list[ExtractedDocument]] = {}
-    for document in documents:
+    for original in documents:
+        document = _with_content_document_type(original)
         try:
             identity = _identity(document.document)
         except ValueError as exc:
@@ -299,13 +385,17 @@ def _pair_documents(
             (identity, key)
             for identity, key in remaining_keys
             if identity[:2] == (contest, year)
-            and pair_key.startswith("conhecimentos_basicos")
-            and identity[2].startswith("conhecimentos_basicos")
+            and (
+                identity[2] == pair_key
+                or (
+                    pair_key.startswith("conhecimentos_basicos")
+                    and identity[2].startswith("conhecimentos_basicos")
+                )
+            )
         ]
         if len(candidates) == 1:
-            key_identity, key = candidates[0]
+            _key_identity, key = candidates[0]
             pairs.append((exam, key))
-            remaining_keys.remove((key_identity, key))
             continue
         errors.append(
             PackageError(
@@ -317,7 +407,10 @@ def _pair_documents(
                 ),
             )
         )
+    paired_key_ids = {key.document.sha256 for _exam, key in pairs}
     for key_identity, key in remaining_keys:
+        if key.document.sha256 in paired_key_ids:
+            continue
         errors.append(
             PackageError(
                 stage="pairing",
@@ -540,7 +633,10 @@ def _load_extracted_documents(
             DownloadManifest.model_validate(read_json(manifest_path))
             manifest_hash = _file_sha256(manifest_path)
             extraction_path = extraction_dir / f"{manifest_hash}-extracted.json"
-            extraction, _path = extract_manifest(manifest_path, extraction_path)
+            if extraction_path.is_file():
+                extraction = ExtractionManifest.model_validate(read_json(extraction_path))
+            else:
+                extraction, _path = extract_manifest(manifest_path, extraction_path)
         except Exception as exc:  # noqa: BLE001 - isolate one input manifest
             errors.append(
                 PackageError(
@@ -601,7 +697,10 @@ def _structured_question(
         organization=(
             _metadata_value(exam_record, "organization", "orgao") or "Polícia Federal"
         ),
-        contest=_metadata_value(exam_record, "contest", "concurso") or _contest_slug(exam_record),
+        contest=(
+            _metadata_value(exam_record, "contest", "concurso")
+            or _contest_slug(exam_record)
+        ),
         year=_year(exam_record),
         role=role,
         area=_area(role),
@@ -652,7 +751,12 @@ def _process_pair(
     qwen_decisions: list[QwenDecisionTrace] | None = None,
 ) -> tuple[list[StructuredQuestion], ExamProcessingMetrics]:
     started = time.monotonic()
-    entries = parse_answer_key(answer_key.text)
+    entries = parse_answer_key(
+        answer_key.text,
+        variant=_variant(exam.document),
+        role=_role(exam.document),
+        turn=_metadata_value(exam.document, "turn", "turno", "shift"),
+    )
     if not entries:
         raise ValueError("gabarito sem respostas reconhecíveis")
     expected_numbers = tuple(sorted(entries))
@@ -886,7 +990,7 @@ def build_structured_question_package(
     package_metrics = StructuredPackageMetrics(
         documents_processed=len(documents),
         exams_processed=len(exam_metrics),
-        answer_keys_processed=len(exam_metrics),
+        answer_keys_processed=len({key.document.sha256 for _exam, key in pairs}),
         expected_questions=expected_total,
         detected_questions=detected_total,
         accepted_questions=len(accepted),
@@ -927,6 +1031,9 @@ def build_structured_question_package(
         "metrics": package_metrics.model_dump(mode="json"),
     }
     semantic_content = json.loads(json.dumps(content, ensure_ascii=False))
+    # O manifesto inclui horários e telemetria de coleta. Os hashes dos PDFs já
+    # fazem parte das questões e dos rastros; o invólucro não altera o conteúdo.
+    semantic_content.pop("input_manifest_sha256s", None)
     for traces in semantic_content["page_extraction"].values():
         for trace in traces:
             trace.pop("duration_ms", None)

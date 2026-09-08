@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-09-08",
+  "publicationExecuted": false,
+  "scenarios": [
+    {
+      "organization": "Polícia Federal",
+      "board": "CEBRASPE",
+      "period": [2021, 2021],
+      "documents": 8,
+      "examsProcessed": 4,
+      "answerKeysProcessed": 4,
+      "expectedQuestions": 480,
+      "detectedQuestions": 480,
+      "acceptedQuestions": 447,
+      "quarantinedQuestions": 33,
+      "associatedAnswers": 480,
+      "missingAnswers": 0,
+      "segmentationPrecision": 1.0,
+      "segmentationCoverage": 1.0,
+      "duplicateDocuments": 0,
+      "duplicateQuestions": 0,
+      "qwenAvailableRunCompleted": true,
+      "qwenCalls": 0,
+      "ollamaDisabledRunCompleted": true,
+      "semanticHashStable": true,
+      "semanticSha256": "d00813d29fbc159a1071c1359621e9b4413bb0623bf51dc8ed8b9a21c06f70c9"
+    },
+    {
+      "organization": "Banco do Brasil",
+      "board": "CESGRANRIO",
+      "period": [2021, 2023],
+      "documents": 40,
+      "examsProcessed": 19,
+      "answerKeysProcessed": 4,
+      "expectedQuestions": 1330,
+      "detectedQuestions": 1312,
+      "acceptedQuestions": 1177,
+      "quarantinedQuestions": 135,
+      "associatedAnswers": 1312,
+      "missingAnswers": 18,
+      "segmentationPrecision": 1.0,
+      "segmentationCoverage": 0.9864661654135338,
+      "duplicateDocuments": 0,
+      "duplicateQuestions": 0,
+      "handledFailures": {
+        "robots": 2,
+        "pairing": 17,
+        "parsingWarnings": 19
+      },
+      "semanticSha256": "4561eb36ecaec4adbabaa3bb5e2f7cb2b58c6d41b0f26544bf69749704b118cf"
+    }
+  ],
+  "resume": {
+    "automatedIntegrationPassed": true,
+    "collectionCallsBeforeAndAfterResume": 1,
+    "liveSignalReachedCheckpoint": false,
+    "liveLimitation": "A fonte encerrou sem documentos após bloqueio por robots.txt antes de uma interrupção útil."
+  },
+  "limitations": [
+    "A nova tentativa ao vivo do Banco do Brasil e da Cesgranrio foi bloqueada por robots.txt.",
+    "Os 17 cadernos de 2023 preservados não possuem os quatro gabaritos no manifesto antigo e não foram estruturados.",
+    "Nenhum PDF ou conteúdo de questão integra este arquivo versionado."
+  ]
+}
