@@ -28,6 +28,46 @@ para a IA.
 - uma chave do provedor escolhido apenas quando uma etapa de IA for habilitada;
 - acesso local ao painel administrativo do KAD para importar o JSONL revisado.
 
+## Operação simples por órgão, banca e período
+
+O comando `run` aceita um objetivo completo sem exigir URLs individuais. Ele seleciona
+somente fontes públicas cadastradas, localiza e valida os PDFs, aplica OCR quando necessário,
+associa prova e gabarito, estrutura as questões e encerra em um pacote local de revisão. Nada
+é publicado no KAD ou em outro serviço.
+
+```cmd
+kad-collector run --orgao "Policia Federal" --banca CEBRASPE --ano-inicial 2021 --ano-final 2025
+```
+
+Para responder às mesmas perguntas de forma guiada:
+
+```cmd
+kad-collector run --interactive
+```
+
+O diretório padrão combina órgão, banca e período dentro de `data/runs`. Use `--output`
+para escolher outro local. Cada execução produz cinco artefatos:
+
+- `run.json`: parâmetros, etapas concluídas, estado, métricas e hash semântico;
+- `manifest.json`: documentos encontrados, origem, hash e falhas da coleta;
+- `review-package.json`: questões aceitas, em quarentena e rejeitadas;
+- `report.md`: resumo legível da operação;
+- `failures.json`: falhas isoladas e motivos para diagnóstico.
+
+Se a execução for interrompida, retome o mesmo trabalho sem repetir as etapas concluídas:
+
+```cmd
+kad-collector run --resume data\runs\policia-federal-cebraspe-2021-2025
+```
+
+O Qwen local usa `qwen3:8b` no Ollama somente como fallback. A descoberta e a estruturação
+determinísticas continuam funcionando quando o Ollama está desligado; para exigir esse modo,
+adicione `--disable-ollama`. Uma repetição não duplica documentos ou questões. Se todas as
+fontes falharem, a primeira execução termina com código de erro; uma execução posterior
+preserva o último manifesto verificado e registra a nova falha. O limite de arquivos cresce
+com o período pedido, até o teto de 1.000 por fonte, sem remover os limites de navegação,
+host, tamanho, `robots.txt` ou segurança já configurados.
+
 ## Instalacao no Windows (CMD)
 
 ```cmd

@@ -6,6 +6,7 @@ from pathlib import Path
 from kad_collector.models import DocumentRecord, ExtractedDocument, ExtractedPage
 from kad_collector.structured_questions import (
     StructuredQuestionPackage,
+    _pair_documents,
     _process_pair,
     build_structured_question_package,
 )
@@ -75,13 +76,14 @@ def test_package_is_review_first_and_semantically_idempotent(
     )
     documents = [exam, answer_key]
     availability = iter((True, False))
+    manifest_hashes = iter((["c" * 64], ["d" * 64]))
 
     import kad_collector.structured_questions as module
 
     monkeypatch.setattr(  # type: ignore[attr-defined]
         module,
         "_load_extracted_documents",
-        lambda *_args, **_kwargs: (documents, ["c" * 64]),
+        lambda *_args, **_kwargs: (documents, next(manifest_hashes)),
     )
     monkeypatch.setattr(  # type: ignore[attr-defined]
         module, "_ollama_available", lambda *_args, **_kwargs: next(availability)
@@ -171,3 +173,109 @@ def test_qwen_is_used_only_for_a_missing_deterministic_item(monkeypatch: object)
     assert metrics.qwen_calls == 1
     assert decisions[0].accepted
     assert decisions[0].response == {"recovered_numbers": [1]}
+
+
+def _cesgranrio_document(
+    kind: str, title: str, digest: str, text: str, *, variant: str | None = None
+) -> ExtractedDocument:
+    record = _record(kind, title, digest).model_copy(
+        update={
+            "source_id": "cesgranrio_banco_brasil",
+            "source_name": "Fundação Cesgranrio",
+            "original_url": (
+                "https://inscricao.cesgranrio.com.br/storage.ashx?"
+                f"file=pdf%2Fbb0121%2Fdocumentos%2F{digest}.pdf"
+            ),
+            "resolved_url": (
+                "https://inscricao.cesgranrio.com.br/storage.ashx?"
+                f"file=pdf%2Fbb0121%2Fdocumentos%2F{digest}.pdf"
+            ),
+            "metadata": {
+                "banca": "CESGRANRIO",
+                "orgao": "Banco do Brasil",
+                "ano_publicacao": "2021",
+                **({"variant": variant} if variant is not None else {}),
+            },
+        }
+    )
+    return ExtractedDocument(
+        document=record,
+        pages=[ExtractedPage(number=1, text=text, character_count=len(text))],
+        text=text,
+    )
+
+
+def test_pairing_uses_pdf_structure_and_reuses_a_consolidated_answer_key() -> None:
+    key_text = "\n".join(f"{number} - A" for number in range(1, 11))
+    key = _cesgranrio_document(
+        "exam", "PROVA A - AGENTE COMERCIAL", "2", key_text
+    )
+    exam_one = _cesgranrio_document(
+        "answer_key",
+        "PROVA A - AGENTE COMERCIAL - GABARITO 1",
+        "3",
+        "QUESTÃO 1\nEnunciado completo?\nA) Sim\nB) Não",
+        variant="Tipo 1",
+    )
+    exam_two = _cesgranrio_document(
+        "exam",
+        "PROVA A - AGENTE COMERCIAL - GABARITO 2",
+        "4",
+        "QUESTÃO 1\nOutro enunciado completo?\nA) Sim\nB) Não",
+        variant="Tipo 2",
+    )
+    errors = []
+
+    pairs = _pair_documents([key, exam_one, exam_two], errors)
+
+    assert not errors
+    assert len(pairs) == 2
+    assert {exam.document.document_type for exam, _key in pairs} == {"exam"}
+    assert {answer_key.document.document_type for _exam, answer_key in pairs} == {
+        "answer_key"
+    }
+    assert {answer_key.document.sha256 for _exam, answer_key in pairs} == {"2" * 64}
+
+
+def test_cesgranrio_pair_selects_the_exam_booklet_variant() -> None:
+    exam = _cesgranrio_document(
+        "exam",
+        "PROVA A - AGENTE COMERCIAL - GABARITO 2",
+        "5",
+        "QUESTÃO 1\nQual alternativa está correta?\nA) Alfa\nB) Beta",
+        variant="Tipo 2",
+    )
+    answer_key = _cesgranrio_document(
+        "answer_key",
+        "PROVA A - AGENTE COMERCIAL",
+        "6",
+        "GABARITO 1\n1 - A\nGABARITO 2\n1 - B",
+    )
+
+    questions, metrics = _process_pair(exam, answer_key, [])
+
+    assert metrics.expected_questions == 1
+    assert questions[0].correct_answer == "B"
+    assert questions[0].correct_answer_label == "Beta"
+
+
+def test_long_exam_with_incidental_answer_pairs_is_not_reclassified() -> None:
+    text = ("Texto extenso da questão e das alternativas. " * 1_000) + "\n" + "\n".join(
+        f"referência {number} - A em comentário" for number in range(1, 31)
+    )
+    exam = _document(
+        "exam", "PROVA OBJETIVA - CONHECIMENTOS ESPECÍFICOS - CARGO 1", "7", text
+    )
+    answer_key = _document(
+        "answer_key",
+        "GABARITO DEFINITIVO - CARGO 1",
+        "8",
+        "\n".join(f"{number} - C" for number in range(1, 31)),
+    )
+    errors = []
+
+    pairs = _pair_documents([exam, answer_key], errors)
+
+    assert not errors
+    assert len(pairs) == 1
+    assert pairs[0][0].document.sha256 == "7" * 64
