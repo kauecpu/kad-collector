@@ -1,0 +1,4436 @@
+{
+  "schema_version": "1.0",
+  "campaign_id": "pf-bb-corepi-2018-2026-approval",
+  "rule_version": "1.0.0",
+  "taxonomy_version": "3.0.0",
+  "publication_status": "draft",
+  "automatic_approval_rules": {
+    "critical_gates": [
+      "origin",
+      "structure",
+      "answer_association",
+      "visual_dependency"
+    ],
+    "other_gates": [
+      "extraction",
+      "taxonomy",
+      "deduplication"
+    ],
+    "minimum_taxonomy_confidence": 0.84,
+    "minimum_ocr_confidence": 0.9,
+    "qwen_only_can_auto_approve": false,
+    "authorized_hosts": [
+      "www.fuvest.br",
+      "vestibularunificado2026.ufsc.br",
+      "conhecimento.fgv.br",
+      "www.gov.br",
+      "download.inep.gov.br",
+      "www.comvest.unicamp.br",
+      "sistema.vestibular.uerj.br",
+      "bb.com.br",
+      "www.bb.com.br",
+      "cesgranrio.org.br",
+      "www.cesgranrio.org.br",
+      "concursos.cesgranrio.org.br",
+      "inscricao.cesgranrio.com.br",
+      "cebraspe.org.br",
+      "www.cebraspe.org.br",
+      "apis.cebraspe.org.br",
+      "cdn.cebraspe.org.br",
+      "www.pciconcursos.com.br",
+      "arq.pciconcursos.com.br",
+      "concursosfcc.com.br",
+      "www.concursosfcc.com.br",
+      "vunesp.com.br",
+      "www.vunesp.com.br",
+      "documento.vunesp.com.br",
+      "institutoaocp.org.br",
+      "www.institutoaocp.org.br",
+      "arquivos-site.institutoaocp.org.br",
+      "quadrix.org.br",
+      "www.quadrix.org.br",
+      "anexos-r2.selecao.net.br",
+      "anexos.cdn.selecao.net.br"
+    ]
+  },
+  "sampling": {
+    "rate": 0.02,
+    "minimum": 50,
+    "maximum": 300,
+    "selected": 50,
+    "unique_fingerprints": 50,
+    "strata": {
+      "board": {
+        "CEBRASPE": 31,
+        "CESGRANRIO": 15,
+        "QUADRIX": 4
+      },
+      "organization": {
+        "Banco do Brasil": 15,
+        "Conselho Regional dos Representantes Comerciais do Piaui": 4,
+        "Policia Federal": 31
+      },
+      "contest": {
+        "CORE-PI 2026": 4,
+        "PF 25": 11,
+        "PF 25 ADM": 5,
+        "POLÍCIA FEDERAL": 15,
+        "bb0121": 15
+      },
+      "year": {
+        "2018": 11,
+        "2021": 19,
+        "2025": 16,
+        "2026": 4
+      },
+      "role": {
+        "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 1": 1,
+        "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 2": 1,
+        "CARGO 1: DELEGADO DE POLÍCIA FEDERAL": 1,
+        "CARGO 2: AGENTE DE POLÍCIA FEDERAL": 3,
+        "CONHECIMENTOS BÁSICOS PARA O CARGO 15": 1,
+        "CONHECIMENTOS BÁSICOS PARA O CARGO 2 - TODAS AS ÁREAS": 2,
+        "CONHECIMENTOS BÁSICOS PARA OS CARGOS DE 1 A 14": 1,
+        "CONHECIMENTOS BÁSICOS PARA TODOS OS CARGOS DE PERITO CRIMINAL FEDERAL": 1,
+        "CONHECIMENTOS BÁSICOS – BLOCO I – PARA OS CARGOS 15, 16 E 17": 3,
+        "CONHECIMENTOS BÁSICOS – BLOCO II – PARA OS CARGOS 15, 16 E 17": 1,
+        "CONHECIMENTOS ESPECÍFICOS - CARGO 1": 2,
+        "CONHECIMENTOS ESPECÍFICOS - CARGO 12": 1,
+        "CONHECIMENTOS ESPECÍFICOS - CARGO 13": 4,
+        "CONHECIMENTOS ESPECÍFICOS - CARGO 14": 1,
+        "CONHECIMENTOS ESPECÍFICOS - CARGO 2/ÁREA 1": 1,
+        "CONHECIMENTOS ESPECÍFICOS – CARGO 1": 6,
+        "CONHECIMENTOS ESPECÍFICOS – CARGO 11": 1,
+        "CONHECIMENTOS ESPECÍFICOS – CARGO 13": 2,
+        "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 2": 2,
+        "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 3": 3,
+        "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 4": 2,
+        "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 5": 1,
+        "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 1": 1,
+        "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 2": 1,
+        "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 3": 1,
+        "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 5": 2,
+        "Provas aplicadas 22/06/2026 - 201 Fiscal QUADRIX Concurso-2026 CORE-PI Prova": 1,
+        "Provas aplicadas 22/06/2026 - 400 Assistente Jurídico QUADRIX Concurso-2026 CORE-PI Prova": 2,
+        "Provas aplicadas 22/06/2026 - 401 Contador QUADRIX Concurso-2026 CORE-PI Prova": 1
+      },
+      "question_format": {
+        "multiple_choice": 19,
+        "true_false": 31
+      },
+      "extraction_method": {
+        "text": 50
+      },
+      "classification_method": {
+        "deterministic": 50
+      }
+    }
+  },
+  "group_thresholds": {
+    "structural_precision": 0.98,
+    "answer_precision": 0.99,
+    "taxonomy_precision": 0.95,
+    "critical_errors_allowed": 0,
+    "all_sample_items_must_be_decided": true
+  },
+  "summary": {
+    "raw_occurrences": 5580,
+    "unique_questions": 5292,
+    "duplicate_occurrences": 288,
+    "auto_ready": 365,
+    "audit_sample": 50,
+    "needs_review": 4724,
+    "quarantined": 441,
+    "approved_for_staging": 0,
+    "rejected": 0,
+    "groups": 193,
+    "groups_approved": 0,
+    "groups_blocked": 0,
+    "groups_pending": 193,
+    "processed_without_intervention_percent": 1.0,
+    "auto_ready_percent": 0.07437275985663082
+  },
+  "blocker_distribution": {
+    "answer_association": 182,
+    "deduplication": 288,
+    "structure": 441,
+    "taxonomy": 5066,
+    "visual_dependency": 115
+  },
+  "groups": [
+    {
+      "group_id": "grp-010725bc5b1a71c4080a",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 2",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:portugues:regencia"
+      },
+      "questions": 1,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-026558897f5ffde8984d",
+      "key": {
+        "board": "QUADRIX",
+        "contest": "CORE-PI 2026",
+        "year": "2026",
+        "role": "Provas aplicadas 22/06/2026 - 401 Contador QUADRIX Concurso-2026 CORE-PI Prova",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:portugues:coesao"
+      },
+      "questions": 2,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-03602569bd692386ef7f",
+      "key": {
+        "board": "QUADRIX",
+        "contest": "CORE-PI 2026",
+        "year": "2026",
+        "role": "Provas aplicadas 22/06/2026 - 400 Assistente Jurídico QUADRIX Concurso-2026 CORE-PI Prova",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:core:representacao"
+      },
+      "questions": 8,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-03bd49d91235a7d80464",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2021",
+        "role": "CARGO 2: AGENTE DE POLÍCIA FEDERAL",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:ti:redes"
+      },
+      "questions": 4,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-03de3a1c9dbffe60a84c",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 1",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:ti:banco-dados"
+      },
+      "questions": 4,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-0769039bbddf32c581a7",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2021",
+        "role": "CARGO 2: AGENTE DE POLÍCIA FEDERAL",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:administrativo:agentes"
+      },
+      "questions": 2,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-0c59a351da02902f7505",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 2",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:vendas:atendimento"
+      },
+      "questions": 1,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-0c6fb37d126a40c5a1f6",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 5",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:vendas:marketing"
+      },
+      "questions": 1,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-0dccc4a0795242e3d8a2",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 13",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:ti:banco-dados"
+      },
+      "questions": 1,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-0dd792246bbea4ca9b5f",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25 ADM",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 1",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:administracao:materiais"
+      },
+      "questions": 6,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-0e1d6bf432d7eebb21fb",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 13",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:ti:banco-dados"
+      },
+      "questions": 3,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-0e666e98a621558c5c9e",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 1",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:processo-penal:provas"
+      },
+      "questions": 3,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-0fb41b46fe3fbf733ebf",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 3",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:vendas:marketing"
+      },
+      "questions": 1,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-1264ed4e2c9da374c572",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 2/ÁREA 1",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:produtos"
+      },
+      "questions": 6,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-142a2f241449190e7da4",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 2",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:vendas:atendimento"
+      },
+      "questions": 1,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-16e298140b476760920b",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 5",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:portugues:regencia"
+      },
+      "questions": 1,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-175e46df9b020a48a954",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS BÁSICOS – BLOCO I – PARA OS CARGOS 15, 16 E 17",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:logica:proposicoes"
+      },
+      "questions": 1,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-1907a2d51601a2467145",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25 ADM",
+        "year": "2025",
+        "role": "CONHECIMENTOS BÁSICOS PARA O CARGO 15",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:ti:redes"
+      },
+      "questions": 1,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-1cf362c80b0cfe66c83e",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS BÁSICOS – BLOCO I – PARA OS CARGOS 15, 16 E 17",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:processo-penal:inquerito"
+      },
+      "questions": 1,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-1ec1a3dbb8076b68b0c7",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 1",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:vendas:atendimento"
+      },
+      "questions": 1,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-1f97ba7b99c2b5c2ddc1",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 3",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:sfn"
+      },
+      "questions": 2,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-2022a10a616906367ab2",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 3",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:vendas:atendimento"
+      },
+      "questions": 1,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-23aa0b97ff8adf357aa8",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS BÁSICOS PARA O CARGO 2 - TODAS AS ÁREAS",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:ti:redes"
+      },
+      "questions": 1,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-26d3013668f2edcba54d",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25 ADM",
+        "year": "2025",
+        "role": "CONHECIMENTOS BÁSICOS PARA OS CARGOS DE 1 A 14",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:logica:proposicoes"
+      },
+      "questions": 1,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-271053bad3a9982aa255",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 4",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:portugues:regencia"
+      },
+      "questions": 1,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-27520163f2a5646bb997",
+      "key": {
+        "board": "QUADRIX",
+        "contest": "CORE-PI 2026",
+        "year": "2026",
+        "role": "Provas aplicadas 22/06/2026 - 400 Assistente Jurídico QUADRIX Concurso-2026 CORE-PI Prova",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:administrativo:organizacao"
+      },
+      "questions": 1,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-296fba80aa6c0745ac96",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2021",
+        "role": "CARGO 2: AGENTE DE POLÍCIA FEDERAL",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:ti:banco-dados"
+      },
+      "questions": 4,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-2d4db38b7c70c7f87e89",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS BÁSICOS PARA TODOS OS CARGOS DE PERITO CRIMINAL FEDERAL",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:processo-penal:provas"
+      },
+      "questions": 3,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-2e5c711706416648cc88",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 1",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:constitucional:fundamentais"
+      },
+      "questions": 3,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-2f6fdf85e122196267fe",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 4",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:vendas:atendimento"
+      },
+      "questions": 1,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-2f9f2d7f9e170758dc4c",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 1",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:administrativo:licitacoes"
+      },
+      "questions": 1,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-301ef92eaa5601595b78",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 14",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:ti:redes"
+      },
+      "questions": 1,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-302ac2d3549f7750e062",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25 ADM",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 1",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:administracao:pessoas"
+      },
+      "questions": 10,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-3044ea287567d2dee6a9",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 11",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:processo-penal:provas"
+      },
+      "questions": 3,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-349d5ad597d5e03edc8b",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 12",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:ti:banco-dados"
+      },
+      "questions": 4,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-35bc3fbcc42cfd8d80e4",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS BÁSICOS – BLOCO I – PARA OS CARGOS 15, 16 E 17",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:constitucional:fundamentais"
+      },
+      "questions": 2,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-369d840f6ed85f003fd8",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 2",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:ti:dados"
+      },
+      "questions": 1,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-36cc7b163d3be3bec6a8",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 13",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:processo-penal:provas"
+      },
+      "questions": 3,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-3766bd224a36cc296bef",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 3",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:vendas:marketing"
+      },
+      "questions": 1,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-37de8b3dd470484065ac",
+      "key": {
+        "board": "QUADRIX",
+        "contest": "CORE-PI 2026",
+        "year": "2026",
+        "role": "Provas aplicadas 22/06/2026 - 201 Fiscal QUADRIX Concurso-2026 CORE-PI Prova",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:administrativo:licitacoes"
+      },
+      "questions": 1,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-381ed0c90c370ae059de",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS BÁSICOS PARA O CARGO 2 - TODAS AS ÁREAS",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:ti:dados"
+      },
+      "questions": 1,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-388eab220a97c9cecb72",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 13",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:processo-penal:provas"
+      },
+      "questions": 7,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-3ace3ecc3749c633f76a",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2021",
+        "role": "CARGO 1: DELEGADO DE POLÍCIA FEDERAL",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:constitucional:controle"
+      },
+      "questions": 3,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-3af438a5131ded01bb83",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 5",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:compliance"
+      },
+      "questions": 1,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-3b1e1b2ad2b56760d372",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25 ADM",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 1",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:contabilidade:publica"
+      },
+      "questions": 3,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-3b8741d4efd8a59f1d2f",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 13",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:administrativo:organizacao"
+      },
+      "questions": 2,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-3e3e19d9801ed099a148",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 1",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:processo-penal:inquerito"
+      },
+      "questions": 1,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-42ec9c4ce89e72aa7d0d",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS BÁSICOS – BLOCO II – PARA OS CARGOS 15, 16 E 17",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:ti:banco-dados"
+      },
+      "questions": 3,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-441f15583f90d55d98f6",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 13",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:portugues:interpretacao"
+      },
+      "questions": 2,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-4466fcb60a100a8f3598",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 1",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:penal:penas"
+      },
+      "questions": 2,
+      "sample": 1,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_incompleta"
+      ]
+    },
+    {
+      "group_id": "grp-473f80ff7640ce7a7e14",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 7/ÁREA 6",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:estatistica:descritiva"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-4785b812b2b18ccf268d",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 5",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:vendas:atendimento"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-47ad775d7979009c033b",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 4",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:portugues:interpretacao"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-480b404a1cbf3fa28556",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA C – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 5",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:sfn"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-48185568d0182bf6d785",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 1",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:administrativo:atos"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-493d8571ac2b1c604156",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 2/ÁREA 1",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:sfn"
+      },
+      "questions": 5,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-4977a5c36f73bca375dd",
+      "key": {
+        "board": "QUADRIX",
+        "contest": "CORE-PI 2026",
+        "year": "2026",
+        "role": "Provas aplicadas 22/06/2026 - 401 Contador QUADRIX Concurso-2026 CORE-PI Prova",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:constitucional:organizacao"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-49923f536d99f9e6fb5d",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 4",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:vendas:marketing"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-4b1eebf70f4e636b1bf2",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 4",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:sfn"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-4d36a1596702e259fda8",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 5",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:vendas:atendimento"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-4f1ef0c51308867d7c62",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 2",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:sfn"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-54e5d85bbf95a3c8b1ac",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 12",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:processo-penal:prisao"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-55710086313fe4cda260",
+      "key": {
+        "board": "QUADRIX",
+        "contest": "CORE-PI 2026",
+        "year": "2026",
+        "role": "Provas aplicadas 22/06/2026 - 201 Fiscal QUADRIX Concurso-2026 CORE-PI Prova",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:arquivologia:gestao"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-5794891b8dde10e22ad6",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 2",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:produtos"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-582e1d72f35799ebef31",
+      "key": {
+        "board": "QUADRIX",
+        "contest": "CORE-PI 2026",
+        "year": "2026",
+        "role": "Provas aplicadas 22/06/2026 - 401 Contador QUADRIX Concurso-2026 CORE-PI Prova",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:etica:transparencia"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-5a660ce1ce1ef8fcf06b",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 2",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:ti:dados"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-5bc6410a1e13cadbbd97",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 14",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:portugues:coesao"
+      },
+      "questions": 6,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-5bce4f8357dec808b294",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 4 - ÁREA 3",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:ti:banco-dados"
+      },
+      "questions": 5,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-5e15edfc2917845c968d",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2021",
+        "role": "CARGO 1: DELEGADO DE POLÍCIA FEDERAL",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:constitucional:organizacao"
+      },
+      "questions": 2,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-5f508e767153a11e2ea9",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 1",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:produtos"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-5fcd437370fbf3d67e91",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS BÁSICOS PARA O CARGO 2 - TODAS AS ÁREAS",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:informatica:seguranca"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-626adb9e0c8675ad6d04",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 14",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:arquivologia:gestao"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-62d42d93147c914e42b4",
+      "key": {
+        "board": "QUADRIX",
+        "contest": "CORE-PI 2026",
+        "year": "2026",
+        "role": "Provas aplicadas 22/06/2026 - 200 Assistente Administrativo QUADRIX Concurso-2026 CORE-PI Prova",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:administracao:pessoas"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-64c85a1acb2b2939be3b",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS BÁSICOS – BLOCO II – PARA OS CARGOS 15, 16 E 17",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:informatica:internet"
+      },
+      "questions": 2,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-64cf6af75a289d635e96",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25 ADM",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 15",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:etica:transparencia"
+      },
+      "questions": 2,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-68697bee8fb98caf293a",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 14",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:logica:proposicoes"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-6995309b2f94af1d171b",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 2",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:produtos"
+      },
+      "questions": 2,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-6e091c3d8d23fc9601bd",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 3",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:ti:banco-dados"
+      },
+      "questions": 4,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-707ce3e276d36ea6d8a4",
+      "key": {
+        "board": "QUADRIX",
+        "contest": "CORE-PI 2026",
+        "year": "2026",
+        "role": "Provas aplicadas 22/06/2026 - 201 Fiscal QUADRIX Concurso-2026 CORE-PI Prova",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:administracao:atendimento"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-72c38e35b3c425d19d32",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 2",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:vendas:marketing"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-75821891b49b5040bcfc",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25 ADM",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 5",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:ti:banco-dados"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-7a1f9746023a243a118c",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 11",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:ti:banco-dados"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-7be60949a9f680664466",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 1",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:processo-penal:prisao"
+      },
+      "questions": 2,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-7d3ee988e143b3222857",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA C – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 4",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:sfn"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-7f0cc2022a4da0cb9654",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25 ADM",
+        "year": "2025",
+        "role": "CONHECIMENTOS BÁSICOS PARA O CARGO 15",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:informatica:seguranca"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-7f6eb3ac8cc763850fb5",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 5",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:sfn"
+      },
+      "questions": 2,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-80ae086d17810ed0055d",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 2",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:portugues:regencia"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-8460b51513ebdcd5a53b",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 3",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:sfn"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-849c501f78fbe2cc71ba",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25 ADM",
+        "year": "2025",
+        "role": "CONHECIMENTOS BÁSICOS PARA OS CARGOS DE 1 A 14",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:compliance"
+      },
+      "questions": 2,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-871a48490703dae957ac",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 2",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:portugues:interpretacao"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-87efe5c6c1d5f9bca99f",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS BÁSICOS – BLOCO I – PARA OS CARGOS 15, 16 E 17",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:estatistica:descritiva"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-89d551f1122e95cc0e60",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2021",
+        "role": "CARGO 1: DELEGADO DE POLÍCIA FEDERAL",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:penal:penas"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-89ec85666f795c013552",
+      "key": {
+        "board": "QUADRIX",
+        "contest": "CORE-PI 2026",
+        "year": "2026",
+        "role": "Provas aplicadas 22/06/2026 - 400 Assistente Jurídico QUADRIX Concurso-2026 CORE-PI Prova",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:constitucional:controle"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-8b0926cb446ebcb87d10",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 13",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:ti:dados"
+      },
+      "questions": 2,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-8da680ade3fc1967ee25",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 4",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:ti:dados"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-8e6ef5503c0d1940f4ec",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 3",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:ti:dados"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-8ed0f5da08955ddc1cc7",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25 ADM",
+        "year": "2025",
+        "role": "CONHECIMENTOS BÁSICOS PARA O CARGO 15",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:etica:publica"
+      },
+      "questions": 6,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-8f39b5ec6b75e2c15fe2",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25 ADM",
+        "year": "2025",
+        "role": "CONHECIMENTOS BÁSICOS PARA O CARGO 15",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:administrativo:agentes"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-925cd473df1a8f2389c7",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25 ADM",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 5",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:compliance"
+      },
+      "questions": 5,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-9494bafe3f72ccc56371",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 1",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:constitucional:organizacao"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-94cee56562772901d3ef",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS BÁSICOS PARA TODOS OS CARGOS DE PERITO CRIMINAL FEDERAL",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:ti:dados"
+      },
+      "questions": 9,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-95ec91a1b75421be2fed",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 4",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:vendas:marketing"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-970333b10733b214dc6b",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 2",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:estatistica:descritiva"
+      },
+      "questions": 3,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-9839e25fe7980bb71377",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2021",
+        "role": "CARGO 1: DELEGADO DE POLÍCIA FEDERAL",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:compliance"
+      },
+      "questions": 5,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-99c95a3a06ac17301d1c",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 2",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:sfn"
+      },
+      "questions": 4,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-9ab857be9414f34748a7",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 4",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:ti:banco-dados"
+      },
+      "questions": 2,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-9ce5f4f3b127c5240dcd",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25 ADM",
+        "year": "2025",
+        "role": "CONHECIMENTOS BÁSICOS PARA OS CARGOS DE 1 A 14",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:informatica:seguranca"
+      },
+      "questions": 4,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-9df2106be96c710bbe29",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 1",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:constitucional:controle"
+      },
+      "questions": 5,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-9efa9e06b2a20486a3b2",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 1",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:administrativo:agentes"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-a03afdedcb11a0b74a92",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 1",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:administrativo:poderes"
+      },
+      "questions": 2,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-a282b263a91cdee43e3b",
+      "key": {
+        "board": "QUADRIX",
+        "contest": "CORE-PI 2026",
+        "year": "2026",
+        "role": "Provas aplicadas 22/06/2026 - 200 Assistente Administrativo QUADRIX Concurso-2026 CORE-PI Prova",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:portugues:coesao"
+      },
+      "questions": 2,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-a3accabbfc10063d41dc",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 4",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:vendas:atendimento"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-a3f3bfc84c5c27591f8a",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 13",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:estatistica:inferencia"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-a4c3d044924f1ec6eda8",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 2",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:ti:banco-dados"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-a59b1b76c83e2dd79a31",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 2",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:compliance"
+      },
+      "questions": 2,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-a6507ea87644a4d76d04",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 4",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:ti:banco-dados"
+      },
+      "questions": 4,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-a83d02886a730511a6f4",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 5",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:vendas:marketing"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-a8b6e027fefc1cf50854",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2021",
+        "role": "CARGO 2: AGENTE DE POLÍCIA FEDERAL",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:logica:proposicoes"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-aa2d6cedcf9ee6229353",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2021",
+        "role": "CARGO 1: DELEGADO DE POLÍCIA FEDERAL",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:processo-penal:prisao"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-ac77d047cde351cee26d",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 13",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:informatica:seguranca"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-ace618d29de9e3549d78",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 13",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:ti:seguranca"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-ad02c57a724a3ec2547f",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 1",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:ti:dados"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-ad86215ebdf5b8d21d66",
+      "key": {
+        "board": "QUADRIX",
+        "contest": "CORE-PI 2026",
+        "year": "2026",
+        "role": "Provas aplicadas 22/06/2026 - 201 Fiscal QUADRIX Concurso-2026 CORE-PI Prova",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:administrativo:atos"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-af0d091cb9c7d979feb6",
+      "key": {
+        "board": "QUADRIX",
+        "contest": "CORE-PI 2026",
+        "year": "2026",
+        "role": "Provas aplicadas 22/06/2026 - 200 Assistente Administrativo QUADRIX Concurso-2026 CORE-PI Prova",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:administracao:atendimento"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-b0e48a4ced583c175bd6",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25 ADM",
+        "year": "2025",
+        "role": "CONHECIMENTOS BÁSICOS PARA O CARGO 15",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:portugues:interpretacao"
+      },
+      "questions": 2,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-b30423f059e579a4fd28",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 13",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:arquivologia:gestao"
+      },
+      "questions": 2,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-b40b9f1a6310a3f30635",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 1",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:constitucional:organizacao"
+      },
+      "questions": 4,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-b49395d4088cc07da11c",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 14",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:administrativo:poderes"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-b5975fee880dfbd5976a",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 1",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:portugues:interpretacao"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-b5e1319cf46aa7df5758",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS BÁSICOS PARA TODOS OS CARGOS DE PERITO CRIMINAL FEDERAL",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:informatica:seguranca"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-b6cf44c54a8138918c76",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25 ADM",
+        "year": "2025",
+        "role": "CONHECIMENTOS BÁSICOS PARA OS CARGOS DE 1 A 14",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:administrativo:poderes"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-b7215dde4b9274e9c888",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 1",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:vendas:atendimento"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-b762b61f1f03bc472df2",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 13",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:logica:proposicoes"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-b95d301bd2ca4d87c676",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25 ADM",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 15",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:administracao:atendimento"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-babecb91b5c4d77f28e9",
+      "key": {
+        "board": "QUADRIX",
+        "contest": "CORE-PI 2026",
+        "year": "2026",
+        "role": "Provas aplicadas 22/06/2026 - 400 Assistente Jurídico QUADRIX Concurso-2026 CORE-PI Prova",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:constitucional:fundamentais"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-bbe98a841b49788ac773",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 15",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:arquivologia:gestao"
+      },
+      "questions": 5,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-bdd85dda008fd179d34c",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA C – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 3",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:sfn"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-bde787f8b6d97949b1ca",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25 ADM",
+        "year": "2025",
+        "role": "CONHECIMENTOS BÁSICOS PARA O CARGO 15",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:logica:proposicoes"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-bfd226e22fca6ef6974e",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS BÁSICOS PARA O CARGO 2 - TODAS AS ÁREAS",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:processo-penal:prisao"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-bfee584c16941e476aae",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25 ADM",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 5",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:estatistica:inferencia"
+      },
+      "questions": 2,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-c2afffbdf1f67a68bb69",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS BÁSICOS – BLOCO II – PARA OS CARGOS 15, 16 E 17",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:ti:dados"
+      },
+      "questions": 4,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-c3cea0bc71e2f193f1a7",
+      "key": {
+        "board": "QUADRIX",
+        "contest": "CORE-PI 2026",
+        "year": "2026",
+        "role": "Provas aplicadas 22/06/2026 - 201 Fiscal QUADRIX Concurso-2026 CORE-PI Prova",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:core:representacao"
+      },
+      "questions": 10,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-ca24f7f3822826e3e538",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2021",
+        "role": "CARGO 2: AGENTE DE POLÍCIA FEDERAL",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:processo-penal:provas"
+      },
+      "questions": 3,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-ca2928eb6cc6b39059b7",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 13",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:administracao:atendimento"
+      },
+      "questions": 3,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-cd69b533193a0dd2f17f",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25 ADM",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 12",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:administracao:pessoas"
+      },
+      "questions": 11,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-ce00a27d1ac8c2988992",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 2",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:ti:banco-dados"
+      },
+      "questions": 4,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-ce63cff85c8f4d5f8d70",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 1",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:sfn"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-cfcff1218c6de54eab83",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2021",
+        "role": "CARGO 2: AGENTE DE POLÍCIA FEDERAL",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:portugues:interpretacao"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-d08b96fafd0d14e59c9d",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 5",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:produtos"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-d380316d5346cb5ca49f",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 1",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:processo-penal:inquerito"
+      },
+      "questions": 4,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-d3c3d766ac6e193f3d33",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 12",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:ti:dados"
+      },
+      "questions": 3,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-d426c9c6b9a640c5bec9",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 2",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:compliance"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-d500a3f836e373b96d30",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS BÁSICOS PARA O CARGO 2 - TODAS AS ÁREAS",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:produtos"
+      },
+      "questions": 3,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-d551e6f5ca42ab098c68",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 4",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:sfn"
+      },
+      "questions": 2,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-da3560d858980ba12d96",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 4",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:processo-penal:provas"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-dbc0384f0f6f9518df0d",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 12",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:portugues:interpretacao"
+      },
+      "questions": 2,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-dbdd2cdeee9d641382cc",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25 ADM",
+        "year": "2025",
+        "role": "CONHECIMENTOS BÁSICOS PARA OS CARGOS DE 1 A 14",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:administrativo:agentes"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-dd49cf1cce1dee8d52fe",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 1",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:vendas:marketing"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-dd5e35e86ac13097049a",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 4",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:ti:seguranca"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-de69a71f722a21a7b143",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA C – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 2",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:sfn"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-de9bd7ea8df178e44d84",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2021",
+        "role": "CARGO 1: DELEGADO DE POLÍCIA FEDERAL",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:sfn"
+      },
+      "questions": 6,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-e1a3e16bf8407d4e4392",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 1",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:sfn"
+      },
+      "questions": 4,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-e23bfbfa47b98fd99714",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 2",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:sfn"
+      },
+      "questions": 2,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-e2f756952ea4096187a7",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 1",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:sfn"
+      },
+      "questions": 2,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-e473c5cf92a52c84ccb2",
+      "key": {
+        "board": "QUADRIX",
+        "contest": "CORE-PI 2026",
+        "year": "2026",
+        "role": "Provas aplicadas 22/06/2026 - 401 Contador QUADRIX Concurso-2026 CORE-PI Prova",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:core:representacao"
+      },
+      "questions": 9,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-e809b076c6a1c768c532",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2021",
+        "role": "CARGO 2: AGENTE DE POLÍCIA FEDERAL",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:administrativo:organizacao"
+      },
+      "questions": 2,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-ea0c68e16d9f14b36bb3",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2021",
+        "role": "CARGO 1: DELEGADO DE POLÍCIA FEDERAL",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:administrativo:organizacao"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-ea2663ccfceb77eeb6ca",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 1",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:portugues:regencia"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-eae59d8bd347574d9b0d",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 4",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:portugues:regencia"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-eaebdd71706f553f8751",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 3",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:vendas:atendimento"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-eb663ad16f586f985008",
+      "key": {
+        "board": "QUADRIX",
+        "contest": "CORE-PI 2026",
+        "year": "2026",
+        "role": "Provas aplicadas 22/06/2026 - 401 Contador QUADRIX Concurso-2026 CORE-PI Prova",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:administrativo:agentes"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-eb7fccb8ce88c9a23544",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 2",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:administrativo:licitacoes"
+      },
+      "questions": 2,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-ebb33d656a44d9b291c7",
+      "key": {
+        "board": "QUADRIX",
+        "contest": "CORE-PI 2026",
+        "year": "2026",
+        "role": "Provas aplicadas 22/06/2026 - 200 Assistente Administrativo QUADRIX Concurso-2026 CORE-PI Prova",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:arquivologia:gestao"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-ec8448def631f5f2ee97",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25 ADM",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 15",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:administrativo:licitacoes"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-ecffaf56cc22744b1084",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 1",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:vendas:marketing"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-eddcad8f3322dca920f0",
+      "key": {
+        "board": "QUADRIX",
+        "contest": "CORE-PI 2026",
+        "year": "2026",
+        "role": "Provas aplicadas 22/06/2026 - 200 Assistente Administrativo QUADRIX Concurso-2026 CORE-PI Prova",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:administrativo:licitacoes"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-ee1c40cfa31a9aa7b634",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 3",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:portugues:regencia"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-eeb93cef389c6de67787",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 12",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:administrativo:organizacao"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-eebcb67e2f6ec70341dd",
+      "key": {
+        "board": "QUADRIX",
+        "contest": "CORE-PI 2026",
+        "year": "2026",
+        "role": "Provas aplicadas 22/06/2026 - 200 Assistente Administrativo QUADRIX Concurso-2026 CORE-PI Prova",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:core:representacao"
+      },
+      "questions": 6,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-f1c396ba3c98a0a0b51e",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA C – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 1",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:sfn"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-f24f71b103e85a5d25b8",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25 ADM",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 3",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:contabilidade:publica"
+      },
+      "questions": 4,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-f3d8fec1bd4d736c99db",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 2",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:vendas:marketing"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-f416a321a1b031c8e9b5",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 1",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:portugues:regencia"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-f499bb33431b97ba445a",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2021",
+        "role": "CARGO 3: ESCRIVÃO DE POLÍCIA FEDERAL",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:arquivologia:gestao"
+      },
+      "questions": 6,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-f6d37942ff3fab04d39b",
+      "key": {
+        "board": "QUADRIX",
+        "contest": "CORE-PI 2026",
+        "year": "2026",
+        "role": "Provas aplicadas 22/06/2026 - 200 Assistente Administrativo QUADRIX Concurso-2026 CORE-PI Prova",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:etica:transparencia"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-f8bed1478cb9bd6e3abc",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 8",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:processo-penal:provas"
+      },
+      "questions": 4,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-f8d1e0117b80ec454cd9",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS BÁSICOS PARA O CARGO 2 - TODAS AS ÁREAS",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:ti:banco-dados"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-fb09b6862975e1019488",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2018",
+        "role": "CONHECIMENTOS BÁSICOS PARA O CARGO 2 - TODAS AS ÁREAS",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:portugues:coesao"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-fb1979ced846bb9c1cb8",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "POLÍCIA FEDERAL",
+        "year": "2021",
+        "role": "CARGO 2: AGENTE DE POLÍCIA FEDERAL",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:ti:dados"
+      },
+      "questions": 3,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-fb7804d6a3115fdf3388",
+      "key": {
+        "board": "QUADRIX",
+        "contest": "CORE-PI 2026",
+        "year": "2026",
+        "role": "Provas aplicadas 22/06/2026 - 201 Fiscal QUADRIX Concurso-2026 CORE-PI Prova",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:administrativo:poderes"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-fc6d9570180a9ade06f7",
+      "key": {
+        "board": "QUADRIX",
+        "contest": "CORE-PI 2026",
+        "year": "2026",
+        "role": "Provas aplicadas 22/06/2026 - 200 Assistente Administrativo QUADRIX Concurso-2026 CORE-PI Prova",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:administrativo:atos"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-fd87e142a5d7acbe7628",
+      "key": {
+        "board": "CEBRASPE",
+        "contest": "PF 25",
+        "year": "2025",
+        "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 1",
+        "format": "true_false",
+        "extraction": "text",
+        "classification_rule": "topic:bancario:compliance"
+      },
+      "questions": 4,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    },
+    {
+      "group_id": "grp-ffd0cf606f9a25bded74",
+      "key": {
+        "board": "CESGRANRIO",
+        "contest": "bb0121",
+        "year": "2021",
+        "role": "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 3",
+        "format": "multiple_choice",
+        "extraction": "text",
+        "classification_rule": "topic:portugues:regencia"
+      },
+      "questions": 1,
+      "sample": 0,
+      "reviewed": 0,
+      "status": "pending_audit",
+      "structural_precision": null,
+      "answer_precision": null,
+      "taxonomy_precision": null,
+      "blockers": [
+        "auditoria_sem_amostra"
+      ]
+    }
+  ],
+  "duration_seconds": 9.827,
+  "seconds_per_thousand": 1.761,
+  "qwen_calls": 0,
+  "qwen_failures": 0,
+  "content_sha256": "0db3a1d4228246be1f572c339de98700782725aec8f34c76fb1e620ec54b7d4f",
+  "automatic_evidence": {
+    "processed_without_intervention": 5580,
+    "groups_released_without_human_audit": 0,
+    "staging_writes": 0,
+    "production_writes": 0
+  },
+  "corrections_implemented": [
+    "limiares de OCR e taxonomia são avaliados contra a configuração",
+    "integridade do mesmo PDF é calculada uma vez por execução",
+    "grupos sem amostra nunca são aprovados",
+    "decisões humanas são preservadas somente enquanto o conteúdo não muda",
+    "falha em um critério crítico não pode ser compensada por outras dimensões"
+  ],
+  "validation_commands": [
+    "python -m pytest",
+    "python -m ruff check .",
+    "python -m mypy src/kad_collector",
+    "python -m build"
+  ],
+  "limitations": [
+    "Nenhum grupo segue para staging antes da auditoria completa da amostra.",
+    "A precisão observada permanece indisponível enquanto a amostra não receber decisões humanas."
+  ]
+}

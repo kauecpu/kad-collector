@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="kad-approval-token" content="__APPROVAL_TOKEN__">
+  <title>KAD — Auditoria editorial</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="masthead">
+    <div>
+      <p class="eyebrow">KAD Collector · controle editorial</p>
+      <h1>Aprovar a regra,<br>não milhares de questões.</h1>
+    </div>
+    <div class="safety">
+      <span class="safety-dot"></span>
+      <div><strong>Saída protegida</strong><br>Somente pacote local em rascunho</div>
+    </div>
+  </header>
+
+  <main>
+    <section id="pipeline" class="pipeline" aria-label="Resumo da campanha"></section>
+    <nav class="tabs" aria-label="Áreas de auditoria">
+      <button class="tab active" data-view="sample">Amostra</button>
+      <button class="tab" data-view="exceptions">Exceções</button>
+      <button class="tab" data-view="groups">Grupos</button>
+    </nav>
+    <section id="workspace" class="workspace" aria-live="polite"></section>
+  </main>
+
+  <dialog id="question-dialog">
+    <button class="close" type="button" aria-label="Fechar">×</button>
+    <div id="question-detail"></div>
+  </dialog>
+  <div id="toast" role="status"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>
