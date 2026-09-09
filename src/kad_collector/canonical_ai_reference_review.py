@@ -70,7 +70,7 @@ def load_reference_reviews(
         raise ReferenceReviewError("versão do schema de revisão incompatível")
     if payload.get("kind") != REFERENCE_REVIEW_KIND:
         raise ReferenceReviewError("arquivo não é uma revisão de referências canônicas")
-    if payload.get("taxonomyVersion") != taxonomy.version:
+    if not taxonomy.is_compatible_version(str(payload.get("taxonomyVersion") or "")):
         raise ReferenceReviewError("versão da taxonomia da revisão não confere")
     raw_records = payload.get("records")
     if not isinstance(raw_records, list):

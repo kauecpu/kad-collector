@@ -47,6 +47,36 @@ function classificationAudit(question) {
   return { method, label: note.slice(prefix.length).trim() };
 }
 
+function noteValue(question, prefix) {
+  const note = (question.review_notes || []).find((item) => item.startsWith(prefix));
+  return note ? note.slice(prefix.length).trim().replace(/\.$/, '') : null;
+}
+
+function setOfficialLink(id, url) {
+  const link = byId(id);
+  const safe = typeof url === 'string' && url.startsWith('https://');
+  link.hidden = !safe;
+  if (safe) link.href = url;
+  else link.removeAttribute('href');
+}
+
+function renderProvenance(question) {
+  const notes = question.review_notes || [];
+  const extraction = notes.find((item) => item.startsWith('Extração:'));
+  const ocr = notes.find((item) => item.includes('OCR'));
+  const association = notes.find((item) => item.startsWith('Associação de gabarito:'));
+  const visual = notes.some((item) => item.toLocaleLowerCase('pt-BR').includes('visual'))
+    || (question.editorial_blocks || []).some((item) => item.toLocaleLowerCase('pt-BR').includes('visual'));
+  byId('question-stable-id').textContent = question.source_stable_id || 'Não informado';
+  byId('question-structural-state').textContent = noteValue(question, 'Estado estrutural:') || 'Não informado';
+  byId('question-extraction').textContent = [extraction, ocr].filter(Boolean).join(' ') || 'Não informado';
+  byId('question-answer-association').textContent = association || 'Não informada';
+  byId('question-visual-dependency').textContent = visual ? 'Sim — conferir o PDF' : 'Não identificada';
+  byId('question-quarantine-reasons').textContent = (question.editorial_blocks || []).join(' · ') || 'Nenhum';
+  setOfficialLink('question-exam-link', noteValue(question, 'URL oficial da prova:'));
+  setOfficialLink('question-answer-link', noteValue(question, 'URL oficial do gabarito:'));
+}
+
 function showNotice(message, kind = 'info') {
   const notice = byId('notice');
   notice.textContent = message;
@@ -230,6 +260,7 @@ function renderEditor() {
   byId('source-pages').value = question.source_pages.join(', ');
   byId('review-notes').value = question.review_notes.join('\n');
   byId('editorial-blocks').value = (question.editorial_blocks || []).join('\n');
+  renderProvenance(question);
   byId('answer-status').value = question.answer_status;
   renderAlternatives(question.alternatives);
   byId('correct-answer').value = question.correct_answer || '';

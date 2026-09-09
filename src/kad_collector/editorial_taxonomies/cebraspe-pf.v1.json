@@ -1,0 +1,16 @@
+{
+  "id": "cebraspe-pf",
+  "version": "1.0.0",
+  "match": {"concurso_contains": ["polícia federal", "pf 25"], "organization_contains": ["policia federal", "polícia federal"], "source_contains": ["/pf_18/", "/pf_21/", "/pf_25/", "/pf_25_adm/"]},
+  "sources": [
+    {"id": "pf-2018", "title": "Edital nº 1 DGP/PF de 2018", "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/ED_1_DPF_2018___ABT.PDF"},
+    {"id": "pf-2021", "title": "Edital nº 1 DGP/PF de 2021", "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/ED_1_DPF_2021_ABT.PDF"},
+    {"id": "pf-2025", "title": "Edital nº 1 PF Policial de 2025", "url": "https://cdn.cebraspe.org.br/concursos/PF_25/arquivos/Ed_1_PF_25_Abertura.html"}
+  ],
+  "disciplines": [],
+  "metadata_profiles": [
+    {"concurso_contains": "polícia federal", "role_contains": "cargo", "level": "Superior"},
+    {"concurso_contains": "pf 25", "role_contains": "cargo", "level": "Superior"}
+  ],
+  "exam_profiles": []
+}

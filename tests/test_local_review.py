@@ -201,6 +201,8 @@ class ReviewServerTests(unittest.TestCase):
                 with urllib.request.urlopen(f"http://{host}:{port}/", timeout=2) as response:
                     html = response.read().decode("utf-8")
                 self.assertIn("Revisão editorial local", html)
+                self.assertIn("Proveniência e segurança", html)
+                self.assertIn("question-exam-link", html)
                 with urllib.request.urlopen(
                     f"http://{host}:{port}/api/session", timeout=2
                 ) as response:

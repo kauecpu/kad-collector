@@ -1,0 +1,17 @@
+{
+  "id": "quadrix-corepi",
+  "version": "1.0.0",
+  "match": {"concurso_contains": ["core-pi 2026"], "organization_contains": ["representantes comerciais do piaui", "representantes comerciais do piauí"], "source_contains": ["concursos/1018", "concurso-2026_core-pi"]},
+  "sources": [
+    {"id": "corepi-2026-page", "title": "Página oficial do concurso CORE-PI 2026", "url": "https://quadrix.org.br/informacoes/1018/"},
+    {"id": "corepi-2026-edital", "title": "Edital nº 1 CORE-PI de 2026", "url": "https://anexos.cdn.selecao.net.br/uploads/861/concursos/1018/anexos/a89f7760-1537-455f-b37c-552d6d7acf3b.pdf"}
+  ],
+  "disciplines": [],
+  "metadata_profiles": [
+    {"concurso_contains": "core-pi 2026", "role_contains": "assistente administrativo", "level": "Médio"},
+    {"concurso_contains": "core-pi 2026", "role_contains": "fiscal", "level": "Médio"},
+    {"concurso_contains": "core-pi 2026", "role_contains": "assistente jurídico", "level": "Superior"},
+    {"concurso_contains": "core-pi 2026", "role_contains": "contador", "level": "Superior"}
+  ],
+  "exam_profiles": []
+}

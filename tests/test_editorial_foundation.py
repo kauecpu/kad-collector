@@ -13,13 +13,22 @@ FIXTURES = Path(__file__).parent / "fixtures" / "editorial_programs"
 
 
 class ExtensibleTaxonomyTests(unittest.TestCase):
-    def test_default_bundle_loads_three_independent_official_catalogs(self) -> None:
+    def test_default_bundle_loads_general_and_official_catalogs(self) -> None:
         taxonomy = EditorialTaxonomy.load_default()
 
-        self.assertEqual(taxonomy.version, "2.0.1")
+        self.assertEqual(taxonomy.version, "3.0.0")
+        self.assertTrue(taxonomy.is_compatible_version("2.0.1"))
         self.assertEqual(
             set(taxonomy.catalog_ids),
-            {"fgv-rfb22", "fgv-pcam21", "fgv-stn24"},
+            {
+                "public-exams-core",
+                "cebraspe-pf",
+                "cesgranrio-bb",
+                "quadrix-corepi",
+                "fgv-rfb22",
+                "fgv-pcam21",
+                "fgv-stn24",
+            },
         )
 
     def test_directory_loader_adds_a_catalog_without_changing_the_engine(self) -> None:

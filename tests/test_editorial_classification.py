@@ -96,6 +96,34 @@ class EditorialTaxonomyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "fora da taxonomia"):
             taxonomy.ensure_known("discipline", "Direito Inventado pela IA")
 
+    def test_taxonomy_paths_have_unique_stable_ids(self) -> None:
+        taxonomy = EditorialTaxonomy.load_default()
+        paths = taxonomy.candidate_paths()
+        path_ids = [path.path_id for path in paths]
+
+        self.assertEqual(len(path_ids), len(set(path_ids)))
+        self.assertTrue(all(taxonomy.path_by_id(path_id) for path_id in path_ids))
+        self.assertTrue(any(path_id.startswith("topic:bancario:") for path_id in path_ids))
+
+    def test_banco_do_brasil_official_range_and_level_are_applied(self) -> None:
+        result = LocalRuleClassifier().classify_many(
+            [_request(52, "Assinale a alternativa correta.")],
+            DesktopImportMetadata(
+                source_url="https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf%2Fbb0121%2Fprovas%2Fprova.pdf",
+                concurso="BB0121",
+                board="Cesgranrio",
+                organization="Banco do Brasil",
+                role="Escriturário - Agente Comercial",
+                stage="objetiva",
+                year=2021,
+            ),
+        )[0].classification
+
+        self.assertEqual(result.discipline.value, "Vendas e Negociação")
+        self.assertEqual(result.discipline.source, "official_exam_range")
+        self.assertEqual(result.level.value, "Médio")
+        self.assertEqual(result.level.source, "official_contest_requirement")
+
     def test_section_title_has_priority_and_avoids_customs_math_false_positive(self) -> None:
         item = LocalRuleClassifier().classify_many(
             [
