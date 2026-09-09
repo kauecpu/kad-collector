@@ -110,6 +110,37 @@ pacote estruturado. Repetir a consolidação preserva as sessões e decisões hu
 Os relatórios podem ser versionados, mas os PDFs, rastros de classificação e sessões de
 revisão permanecem em `data/`.
 
+### Campanha editorial retomável
+
+`editorial-campaign` transforma um inventário consolidado em lotes de no máximo 100 questões,
+aplica primeiro as regras locais e consulta o Qwen apenas nos itens ainda incompletos. O modelo
+só pode escolher caminhos da taxonomia fechada; a sugestão registra método, confiança e versão,
+mas permanece pendente até uma decisão humana explícita.
+
+```cmd
+kad-collector editorial-campaign config\editorial-campaign.v1.json ^
+  --output data\editorial-campaign\pf-bb-corepi ^
+  --report-json docs\homologation\editorial-campaign-report.json ^
+  --report-markdown docs\homologation\editorial-campaign-report.md
+```
+
+Use `--limit 100` para interromper de forma controlada e execute o mesmo comando para retomar.
+Use `--disable-qwen` para validar o modo offline. O índice em `review/index.json` informa o
+próximo lote e os caminhos do lote e da sessão; abra-o com `kad-collector review LOTE
+--session SESSAO --open-browser`. A tela permite filtrar por banca, órgão, concurso, ano,
+cargo, disciplina, matéria, assunto, estado e origem da classificação.
+
+Somente decisões humanas `approved` com conteúdo inalterado e todos os campos obrigatórios
+podem entrar no pacote simulado:
+
+```cmd
+kad-collector campaign-export data\editorial-campaign\pf-bb-corepi\review\index.json ^
+  --output data\editorial-campaign\pf-bb-corepi\export-draft
+```
+
+O resultado continua com `publicationStatus: draft`. O comando não recebe credenciais, não
+escreve no Supabase e não publica no KAD. Sem uma aprovação humana válida, ele falha fechado.
+
 ## Instalacao no Windows (CMD)
 
 ```cmd

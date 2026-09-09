@@ -46,6 +46,7 @@ class ConsolidatedCorpusSpec(StrictModel):
     corpus_id: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]{1,63}$")
     base_commit: str = Field(pattern=r"^[a-f0-9]{40}$")
     branch: str = Field(min_length=2)
+    review_batch_size: int = Field(default=100, ge=1, le=100)
     packages: list[CorpusPackageSpec] = Field(min_length=1)
 
 
@@ -662,14 +663,15 @@ def build_consolidated_review(
             run_id=f"consolidated:{spec.corpus_id}:{package_spec.id}",
             manifest=manifest,
             package=package,
+            max_batch_size=spec.review_batch_size,
         )
         entries.extend(new_entries)
 
     duplicate_ids = sum(count - 1 for count in stable_ids.values() if count > 1)
     if duplicate_ids:
         raise ValueError(f"o acervo contém {duplicate_ids} IDs estáveis duplicados")
-    if len({entry.exam_sha256 for entry in entries}) != len(entries):
-        raise ValueError("uma prova apareceu em mais de um pacote consolidado")
+    if len({entry.batch_id for entry in entries}) != len(entries):
+        raise ValueError("um lote apareceu em mais de um pacote consolidado")
     entries.sort(key=lambda item: item.batch_id)
     session_state = _session_state(entries)
     total = _counts(

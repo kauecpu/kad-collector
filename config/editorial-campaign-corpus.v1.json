@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "corpus_id": "pf-bb-corepi-2018-2026",
+  "base_commit": "ba6dee7dd955dcaa85d037433fc4803c6b9b27e3",
+  "branch": "codex/editorial-review-campaign",
+  "review_batch_size": 100,
+  "packages": [
+    {
+      "id": "pf-cebraspe",
+      "label": "Polícia Federal / Cebraspe",
+      "package_path": "../data/structured/pf-all/final.json",
+      "manifest_paths": [
+        "../data/homologation/cebraspe-pf-20260907/pf_18/manifests/download-20260907T133705Z-ba8f5d96.json",
+        "../data/homologation/cebraspe-pf-20260907/pf_21/manifests/download-20260907T133551Z-40527516.json",
+        "../data/homologation/cebraspe-pf-20260907/pf_25/manifests/download-20260907T133358Z-a5b8720e.json",
+        "../data/homologation/cebraspe-pf-20260907/pf_25_adm/manifests/download-20260907T133520Z-b16dcaca.json"
+      ],
+      "origin": "Portal oficial do Cebraspe",
+      "period": "2018/2021/2025",
+      "expected_questions": 4108,
+      "expected_accepted": 3840,
+      "expected_quarantined": 268,
+      "expected_rejected": 0,
+      "expected_structured_years": [2018, 2021, 2025],
+      "expected_quarantine_reasons": {
+        "item anulado no gabarito oficial": 178,
+        "elemento visual exige revisão": 93
+      },
+      "sample_years": [2018, 2021, 2025]
+    },
+    {
+      "id": "bb-cesgranrio",
+      "label": "Banco do Brasil / Cesgranrio",
+      "package_path": "../data/homologation/operator-run-bb-2021-2023/review-package.json",
+      "manifest_paths": [
+        "../data/homologation/operator-run-bb-2021-2023/manifest.json"
+      ],
+      "origin": "Portal oficial da Cesgranrio e acervo autorizado PCI Concursos",
+      "period": "referência 2021/2023",
+      "expected_questions": 1312,
+      "expected_accepted": 1177,
+      "expected_quarantined": 135,
+      "expected_rejected": 0,
+      "expected_structured_years": [2021, 2023],
+      "expected_quarantine_reasons": {
+        "quantidade inválida de alternativas": 19,
+        "elemento visual exige revisão": 8,
+        "incompatibilidade entre alternativas e gabarito": 3
+      },
+      "sample_years": [2021, 2023]
+    },
+    {
+      "id": "corepi-quadrix",
+      "label": "CORE-PI / Quadrix",
+      "package_path": "../data/homologation/phase5-banks-final/quadrix_corepi_2026/structured-review-package.json",
+      "manifest_paths": [
+        "../data/homologation/phase5-banks-final/quadrix_corepi_2026/manifests/download-20260908T194900Z-1e7136a9.json"
+      ],
+      "origin": "Portal oficial do Instituto Quadrix",
+      "period": "2026",
+      "expected_questions": 160,
+      "expected_accepted": 141,
+      "expected_quarantined": 19,
+      "expected_rejected": 0,
+      "expected_structured_years": [2026],
+      "expected_quarantine_reasons": {
+        "item anulado no gabarito oficial": 1,
+        "texto de apoio não associado": 18
+      },
+      "sample_years": [2026]
+    }
+  ]
+}

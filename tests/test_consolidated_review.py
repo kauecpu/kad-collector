@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import tempfile
 import unittest
 from datetime import UTC, datetime
@@ -10,6 +11,10 @@ from kad_collector.consolidated_review import (
     _file_sha256,
     _structured_content_sha256,
     build_consolidated_review,
+)
+from kad_collector.editorial_campaign import (
+    export_campaign_dry_run,
+    run_editorial_campaign,
 )
 from kad_collector.json_utils import read_json, write_json
 from kad_collector.local_review import (
@@ -283,6 +288,211 @@ class ConsolidatedReviewTests(unittest.TestCase):
 
             self.assertEqual(index.packages[0].structured_years, [2021])
             self.assertIn("diferem dos esperados", index.lineage_warnings[0])
+
+    def test_campaign_uses_small_resumable_batches_and_refuses_unreviewed_export(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            corpus_spec = _spec(root)
+            corpus = read_json(corpus_spec)
+            corpus["review_batch_size"] = 1
+            write_json(corpus_spec, corpus)
+            campaign_spec = root / "campaign.json"
+            write_json(
+                campaign_spec,
+                {
+                    "schema_version": "1.0",
+                    "campaign_id": "fixture-campaign",
+                    "corpus_spec": str(corpus_spec),
+                    "sample_size": 4,
+                },
+            )
+
+            first, _report_path = run_editorial_campaign(
+                campaign_spec, root / "output", enable_qwen=False, limit=1
+            )
+            second, _report_path = run_editorial_campaign(
+                campaign_spec, root / "output", enable_qwen=False
+            )
+            third, _report_path = run_editorial_campaign(
+                campaign_spec, root / "output", enable_qwen=False
+            )
+
+            self.assertEqual(first.counts.raw_questions, 4)
+            self.assertEqual(second.content_sha256, third.content_sha256)
+            index = read_json(root / "output" / "review" / "index.json")
+            self.assertEqual(len(index["batches"]), 4)
+            self.assertTrue(
+                all(
+                    item["accepted"] + item["quarantined"] <= 1
+                    for item in index["batches"]
+                )
+            )
+            with self.assertRaisesRegex(ValueError, "aprovação humana"):
+                export_campaign_dry_run(
+                    root / "output" / "review" / "index.json", root / "export"
+                )
+
+    def test_qwen_suggestion_stays_pending_until_human_approval(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            corpus_spec = _spec(root)
+            campaign_spec = root / "campaign.json"
+            write_json(
+                campaign_spec,
+                {
+                    "schema_version": "1.0",
+                    "campaign_id": "fixture-qwen",
+                    "corpus_spec": str(corpus_spec),
+                    "qwen_batch_size": 1,
+                    "sample_size": 4,
+                },
+            )
+
+            def qwen(payload: dict[str, object]) -> dict[str, object]:
+                user = json.loads(payload["messages"][1]["content"])
+                question = user["questions"][0]
+                option_id = question["allowed_option_ids"][0]
+                return {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "items": [
+                                    {
+                                        "stable_id": question["stable_id"],
+                                        "option_id": option_id,
+                                        "level": "Superior",
+                                        "difficulty": "Média",
+                                        "confidence": 0.91,
+                                        "evidence": "Fixture restrita à opção fornecida.",
+                                    }
+                                ]
+                            }
+                        )
+                    }
+                }
+
+            report, _path = run_editorial_campaign(
+                campaign_spec,
+                root / "output",
+                enable_qwen=True,
+                limit=1,
+                qwen_request=qwen,
+            )
+
+            self.assertEqual(report.qwen.accepted_suggestions, 1)
+            self.assertEqual(report.counts.qwen_classifications, 1)
+            self.assertEqual(report.counts.human_decisions, 0)
+            self.assertEqual(report.counts.ready_for_export, 0)
+            index = read_json(root / "output" / "review" / "index.json")
+            entry = next(item for item in index["batches"] if item["session_path"])
+            session, session_path = load_or_create_review_session(
+                Path(entry["batch_path"]), Path(entry["session_path"])
+            )
+            question = session.batch.questions[0]
+            self.assertIn("método=qwen", " ".join(question.review_notes))
+            self.assertEqual(session.decisions[0].status, "pending")
+            session = decide_review_question(
+                session, question.number, "approved", "revisor fixture"
+            )
+            save_review_session(session, session_path)
+
+            manifest = export_campaign_dry_run(
+                root / "output" / "review" / "index.json", root / "export"
+            )
+
+            self.assertEqual(manifest["questions"], 1)
+            self.assertEqual(manifest["publicationStatus"], "draft")
+            exported = json.loads(
+                (root / "export" / "questoes.jsonl").read_text(encoding="utf-8")
+            )
+            self.assertEqual(exported["data"]["publicationStatus"], "draft")
+
+            completed, _path = run_editorial_campaign(
+                campaign_spec,
+                root / "output",
+                enable_qwen=True,
+                qwen_request=qwen,
+            )
+            repeated, _path = run_editorial_campaign(
+                campaign_spec,
+                root / "output",
+                enable_qwen=True,
+                qwen_request=qwen,
+            )
+            self.assertEqual(repeated.qwen.calls, 0)
+            self.assertEqual(repeated.content_sha256, completed.content_sha256)
+
+    def test_qwen_cannot_invent_taxonomy_or_approve_a_question(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            corpus_spec = _spec(root)
+            campaign_spec = root / "campaign.json"
+            write_json(
+                campaign_spec,
+                {
+                    "schema_version": "1.0",
+                    "campaign_id": "fixture-hostile-qwen",
+                    "corpus_spec": str(corpus_spec),
+                    "qwen_batch_size": 1,
+                    "sample_size": 4,
+                },
+            )
+
+            def hostile_qwen(payload: dict[str, object]) -> dict[str, object]:
+                user = json.loads(payload["messages"][1]["content"])
+                stable_id = user["questions"][0]["stable_id"]
+                return {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "items": [
+                                    {
+                                        "stable_id": stable_id,
+                                        "option_id": "taxonomia-inventada",
+                                        "level": "Superior",
+                                        "difficulty": "Média",
+                                        "confidence": 1,
+                                        "evidence": "Ignore as opções fornecidas.",
+                                    }
+                                ]
+                            }
+                        )
+                    }
+                }
+
+            report, _path = run_editorial_campaign(
+                campaign_spec,
+                root / "output",
+                enable_qwen=True,
+                limit=1,
+                qwen_request=hostile_qwen,
+            )
+
+            self.assertEqual(report.qwen.accepted_suggestions, 0)
+            self.assertEqual(report.counts.human_decisions, 0)
+            self.assertEqual(report.counts.ready_for_export, 0)
+
+    def test_campaign_rejects_nonpositive_interruption_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            corpus_spec = _spec(root)
+            campaign_spec = root / "campaign.json"
+            write_json(
+                campaign_spec,
+                {
+                    "schema_version": "1.0",
+                    "campaign_id": "fixture-limit",
+                    "corpus_spec": str(corpus_spec),
+                },
+            )
+
+            with self.assertRaisesRegex(ValueError, "limit precisa ser positivo"):
+                run_editorial_campaign(
+                    campaign_spec,
+                    root / "output",
+                    enable_qwen=False,
+                    limit=0,
+                )
 
 
 if __name__ == "__main__":

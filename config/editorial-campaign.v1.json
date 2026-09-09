@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "campaign_id": "pf-bb-corepi-editorial-20260908",
+  "corpus_spec": "editorial-campaign-corpus.v1.json",
+  "qwen_endpoint": "http://127.0.0.1:11434",
+  "qwen_model": "qwen3:8b",
+  "qwen_batch_size": 40,
+  "minimum_qwen_confidence": 0.78,
+  "sample_size": 300
+}
