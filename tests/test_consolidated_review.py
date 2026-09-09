@@ -319,6 +319,12 @@ class ConsolidatedReviewTests(unittest.TestCase):
 
             self.assertEqual(first.counts.raw_questions, 4)
             self.assertEqual(second.content_sha256, third.content_sha256)
+            self.assertEqual(second.sample.duplicate_fingerprints, 0)
+            audit_sample = read_json(root / "output" / "campaign-audit-sample.json")
+            self.assertEqual(len(audit_sample["questions"]), 4)
+            self.assertTrue(
+                all("statement" not in item for item in audit_sample["questions"])
+            )
             index = read_json(root / "output" / "review" / "index.json")
             self.assertEqual(len(index["batches"]), 4)
             self.assertTrue(
@@ -471,6 +477,46 @@ class ConsolidatedReviewTests(unittest.TestCase):
             self.assertEqual(report.qwen.accepted_suggestions, 0)
             self.assertEqual(report.counts.human_decisions, 0)
             self.assertEqual(report.counts.ready_for_export, 0)
+
+    def test_qwen_batch_rejects_duplicated_or_missing_stable_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            campaign_spec = root / "campaign.json"
+            write_json(
+                campaign_spec,
+                {
+                    "schema_version": "1.0",
+                    "campaign_id": "fixture-duplicate-qwen",
+                    "corpus_spec": str(_spec(root)),
+                    "qwen_batch_size": 2,
+                    "sample_size": 4,
+                },
+            )
+
+            def duplicate_qwen(payload: dict[str, object]) -> dict[str, object]:
+                user = json.loads(payload["messages"][1]["content"])
+                question = user["questions"][0]
+                item = {
+                    "stable_id": question["stable_id"],
+                    "option_id": question["allowed_option_ids"][0],
+                    "level": "Superior",
+                    "difficulty": "Média",
+                    "confidence": 0.99,
+                    "evidence": "Evidência repetida não é um lote íntegro.",
+                }
+                return {"message": {"content": json.dumps({"items": [item, item]})}}
+
+            report, _path = run_editorial_campaign(
+                campaign_spec,
+                root / "output",
+                enable_qwen=True,
+                limit=2,
+                qwen_request=duplicate_qwen,
+            )
+
+            self.assertEqual(report.qwen.accepted_suggestions, 0)
+            self.assertGreaterEqual(report.qwen.failures, 1)
+            self.assertEqual(report.counts.human_decisions, 0)
 
     def test_campaign_rejects_nonpositive_interruption_limit(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

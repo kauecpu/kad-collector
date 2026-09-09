@@ -1,0 +1,101 @@
+{
+  "id": "public-exams-core",
+  "version": "1.0.0",
+  "sources": [
+    {"id": "pf-2018", "title": "Edital nº 1 DGP/PF de 2018", "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/ED_1_DPF_2018___ABT.PDF"},
+    {"id": "pf-2021", "title": "Edital nº 1 DGP/PF de 2021", "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/ED_1_DPF_2021_ABT.PDF"},
+    {"id": "pf-2025", "title": "Edital nº 1 PF Policial de 2025", "url": "https://cdn.cebraspe.org.br/concursos/PF_25/arquivos/Ed_1_PF_25_Abertura.html"},
+    {"id": "corepi-2026", "title": "Edital nº 1 CORE-PI de 2026", "url": "https://anexos.cdn.selecao.net.br/uploads/861/concursos/1018/anexos/a89f7760-1537-455f-b37c-552d6d7acf3b.pdf"}
+  ],
+  "disciplines": [
+    {"id": "disc:lingua-portuguesa", "name": "Língua Portuguesa", "aliases": ["Português"], "topics": [
+      {"id": "topic:portugues:interpretacao", "matter": "Interpretação de Textos", "subject": "Compreensão e Interpretação", "keywords": ["de acordo com o texto", "infere-se do texto", "sentido do texto", "ideia central", "tipologia textual", "gênero textual"]},
+      {"id": "topic:portugues:morfossintaxe", "matter": "Gramática", "subject": "Morfossintaxe", "keywords": ["classe de palavras", "oração subordinada", "oração coordenada", "função sintática", "termo da oração"]},
+      {"id": "topic:portugues:coesao", "matter": "Gramática", "subject": "Coesão e Reescrita", "keywords": ["reescrita", "coesão textual", "correção gramatical", "mantém a correção", "prejudica a correção"]},
+      {"id": "topic:portugues:regencia", "matter": "Gramática", "subject": "Regência e Crase", "keywords": ["regência", "crase", "acento grave"]},
+      {"id": "topic:portugues:pontuacao", "matter": "Gramática", "subject": "Pontuação e Concordância", "keywords": ["pontuação", "vírgula", "concordância verbal", "concordância nominal"]}
+    ]},
+    {"id": "disc:lingua-inglesa", "name": "Língua Inglesa", "aliases": ["Inglês"], "topics": [
+      {"id": "topic:ingles:interpretacao", "matter": "Compreensão de Textos em Inglês", "subject": "Interpretação Textual", "keywords": ["according to the text", "the author", "the passage", "the word", "it can be inferred"]}
+    ]},
+    {"id": "disc:matematica", "name": "Matemática", "aliases": ["Raciocínio Lógico e Matemática"], "topics": [
+      {"id": "topic:matematica:aritmetica", "matter": "Aritmética", "subject": "Razões, Proporções e Porcentagem", "keywords": ["porcentagem", "regra de três", "razão e proporção", "números inteiros"]},
+      {"id": "topic:matematica:combinatoria", "matter": "Análise Combinatória", "subject": "Contagem e Probabilidade", "keywords": ["probabilidade", "arranjo", "permutação", "combinação", "princípio fundamental da contagem"]},
+      {"id": "topic:matematica:geometria", "matter": "Geometria", "subject": "Geometria Plana e Espacial", "keywords": ["área do", "volume do", "perímetro", "triângulo", "circunferência"]}
+    ]},
+    {"id": "disc:raciocinio-logico", "name": "Raciocínio Lógico-Matemático", "aliases": ["Raciocínio Lógico"], "topics": [
+      {"id": "topic:logica:proposicoes", "matter": "Lógica Proposicional", "subject": "Proposições e Conectivos", "keywords": ["proposição", "tabela verdade", "negação lógica", "conectivo lógico", "equivalência lógica"]},
+      {"id": "topic:logica:argumentacao", "matter": "Lógica de Argumentação", "subject": "Inferências e Diagramas", "keywords": ["diagrama lógico", "inferência", "dedução lógica", "argumento válido"]}
+    ]},
+    {"id": "disc:estatistica", "name": "Estatística", "topics": [
+      {"id": "topic:estatistica:descritiva", "matter": "Estatística Descritiva", "subject": "Medidas e Distribuições", "keywords": ["média aritmética", "mediana", "desvio padrão", "variância", "distribuição de frequência"]},
+      {"id": "topic:estatistica:inferencia", "matter": "Inferência Estatística", "subject": "Estimação e Testes", "keywords": ["intervalo de confiança", "teste de hipótese", "nível de significância", "estimador"]}
+    ]},
+    {"id": "disc:informatica", "name": "Informática", "aliases": ["Noções de Informática"], "topics": [
+      {"id": "topic:informatica:sistemas", "matter": "Sistemas Operacionais e Escritório", "subject": "Windows e Microsoft Office", "keywords": ["microsoft word", "microsoft excel", "powerpoint", "windows 10", "windows 11", "planilha eletrônica"]},
+      {"id": "topic:informatica:internet", "matter": "Internet e Redes", "subject": "Navegação, Correio e Redes", "keywords": ["google chrome", "mozilla firefox", "correio eletrônico", "internet e intranet", "endereço ip"]},
+      {"id": "topic:informatica:seguranca", "matter": "Segurança da Informação", "subject": "Ameaças, Proteção e Backup", "keywords": ["segurança da informação", "vírus de computador", "firewall", "antivírus", "procedimento de backup", "ransomware"]}
+    ]},
+    {"id": "disc:tecnologia-informacao", "name": "Tecnologia da Informação", "aliases": ["TI"], "topics": [
+      {"id": "topic:ti:banco-dados", "matter": "Banco de Dados", "subject": "Modelagem e Consulta de Dados", "keywords": ["banco de dados", "linguagem sql", "modelo relacional", "normalização", "data warehouse", "nosql"]},
+      {"id": "topic:ti:engenharia-software", "matter": "Engenharia de Software", "subject": "Desenvolvimento e Arquitetura", "keywords": ["engenharia de software", "padrão de projeto", "arquitetura de software", "scrum", "devops", "teste de software"]},
+      {"id": "topic:ti:redes", "matter": "Infraestrutura de TI", "subject": "Redes de Computadores", "keywords": ["protocolo tcp", "endereçamento ip", "modelo osi", "roteamento", "rede de computadores"]},
+      {"id": "topic:ti:seguranca", "matter": "Segurança da Informação", "subject": "Gestão e Controles de Segurança", "keywords": ["iso 27001", "criptografia", "assinatura digital", "controle de acesso", "segurança cibernética"]},
+      {"id": "topic:ti:dados", "matter": "Ciência de Dados", "subject": "Análise e Aprendizado de Máquina", "keywords": ["machine learning", "aprendizado de máquina", "mineração de dados", "inteligência artificial", "big data"]}
+    ]},
+    {"id": "disc:direito-constitucional", "name": "Direito Constitucional", "topics": [
+      {"id": "topic:constitucional:fundamentais", "matter": "Direitos Fundamentais", "subject": "Direitos e Garantias Fundamentais", "keywords": ["direitos fundamentais", "habeas corpus", "mandado de segurança", "direitos e garantias", "remédio constitucional"]},
+      {"id": "topic:constitucional:organizacao", "matter": "Organização do Estado", "subject": "Administração e Poderes", "keywords": ["organização do estado", "poder legislativo", "poder executivo", "poder judiciário", "competência da união"]},
+      {"id": "topic:constitucional:controle", "matter": "Controle de Constitucionalidade", "subject": "Controle Concentrado e Difuso", "keywords": ["controle de constitucionalidade", "ação direta de inconstitucionalidade", "controle difuso"]}
+    ]},
+    {"id": "disc:direito-administrativo", "name": "Direito Administrativo", "topics": [
+      {"id": "topic:administrativo:atos", "matter": "Atos Administrativos", "subject": "Elementos, Atributos e Extinção", "keywords": ["ato administrativo", "autoexecutoriedade", "presunção de legitimidade", "anulação do ato", "revogação do ato"]},
+      {"id": "topic:administrativo:organizacao", "matter": "Organização Administrativa", "subject": "Administração Direta e Indireta", "keywords": ["administração direta", "administração indireta", "autarquia", "empresa pública", "sociedade de economia mista"]},
+      {"id": "topic:administrativo:agentes", "matter": "Agentes Públicos", "subject": "Regime e Responsabilidade", "keywords": ["agente público", "servidor público", "cargo público", "processo administrativo disciplinar"]},
+      {"id": "topic:administrativo:licitacoes", "matter": "Licitações e Contratos", "subject": "Licitação Pública", "keywords": ["licitação", "dispensa de licitação", "inexigibilidade", "contrato administrativo", "pregão"]},
+      {"id": "topic:administrativo:poderes", "matter": "Poderes Administrativos", "subject": "Poder de Polícia e Abuso de Poder", "keywords": ["poder de polícia", "poder hierárquico", "poder disciplinar", "abuso de poder"]}
+    ]},
+    {"id": "disc:direito-penal", "name": "Direito Penal", "topics": [
+      {"id": "topic:penal:crime", "matter": "Teoria do Crime", "subject": "Tipicidade, Ilicitude e Culpabilidade", "keywords": ["fato típico", "ilicitude", "culpabilidade", "tipicidade", "erro de tipo"]},
+      {"id": "topic:penal:penas", "matter": "Penas", "subject": "Aplicação e Extinção da Pena", "keywords": ["aplicação da pena", "pena privativa", "prescrição penal", "extinção da punibilidade"]},
+      {"id": "topic:penal:crimes", "matter": "Crimes em Espécie", "subject": "Crimes contra a Administração e a Pessoa", "keywords": ["peculato", "corrupção passiva", "concussão", "homicídio", "lesão corporal"]}
+    ]},
+    {"id": "disc:processo-penal", "name": "Direito Processual Penal", "aliases": ["Processo Penal"], "topics": [
+      {"id": "topic:processo-penal:inquerito", "matter": "Investigação Criminal", "subject": "Inquérito Policial", "keywords": ["inquérito policial", "investigação criminal", "indiciamento", "autoridade policial"]},
+      {"id": "topic:processo-penal:provas", "matter": "Prova Penal", "subject": "Meios de Prova e Cadeia de Custódia", "keywords": ["cadeia de custódia", "prova ilícita", "busca e apreensão", "interceptação telefônica"]},
+      {"id": "topic:processo-penal:prisao", "matter": "Medidas Cautelares", "subject": "Prisões e Liberdade Provisória", "keywords": ["prisão preventiva", "prisão em flagrante", "liberdade provisória", "medida cautelar"]}
+    ]},
+    {"id": "disc:administracao", "name": "Administração Geral", "aliases": ["Administração"], "topics": [
+      {"id": "topic:administracao:processo", "matter": "Processo Administrativo", "subject": "Planejamento, Organização, Direção e Controle", "keywords": ["processo administrativo", "planejamento organização direção e controle", "funções da administração", "estrutura organizacional"]},
+      {"id": "topic:administracao:pessoas", "matter": "Gestão de Pessoas", "subject": "Liderança, Motivação e Equipes", "keywords": ["gestão de pessoas", "liderança", "motivação", "trabalho em equipe", "clima organizacional"]},
+      {"id": "topic:administracao:materiais", "matter": "Administração de Materiais", "subject": "Estoques e Patrimônio", "keywords": ["administração de materiais", "gestão de estoques", "curva abc", "patrimônio"]},
+      {"id": "topic:administracao:atendimento", "matter": "Atendimento ao Público", "subject": "Qualidade e Relações Interpessoais", "keywords": ["atendimento ao público", "relações interpessoais", "qualidade no atendimento"]}
+    ]},
+    {"id": "disc:arquivologia", "name": "Arquivologia", "topics": [
+      {"id": "topic:arquivologia:gestao", "matter": "Gestão de Documentos", "subject": "Ciclo, Avaliação e Protocolo", "keywords": ["gestão de documentos", "arquivo corrente", "arquivo intermediário", "arquivo permanente", "protocolo de documentos", "tabela de temporalidade"]}
+    ]},
+    {"id": "disc:contabilidade", "name": "Contabilidade", "aliases": ["Contabilidade Geral"], "topics": [
+      {"id": "topic:contabilidade:geral", "matter": "Contabilidade Geral", "subject": "Patrimônio e Demonstrações Contábeis", "keywords": ["balanço patrimonial", "demonstração contábil", "patrimônio líquido", "ativo circulante", "lançamento contábil"]},
+      {"id": "topic:contabilidade:publica", "matter": "Contabilidade Pública", "subject": "Receita, Despesa e Orçamento", "keywords": ["receita orçamentária", "despesa orçamentária", "restos a pagar", "contabilidade pública"]}
+    ]},
+    {"id": "disc:conhecimentos-bancarios", "name": "Conhecimentos Bancários", "topics": [
+      {"id": "topic:bancario:sfn", "matter": "Sistema Financeiro Nacional", "subject": "Instituições e Mercados", "keywords": ["sistema financeiro nacional", "banco central", "conselho monetário nacional", "mercado de capitais"]},
+      {"id": "topic:bancario:produtos", "matter": "Produtos e Serviços Bancários", "subject": "Crédito, Investimentos e Meios de Pagamento", "keywords": ["crédito bancário", "cartão de crédito", "pix", "caderneta de poupança", "fundo de investimento"]},
+      {"id": "topic:bancario:compliance", "matter": "Compliance Bancário", "subject": "PLD, Ética e Proteção de Dados", "keywords": ["lavagem de dinheiro", "financiamento do terrorismo", "sigilo bancário", "proteção de dados"]}
+    ]},
+    {"id": "disc:vendas-negociacao", "name": "Vendas e Negociação", "topics": [
+      {"id": "topic:vendas:atendimento", "matter": "Atendimento e Vendas", "subject": "Relacionamento com o Cliente", "keywords": ["relacionamento com o cliente", "atendimento ao cliente", "satisfação do cliente", "experiência do cliente"]},
+      {"id": "topic:vendas:negociacao", "matter": "Negociação", "subject": "Técnicas de Venda e Negociação", "keywords": ["técnica de vendas", "processo de negociação", "objeção do cliente", "fechamento da venda"]},
+      {"id": "topic:vendas:marketing", "matter": "Marketing", "subject": "Marketing Digital e Serviços", "keywords": ["marketing digital", "segmentação de mercado", "marketing de serviços", "composto de marketing"]}
+    ]},
+    {"id": "disc:etica-legislacao", "name": "Ética e Legislação Pública", "aliases": ["Legislação e Ética na Administração Pública"], "topics": [
+      {"id": "topic:etica:publica", "matter": "Ética Pública", "subject": "Ética, Improbidade e Processo Administrativo", "keywords": ["ética no serviço público", "improbidade administrativa", "lei 8.429", "lei 9.784"]},
+      {"id": "topic:etica:transparencia", "matter": "Transparência e Dados", "subject": "LAI e LGPD", "keywords": ["lei de acesso à informação", "lei 12.527", "lei geral de proteção de dados", "lgpd"]}
+    ]},
+    {"id": "disc:legislacao-core", "name": "Legislação do Sistema CONFERE/COREs", "topics": [
+      {"id": "topic:core:representacao", "matter": "Representação Comercial", "subject": "Registro, Fiscalização e Ética", "keywords": ["representante comercial", "lei 4.886", "sistema confere cores", "registro profissional", "conselho regional dos representantes"]}
+    ]}
+  ],
+  "metadata_profiles": [],
+  "exam_profiles": []
+}

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from typing import Any, Protocol
@@ -341,15 +340,7 @@ class OpenAIClassificationProvider:
         self._client = OpenAI(api_key=api_key, timeout=180.0, max_retries=2)
 
     def _option_id(self, path: TaxonomyPath) -> str:
-        payload = "\0".join(
-            (
-                self.taxonomy.version,
-                path.discipline,
-                path.matter or "",
-                path.subject or "",
-            )
-        )
-        return f"tax-{hashlib.sha256(payload.encode('utf-8')).hexdigest()[:16]}"
+        return path.path_id
 
     @staticmethod
     def _response_schema(option_ids: list[str]) -> dict[str, Any]:
@@ -504,6 +495,7 @@ class OpenAIClassificationProvider:
             if target is None:
                 continue
             audited_path = TaxonomyPath(
+                path_id=path.path_id,
                 discipline=path.discipline,
                 matter=path.matter,
                 subject=path.subject,

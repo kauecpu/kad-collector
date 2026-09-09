@@ -1,0 +1,17 @@
+{
+  "id": "cesgranrio-bb",
+  "version": "1.0.0",
+  "match": {"concurso_contains": ["bb0121", "banco do brasil"], "organization_contains": ["banco do brasil"], "source_contains": ["bb0121"]},
+  "sources": [
+    {"id": "bb-2021-exam", "title": "Prova A de Escriturário - Agente Comercial", "url": "https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf%2Fbb0121%2Fprovas%2FPROVA+A+-+ESCRITUR%C3%81RIO+-+AGENTE+COMERCIAL.pdf"}
+  ],
+  "disciplines": [],
+  "metadata_profiles": [
+    {"concurso_contains": "bb0121", "role_contains": "agente comercial", "level": "Médio"},
+    {"concurso_contains": "bb0121", "role_contains": "agente de tecnologia", "level": "Médio"}
+  ],
+  "exam_profiles": [
+    {"source_contains": "bb0121", "role_contains": "agente comercial", "stage_contains": "objetiva", "ranges": [[1, 10, "Língua Portuguesa"], [11, 15, "Língua Inglesa"], [16, 20, "Matemática"], [21, 25, "Conhecimentos Bancários"], [26, 30, "Matemática"], [31, 35, "Conhecimentos Bancários"], [36, 45, "Informática"], [46, 70, "Vendas e Negociação"]]},
+    {"source_contains": "bb0121", "role_contains": "agente de tecnologia", "stage_contains": "objetiva", "ranges": [[1, 10, "Língua Portuguesa"], [11, 15, "Língua Inglesa"], [16, 20, "Matemática"], [21, 25, "Conhecimentos Bancários"], [26, 70, "Tecnologia da Informação"]]}
+  ]
+}

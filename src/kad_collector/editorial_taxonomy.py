@@ -27,6 +27,7 @@ def normalize_taxonomy_text(value: str) -> str:
 
 @dataclass(frozen=True)
 class TaxonomyPath:
+    path_id: str
     discipline: str
     matter: str | None = None
     subject: str | None = None
@@ -77,7 +78,13 @@ class EditorialTaxonomy:
             )
             for resource_name in bundle["catalogs"]
         ]
-        return cls._from_catalogs(payloads, version=str(bundle["version"]))
+        taxonomy = cls._from_catalogs(payloads, version=str(bundle["version"]))
+        taxonomy.compatible_versions = tuple(
+            dict.fromkeys(
+                [taxonomy.version, *map(str, bundle.get("compatible_versions", []))]
+            )
+        )
+        return taxonomy
 
     @classmethod
     def load_directory(cls, directory: Path, *, version: str) -> EditorialTaxonomy:
@@ -89,6 +96,7 @@ class EditorialTaxonomy:
 
     def _initialize(self, payloads: list[dict[str, Any]], *, version: str) -> None:
         self.version = version
+        self.compatible_versions: tuple[str, ...] = (version,)
         self.catalog_ids = tuple(
             str(payload.get("id") or f"legacy-catalog-{index}")
             for index, payload in enumerate(payloads, start=1)
@@ -113,6 +121,7 @@ class EditorialTaxonomy:
             "subject": {},
         }
         self._heading_paths: list[tuple[str, TaxonomyPath]] = []
+        self._paths_by_id: dict[str, TaxonomyPath] = {}
 
         all_sources: list[str] = []
         for catalog_id, payload in zip(self.catalog_ids, payloads, strict=True):
@@ -129,16 +138,22 @@ class EditorialTaxonomy:
 
             for discipline in cast(list[dict[str, Any]], payload.get("disciplines", [])):
                 discipline_name = str(discipline["name"])
+                discipline_id = str(
+                    discipline.get("id")
+                    or self._legacy_path_id(catalog_id, discipline_name)
+                )
                 self._register_name(
                     "discipline",
                     discipline_name,
                     cast(list[object], discipline.get("aliases", [])),
                 )
                 discipline_path = TaxonomyPath(
+                    path_id=discipline_id,
                     discipline=discipline_name,
                     catalog_id=catalog_id,
                     provenance=provenance,
                 )
+                self._register_path(discipline_path)
                 self._register_heading(discipline_name, discipline_path)
                 for alias in cast(list[object], discipline.get("aliases", [])):
                     self._register_heading(str(alias), discipline_path)
@@ -150,6 +165,13 @@ class EditorialTaxonomy:
                     topic["_provenance"] = provenance
                     matter = str(topic["matter"])
                     subject = str(topic["subject"])
+                    topic_id = str(
+                        topic.get("id")
+                        or self._legacy_path_id(
+                            catalog_id, discipline_name, matter, subject
+                        )
+                    )
+                    topic["_path_id"] = topic_id
                     self._register_name(
                         "matter",
                         matter,
@@ -161,6 +183,7 @@ class EditorialTaxonomy:
                         cast(list[object], topic.get("subject_aliases", [])),
                     )
                     path = TaxonomyPath(
+                        path_id=topic_id,
                         discipline=discipline_name,
                         matter=matter,
                         subject=subject,
@@ -169,6 +192,7 @@ class EditorialTaxonomy:
                     )
                     for heading in cast(list[object], topic.get("headings", [])):
                         self._register_heading(str(heading), path)
+                    self._register_path(path)
                     topics.append(topic)
 
             for raw_section in cast(list[dict[str, Any]], payload.get("sections", [])):
@@ -176,6 +200,15 @@ class EditorialTaxonomy:
                 section["_catalog_id"] = catalog_id
                 section["_provenance"] = provenance
                 path = TaxonomyPath(
+                    path_id=str(
+                        section.get("path_id")
+                        or self._legacy_path_id(
+                            catalog_id,
+                            str(section["discipline"]),
+                            str(section["matter"]),
+                            str(section["subject"]),
+                        )
+                    ),
                     discipline=str(section["discipline"]),
                     matter=str(section["matter"]),
                     subject=str(section["subject"]),
@@ -208,6 +241,23 @@ class EditorialTaxonomy:
 
         self.sources = tuple(dict.fromkeys(all_sources))
         self._validate()
+
+    @staticmethod
+    def _legacy_path_id(catalog_id: str, *parts: str) -> str:
+        slug = "-".join(normalize_taxonomy_text(part).replace(" ", "-") for part in parts)
+        return f"{catalog_id}:{slug}"
+
+    def _register_path(self, path: TaxonomyPath) -> None:
+        if re.fullmatch(r"[a-z0-9][a-z0-9_.:-]{2,127}", path.path_id) is None:
+            raise ValueError(f"identificador de caminho inválido: {path.path_id}")
+        previous = self._paths_by_id.get(path.path_id)
+        if previous is not None and (
+            previous.discipline,
+            previous.matter,
+            previous.subject,
+        ) != (path.discipline, path.matter, path.subject):
+            raise ValueError(f"identificador de caminho duplicado: {path.path_id}")
+        self._paths_by_id[path.path_id] = path
 
     @staticmethod
     def _source_urls(raw_sources: object, catalog_id: str) -> tuple[str, ...]:
@@ -337,6 +387,7 @@ class EditorialTaxonomy:
                 continue
             for topic in topics:
                 path = TaxonomyPath(
+                    path_id=str(topic["_path_id"]),
                     discipline=discipline_name,
                     matter=str(topic["matter"]),
                     subject=str(topic["subject"]),
@@ -351,6 +402,7 @@ class EditorialTaxonomy:
                     grouped[key] = path
                     continue
                 grouped[key] = TaxonomyPath(
+                    path_id=previous.path_id,
                     discipline=path.discipline,
                     matter=path.matter,
                     subject=path.subject,
@@ -366,6 +418,12 @@ class EditorialTaxonomy:
                 key=lambda item: tuple(normalize_taxonomy_text(value) for value in item),
             )
         )
+
+    def path_by_id(self, path_id: str) -> TaxonomyPath | None:
+        return self._paths_by_id.get(path_id)
+
+    def is_compatible_version(self, version: str) -> bool:
+        return version in self.compatible_versions
 
     def keywords_for_path(self, path: TaxonomyPath) -> tuple[str, ...]:
         keywords: list[str] = []
@@ -424,6 +482,11 @@ class EditorialTaxonomy:
                 )
             ),
         }
+        universal = tuple(
+            catalog_id
+            for catalog_id in self.catalog_ids
+            if not self._catalog_matches[catalog_id]
+        )
         matched = tuple(
             catalog_id
             for catalog_id in self.catalog_ids
@@ -435,10 +498,10 @@ class EditorialTaxonomy:
             )
         )
         if matched:
-            return matched
+            return tuple(dict.fromkeys([*universal, *matched]))
         if not any(values.values()):
             return self.catalog_ids
-        return ()
+        return universal
 
     @staticmethod
     def _catalog_allowed(
@@ -470,6 +533,15 @@ class EditorialTaxonomy:
                 matches.append((self._path_specificity(path), len(heading), path))
         for section in self._sections:
             path = TaxonomyPath(
+                path_id=str(
+                    section.get("path_id")
+                    or self._legacy_path_id(
+                        str(section["_catalog_id"]),
+                        str(section["discipline"]),
+                        str(section["matter"]),
+                        str(section["subject"]),
+                    )
+                ),
                 discipline=str(section["discipline"]),
                 matter=str(section["matter"]),
                 subject=str(section["subject"]),
@@ -500,6 +572,7 @@ class EditorialTaxonomy:
             dict.fromkeys(value for item in best for value in item.provenance)
         )
         return TaxonomyPath(
+            path_id=selected.path_id,
             discipline=selected.discipline,
             matter=selected.matter,
             subject=selected.subject,
@@ -608,6 +681,9 @@ class EditorialTaxonomy:
             for start, end, discipline in profile["ranges"]:
                 if int(start) <= question_number <= int(end):
                     return TaxonomyPath(
+                        path_id=self._legacy_path_id(
+                            str(profile["_catalog_id"]), str(discipline)
+                        ),
                         discipline=str(discipline),
                         catalog_id=str(profile["_catalog_id"]),
                         provenance=cast(tuple[str, ...], profile["_provenance"]),
@@ -676,6 +752,7 @@ class EditorialTaxonomy:
                     candidates.append(
                         SemanticMatch(
                             path=TaxonomyPath(
+                                path_id=str(topic["_path_id"]),
                                 discipline=discipline_name,
                                 matter=str(topic["matter"]),
                                 subject=str(topic["subject"]),

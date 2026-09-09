@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
 from collections import Counter, defaultdict
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import httpx
 from pydantic import Field
@@ -31,7 +32,7 @@ from .models import LocalReviewSession, QuestionRecord, StrictModel
 from .question_equivalence import question_fingerprints
 from .validation import validate_editorial_question
 
-CAMPAIGN_VERSION = "1.0"
+CAMPAIGN_VERSION = "1.1"
 CLASSIFICATION_NOTE_PREFIX = "Classificação automática:"
 AUTOMATIC_BLOCKS = {
     "taxonomy_unresolved",
@@ -60,6 +61,9 @@ class CampaignCounts(StrictModel):
     rejected: int = Field(ge=0)
     deterministic_classifications: int = Field(ge=0)
     qwen_classifications: int = Field(ge=0)
+    taxonomy_complete: int = Field(ge=0)
+    taxonomy_coverage: float = Field(ge=0, le=1)
+    taxonomy_field_coverage: dict[str, float] = Field(default_factory=dict)
     taxonomy_unresolved: int = Field(ge=0)
     human_decisions: int = Field(ge=0)
     waiting_human_review: int = Field(ge=0)
@@ -87,6 +91,33 @@ class CampaignSample(StrictModel):
     structural_precision: float | None = Field(default=None, ge=0, le=1)
     answer_precision: float | None = Field(default=None, ge=0, le=1)
     classification_precision: float | None = Field(default=None, ge=0, le=1)
+    duplicate_fingerprints: int = Field(default=0, ge=0)
+    structurally_accepted: int = Field(default=0, ge=0)
+    quarantined: int = Field(default=0, ge=0)
+    visual_dependencies: int = Field(default=0, ge=0)
+
+
+class CampaignSampleEntry(StrictModel):
+    stable_id: str
+    semantic_fingerprint: str
+    batch_id: str
+    batch_path: str
+    session_path: str
+    question_number: int = Field(ge=1)
+    board: str | None
+    organization: str | None
+    contest: str | None
+    year: int | None
+    role: str | None
+    question_format: Literal["true_false", "multiple_choice"]
+    structural_state: Literal["accepted", "quarantined", "rejected", "unknown"]
+    classification_method: str
+    classification_confidence: float | None = Field(default=None, ge=0, le=1)
+    taxonomy_path_id: str | None
+    visual_dependency: bool
+    source_pages: list[int]
+    exam_url: str | None
+    answer_key_url: str | None
 
 
 class EditorialCampaignReport(StrictModel):
@@ -98,7 +129,9 @@ class EditorialCampaignReport(StrictModel):
     counts: CampaignCounts
     qwen: CampaignQwenStatus
     sample: CampaignSample
+    audit_sample: list[CampaignSampleEntry] = Field(default_factory=list)
     grouped: dict[str, list[dict[str, Any]]]
+    taxonomy_gaps: list[dict[str, Any]] = Field(default_factory=list)
     quarantine_reasons: dict[str, int]
     next_batch_id: str | None
     resumable: bool = True
@@ -144,6 +177,33 @@ def _classification_request(question: QuestionRecord) -> ClassificationRequest:
     )
 
 
+def _note_value(question: QuestionRecord, prefix: str) -> str | None:
+    note = next(
+        (item for item in question.review_notes if item.startswith(prefix)), None
+    )
+    if note is None:
+        return None
+    value = note[len(prefix) :].strip().removesuffix(".")
+    return value or None
+
+
+def _classification_metadata(question: QuestionRecord) -> DesktopImportMetadata:
+    source_url = _note_value(question, "URL oficial da prova:")
+    return DesktopImportMetadata(
+        provider=question.board,
+        source_url=source_url,
+        canonical_url=source_url,
+        document_title=question.role,
+        document_type="exam",
+        concurso=question.concurso,
+        board=question.board,
+        year=question.year,
+        role=question.role,
+        stage="objetiva",
+        organization=question.organization,
+    )
+
+
 def _classification_fields(question: QuestionRecord) -> tuple[str | None, ...]:
     return (
         question.discipline,
@@ -179,6 +239,7 @@ def _apply_classification(
     method: str,
     confidence: float,
     taxonomy_version: str,
+    evidence: str | None = None,
 ) -> QuestionRecord:
     notes = [
         item
@@ -195,7 +256,9 @@ def _apply_classification(
     missing = [name for name, value in values.items() if value is None]
     notes.append(
         f"{CLASSIFICATION_NOTE_PREFIX} método={method}; confiança={confidence:.2f}; "
-        f"taxonomia={taxonomy_version}; pendências={','.join(missing) or 'nenhuma'}."
+        f"taxonomia={taxonomy_version}; caminho={path.path_id if path else 'nenhum'}; "
+        f"evidência={evidence or 'insuficiente'}; "
+        f"pendências={','.join(missing) or 'nenhuma'}."
     )
     blocks = [item for item in question.editorial_blocks if item not in AUTOMATIC_BLOCKS]
     if any(values[name] is None for name in ("discipline", "matter", "subject")):
@@ -209,7 +272,9 @@ def _apply_classification(
     )
 
 
-def _local_path(result: Any, taxonomy: EditorialTaxonomy) -> tuple[TaxonomyPath | None, float]:
+def _local_path(
+    result: Any, taxonomy: EditorialTaxonomy
+) -> tuple[TaxonomyPath | None, str | None, str | None, float, str | None]:
     classification = result.classification
     values = (
         classification.discipline.value,
@@ -217,7 +282,13 @@ def _local_path(result: Any, taxonomy: EditorialTaxonomy) -> tuple[TaxonomyPath 
         classification.topic.value,
     )
     if not all(isinstance(value, str) and value for value in values):
-        return None, 0
+        return (
+            None,
+            classification.level.value,
+            classification.difficulty.value,
+            0,
+            None,
+        )
     path = next(
         (
             item
@@ -231,7 +302,14 @@ def _local_path(result: Any, taxonomy: EditorialTaxonomy) -> tuple[TaxonomyPath 
         float(classification.subject.confidence),
         float(classification.topic.confidence),
     )
-    return path, confidence if path is not None else 0
+    evidence = classification.topic.evidence or classification.subject.evidence
+    return (
+        path,
+        classification.level.value,
+        classification.difficulty.value,
+        confidence if path is not None else 0,
+        evidence,
+    )
 
 
 class OllamaTaxonomyClassifier:
@@ -278,7 +356,7 @@ class OllamaTaxonomyClassifier:
         return True
 
     @staticmethod
-    def _schema(option_ids: list[str]) -> dict[str, Any]:
+    def _schema(option_ids: list[str], stable_ids: list[str]) -> dict[str, Any]:
         return {
             "type": "object",
             "additionalProperties": False,
@@ -286,6 +364,8 @@ class OllamaTaxonomyClassifier:
             "properties": {
                 "items": {
                     "type": "array",
+                    "minItems": len(stable_ids),
+                    "maxItems": len(stable_ids),
                     "items": {
                         "type": "object",
                         "additionalProperties": False,
@@ -298,7 +378,7 @@ class OllamaTaxonomyClassifier:
                             "evidence",
                         ],
                         "properties": {
-                            "stable_id": {"type": "string"},
+                            "stable_id": {"type": "string", "enum": stable_ids},
                             "option_id": {
                                 "type": "string",
                                 "enum": [*option_ids, "unresolved"],
@@ -312,7 +392,7 @@ class OllamaTaxonomyClassifier:
                                 "enum": ["Fácil", "Média", "Difícil", "unresolved"],
                             },
                             "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-                            "evidence": {"type": "string"},
+                            "evidence": {"type": "string", "maxLength": 160},
                         },
                     },
                 }
@@ -324,12 +404,9 @@ class OllamaTaxonomyClassifier:
         questions: list[QuestionRecord],
         taxonomy: EditorialTaxonomy,
         trace_path: Path,
-    ) -> dict[str, tuple[TaxonomyPath | None, str | None, str | None, float]]:
+    ) -> dict[str, tuple[TaxonomyPath | None, str | None, str | None, float, str]]:
         paths = taxonomy.candidate_paths()
-        options = {
-            f"tax-{_canonical_sha256((path.discipline, path.matter, path.subject))[:16]}": path
-            for path in paths
-        }
+        options = {path.path_id: path for path in paths}
         stable_ids = {
             question.source_stable_id or question_content_sha256(question): question
             for question in questions
@@ -338,6 +415,8 @@ class OllamaTaxonomyClassifier:
             stable_id: {
                 option_id
                 for option_id, path in options.items()
+                if path.catalog_id
+                in taxonomy.relevant_catalog_ids(_classification_metadata(question))
                 if (question.discipline is None or path.discipline == question.discipline)
                 and (question.matter is None or path.matter == question.matter)
                 and (question.subject is None or path.subject == question.subject)
@@ -350,6 +429,7 @@ class OllamaTaxonomyClassifier:
                 "options": [
                     {
                         "id": option_id,
+                        "taxonomy_path_id": path.path_id,
                         "discipline": path.discipline,
                         "matter": path.matter,
                         "subject": path.subject,
@@ -386,14 +466,19 @@ class OllamaTaxonomyClassifier:
             "model": self.model,
             "stream": False,
             "think": False,
-            "format": self._schema(sorted(options)),
-            "options": {"temperature": 0, "num_predict": max(256, len(questions) * 72)},
+            "format": self._schema(sorted(options), sorted(stable_ids)),
+            "options": {"temperature": 0, "num_predict": max(2_048, len(questions) * 192)},
             "messages": [
                 {
                     "role": "system",
                     "content": (
-                        "Classifique somente pelas opções fornecidas. Use unresolved quando "
-                        "nenhuma opção for segura. Não invente termos. Responda apenas o JSON."
+                        "Classifique o tema de cada questão somente pelas opções fornecidas. "
+                        "Não resolva a questão e não use a veracidade da resposta como evidência. "
+                        "Use unresolved e confiança 0 quando o enunciado não sustentar um tópico "
+                        "exato. Produza exatamente um item para cada stable_id recebido, sem "
+                        "duplicar nem omitir IDs. Evidence deve ter no máximo 15 palavras e "
+                        "citar somente indícios temáticos. Não invente termos. Responda apenas "
+                        "o JSON compacto."
                     ),
                 },
                 {
@@ -427,13 +512,24 @@ class OllamaTaxonomyClassifier:
         if raw is not None:
             message = raw.get("message", raw)
             output_text = str(message.get("content", "")) if isinstance(message, dict) else ""
-        accepted: dict[str, tuple[TaxonomyPath | None, str | None, str | None, float]] = {}
+        accepted: dict[
+            str, tuple[TaxonomyPath | None, str | None, str | None, float, str]
+        ] = {}
         try:
             decoded = json.loads(output_text) if output_text else {"items": []}
             items = decoded.get("items", [])
             if not isinstance(items, list):
                 raise ValueError("items não é uma lista")
             known_ids = set(stable_ids)
+            response_ids = [
+                str(item.get("stable_id") or "")
+                for item in items
+                if isinstance(item, dict)
+            ]
+            if len(response_ids) != len(known_ids) or set(response_ids) != known_ids:
+                raise ValueError(
+                    "resposta não contém exatamente uma decisão por stable_id"
+                )
             for item in items:
                 if not isinstance(item, dict):
                     continue
@@ -455,6 +551,7 @@ class OllamaTaxonomyClassifier:
                     level if level != "unresolved" else None,
                     difficulty if difficulty != "unresolved" else None,
                     confidence,
+                    evidence,
                 )
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
             error = str(exc)
@@ -487,10 +584,35 @@ def _iter_sessions(index: ConsolidatedReviewIndex) -> list[tuple[str, Path]]:
     return result
 
 
-def _question_state(question: QuestionRecord) -> str:
-    if question.editorial_blocks:
-        return "quarantined"
-    return "accepted"
+def _structural_state(question: QuestionRecord) -> str:
+    value = _note_value(question, "Estado estrutural:")
+    return value if value in {"accepted", "quarantined", "rejected"} else "unknown"
+
+
+def _visual_dependency(question: QuestionRecord) -> bool:
+    text = " ".join([*question.review_notes, *question.editorial_blocks]).casefold()
+    return "visual" in text
+
+
+def _classification_audit(question: QuestionRecord) -> tuple[float | None, str | None]:
+    note = next(
+        (
+            item
+            for item in question.review_notes
+            if item.startswith(CLASSIFICATION_NOTE_PREFIX)
+        ),
+        "",
+    )
+    confidence_match = re.search(r"confiança=([0-9.]+)", note)
+    path_match = re.search(r"caminho=([^;]+)", note)
+    return (
+        float(confidence_match.group(1)) if confidence_match else None,
+        (
+            path_match.group(1)
+            if path_match and path_match.group(1) != "nenhum"
+            else None
+        ),
+    )
 
 
 def _semantic_counts(
@@ -516,46 +638,77 @@ def _semantic_counts(
 
 def _sample(
     sessions: list[tuple[str, Path]], *, sample_size: int
-) -> CampaignSample:
-    rows: list[tuple[str, QuestionRecord, str]] = []
+) -> tuple[CampaignSample, list[CampaignSampleEntry]]:
+    rows: list[tuple[str, QuestionRecord, str, str, str, str]] = []
     decisions: dict[str, str] = {}
-    for _batch_id, session_path in sessions:
-        session = LocalReviewSession.model_validate(read_json(session_path))
+    seen_fingerprints: set[str] = set()
+    for batch_id, source_session_path in sessions:
+        session = LocalReviewSession.model_validate(read_json(source_session_path))
         by_number = {item.question_number: item.status for item in session.decisions}
         for question in session.batch.questions:
             stable_id = question.source_stable_id or question_content_sha256(question)
-            rows.append((stable_id, question, _classification_method(question)))
+            fingerprint = question_fingerprints(question.model_dump(mode="json")).exact
+            if fingerprint in seen_fingerprints:
+                continue
+            seen_fingerprints.add(fingerprint)
+            rows.append(
+                (
+                    stable_id,
+                    question,
+                    _classification_method(question),
+                    batch_id,
+                    _portable(source_session_path),
+                    fingerprint,
+                )
+            )
             decisions[stable_id] = by_number[question.number]
 
-    selected: dict[str, tuple[QuestionRecord, str]] = {}
-    dimensions: dict[str, dict[str, list[tuple[str, QuestionRecord, str]]]] = {
+    selected: dict[str, tuple[QuestionRecord, str, str, str, str]] = {}
+    dimensions: dict[
+        str, dict[str, list[tuple[str, QuestionRecord, str, str, str, str]]]
+    ] = {
         key: defaultdict(list)
-        for key in ("board", "organization", "year", "format", "method", "state")
+        for key in (
+            "board",
+            "organization",
+            "year",
+            "role",
+            "format",
+            "method",
+            "state",
+            "visual",
+        )
     }
-    for stable_id, question, method in rows:
+    for stable_id, question, method, batch_id, session_ref, fingerprint in rows:
         values = {
             "board": question.board or "(não informado)",
             "organization": question.organization or "(não informado)",
             "year": str(question.year or "(não informado)"),
             "format": "true_false" if len(question.alternatives) == 2 else "multiple_choice",
             "method": method,
-            "state": _question_state(question),
+            "state": _structural_state(question),
+            "visual": "sim" if _visual_dependency(question) else "não",
+            "role": question.role or "(não informado)",
         }
         for dimension, value in values.items():
-            dimensions[dimension][value].append((stable_id, question, method))
+            dimensions[dimension][value].append(
+                (stable_id, question, method, batch_id, session_ref, fingerprint)
+            )
     for groups in dimensions.values():
         for candidates in groups.values():
             choice = min(candidates, key=lambda item: _canonical_sha256(item[0]))
-            selected.setdefault(choice[0], (choice[1], choice[2]))
-    for stable_id, question, method in sorted(
+            selected.setdefault(choice[0], choice[1:])
+    for stable_id, question, method, batch_id, session_ref, fingerprint in sorted(
         rows, key=lambda item: _canonical_sha256(item[0])
     ):
         if len(selected) >= min(sample_size, len(rows)):
             break
-        selected.setdefault(stable_id, (question, method))
+        selected.setdefault(
+            stable_id, (question, method, batch_id, session_ref, fingerprint)
+        )
 
     strata: Counter[str] = Counter()
-    for question, method in selected.values():
+    for question, method, _batch_id, _session_path, _fingerprint in selected.values():
         strata.update(
             [
                 f"banca:{question.board or '(não informado)'}",
@@ -567,13 +720,54 @@ def _sample(
                     else "multipla_escolha"
                 ),
                 f"classificação:{method}",
-                f"estado:{_question_state(question)}",
+                f"estado:{_structural_state(question)}",
+                f"visual:{'sim' if _visual_dependency(question) else 'não'}",
             ]
         )
     human_decisions = sum(
         decisions[stable_id] in {"approved", "rejected"} for stable_id in selected
     )
-    return CampaignSample(
+    entries: list[CampaignSampleEntry] = []
+    for stable_id, (
+        question,
+        method,
+        batch_id,
+        session_ref,
+        fingerprint,
+    ) in sorted(selected.items()):
+        confidence, path_id = _classification_audit(question)
+        entries.append(
+            CampaignSampleEntry(
+                stable_id=stable_id,
+                semantic_fingerprint=fingerprint,
+                batch_id=batch_id,
+                batch_path=_portable(
+                    Path(session_ref).parent.parent / "batches" / f"{batch_id}.json"
+                ),
+                session_path=session_ref,
+                question_number=question.number,
+                board=question.board,
+                organization=question.organization,
+                contest=question.concurso,
+                year=question.year,
+                role=question.role,
+                question_format=(
+                    "true_false" if len(question.alternatives) == 2 else "multiple_choice"
+                ),
+                structural_state=cast(
+                    Literal["accepted", "quarantined", "rejected", "unknown"],
+                    _structural_state(question),
+                ),
+                classification_method=method,
+                classification_confidence=confidence,
+                taxonomy_path_id=path_id,
+                visual_dependency=_visual_dependency(question),
+                source_pages=question.source_pages,
+                exam_url=_note_value(question, "URL oficial da prova:"),
+                answer_key_url=_note_value(question, "URL oficial do gabarito:"),
+            )
+        )
+    sample = CampaignSample(
         size=len(selected),
         stable_ids=sorted(selected),
         strata=dict(sorted(strata.items())),
@@ -581,7 +775,15 @@ def _sample(
         structural_precision=None,
         answer_precision=None,
         classification_precision=None,
+        duplicate_fingerprints=len(entries)
+        - len({entry.semantic_fingerprint for entry in entries}),
+        structurally_accepted=sum(
+            entry.structural_state == "accepted" for entry in entries
+        ),
+        quarantined=sum(entry.structural_state == "quarantined" for entry in entries),
+        visual_dependencies=sum(entry.visual_dependency for entry in entries),
     )
+    return sample, entries
 
 
 def _grouped(sessions: list[tuple[str, Path]]) -> dict[str, list[dict[str, Any]]]:
@@ -591,8 +793,11 @@ def _grouped(sessions: list[tuple[str, Path]]) -> dict[str, list[dict[str, Any]]
         "concurso",
         "ano",
         "cargo",
+        "disciplina",
         "matéria",
         "assunto",
+        "nível",
+        "dificuldade",
         "estado",
     )
     counters: dict[str, Counter[str]] = {key: Counter() for key in dimensions}
@@ -608,8 +813,11 @@ def _grouped(sessions: list[tuple[str, Path]]) -> dict[str, list[dict[str, Any]]
                 "concurso": question.concurso,
                 "ano": str(question.year) if question.year else None,
                 "cargo": question.role,
+                "disciplina": question.discipline,
                 "matéria": question.matter,
                 "assunto": question.subject,
+                "nível": question.level,
+                "dificuldade": question.difficulty,
                 "estado": decision_by_number[question.number],
             }
             for key, value in values.items():
@@ -623,12 +831,42 @@ def _grouped(sessions: list[tuple[str, Path]]) -> dict[str, list[dict[str, Any]]
     }
 
 
+def _taxonomy_gaps(
+    sessions: list[tuple[str, Path]], *, limit: int = 30
+) -> list[dict[str, Any]]:
+    groups: Counter[tuple[str, str, str, str]] = Counter()
+    for _batch_id, session_path in sessions:
+        session = LocalReviewSession.model_validate(read_json(session_path))
+        for question in session.batch.questions:
+            if all((question.discipline, question.matter, question.subject)):
+                continue
+            groups[
+                (
+                    question.board or "(não informado)",
+                    question.concurso or "(não informado)",
+                    str(question.year or "(não informado)"),
+                    question.role or "(não informado)",
+                )
+            ] += 1
+    return [
+        {
+            "board": board,
+            "contest": contest,
+            "year": year,
+            "role": role,
+            "questions": count,
+        }
+        for (board, contest, year, role), count in groups.most_common(limit)
+    ]
+
+
 def _report_counts(
     index: ConsolidatedReviewIndex, sessions: list[tuple[str, Path]]
 ) -> CampaignCounts:
     raw, unique, duplicate_occurrences, _duplicates = _semantic_counts(sessions)
     methods: Counter[str] = Counter()
     taxonomy_unresolved = 0
+    field_complete: Counter[str] = Counter()
     human_decisions = 0
     ready = 0
     waiting = 0
@@ -644,6 +882,8 @@ def _report_counts(
                     for value in (question.discipline, question.matter, question.subject)
                 )
             )
+            for field_name in ("discipline", "matter", "subject", "level", "difficulty"):
+                field_complete[field_name] += int(bool(getattr(question, field_name)))
             decision = decisions[question.number]
             human_decisions += int(decision.status != "pending")
             waiting += int(decision.status in {"pending", "deferred"})
@@ -661,6 +901,12 @@ def _report_counts(
         rejected=index.total.rejected,
         deterministic_classifications=methods["deterministic"],
         qwen_classifications=methods["qwen"],
+        taxonomy_complete=raw - taxonomy_unresolved,
+        taxonomy_coverage=(raw - taxonomy_unresolved) / raw if raw else 0,
+        taxonomy_field_coverage={
+            field_name: field_complete[field_name] / raw if raw else 0
+            for field_name in ("discipline", "matter", "subject", "level", "difficulty")
+        },
         taxonomy_unresolved=taxonomy_unresolved,
         human_decisions=human_decisions,
         waiting_human_review=waiting,
@@ -692,10 +938,21 @@ def _write_markdown(report: EditorialCampaignReport, path: Path) -> None:
         f"| Em quarentena | {counts.quarantined} |",
         f"| Classificadas por regra | {counts.deterministic_classifications} |",
         f"| Sugeridas pelo Qwen | {counts.qwen_classifications} |",
+        f"| Taxonomia completa | {counts.taxonomy_complete} |",
+        f"| Cobertura taxonômica | {counts.taxonomy_coverage:.1%} |",
         f"| Taxonomia não resolvida | {counts.taxonomy_unresolved} |",
         f"| Decisões humanas | {counts.human_decisions} |",
         f"| Aguardando revisão humana | {counts.waiting_human_review} |",
         f"| Aptas para exportação | {counts.ready_for_export} |",
+        "",
+        "## Cobertura por campo",
+        "",
+        "| Campo | Cobertura |",
+        "|---|---:|",
+        *[
+            f"| {field_name} | {coverage:.1%} |"
+            for field_name, coverage in counts.taxonomy_field_coverage.items()
+        ],
         "",
         "## Qwen local",
         "",
@@ -717,6 +974,10 @@ def _write_markdown(report: EditorialCampaignReport, path: Path) -> None:
         "## Amostra estratificada",
         "",
         f"- Itens: {sample.size}",
+        f"- Duplicatas semânticas na amostra: {sample.duplicate_fingerprints}",
+        f"- Estruturalmente aceitas: {sample.structurally_accepted}",
+        f"- Em quarentena estrutural: {sample.quarantined}",
+        f"- Dependentes de elemento visual: {sample.visual_dependencies}",
         f"- Decisões humanas registradas: {sample.human_decisions}",
         "- Precisão estrutural: não medida sem revisão humana.",
         "- Precisão do gabarito: não medida sem revisão humana.",
@@ -731,8 +992,11 @@ def _write_markdown(report: EditorialCampaignReport, path: Path) -> None:
         "concurso",
         "ano",
         "cargo",
+        "disciplina",
         "matéria",
         "assunto",
+        "nível",
+        "dificuldade",
         "estado",
     ):
         lines.extend(
@@ -751,13 +1015,29 @@ def _write_markdown(report: EditorialCampaignReport, path: Path) -> None:
                 "",
             ]
         )
+    if report.taxonomy_gaps:
+        lines.extend(
+            [
+                "## Maiores lacunas taxonômicas",
+                "",
+                "| Banca | Concurso | Ano | Cargo/bloco | Questões |",
+                "|---|---|---:|---|---:|",
+                *[
+                    "| {board} | {contest} | {year} | {role} | {questions} |".format(
+                        **item
+                    )
+                    for item in report.taxonomy_gaps
+                ],
+                "",
+            ]
+        )
     lines.extend(
         [
-        "## Limitações",
-        "",
-        *[f"- {item}" for item in report.limitations],
-        "",
-        "Nenhum dado foi enviado ao KAD ou ao Supabase.",
+            "## Limitações",
+            "",
+            *[f"- {item}" for item in report.limitations],
+            "",
+            "Nenhum dado foi enviado ao KAD ou ao Supabase.",
         ]
     )
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -799,7 +1079,6 @@ def run_editorial_campaign(
         session = LocalReviewSession.model_validate(read_json(session_path))
         decisions = {item.question_number: item for item in session.decisions}
         pending: list[QuestionRecord] = []
-        local_results: dict[int, tuple[TaxonomyPath | None, float]] = {}
         for question in session.batch.questions:
             if limit is not None and processed >= limit:
                 break
@@ -812,20 +1091,20 @@ def run_editorial_campaign(
             ):
                 continue
             result = local.classify_many(
-                [_classification_request(question)], DesktopImportMetadata()
+                [_classification_request(question)], _classification_metadata(question)
             )[0]
-            path, confidence = _local_path(result, taxonomy)
+            path, level, difficulty, confidence, evidence = _local_path(result, taxonomy)
             updated = _apply_classification(
                 question,
                 path=path,
-                level=question.level,
-                difficulty=question.difficulty,
+                level=level or question.level,
+                difficulty=difficulty or question.difficulty,
                 method="deterministic" if path is not None else "unresolved",
                 confidence=confidence,
                 taxonomy_version=taxonomy.version,
+                evidence=evidence,
             )
             session = update_review_question(session, question.number, updated)
-            local_results[question.number] = (path, confidence)
             if not all(_classification_fields(updated)):
                 pending.append(updated)
             processed += 1
@@ -845,12 +1124,13 @@ def run_editorial_campaign(
                             method="qwen_unresolved",
                             confidence=0,
                             taxonomy_version=taxonomy.version,
+                            evidence=None,
                         )
                         session = update_review_question(
                             session, question.number, updated
                         )
                         continue
-                    path, level, difficulty, confidence = suggestion
+                    path, level, difficulty, confidence, evidence = suggestion
                     updated = _apply_classification(
                         question,
                         path=path,
@@ -859,6 +1139,7 @@ def run_editorial_campaign(
                         method="qwen",
                         confidence=confidence,
                         taxonomy_version=taxonomy.version,
+                        evidence=evidence,
                     )
                     session = update_review_question(session, question.number, updated)
         save_review_session(session, session_path)
@@ -870,7 +1151,7 @@ def run_editorial_campaign(
     inventory, inventory_path = build_consolidated_review(corpus_spec, output_dir)
     sessions = _iter_sessions(inventory)
     counts = _report_counts(inventory, sessions)
-    sample = _sample(sessions, sample_size=spec.sample_size)
+    sample, sample_entries = _sample(sessions, sample_size=spec.sample_size)
     next_batch = next(
         (
             batch_id
@@ -904,6 +1185,16 @@ def run_editorial_campaign(
             f"{counts.taxonomy_unresolved} questões não receberam classificação "
             "completa na taxonomia atual."
         )
+    if counts.taxonomy_coverage < 0.9:
+        limitations.append(
+            "A cobertura taxonômica ficou abaixo da meta de 90%; o acervo não pode "
+            "ser declarado pronto para importação."
+        )
+    if qwen.failures:
+        limitations.append(
+            f"O contrato local do Qwen rejeitou {qwen.failures} resposta(s) inválida(s); "
+            "nenhuma delas alterou decisões humanas ou foi publicada."
+        )
     fingerprint = {
         "campaign_id": spec.campaign_id,
         "corpus": inventory.content_sha256,
@@ -933,7 +1224,9 @@ def run_editorial_campaign(
             failures=qwen.failures,
         ),
         sample=sample,
+        audit_sample=sample_entries,
         grouped=_grouped(sessions),
+        taxonomy_gaps=_taxonomy_gaps(sessions),
         quarantine_reasons=inventory.quarantine_reasons,
         next_batch_id=next_batch,
         content_sha256=_canonical_sha256(fingerprint),
@@ -943,6 +1236,16 @@ def run_editorial_campaign(
     report_path = output_dir / "campaign-report.json"
     write_json(report_path, report.model_dump(mode="json"))
     write_json(output_dir / "campaign-sample.json", sample.model_dump(mode="json"))
+    write_json(
+        output_dir / "campaign-audit-sample.json",
+        {
+            "schema_version": "1.0",
+            "campaign_id": spec.campaign_id,
+            "publication_status": "draft",
+            "human_review_required": True,
+            "questions": [item.model_dump(mode="json") for item in sample_entries],
+        },
+    )
     _raw, _unique, _occurrences, duplicates = _semantic_counts(sessions)
     write_json(output_dir / "semantic-duplicates.json", duplicates)
     if report_json_path is not None:

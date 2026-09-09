@@ -1,0 +1,989 @@
+{
+  "schema_version": "1.0",
+  "campaign_id": "pf-bb-corepi-editorial-20260908",
+  "campaign_version": "1.1",
+  "created_at": "2026-09-09T11:23:26.310449Z",
+  "corpus_index_path": "data/editorial-campaign/pf-bb-corepi-taxonomy-v3-qwen-contract-final-v2/review/index.json",
+  "counts": {
+    "raw_questions": 5580,
+    "unique_questions": 5292,
+    "duplicate_occurrences": 288,
+    "structurally_accepted": 5158,
+    "quarantined": 422,
+    "rejected": 0,
+    "deterministic_classifications": 0,
+    "qwen_classifications": 0,
+    "taxonomy_complete": 0,
+    "taxonomy_coverage": 0.0,
+    "taxonomy_field_coverage": {
+      "discipline": 0.0,
+      "matter": 0.025089605734767026,
+      "subject": 0.15913978494623657,
+      "level": 0.0008960573476702509,
+      "difficulty": 0.0
+    },
+    "taxonomy_unresolved": 5580,
+    "human_decisions": 0,
+    "waiting_human_review": 5580,
+    "ready_for_export": 0
+  },
+  "qwen": {
+    "enabled": true,
+    "available": true,
+    "endpoint": "http://127.0.0.1:11434",
+    "model": "qwen3:8b",
+    "digest": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41",
+    "calls": 1,
+    "questions_sent": 5,
+    "accepted_suggestions": 0,
+    "unresolved_suggestions": 5,
+    "failures": 1
+  },
+  "sample": {
+    "size": 300,
+    "stable_ids": [
+      "008751acccec4a2fc93c1a1b59c3dfac8ac5a8ccc9cc3f69aa26faea8b10d926",
+      "009b367c25d0cdfc765f3f33e8281cf98d7099fb7063f6fd37d20d3c65e47479",
+      "00b0cd06d5deea707e7253639c27356110eb4376c955920c3eed7e2445963d97",
+      "00bbd6d5b0e6969e2d69f98fa913e575c1a88ec76223546db4b76dfd36e49845",
+      "01ed572014d515d9e2adea83dd0d0cfaae354df99099d4874af5cc49663a7070",
+      "02aa4c9e38a29e668b6e73c2672b7d0446c1a3632cd02acd5d3ffd3228f9b53b",
+      "03482daeafe3653acae2812b11aa3f8f830a7565cdc08728cd2fa0408fce9ebe",
+      "058aafc7af31e561bae82e6c609b91fdf28757ef255b4e21b40366e46b00a43a",
+      "05e12bbd00e3d1439a3c3b266acbbe9709ee83a8bb7e99da71c2cc6f2cdbf8ba",
+      "0608e619ea51b459249048021cd84ff10cea4902b999b625d399976a7d1e82c5",
+      "06d3ebbfd9c902dcc6853e7cebe48d6f04ffb0463945f3fee323f4c56f84630b",
+      "073db76244165ae37815774d81de222f037e544fb6372315f188d2fc20528e76",
+      "07869d7da69246014ca46579f57a913562df67ddfab058f1037e02082bd4535f",
+      "08c8753466e29354a5005438ebcf07431d9a15db19fcf81c9dbaa9e2c01754a8",
+      "0c8641061d0858b770c5c47ba7ef9e493464f15e8fffe53fc2c5cf62f7d66fb7",
+      "0d27a32f561606a1a9ca0de9e666ef038f5c89ad6b694a5e29dd819a7be0e919",
+      "0d423bd9ad2f248b2def642022af5bb8d0d3c1dd13e9d1dc71b6afadbe00e1a0",
+      "0d59a38782f15a5d4425b77d3e14a53410b6ed40e00598d8f1ed4794fc50db83",
+      "0df66524d83649b65d7302a1a0628bfeef1fa250fe3cd2da8cfe8e12e52dd45c",
+      "0f771b5c107bf75243a3c656b13257f2d9b4c87165751e232beb6abf4884654d",
+      "10e9c4b1ac198abc0ea177a019239311bb8563acba7ade9f5ffd4a6de031ce75",
+      "116bacc353b79aaa5e801c16177bafcc6f0a6150fb02abd093550fecb63f2bd5",
+      "11eb2be37384717f0b4bae5d906f4062e4bd66a7090b4a18959b062b75341c4c",
+      "11f513ab4c219425a5b93e2206f196aa53cfeb4e756dadedbd60b095ca324465",
+      "127c08df48fbe219329c24a73bec7abb178e57603fe67320fdb1a92bb2225491",
+      "1498f35c531215639da895e0eb6c9f29767fe9eb9fbd393a377262c5d255698c",
+      "151da95184c04ddc0b7a5ab8dd3ecbe3070454720afa96a5fb31ded91598a552",
+      "156549a1b618992cdd134fd5f808eeac53fcfece7193cdfe49f739b521179925",
+      "16ddf5d35911b1613c054534e2084f92ba0d77e335c0ef0b58e4ed7153db09a3",
+      "1815211561537c2f7b9f0b1ca71cf1aca22090f55a47d9be2920be3137cf0c6b",
+      "1850b3f177f13229b3f1bc04aba79e4720b8750aced9d52e5bef1dd1903ad2f3",
+      "196f60a25351f529fb4a13e3ba9a47e9d75e22b923bef7e9bd8e83ce01b92e46",
+      "1998c1764deb2eb5ce073cd3ac2ee13f70a0cc30da2791e3e76f6c06e8db3231",
+      "1a9314cdfed750ec390ad4f8dbf5b6e51c54a8e527b19c59dcb4c266aa7cd19a",
+      "1aea3453d2bc0d1bdebaf31dacf47d230ea14346c94d0061143cf4857e276dcb",
+      "1d39400acd16a899c309fa82d1cc9fae96065c16a776b47ea5ee62799405f8bd",
+      "1eb1499c8b30d31bf62d87c013c983ada2d16690ac3082a44d5031b3eab2810e",
+      "201dc0336e618abbe33bb1fd78936f6989473416553d9239d0bbf36f061e8494",
+      "2035bab29db80c8dc5409f14bdef15c7eba289dc367c7fc0170a10e6a28e7a6a",
+      "210a84403a4a49b744bff73583b07c3915f9f19473a2cc413d43e5f5a41952e8",
+      "23dcab021266db1c4ead20db6552d0a8c56a542c770c0d91b98d2d771e893c33",
+      "2435c0f4f8de23bbb3d08e31d8c557748e98519cce3824b5ce5884f1ce4c2a26",
+      "24c60452ed88b0cfc747f17628e97997eacd03384558e3038592555bf6c92c53",
+      "280a79b3c075e57aae0c1e706909350eb8d749499ce6b5eced828838130e469f",
+      "2825770b882b579a21453c263559df18a4950839b82ffcd57c27a48e764e82f9",
+      "28c158999c0d4b00f9c8eda9c58ab4255f3fd575bb7d0379e9870808ef93bb66",
+      "29223938fc965b2279661004ff4a51dd60e183c6d834e3a1c90ea66ea62bbe1a",
+      "293612176c675bb2faefa29cd9add10a60a45306a54af0ec5f13e940fbdb6659",
+      "295406481048b250bcd39675953cf13a4d5841ff3ddd6d5fa84bb9aad79149f3",
+      "296b0876b556b2186901e9f857c472ef3633190358e344df461e446e8766e32b",
+      "29b4252838268d13d9791917264470500c8ec055135bb40e76ef3afb6c62d1bf",
+      "29e4cd1c1bd2e4512097c66807998c80576b0291f82ea820070650205d387b3e",
+      "2a135a0d3766c8dc6c47f30bb3d89cb2fee407b47f9b98769e62a6fdfd0124b9",
+      "2ab053f7e36e5dee8c8a600212df11cbeada251f9ebefc84e10fbfe2e099a26b",
+      "2c01b1cd16a6f9a690b8fedf87d3e0f3c444052a3ee3c676261774d3656a9eeb",
+      "2c3492dba96e2454c254138f396314f48572b65f63b53fa020899b7c8a1b1791",
+      "2e712be8a74f54e034b36e4ee0f471874d644be7bb6accca7cb6922b0b0b3804",
+      "2f6fa39d055427e436c55295e82124d62e462591384c4b339fb17104e43fb16c",
+      "326348dbda93a5d01b9ee9a31921d4cd48bfa5a41d634ffb8a77632c022aac97",
+      "33a83359f8d259a697fa85fdc27f670069f2268b84d4718ef90d4d0589652fe5",
+      "33be791fcfa8c9036ea5822c2e6f4643087be99f7f411c6fc8e9ae4afa3f284e",
+      "33eb893437f4d55f00235d06bf53e872980279e8f93829703592ceeda4e66d3f",
+      "340a1d05a3798c2ad82ed8780e22920411442dfb9ccd22962e4a32d7c3ba0976",
+      "348c98a92fd78ebf8e0f296c6f06b65850a88ea8738c58078adf89cc8ae59e59",
+      "35d34e0bb141f5422d27173671a45a90dd46349a5d60be7c04d9fe8acf3604b3",
+      "370d171ced75243dc4f57acf41c52350f4b7037f651dc2e01dab357141abe69a",
+      "373d8dbed4543d8d24d39842ad009f77bbea943ddddc7c39710035fcea1e4040",
+      "38316108dd94ba51f279503e3db3f872632daebd516b10359325829decda25b2",
+      "38b07796d85697ad85070034e3f899d7203f819528aa8539fe4e5a73a3804ea1",
+      "39d323bc32358a14c39ef9e748d07332e11a82b8431ebb9f6749d9d1edadfd25",
+      "39f7e9c5b2d3eacc63236b8e176d2646f2253316d4076027544d2346f7ac4a68",
+      "3a28c476a13e5c8c0fc361c4acd619d2c0fc49860f376d41b9cd597a39c8a6e3",
+      "3a6f6e85218a39c1a6900d8b2301bfdf718fc1824ac21fc675f0d4d3f9f894ae",
+      "3a8d5932dd65baa76183850d66c8c3ac1b8b58c7b0c4122087c9ea608ad3a20f",
+      "3aa008bec42f3c8b4144a5d8bf2e788ecd23f754e81da8f4fbde7cfa154efe58",
+      "3aab2d2b06112876d766a20c8a04ab581801607a1df261636c9b2b655e9b5da7",
+      "3c4e2653b500b2d2d01ddf0f6dd7c4145d3a414c9980e134ad1177306bec9599",
+      "3cf32ab31008027387fa2873bd354a3a0b6e884e9c9a1082a2a36e79e0bc3a6a",
+      "3de4e20bf148c5df6438446011e144f9a826b54029a31b9c8b4153373741ca92",
+      "3e284e21f7dab85cd2e1ff9297fbbc45a242252a4c4cb7e5207e3351f2698caf",
+      "3ea9a88f7f9337d4931e43e583456b50226d2df71a7eef7537241eb4ff48d897",
+      "40c32afbbab61b923459418c3112bb2cda1ce939ce222117be75da2ca1e3314a",
+      "414a4c938cde60700443c363cde64bc55b7b5e34670b6e530a89705eeffa521b",
+      "41ccb9fbe34eaaf2a5c0a71439f8b39e500d39b21e80e24199b5e240774efde4",
+      "41f6eba1c7002bdc672467cee1bd8f51221ccc96d9df0b3f06deda658659d94f",
+      "4695b0903bf8d18d5db992df72d97fd711d11c04bc131c77020860ab19b8adfc",
+      "49508acebc17b13dd527ae0dd9e71116bb3bb83e0c2446c1d0e04b8fc8d6b2fa",
+      "4a1abed82d89537be02c9fa1b1d3e239b13abcd3b701e729963a78f650a91c1a",
+      "4b5c814fcf3e52ea55859165fb24d7f98943b5afd0aa8c4250346f5fbb4cac28",
+      "4c79e409a60463af3e91c987d3982e944d20fce52179ec6fe96d0af622aa0495",
+      "4c97ae9c464335c8d385174c4eef87d9a94988617c1a945007ef406c1fe2202f",
+      "4d01142ebb07a5a55e53ceb312210a036cdfc401a8b52c62bb887f571e4889c4",
+      "4d234f4b6976f6e2dd3df376469ba95e6bb42b486760dcb3a73b9c9696cf3b32",
+      "4d915c50de7cbec9bf682161c93462f270550b0885eb3330ea5673d66d35a4a0",
+      "4dc0df5afe1f7c0ebbd6d61447bc8f82c4674873ef7b2cbf0465729eb90a9493",
+      "4ec1072ff84f9f3348da52284d43174a6987afa333d26461783f30eb8460c72c",
+      "4f646f524d48e84e31a2288d5bee4d2fc2dfe581c76656102d24ea9f4ae71c4e",
+      "509e1f0f1bb8675c4b8bfb35fe30a5f4763a1f1a24025ec0f8c7361f9a522b46",
+      "534a1d60632036ae5d59d1344be63a35f88a34446b3548a86c5c52d4bc66aade",
+      "53cb44d166c97308410164894255f9a6f5df8fc0fa1222bfab87cb8a9acef7ed",
+      "54727c171e32fa442e0732cc0b9e1fe1f0ee40891376cc3b4d8a6b2ca8ce0696",
+      "54c7ed07bf3aed7f58a13413d194edff40516e8f23e638c0fc26ac7bc4914c30",
+      "572ab0662ff5b2cba686d01eb5ad17b99e504105e918267f05e4398c64ec5d48",
+      "5785d4bbb01e5fba79abe1a424624eb895a921c1fdc664771147cf0d48c4b84f",
+      "5b8520dddf8321a706786020afb80f0425ff38b0965d9dfe2ad4c53895e8d100",
+      "5b8983b1435c74cd857a4036235f3d77db82443d816a2f48cc372a015e33f3c7",
+      "5beffc03369259c87ca2abddcf9b65194d022ec8280809b056cb23a88734156a",
+      "5f203cb211272d00d4e562e1500f0ecb9934081f0a351a9ded57bbec5a92b7cf",
+      "6001d66b2ed74615eec1bc6cc7cde31e6dc951ee341bd313cb00dab524e76219",
+      "60d6f92f8dd61cb6c50e7bfdcd92ac85d0b9f5ea813ca77e2a572ed3de034ea5",
+      "62afccdcbd106a30dfa156933456f1aa499659076832def60d7647d80c6b5361",
+      "6346fd361f8aac4bda5c39bbab86d5c41fcfe4c1823f6bd92bc7fef3274fcc6b",
+      "65390e51ddd6529de3a737d5783b644ecc26ba8df7f9fdb29487c09e410a1f88",
+      "655853f48b51f20c3cc0c027b1799217b982ee3beb28d837fd8c7d863416ee0a",
+      "662eaa02a96cd1e2222c3edcba1d309e414a30adee5060a3e8dbec64185633fd",
+      "67323199a92febe8163d2a15f00f1ad13b16c92b55a6151688e4b69b656a4e6f",
+      "67875cc0cd307374261e70987edc19cb02adcf2866d7539ec5fb67989fb1fd37",
+      "685467c65265d1b5af2081156f5830149b90b7cc3f1e4f91a5ebde5e4220be8a",
+      "6886ef08c7f67e485dea07e89c9a0ccbe0117fce5b850fa92267dd698acddc18",
+      "68c264e521503fcaf4c6cb35c0066f2d0b3c5d375ce77fd98e9d76448b9a5ed2",
+      "6912938715ffeb27bf8bc4b2afa45aae3e0524ae1bd1925ec78b2d04b9de11f7",
+      "6a6479d5e5e6e1c9faf426e0902ad46386cae954547010a7ad7ad46ecaae79cc",
+      "6ab2e863f6f327823748ed7b5107aa3288c25c9dc534bc08fe47b786e69ea9c7",
+      "6af5131569af16bd12dc8891a18c61a4098a5b87a20df799186ba6394fb8e4bd",
+      "6b7c01828d8f8f90775742b1cd1e3036a07517326be1484fc924512218174862",
+      "6bd1825210d901416c2347cad7c2a9d707d2f2a47c8008b5cac1c5c76302a23c",
+      "6bdb352aa8e1565bf490019a64d2f0737954eb6b26b442689fb9857f581fd2fc",
+      "7064a6222a674a817f392dd55e21281dc8953455c4f8a39c7b88ec894de571be",
+      "70e0da47bb6e5a0d1e9a4eab7ad5e79faf57e5d0efffadf595d85c2095c9ca51",
+      "71062edb37d4c670e90b28885b8f75390a76a9b84c4c653f2156f8d6ebbd5e77",
+      "7177e6213e1f0433bdad5e9bfe37e7e847bc185472891fd756645c85d3f5be29",
+      "719984b0a47838f1d878fd6273734782c85204c6140a0bea8cbdbda91483a314",
+      "72f881964a9bdcf67f6e4aa6d2fcb2f143362305e133dbf451115a3f2913cf95",
+      "749ee7a4a3914b8c04e0e30fa4b4214f997d9741ac0914683152a7c80569a982",
+      "74d93b6b198e1c9c242ce9f97da01939e5a49fcf59d602b7f3274360f1ce3ac1",
+      "7591f11047dfc2ad57b3a45a079d7afac39bae2f1beedd871e707e75a34d128a",
+      "77161e0142761d49b21af7e3144361c7ca2abcee7789af40d62232d4b65ed1a8",
+      "77e2a51a2910598739821acf4498e1848753835ab3305e61dc5b5902768f5ad8",
+      "781c3ec6e08012a9229d1107c098239e1190dff44fe184b261a2bbd6582aad60",
+      "79d939fc2f7ec9dc10c9ee709dc65b833f5a2c71a9dd5b285bd2ddda023c8dd8",
+      "7b161e8c5e861c5365d10559cc49fbd292674a7a0263265e2f0eafd3f4e86537",
+      "7baa2e4ee792bf2581a220198f76ee679ec1c9494cf71c1d94341a25089a3fff",
+      "7c65ff7c3ba79f3021b5231a6ddaffd3a3ef31a09830b803acf6e144120fd525",
+      "7d54b1bf5f1d6cb100bc2a03974d6020111d4b7d2fbcc881dbdd0ec0d3380987",
+      "7e8af846bc8707d3635872b07d23c8ef2d450719403f9ee8092369b2ba03ee46",
+      "7eeb67f2d618422d786a6fbe60bb15ef83b6f2f7c26a6d44b984f7b8eb113a51",
+      "7f14f5053123ab529395134b0a7dabd608460c5ed6da338f6808c2acd3c6eae7",
+      "7f2c5dbcd7695ad728684d06c46fb0309cd6974d4b27dd56f1c17a3aabddf6bf",
+      "819ceac4841a968243ea7bfb9af2c567ecda0389958290010d9cdf1ef2354ba5",
+      "81eb0e729e8854c35e589fff9a2d533ee9577894fce227d6b78918560d729725",
+      "81ecee38c10e85254dcbaa38ef2084f00c4bfe3b6856d6c658ee6de06e82e51a",
+      "8285c8d29871ed405e7511ad9000af8b86c8b1ec2312b5e1808e80ebe78190b9",
+      "82ec88d208f206f08eed1637a8970d39c34b4f9e6f62661f694e3cd309f0107a",
+      "8389088d82763909c950de0ee49b6b6e0223e109939b60b773d4cd4f686d5a29",
+      "839ef2f759ed139e9d856259e0ae1b64a0546ef8ffed32def0d846b6a7d1ae91",
+      "8502b02369d1ce2bc9bdcb4dc52409d928f5451d921dbfecfcc2095de7ef4fde",
+      "8767bd946c83f93c233055587cebedb6fde0688fd02f7905775633b03846bd09",
+      "8c95e0083cdcaf4af55025d189ae6e441a58746021bb420cd093dcb45284d8ce",
+      "8d3a1994bf1f8a559c5d3bafa36544214378ea754024b0c689a5f4269fa47904",
+      "8e0711e111e950725a9442b66877624a1fe1d814a0fdc2a67e68b4531949d344",
+      "8ee256df837e13e369090b112a5eb7bf1b49752568e3f8a0efa00c98160cb952",
+      "8fe57a05dbe155c5f1c4e604b32c8f25c1ad77b97e60d0e0ce96138aa8b465bb",
+      "9036352a22f38a20c396c53723d6c86f9e7057c0d060b681a95085fc44440430",
+      "91c29f2dd07441663ec4a936fd49097e9df8e585b3ae7f1b00ffc6bab088b6a3",
+      "92db488c9551c3729731506377ee3ff0299dd23a31a40a021339f42deff8f876",
+      "93e15cbdabbb62167337d10ec14e409648150a705084e94a907e163cff96d9d8",
+      "948feb868edf427c80477bf6737f1857b5b203d6ac5b16a7b59745717a555d6c",
+      "959e4fb79d9041355bec223791f8dbfb1c9d19c18ffb3e763185a07a4b6e5c9b",
+      "9606fbf4e078951b35cc4bfbb269a986e8e2a7ee13fe90d0dc229c2c5ddc428e",
+      "97fa43ec88eb9f1ebbac2d18b5d0af78f3984b85a9e2cece4f0fb9332593e7b5",
+      "993ecbac4bf05d0ead14b4749231978132e4fb1b0a623ea178bcfd9d998a8e88",
+      "9d82bc072e7b23726664ef296bf5ea71a560c5cd3e04b0c9aa8d8c3468667782",
+      "9e7ddd036a8dd00cb3a2204a6a6be3de5bb693161017a5b32edf40152dff7441",
+      "9f5344c1368fdc0bcea4c8d6a9d606f3533be98e378f8c90bb64ad000d8e40b4",
+      "9f65181494d12f7403d7afbf410c3ae57930f1350101fac5d4b99e6c55892695",
+      "a0358bd56d3c1964a8c1161a0d24b67c49b59a8a7d6ee8daaf88f19b07e8f9ec",
+      "a04960049d6dcc688573145fca40d79dda08921f61704782b742ebdfb2923ba3",
+      "a1f8b97f28d72afa2cd3d12411ae0bc831bd57ca160a87379cdd44b5f2c6447a",
+      "a20b9b38e7bbbb2e1c6e6b004a1378bb1dbbc168c5a05014ba4f5235dedcfffa",
+      "a25d21b77c0e03d5588ab1de10a3dda4f4d769ec81226b6f0600e31ae14768b6",
+      "a33cc4276bb89948b2c98dbc75abc9dba307fa4d8b82718736b1896e5b81998e",
+      "a3838a26b72e95c8e52e7e70002f931cf85c5e203495356e6aa4940474ff4ef6",
+      "a3a5756ab90cb60ba30c48698d15fdfdba50d80706701d2fa4da4e1db613c28f",
+      "a3a850faa83e570867e861de08b308c90acc42cd5b895af5e2ed02ee3f398a7a",
+      "a3cf13fdd942291d0941c196a7e82d2f49b46588c19947cd0897ab576a298862",
+      "a55d210d3dcb0fdc4532324669d5b8915ac9957fa9bbb2955027a16c05963921",
+      "a63dfdd42fba7b79648427249c74f5ad6f05bfdb633b370f4bb1625bf7ab248d",
+      "a6d6f35c87fe031c929b6b65b52e106a7cea9649189101b56f5d649208a02fdd",
+      "a7ddc8424266f9e7423a0f29deabbaab2cfdaf2b80d1510052815ec36b8b7f5b",
+      "a820e5d44521ea146157b7cb58d059eb7db3e46761780597443e1d56c1d3177b",
+      "a94bf6d655dea824d18dc3e58b54c7f84d728fccc71e31aa30df113a094dcc63",
+      "a989860b0c70d33d69fac934acec683fdef1bd66ca84f319a9dad3f85c53f55d",
+      "a99db6c2047fb0eca04e13887d559021174b6f41d25c7403451fbb9c590c61a3",
+      "a9b97648ef8693120c6f96c05a88eaa01d0bbca84af7a6a26681d7c7854f05db",
+      "a9ced5ac6d18da82f55c39581335cab6844dde1434cf6608f4da73b1cdc63361",
+      "aa9b73bb49f6ee9cba92e8450ca43704001ad38e6bd08b6eb34359d7bdc27551",
+      "aaf866b53a9fc88e626669d01207ca36675b8d6d46bd2b933797e3eacdd6841a",
+      "ac182e9ee2bac3d29628d26120f2c89f7b93ff9623bada949fd2a32da2d4cc5d",
+      "ad16c305cfd8e0f4bc38d5c5eed4fa479736516e0f31e75f95ec0ceeaf496ce0",
+      "ad1e87927034debbfd928e3e2c48324cd6424d88f223d405cd4ce53aa1d8867c",
+      "ad7f7c9a785e3a0754711780b57e1e8225bdb68498835489de8905c7553e7017",
+      "b1feb2bc4e18c0f92dc2c3708849bb43715c643eef6569bf3a072bf822d3f7cc",
+      "b3129c80267b861acb96fbc4b6f50bdb3f79526dec5c03067d8a505546041f43",
+      "b370b5eb6af58b1969ac7cbdf8f599ae094a1481a0d1c7da15c4bafb0d0509bc",
+      "b51317b46e66cb5ee824bc2f2e5b8bc55e1c3080d7ab2640acec6c98ee85b190",
+      "b7f942e9b68b3585da92942c3d3449761ddf2d7c199921f62796cc29e3a8deb7",
+      "b828e0371189631996fdf11cfc403ecb2ae08c51d3caf712fb020e1d61c010e8",
+      "b9017e9d6d108d6724101650ceae972ddf8c883fd3b8df8936847aba5dec52b7",
+      "bb463385b2c85f424df1e5b64d51df63dc603c47faea7d47c6765cc7baf8ce92",
+      "bc555a772863970afe825c994a437aa05efc8c5a90a6848dca7233d07d9f6d77",
+      "bc69848d99253784231e07185e091dc30fce62767d9ad1da9c1b4fd677471b5d",
+      "bca3f86423396316b0d383bf74b7bfe8248d1cbcab1ee644e61f680fbcbb6da2",
+      "bd77f89790d8415daadde3dfd785eaaae2fe0f152bb670a112a8dc23021f48ad",
+      "bd863988db3e30a56db00d96d3f015989c062d6522fee980228330d1a87e6f27",
+      "be0758100de9be0514077f83fb1c49407b1b5c180d58f7d87df4c153fc167511",
+      "be83713537ec95cf2fb01d3ccd97d377028106740d3fe016a4170a12ea108408",
+      "bf31b62a84fba53d823d025b4b429c5a51beb43801c038ee2d5f5ffafb495337",
+      "bfaf109561e1b4e5c791e97d8e1f925bbd2c058e2eed842e3c49b1a7b1bbc8fa",
+      "bffca6df1c012c23060ce9ed1672ce59dba55550971653d8f9c99b6e3b7397f2",
+      "c1b590668e6e808cd1c8872228d717c9cfd069368b8e48c7714516803fd02b15",
+      "c20523c2d24ad4ab9952ff046f9b6ee65141edb38e51832a546d70717597509a",
+      "c3a4019dab463413a2bf1b3e7ff3c419afde6ac3b6e57f8fb9acdc4b2bb715e7",
+      "c45a8243d669463f562a70efd070524241abf317cdc54bef04a68054a2de21e6",
+      "c54f5c4e799a86510a82549394326c611faedad20e63b548140fb1daa3a420a6",
+      "c55f5e7b339fc22ddf31e58d0f89d931898d146440d707335952c6cea2f333ee",
+      "c66ccc2535d6449feb2e3a09a977b9c7f39e6d6244d23b9e02a4d1d64cc5e67f",
+      "c679ff04b9e7a75e44512aaf16a80bd6dae17241ee75c773d222187b6dc9141e",
+      "c68fb4104d87031cffd4f4e92a1e0e857b0a8c9406f71df3110c7de443c5ae28",
+      "c6aa08432e0df82b0a2c2f8905df6d57a8474be07724a1e825bff233a082c8ef",
+      "c6b1f1c0eefb2726f863342c4d48ada55cf34d44a9e61179c5f66e91280448da",
+      "c6b83bb34aa5e9472afeaea94d4ca872ab701953f816e250e2b0ddf220097568",
+      "c6df13ef2a43083df7e256bf6e941e03cdda2b3fe0aabc79bcfe9b5381c2905d",
+      "c7ee7a37525a80b30b29fa3c916e70eaec059b1a238e65a4b88db6f936334b94",
+      "c8e55b44b70301baac68722922722fa8b350b88fdfb8daf72c4f25583494f8ac",
+      "c95ba90f853b9621ad70ba2445c589a644a9b358305b26295c52f1681aad1aec",
+      "ca61e054a9966a6b57e6961026f8abf0a27d05b14469d5e6c8c6f1a3b2baac01",
+      "cad2852c21d3a7c5b2864788b5766be299d6eca7887a836a62a5cb281dc73b49",
+      "caf7180040e17fde849f2c10d836a96e7a164347e5452f9654529b31c4f8fbc7",
+      "cb2373a91953c961ec476c794a5a86391b735ecf54c632256aed8a38a2ba2df4",
+      "cb750844d061a5911cd48d939fa1ee42c7670c121f3ee6ee8448a03f13e5a6ac",
+      "cb7d86bc406b5113677bf4e20f37e2acdf14c92a1202023f4623d243e9cf8cae",
+      "cbfa6ecb5b257d974b53b300866593efa5934dae8f6a8056b53f562fa39da7f2",
+      "ce42246ebf901f229c0cd417120b334bf475d9f03a0aaf91ed1886da10db9b7c",
+      "d06a02ee19ed8282dfbffd1f07509a541fc29dd775c091311acd6b93f4ec56bd",
+      "d0f239b604607e49b14274c0c78616a8622b3178d5aba15e4c6e483d7414ea9b",
+      "d1c44b07d961880a870d7650e809644021163c013a5c7a55470990e624d7d30c",
+      "d3015d753f665d4361141a5263458ac1a1e51470659c95cdc1bad864bad563c6",
+      "d46faa54e261550945a533ac1d45366d8e48bf4588d9adf53a86a4b863ea2b6d",
+      "d5097c9fc258a407ebddaec05c9a2f5801232bf96860e5c5608cd2d56b7ec2fe",
+      "d61412d8b145897595152f474673444574105961ea474bde8c3899335a5f9e05",
+      "d6241fc09df465c49ea3cc8f65d31020b5ce30a3e7310e9c6db5205565bffb4e",
+      "d6b63d79ebeb498b8092773adc54504157bb3983c94dc81b6bde5cfdb77caf7a",
+      "d6e36bcd690735f688f39acff939b71fc93c9a42ce41b272a20b76d0f2b48e2c",
+      "d70454673ca416eb1a789077bae6736788bf6bec381090550bcd5b1d7a6a4925",
+      "d70598cc90f7960e0df1d265282cc337a02a633ad9eb685ede8d8cb7a83f9896",
+      "d765eeb6b3168cf8fc5485bf6759a1f7e9194c9b57882b45d5e5b3c2dabc6792",
+      "d790cc6fb2d44a4ebb0471366390c89c1da473d1f1719ee0e1e61fb0a90e4868",
+      "d81758f3f896ceb0f32ef29c9dbb5c4b0a53a382061d4a830466353550f0f90f",
+      "d8428b35961ccd43949edefe97d2afd0102b9df305eca022f51bd916fdbbfd7d",
+      "d899b66c8cac377a7a389f48eb17788438eee44ddcb5b00ba1c6f6541011e3f5",
+      "db093b1f3aca7befe60bda2802072065914a378bc729a55a8ae0356bf0e511e1",
+      "dc5287cc3eb37cf07c287ab695494f444dfae706416a8e9c52370322430fe3a0",
+      "dd65556047470d06c5d52275ccce94141ca1a3c0c57f80521345f3ed1a294e90",
+      "dd9d2388cea71148bcf630082c60828e29835a7796776c6c8282df057d81e95a",
+      "dfa11976e420e8c1924848026c80b2a6b929b79e8cef86115833d8059ec859bb",
+      "e011acf1107f16927a43b9a76b2e29b06d439d6e1fa643794cbcc465d7c7aa3d",
+      "e0211b67d158fe8126f8114200935791a2011e6bdf8d4c092ebf0ea7149da520",
+      "e0485683bd36aaf2ecadce8b1b9526d33a21fff29999189f208e3f2f5f872a8a",
+      "e07727b2ffbc6ee36f22b783f637af75f230a265e464c6f4ddccaad5a1afe78b",
+      "e125477b52566a87cd1192cc1cfc12bbff4a9144db150770203bdd3791731ddc",
+      "e35f00e5e033429f4984f86e283e51efdffe47a95adc0acebc22a52c8f99a371",
+      "e6af4d328311e0a5ca2e2bf75edce2170b16651409f0346f33a5381b12f85013",
+      "e755e0a01b9ed59f7892645c169107bd26c1cdec20d464ccb820bdfaaa4a29f7",
+      "e81de546299bcafca5acba54f444877a08766b0256db83fde40817edacec752b",
+      "e8b4abf03c2209fcfcdf004655286271a7aa596c4144721bc8bdaf8857b71b93",
+      "e8d25423102002e3465d28085dc0213f5618367bd522c781fd7e2cfd576c3a10",
+      "ebce10af3fad47b6320297c1847e64622a71c5b2246476f119c813d7a986d90b",
+      "ebf1feaa1d29fdbbdbfc8892482445b6d9645fc590bff8281b1745894296df11",
+      "ec4703d6d782a3a922c6878fd723ceec3db9a5cfcb7d8956d2cbb8522090c821",
+      "eccdd89e36136d425a72583f14039b89b916ec867215e9e4cd2b2f847e5d338c",
+      "eeaf6aba36ac00a31db009aeae4f304bd47d873fb07d25f2a480725d871b8cf8",
+      "eed948169342b7af515c197410b2a7e2a2b38c0251b708ad0a4e54bc7a5fed67",
+      "f0c879b10d8b741704ac932846b5e474d78f69905119b8216ba6e6e92ec8285f",
+      "f20e845004b1691786ebde385812505975517257a7bb5259dcff82702d2e8057",
+      "f2e4a852b29797d146b1d7febede183ae9103910412d84a12176c17c636ec96b",
+      "f3f4b53313a9b46fa65d2328ba9106188b140f7ca0ec75dd7b861dfc6377b748",
+      "f4be2a1a101e9981c779663548529d0cc3b2a3dbb060a54129a8cbe7cd200efa",
+      "f517407bbabcdcd3f1d7bd5d790fb91b49b67a38e230f011bdf5969ea9ceb6c6",
+      "f5812e4440df1ff0b1884efd3474365ff5e75ef036c1582016b7ca8c5c298106",
+      "f5b8ff47cede46b489b59bfbb704f1ccf164a477150dad74d4783e3ca64b68ce",
+      "f7249d16d5e6c62704e4f4b379ad09a29a74c29eac5b12b457bfaad7b005eade",
+      "f80913084b9bd635e66291d43a70eb1411f12dc8ca14889630fb3ab693748b30",
+      "f83915658b7c3a5597ae9585c888cdb2944ca41dace34acfc3a0c43bf07318eb",
+      "fb54a4e75dedd51792847d6ad436c6cd6b25ec16a39b33085e0a2a8eef1968a6",
+      "fb7d108500d7e032296db496acea63f0e93b9fffaf658c72277761e580150726",
+      "fbe48c8c1b2702041184dc629aae956098603e6f84ae2e10c9c05742830d80c4",
+      "fbe4b0e85a5d0ef84bbae9e89410e2c26eaed1373ab778f5ddab333d9b6b921a",
+      "fc9c25d9ef0bb3ce70678c843ff3822328e9b39f8cace081d8ed87065dbd8ace",
+      "fd7d7f1abe6e299d379a640c93a0608b05067571235e7858f60edeaee0860ab1",
+      "fffb24ffd6517d0fceb7d7283f648a6ba4250764b59cbc49ba285d8648edae51"
+    ],
+    "strata": {
+      "ano:2018": 77,
+      "ano:2021": 102,
+      "ano:2025": 116,
+      "ano:2026": 5,
+      "banca:CEBRASPE": 203,
+      "banca:CESGRANRIO": 92,
+      "banca:QUADRIX": 5,
+      "classificação:qwen_unresolved": 1,
+      "classificação:unresolved": 299,
+      "estado:accepted": 276,
+      "estado:quarantined": 24,
+      "formato:certo_errado": 203,
+      "formato:multipla_escolha": 97,
+      "visual:não": 294,
+      "visual:sim": 6
+    },
+    "human_decisions": 0,
+    "structural_precision": null,
+    "answer_precision": null,
+    "classification_precision": null,
+    "duplicate_fingerprints": 0,
+    "structurally_accepted": 276,
+    "quarantined": 24,
+    "visual_dependencies": 6
+  },
+  "grouped": {
+    "banca": [
+      {
+        "value": "CEBRASPE",
+        "questions": 4108
+      },
+      {
+        "value": "CESGRANRIO",
+        "questions": 1312
+      },
+      {
+        "value": "QUADRIX",
+        "questions": 160
+      }
+    ],
+    "órgão": [
+      {
+        "value": "Banco do Brasil",
+        "questions": 1312
+      },
+      {
+        "value": "Conselho Regional dos Representantes Comerciais do Piaui",
+        "questions": 160
+      },
+      {
+        "value": "Policia Federal",
+        "questions": 4108
+      }
+    ],
+    "concurso": [
+      {
+        "value": "CORE-PI 2026",
+        "questions": 160
+      },
+      {
+        "value": "PF 25",
+        "questions": 1248
+      },
+      {
+        "value": "PF 25 ADM",
+        "questions": 1150
+      },
+      {
+        "value": "POLÍCIA FEDERAL",
+        "questions": 1710
+      },
+      {
+        "value": "bb0121",
+        "questions": 1312
+      }
+    ],
+    "ano": [
+      {
+        "value": "2018",
+        "questions": 1230
+      },
+      {
+        "value": "2021",
+        "questions": 1792
+      },
+      {
+        "value": "2025",
+        "questions": 2398
+      },
+      {
+        "value": "2026",
+        "questions": 160
+      }
+    ],
+    "cargo": [
+      {
+        "value": "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 1",
+        "questions": 68
+      },
+      {
+        "value": "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 2",
+        "questions": 68
+      },
+      {
+        "value": "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 3",
+        "questions": 69
+      },
+      {
+        "value": "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 4",
+        "questions": 69
+      },
+      {
+        "value": "CARGO 1: DELEGADO DE POLÍCIA FEDERAL",
+        "questions": 120
+      },
+      {
+        "value": "CARGO 2: AGENTE DE POLÍCIA FEDERAL",
+        "questions": 120
+      },
+      {
+        "value": "CARGO 3: ESCRIVÃO DE POLÍCIA FEDERAL",
+        "questions": 120
+      },
+      {
+        "value": "CARGO 4: PAPILOSCOPISTA DE POLÍCIA FEDERAL",
+        "questions": 120
+      },
+      {
+        "value": "CONHECIMENTOS BÁSICOS PARA O CARGO 15",
+        "questions": 50
+      },
+      {
+        "value": "CONHECIMENTOS BÁSICOS PARA O CARGO 2 - TODAS AS ÁREAS",
+        "questions": 50
+      },
+      {
+        "value": "CONHECIMENTOS BÁSICOS PARA OS CARGOS DE 1 A 14",
+        "questions": 50
+      },
+      {
+        "value": "CONHECIMENTOS BÁSICOS PARA TODOS OS CARGOS DE PERITO CRIMINAL FEDERAL",
+        "questions": 50
+      },
+      {
+        "value": "CONHECIMENTOS BÁSICOS – BLOCO I – PARA OS CARGOS 15, 16 E 17",
+        "questions": 60
+      },
+      {
+        "value": "CONHECIMENTOS BÁSICOS – BLOCO II – PARA OS CARGOS 15, 16 E 17",
+        "questions": 36
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 1",
+        "questions": 120
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 10/ÁREA 12",
+        "questions": 70
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 11/ÁREA 14",
+        "questions": 70
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 12",
+        "questions": 120
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 13",
+        "questions": 120
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 14",
+        "questions": 120
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 2/ÁREA 1",
+        "questions": 70
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 3/ÁREA 2",
+        "questions": 70
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 4 - ÁREA 3",
+        "questions": 70
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 5/ÁREA 4",
+        "questions": 70
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 6/ÁREA 5",
+        "questions": 70
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 7/ÁREA 6",
+        "questions": 70
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 8/ÁREA 7",
+        "questions": 70
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS - CARGO 9/ÁREA 9",
+        "questions": 70
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 1",
+        "questions": 190
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 10",
+        "questions": 140
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 11",
+        "questions": 140
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 12",
+        "questions": 140
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 13",
+        "questions": 140
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 14",
+        "questions": 140
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 15",
+        "questions": 94
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 16",
+        "questions": 24
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 17",
+        "questions": 24
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 2",
+        "questions": 140
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 3",
+        "questions": 140
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 4",
+        "questions": 140
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 5",
+        "questions": 140
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 6",
+        "questions": 140
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 7",
+        "questions": 140
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 8",
+        "questions": 140
+      },
+      {
+        "value": "CONHECIMENTOS ESPECÍFICOS – CARGO 9",
+        "questions": 140
+      },
+      {
+        "value": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 1",
+        "questions": 68
+      },
+      {
+        "value": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 2",
+        "questions": 69
+      },
+      {
+        "value": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 3",
+        "questions": 69
+      },
+      {
+        "value": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 4",
+        "questions": 69
+      },
+      {
+        "value": "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 5",
+        "questions": 68
+      },
+      {
+        "value": "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 1",
+        "questions": 69
+      },
+      {
+        "value": "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 2",
+        "questions": 69
+      },
+      {
+        "value": "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 3",
+        "questions": 69
+      },
+      {
+        "value": "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 4",
+        "questions": 69
+      },
+      {
+        "value": "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 5",
+        "questions": 69
+      },
+      {
+        "value": "PROVA C – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 1",
+        "questions": 70
+      },
+      {
+        "value": "PROVA C – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 2",
+        "questions": 70
+      },
+      {
+        "value": "PROVA C – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 3",
+        "questions": 70
+      },
+      {
+        "value": "PROVA C – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 4",
+        "questions": 70
+      },
+      {
+        "value": "PROVA C – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 5",
+        "questions": 70
+      },
+      {
+        "value": "Provas aplicadas 22/06/2026 - 200 Assistente Administrativo QUADRIX Concurso-2026 CORE-PI Prova",
+        "questions": 40
+      },
+      {
+        "value": "Provas aplicadas 22/06/2026 - 201 Fiscal QUADRIX Concurso-2026 CORE-PI Prova",
+        "questions": 40
+      },
+      {
+        "value": "Provas aplicadas 22/06/2026 - 400 Assistente Jurídico QUADRIX Concurso-2026 CORE-PI Prova",
+        "questions": 40
+      },
+      {
+        "value": "Provas aplicadas 22/06/2026 - 401 Contador QUADRIX Concurso-2026 CORE-PI Prova",
+        "questions": 40
+      }
+    ],
+    "disciplina": [
+      {
+        "value": "(não informado)",
+        "questions": 5580
+      }
+    ],
+    "matéria": [
+      {
+        "value": "(não informado)",
+        "questions": 5440
+      },
+      {
+        "value": "2",
+        "questions": 70
+      },
+      {
+        "value": "4",
+        "questions": 70
+      }
+    ],
+    "assunto": [
+      {
+        "value": "(não informado)",
+        "questions": 4692
+      },
+      {
+        "value": "Bloco I",
+        "questions": 420
+      },
+      {
+        "value": "Bloco II",
+        "questions": 252
+      },
+      {
+        "value": "Bloco III",
+        "questions": 216
+      }
+    ],
+    "nível": [
+      {
+        "value": "(não informado)",
+        "questions": 5575
+      },
+      {
+        "value": "Superior",
+        "questions": 5
+      }
+    ],
+    "dificuldade": [
+      {
+        "value": "(não informado)",
+        "questions": 5580
+      }
+    ],
+    "estado": [
+      {
+        "value": "pending",
+        "questions": 5580
+      }
+    ]
+  },
+  "taxonomy_gaps": [
+    {
+      "board": "CEBRASPE",
+      "contest": "POLÍCIA FEDERAL",
+      "year": "2018",
+      "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 12",
+      "questions": 120
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "POLÍCIA FEDERAL",
+      "year": "2021",
+      "role": "CARGO 2: AGENTE DE POLÍCIA FEDERAL",
+      "questions": 120
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "POLÍCIA FEDERAL",
+      "year": "2021",
+      "role": "CARGO 1: DELEGADO DE POLÍCIA FEDERAL",
+      "questions": 120
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "POLÍCIA FEDERAL",
+      "year": "2018",
+      "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 1",
+      "questions": 120
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "POLÍCIA FEDERAL",
+      "year": "2021",
+      "role": "CARGO 4: PAPILOSCOPISTA DE POLÍCIA FEDERAL",
+      "questions": 120
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "POLÍCIA FEDERAL",
+      "year": "2018",
+      "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 13",
+      "questions": 120
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "POLÍCIA FEDERAL",
+      "year": "2018",
+      "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 14",
+      "questions": 120
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "POLÍCIA FEDERAL",
+      "year": "2021",
+      "role": "CARGO 3: ESCRIVÃO DE POLÍCIA FEDERAL",
+      "questions": 120
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "PF 25",
+      "year": "2025",
+      "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 1",
+      "questions": 120
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "POLÍCIA FEDERAL",
+      "year": "2018",
+      "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 9/ÁREA 9",
+      "questions": 70
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "PF 25",
+      "year": "2025",
+      "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 13",
+      "questions": 70
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "PF 25 ADM",
+      "year": "2025",
+      "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 11",
+      "questions": 70
+    },
+    {
+      "board": "CESGRANRIO",
+      "contest": "bb0121",
+      "year": "2021",
+      "role": "PROVA C – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 1",
+      "questions": 70
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "POLÍCIA FEDERAL",
+      "year": "2018",
+      "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 10/ÁREA 12",
+      "questions": 70
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "PF 25",
+      "year": "2025",
+      "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 3",
+      "questions": 70
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "POLÍCIA FEDERAL",
+      "year": "2018",
+      "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 6/ÁREA 5",
+      "questions": 70
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "PF 25 ADM",
+      "year": "2025",
+      "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 13",
+      "questions": 70
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "POLÍCIA FEDERAL",
+      "year": "2018",
+      "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 4 - ÁREA 3",
+      "questions": 70
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "POLÍCIA FEDERAL",
+      "year": "2018",
+      "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 8/ÁREA 7",
+      "questions": 70
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "PF 25",
+      "year": "2025",
+      "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 11",
+      "questions": 70
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "PF 25 ADM",
+      "year": "2025",
+      "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 3",
+      "questions": 70
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "PF 25 ADM",
+      "year": "2025",
+      "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 8",
+      "questions": 70
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "POLÍCIA FEDERAL",
+      "year": "2018",
+      "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 11/ÁREA 14",
+      "questions": 70
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "PF 25",
+      "year": "2025",
+      "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 2",
+      "questions": 70
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "PF 25 ADM",
+      "year": "2025",
+      "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 6",
+      "questions": 70
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "PF 25 ADM",
+      "year": "2025",
+      "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 7",
+      "questions": 70
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "PF 25 ADM",
+      "year": "2025",
+      "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 4",
+      "questions": 70
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "PF 25 ADM",
+      "year": "2025",
+      "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 5",
+      "questions": 70
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "POLÍCIA FEDERAL",
+      "year": "2018",
+      "role": "CONHECIMENTOS ESPECÍFICOS - CARGO 7/ÁREA 6",
+      "questions": 70
+    },
+    {
+      "board": "CEBRASPE",
+      "contest": "PF 25 ADM",
+      "year": "2025",
+      "role": "CONHECIMENTOS ESPECÍFICOS – CARGO 12",
+      "questions": 70
+    }
+  ],
+  "quarantine_reasons": {
+    "item anulado no gabarito oficial": 179,
+    "elemento visual exige revisão": 98,
+    "texto de apoio não associado": 148
+  },
+  "next_batch_id": "operator-0134f118a9a439f7a2785407",
+  "resumable": true,
+  "publication_status": "draft",
+  "content_sha256": "0537987e24068360fe10977902b05674c0769c9d043c36fe4d71e0085a04afaf",
+  "duration_seconds": 75.509,
+  "limitations": [
+    "A amostra ainda não recebeu revisão humana; as metas de precisão não podem ser alegadas.",
+    "Nenhuma questão tem aprovação humana válida; a exportação real permanece bloqueada.",
+    "5580 questões não receberam classificação completa na taxonomia atual.",
+    "A cobertura taxonômica ficou abaixo da meta de 90%; o acervo não pode ser declarado pronto para importação.",
+    "O contrato local do Qwen rejeitou 1 resposta(s) inválida(s); nenhuma delas alterou decisões humanas ou foi publicada."
+  ]
+}

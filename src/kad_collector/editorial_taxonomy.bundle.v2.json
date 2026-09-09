@@ -1,6 +1,11 @@
 {
-  "version": "2.0.1",
+  "version": "3.0.0",
+  "compatible_versions": ["2.0.1"],
   "catalogs": [
+    "editorial_taxonomies/public-exams-core.v1.json",
+    "editorial_taxonomies/cebraspe-pf.v1.json",
+    "editorial_taxonomies/cesgranrio-bb.v1.json",
+    "editorial_taxonomies/quadrix-corepi.v1.json",
     "editorial_taxonomy.v1.json",
     "editorial_taxonomies/fgv-pcam21.v1.json",
     "editorial_taxonomies/fgv-stn24.v1.json"
