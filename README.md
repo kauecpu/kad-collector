@@ -1312,3 +1312,8 @@ Artefatos dentro de `data/` podem conter material protegido e nao devem ser envi
 GitHub. Nao contorne autenticacao, CAPTCHA, bloqueios, paywalls ou restricoes tecnicas fora de
 uma integracao explicitamente autorizada, limitada e auditavel.
 Veja também [Preparação e Qwen por escopo](docs/scoped-preparation-qwen.md) para o contrato de seleção, prévias auditáveis e testes locais.
+
+Para aprovar acervos grandes sem revisar cada questão, use o fluxo de
+[aprovação editorial por amostragem](docs/editorial-approval.md). Ele aplica travas automáticas,
+seleciona uma amostra estratificada e só permite gerar um pacote local `draft` para grupos que
+atingiram os limites da auditoria.

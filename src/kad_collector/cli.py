@@ -9,6 +9,7 @@ from pathlib import Path
 from .ai_processor import process_extraction_manifest
 from .answer_association import revalidate_answer_key_associations
 from .answer_key import match_answer_key
+from .approval_server import serve_approval_application
 from .automation import run_automatic
 from .canonical_ai_benchmark import (
     DEFAULT_SAMPLE_SIZE,
@@ -29,6 +30,14 @@ from .config import load_config
 from .consolidated_review import build_consolidated_review
 from .database import stage_batch
 from .desktop_store import DesktopStore
+from .editorial_approval import (
+    ApprovalConfig,
+    build_approval_campaign,
+    decide_audit_item,
+    export_staging_package,
+    reprocess_group,
+    write_approval_report,
+)
 from .editorial_campaign import export_campaign_dry_run, run_editorial_campaign
 from .editorial_export import export_admin_package
 from .guided_test import run_guided_test
@@ -120,9 +129,7 @@ def build_parser() -> argparse.ArgumentParser:
         aliases=["semi-auto"],
         help="coleta por órgão, banca e período ou executa links informados",
     )
-    run.add_argument(
-        "--config", type=_path, default=Path("config/sources.official.toml")
-    )
+    run.add_argument("--config", type=_path, default=Path("config/sources.official.toml"))
     run.add_argument("--url", action="append", default=[])
     run.add_argument("--urls-file", type=_path, action="append", default=[])
     run.add_argument("--output", type=_path)
@@ -214,6 +221,65 @@ def build_parser() -> argparse.ArgumentParser:
     campaign_export.add_argument("index", type=_path)
     campaign_export.add_argument("--output", type=_path, required=True)
 
+    approval = subparsers.add_parser(
+        "approval-campaign",
+        help="aplica critérios automáticos e seleciona a auditoria por amostragem",
+    )
+    approval.add_argument("index", type=_path)
+    approval.add_argument("--output", type=_path, required=True)
+    approval.add_argument("--report-json", type=_path)
+    approval.add_argument("--report-markdown", type=_path)
+    approval.add_argument("--sample-rate", type=float, default=0.02)
+    approval.add_argument("--minimum-sample", type=int, default=50)
+    approval.add_argument("--maximum-sample", type=int, default=300)
+    approval.add_argument("--minimum-taxonomy-confidence", type=float, default=0.84)
+    approval.add_argument("--minimum-ocr-confidence", type=float, default=0.90)
+    approval.add_argument(
+        "--sources-config", type=_path, default=Path("config/sources.official.toml")
+    )
+    approval.add_argument("--authorized-host", action="append", default=[])
+
+    approval_audit = subparsers.add_parser(
+        "approval-audit",
+        help="registra uma decisão humana em um item da amostra",
+    )
+    approval_audit.add_argument("state", type=_path)
+    approval_audit.add_argument("stable_id")
+    approval_audit.add_argument("--reviewer", required=True)
+    approval_audit.add_argument(
+        "--status", choices=["approved", "rejected", "deferred"], required=True
+    )
+    approval_audit.add_argument("--structural-correct", action=argparse.BooleanOptionalAction)
+    approval_audit.add_argument("--answer-correct", action=argparse.BooleanOptionalAction)
+    approval_audit.add_argument("--taxonomy-correct", action=argparse.BooleanOptionalAction)
+    approval_audit.add_argument("--critical-error", action="append", default=[])
+    approval_audit.add_argument("--notes")
+
+    approval_reprocess = subparsers.add_parser(
+        "approval-reprocess",
+        help="invalida a amostra e reprocesa um grupo após corrigir sua regra",
+    )
+    approval_reprocess.add_argument("state", type=_path)
+    approval_reprocess.add_argument("group_id")
+
+    approval_export = subparsers.add_parser(
+        "approval-export",
+        help="gera pacote draft somente com grupos aprovados pela auditoria",
+    )
+    approval_export.add_argument("state", type=_path)
+    approval_export.add_argument("--output", type=_path, required=True)
+
+    approval_review = subparsers.add_parser(
+        "approval-review",
+        help="abre a auditoria local por amostragem e a fila de exceções",
+    )
+    approval_review.add_argument("state", type=_path)
+    approval_review.add_argument(
+        "--staging-output", type=_path, default=Path("data/approval-staging")
+    )
+    approval_review.add_argument("--port", type=int, default=8766)
+    approval_review.add_argument("--open-browser", action="store_true")
+
     process = subparsers.add_parser("process", help="estrutura questoes com IA")
     process.add_argument("extraction", type=_path)
     process.add_argument("--output-dir", type=_path, default=Path("data/processed"))
@@ -236,9 +302,7 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument("--session", type=_path)
     review.add_argument("--output", type=_path)
     review.add_argument("--exceptions", type=_path)
-    review.add_argument(
-        "--admin-output-dir", type=_path, default=Path("data/exports")
-    )
+    review.add_argument("--admin-output-dir", type=_path, default=Path("data/exports"))
     review.add_argument("--port", type=int, default=8765)
     review.add_argument(
         "--open-browser",
@@ -736,6 +800,84 @@ def _run(args: argparse.Namespace) -> int:
         print(
             f"Pacote draft: {args.output} ({manifest['questions']} questões, "
             f"{manifest['exceptions']} exceções)"
+        )
+        return 0
+    if args.command == "approval-campaign":
+        source_config = load_config(args.sources_config)
+        authorized_hosts = list(
+            dict.fromkeys(
+                [
+                    host
+                    for source in source_config.sources
+                    if source.enabled and source.access_mode == "content"
+                    for host in source.allowed_hosts
+                ]
+                + args.authorized_host
+            )
+        )
+        state = build_approval_campaign(
+            args.index,
+            args.output,
+            config=ApprovalConfig(
+                sample_rate=args.sample_rate,
+                minimum_sample=args.minimum_sample,
+                maximum_sample=args.maximum_sample,
+                minimum_taxonomy_confidence=args.minimum_taxonomy_confidence,
+                minimum_ocr_confidence=args.minimum_ocr_confidence,
+                authorized_hosts=authorized_hosts,
+            ),
+        )
+        if bool(args.report_json) != bool(args.report_markdown):
+            raise ValueError("informe --report-json e --report-markdown juntos")
+        if args.report_json and args.report_markdown:
+            write_approval_report(state, args.report_json, args.report_markdown)
+        print(
+            f"Aprovação automática: {args.output} "
+            f"({state.summary.auto_ready + state.summary.audit_sample} elegíveis, "
+            f"{state.summary.audit_sample} na amostra, "
+            f"{state.summary.needs_review} exceções, "
+            f"{state.summary.quarantined} em quarentena)"
+        )
+        return 0
+    if args.command == "approval-audit":
+        state = decide_audit_item(
+            args.state,
+            args.stable_id,
+            reviewer=args.reviewer,
+            status=args.status,
+            structural_correct=args.structural_correct,
+            answer_correct=args.answer_correct,
+            taxonomy_correct=args.taxonomy_correct,
+            critical_errors=args.critical_error,
+            notes=args.notes,
+        )
+        group = next(item for item in state.groups if args.stable_id in item.sample_ids)
+        print(
+            f"Decisão registrada. Grupo {group.group_id}: {group.status} "
+            f"({group.reviewed_items}/{group.required_items} auditadas)."
+        )
+        return 0
+    if args.command == "approval-reprocess":
+        state = reprocess_group(args.state, args.group_id)
+        group = next(item for item in state.groups if item.group_id == args.group_id)
+        print(
+            f"Grupo reprocessado: {group.group_id} "
+            f"({group.required_items} itens na nova auditoria)."
+        )
+        return 0
+    if args.command == "approval-export":
+        manifest = export_staging_package(args.state, args.output)
+        print(
+            f"Pacote local de staging: {args.output} "
+            f"({manifest['questions']} questões, estado draft)."
+        )
+        return 0
+    if args.command == "approval-review":
+        serve_approval_application(
+            args.state,
+            staging_output=args.staging_output,
+            port=args.port,
+            open_browser=args.open_browser,
         )
         return 0
     if args.command == "process":
