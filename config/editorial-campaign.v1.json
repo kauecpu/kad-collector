@@ -5,6 +5,8 @@
   "qwen_endpoint": "http://127.0.0.1:11434",
   "qwen_model": "qwen3:8b",
   "qwen_batch_size": 5,
+  "qwen_timeout_seconds": 180,
+  "retry_qwen_failures": false,
   "minimum_qwen_confidence": 0.78,
   "sample_size": 300
 }

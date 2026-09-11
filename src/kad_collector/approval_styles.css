@@ -17,8 +17,8 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; min-height: 100vh; }
-button, input, textarea { font: inherit; }
-button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visible {
+button, input, select, textarea { font: inherit; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible {
   outline: 3px solid #f0a64d;
   outline-offset: 2px;
 }
@@ -70,6 +70,9 @@ tbody tr:hover { background: #fafaf7; }
 .reason-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
 .reason { padding: 18px; border: 1px solid var(--line); background: var(--white); }
 .reason strong { display: block; margin-top: 20px; font: 700 28px Georgia, serif; }
+.filter-bar { display: grid; grid-template-columns: minmax(260px, 2fr) repeat(5, minmax(130px, 1fr)) auto; gap: 8px; align-items: center; margin: 24px 0 12px; }
+.filter-bar input, .filter-bar select { min-width: 0; padding: 10px; border: 1px solid #afb4ad; background: var(--white); }
+.filter-bar strong { color: var(--muted); font: 700 12px Consolas, monospace; white-space: nowrap; }
 
 dialog { width: min(920px, calc(100vw - 28px)); max-height: calc(100vh - 28px); padding: 0; border: 1px solid var(--ink); background: var(--paper); box-shadow: 0 24px 80px #17221d33; }
 dialog::backdrop { background: #17221dcc; }
@@ -98,6 +101,8 @@ input[type="text"], textarea { width: 100%; padding: 10px; border: 1px solid #af
   .pipeline { grid-template-columns: repeat(2, 1fr); }
   .metric:nth-child(2n) { border-right: 0; }
   h1 { font-size: 44px; }
+  .filter-bar { grid-template-columns: 1fr 1fr; }
+  .filter-bar input { grid-column: 1 / -1; }
 }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

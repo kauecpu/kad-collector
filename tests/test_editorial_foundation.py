@@ -16,7 +16,7 @@ class ExtensibleTaxonomyTests(unittest.TestCase):
     def test_default_bundle_loads_general_and_official_catalogs(self) -> None:
         taxonomy = EditorialTaxonomy.load_default()
 
-        self.assertEqual(taxonomy.version, "3.0.0")
+        self.assertEqual(taxonomy.version, "3.1.0")
         self.assertTrue(taxonomy.is_compatible_version("2.0.1"))
         self.assertEqual(
             set(taxonomy.catalog_ids),

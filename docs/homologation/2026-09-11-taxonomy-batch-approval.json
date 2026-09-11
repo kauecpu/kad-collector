@@ -1,0 +1,133 @@
+{
+  "schema_version": "1.0",
+  "campaign_id": "pf-bb-corepi-2018-2026-approval",
+  "rule_version": "1.0.0",
+  "taxonomy_version": "3.1.0",
+  "publication_status": "draft",
+  "automatic_approval_rules": {
+    "critical_gates": [
+      "origin",
+      "structure",
+      "answer_association",
+      "visual_dependency"
+    ],
+    "other_gates": [
+      "extraction",
+      "taxonomy",
+      "deduplication"
+    ],
+    "minimum_taxonomy_confidence": 0.84,
+    "minimum_ocr_confidence": 0.9,
+    "qwen_only_can_auto_approve": false,
+    "authorized_hosts": [
+      "www.fuvest.br",
+      "vestibularunificado2026.ufsc.br",
+      "conhecimento.fgv.br",
+      "www.gov.br",
+      "download.inep.gov.br",
+      "www.comvest.unicamp.br",
+      "sistema.vestibular.uerj.br",
+      "bb.com.br",
+      "www.bb.com.br",
+      "cesgranrio.org.br",
+      "www.cesgranrio.org.br",
+      "concursos.cesgranrio.org.br",
+      "inscricao.cesgranrio.com.br",
+      "cebraspe.org.br",
+      "www.cebraspe.org.br",
+      "apis.cebraspe.org.br",
+      "cdn.cebraspe.org.br",
+      "www.pciconcursos.com.br",
+      "arq.pciconcursos.com.br",
+      "concursosfcc.com.br",
+      "www.concursosfcc.com.br",
+      "vunesp.com.br",
+      "www.vunesp.com.br",
+      "documento.vunesp.com.br",
+      "institutoaocp.org.br",
+      "www.institutoaocp.org.br",
+      "arquivos-site.institutoaocp.org.br",
+      "quadrix.org.br",
+      "www.quadrix.org.br",
+      "anexos-r2.selecao.net.br",
+      "anexos.cdn.selecao.net.br"
+    ]
+  },
+  "sampling": {
+    "rate": 0.02,
+    "minimum": 50,
+    "maximum": 300,
+    "selected": 0,
+    "unique_fingerprints": 0,
+    "strata": {
+      "board": {},
+      "organization": {},
+      "contest": {},
+      "year": {},
+      "role": {},
+      "question_format": {},
+      "extraction_method": {},
+      "classification_method": {}
+    }
+  },
+  "group_thresholds": {
+    "structural_precision": 0.98,
+    "answer_precision": 0.99,
+    "taxonomy_precision": 0.95,
+    "critical_errors_allowed": 0,
+    "all_sample_items_must_be_decided": true
+  },
+  "summary": {
+    "raw_occurrences": 5580,
+    "unique_questions": 5292,
+    "duplicate_occurrences": 288,
+    "auto_ready": 0,
+    "audit_sample": 0,
+    "needs_review": 5139,
+    "quarantined": 441,
+    "approved_for_staging": 0,
+    "rejected": 0,
+    "groups": 0,
+    "groups_approved": 0,
+    "groups_blocked": 0,
+    "groups_pending": 0,
+    "processed_without_intervention_percent": 1.0,
+    "auto_ready_percent": 0.0
+  },
+  "blocker_distribution": {
+    "answer_association": 182,
+    "deduplication": 288,
+    "structure": 441,
+    "taxonomy": 5580,
+    "visual_dependency": 115
+  },
+  "groups": [],
+  "duration_seconds": 7.522,
+  "seconds_per_thousand": 1.348,
+  "qwen_calls": 0,
+  "qwen_failures": 0,
+  "content_sha256": "1100c3ae4657fff03d1c168bf7d53120d09abe8cfeefc476f3ce261ecb96c789",
+  "automatic_evidence": {
+    "processed_without_intervention": 5580,
+    "groups_released_without_human_audit": 0,
+    "staging_writes": 0,
+    "production_writes": 0
+  },
+  "corrections_implemented": [
+    "limiares de OCR e taxonomia são avaliados contra a configuração",
+    "integridade do mesmo PDF é calculada uma vez por execução",
+    "grupos sem amostra nunca são aprovados",
+    "decisões humanas são preservadas somente enquanto o conteúdo não muda",
+    "falha em um critério crítico não pode ser compensada por outras dimensões"
+  ],
+  "validation_commands": [
+    "python -m pytest",
+    "python -m ruff check .",
+    "python -m mypy src/kad_collector",
+    "python -m build"
+  ],
+  "limitations": [
+    "Nenhum grupo segue para staging antes da auditoria completa da amostra.",
+    "A precisão observada permanece indisponível enquanto a amostra não receber decisões humanas."
+  ]
+}

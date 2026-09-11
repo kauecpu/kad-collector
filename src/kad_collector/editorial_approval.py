@@ -17,6 +17,7 @@ from .consolidated_review import ConsolidatedReviewIndex
 from .editorial_campaign import (
     CAMPAIGN_VERSION,
     _classification_audit,
+    _classification_field_evidence,
     _classification_method,
     _note_value,
     _structural_state,
@@ -133,6 +134,12 @@ class ApprovalQuestion(StrictModel):
     classification_method: str
     classification_confidence: float | None = Field(default=None, ge=0, le=1)
     taxonomy_path_id: str | None = None
+    discipline: str | None = None
+    matter: str | None = None
+    subject: str | None = None
+    level: str | None = None
+    difficulty: str | None = None
+    classification_fields: dict[str, dict[str, Any]] = Field(default_factory=dict)
     exam_url: str | None = None
     answer_key_url: str | None = None
     exam_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
@@ -375,7 +382,13 @@ def _evaluate_question(
 
     taxonomy_complete = all(
         isinstance(value, str) and len(value.strip()) >= 2
-        for value in (question.discipline, question.matter, question.subject, question.level)
+        for value in (
+            question.discipline,
+            question.matter,
+            question.subject,
+            question.level,
+            question.difficulty,
+        )
     )
     taxonomy_ok = (
         taxonomy_complete
@@ -457,6 +470,12 @@ def _evaluate_question(
         classification_method=method,
         classification_confidence=confidence,
         taxonomy_path_id=path_id,
+        discipline=question.discipline,
+        matter=question.matter,
+        subject=question.subject,
+        level=question.level,
+        difficulty=question.difficulty,
+        classification_fields=_classification_field_evidence(question),
         exam_url=exam.resolved_url,
         answer_key_url=answer_key.resolved_url if answer_key else None,
         exam_sha256=exam.sha256,

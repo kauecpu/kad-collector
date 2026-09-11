@@ -13,9 +13,13 @@ from kad_collector.consolidated_review import (
     build_consolidated_review,
 )
 from kad_collector.editorial_campaign import (
+    _apply_classification,
+    _classification_field_evidence,
+    _classification_method,
     export_campaign_dry_run,
     run_editorial_campaign,
 )
+from kad_collector.editorial_taxonomy import TaxonomyPath
 from kad_collector.json_utils import read_json, write_json
 from kad_collector.local_review import (
     decide_review_question,
@@ -23,7 +27,7 @@ from kad_collector.local_review import (
     save_review_session,
     update_review_question,
 )
-from kad_collector.models import DocumentRecord, DownloadManifest
+from kad_collector.models import Alternative, DocumentRecord, DownloadManifest, QuestionRecord
 from kad_collector.structured_questions import (
     AnswerAssociationTrace,
     QwenRuntimeTrace,
@@ -76,7 +80,9 @@ def _question(
         year=int(exam.metadata["ano_publicacao"]),
         role=f"Cargo {prefix}",
         original_number=number,
-        statement=f"Enunciado completo da questão {prefix} {number}.",
+        statement=(
+            f"Enunciado completo da questão {prefix} {number} sobre Administração Geral."
+        ),
         alternatives={"A": "Certo", "B": "Errado"},
         question_format="true_false",
         correct_answer=None if annulled else "A",
@@ -428,6 +434,83 @@ class ConsolidatedReviewTests(unittest.TestCase):
             self.assertEqual(repeated.qwen.calls, 0)
             self.assertEqual(repeated.content_sha256, completed.content_sha256)
 
+    def test_hybrid_classification_preserves_provenance_per_field(self) -> None:
+        question = QuestionRecord(
+            number=1,
+            statement="Questão sobre gestão de pessoas.",
+            alternatives=[
+                Alternative(letter="A", text="Certo"),
+                Alternative(letter="B", text="Errado"),
+            ],
+            matter=None,
+            subject=None,
+            board="BANCA",
+            organization="Órgão",
+            role="Cargo",
+            year=2026,
+            source_pages=[1],
+            level="Superior",
+        )
+        path = TaxonomyPath(
+            path_id="topic:administracao:pessoas",
+            discipline="Administração Geral",
+            matter="Gestão de Pessoas",
+            subject="Liderança, Motivação e Equipes",
+        )
+        deterministic = _apply_classification(
+            question,
+            path=path,
+            level="Superior",
+            difficulty=None,
+            method="deterministic",
+            confidence=0.95,
+            taxonomy_version="3.1.0",
+            evidence="gestão de pessoas",
+            field_evidence={
+                field: {
+                    "value": value,
+                    "method": "deterministic",
+                    "confidence": 0.95,
+                    "evidence": "gestão de pessoas",
+                    "taxonomy_version": "3.1.0",
+                }
+                for field, value in {
+                    "discipline": path.discipline,
+                    "matter": path.matter,
+                    "subject": path.subject,
+                }.items()
+            },
+        )
+        hybrid = _apply_classification(
+            deterministic,
+            path=path,
+            level="Superior",
+            difficulty="Média",
+            method="qwen",
+            confidence=0.91,
+            taxonomy_version="3.1.0",
+            evidence="A dificuldade é compatível com o item.",
+            model="qwen3:8b",
+            field_evidence={
+                "difficulty": {
+                    "value": "Média",
+                    "method": "qwen",
+                    "confidence": 0.91,
+                    "evidence": "A dificuldade é compatível com o item.",
+                    "taxonomy_version": "3.1.0",
+                    "model": "qwen3:8b",
+                }
+            },
+        )
+        evidence = _classification_field_evidence(hybrid)
+
+        self.assertEqual(_classification_method(hybrid), "hybrid")
+        self.assertIn("método=hybrid", " ".join(hybrid.review_notes))
+        self.assertEqual(evidence["discipline"]["method"], "deterministic")
+        self.assertEqual(evidence["matter"]["method"], "deterministic")
+        self.assertEqual(evidence["subject"]["method"], "deterministic")
+        self.assertEqual(evidence["difficulty"]["method"], "qwen")
+
     def test_qwen_cannot_invent_taxonomy_or_approve_a_question(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -477,6 +560,7 @@ class ConsolidatedReviewTests(unittest.TestCase):
             self.assertEqual(report.qwen.accepted_suggestions, 0)
             self.assertEqual(report.counts.human_decisions, 0)
             self.assertEqual(report.counts.ready_for_export, 0)
+            self.assertEqual(report.taxonomy_after.methods["qwen_unresolved"], 1)
 
     def test_qwen_batch_rejects_duplicated_or_missing_stable_ids(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -517,6 +601,116 @@ class ConsolidatedReviewTests(unittest.TestCase):
             self.assertEqual(report.qwen.accepted_suggestions, 0)
             self.assertGreaterEqual(report.qwen.failures, 1)
             self.assertEqual(report.counts.human_decisions, 0)
+
+    def test_qwen_invalid_batch_is_split_and_valid_single_items_survive(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            campaign_spec = root / "campaign.json"
+            write_json(
+                campaign_spec,
+                {
+                    "schema_version": "1.0",
+                    "campaign_id": "fixture-isolated-qwen",
+                    "corpus_spec": str(_spec(root)),
+                    "qwen_batch_size": 2,
+                    "sample_size": 4,
+                },
+            )
+
+            def isolated_qwen(payload: dict[str, object]) -> dict[str, object]:
+                user = json.loads(payload["messages"][1]["content"])
+                if len(user["questions"]) > 1:
+                    return {"message": {"content": '{"items":[]}'}}
+                question = user["questions"][0]
+                return {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "items": [
+                                    {
+                                        "stable_id": question["stable_id"],
+                                        "option_id": question["allowed_option_ids"][0],
+                                        "level": "Superior",
+                                        "difficulty": "Média",
+                                        "confidence": 0.91,
+                                        "evidence": "Tema sustentado pelo enunciado da fixture.",
+                                    }
+                                ]
+                            }
+                        )
+                    }
+                }
+
+            report, _path = run_editorial_campaign(
+                campaign_spec,
+                root / "output",
+                enable_qwen=True,
+                limit=2,
+                qwen_request=isolated_qwen,
+            )
+
+            self.assertEqual(report.qwen.accepted_suggestions, 2)
+            self.assertEqual(report.qwen.calls, 3)
+            self.assertEqual(report.qwen.failures, 0)
+
+    def test_qwen_cache_survives_rebuilt_sessions_and_avoids_new_calls(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            campaign_spec = root / "campaign.json"
+            write_json(
+                campaign_spec,
+                {
+                    "schema_version": "1.0",
+                    "campaign_id": "fixture-qwen-cache",
+                    "corpus_spec": str(_spec(root)),
+                    "qwen_batch_size": 1,
+                    "sample_size": 4,
+                },
+            )
+
+            def qwen(payload: dict[str, object]) -> dict[str, object]:
+                user = json.loads(payload["messages"][1]["content"])
+                question = user["questions"][0]
+                return {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "items": [
+                                    {
+                                        "stable_id": question["stable_id"],
+                                        "option_id": question["allowed_option_ids"][0],
+                                        "level": "Superior",
+                                        "difficulty": "Média",
+                                        "confidence": 0.91,
+                                        "evidence": "Tema sustentado pelo enunciado da fixture.",
+                                    }
+                                ]
+                            }
+                        )
+                    }
+                }
+
+            first, _path = run_editorial_campaign(
+                campaign_spec,
+                root / "output",
+                enable_qwen=True,
+                limit=1,
+                qwen_request=qwen,
+            )
+            for path in (root / "output" / "review" / "sessions").glob("*.json"):
+                path.unlink()
+            second, _path = run_editorial_campaign(
+                campaign_spec,
+                root / "output",
+                enable_qwen=True,
+                limit=1,
+                qwen_request=qwen,
+            )
+
+            self.assertEqual(first.qwen.calls, 1)
+            self.assertEqual(second.qwen.calls, 0)
+            self.assertEqual(second.qwen.cache_hits, 1)
+            self.assertEqual(second.qwen.accepted_suggestions, 1)
 
     def test_campaign_rejects_nonpositive_interruption_limit(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -25,9 +25,12 @@ fingerprints semânticos. Ela inclui banca, órgão, concurso, ano, cargo, forma
 estrutural, caminho da classificação, dependência visual, páginas e URLs oficiais, mas não
 copia enunciados nem alternativas.
 
-Os rastros completos do modelo ficam em `data/` e não entram no Git. O relatório versionado
-registra modelo, digest, quantidade de chamadas, sugestões aceitas e falhas, sem copiar respostas
-brutas do Qwen ou o conteúdo integral das questões.
+Os rastros do modelo ficam em `data/` e não entram no Git. O relatório versionado registra
+modelo, digest, quantidade de chamadas, sugestões aceitas e falhas, sem copiar respostas brutas
+do Qwen ou o conteúdo integral das questões. As respostas são reutilizadas por conteúdo,
+modelo, versão do classificador e versão da taxonomia. Um lote malformado é dividido até isolar
+o item defeituoso sem descartar decisões válidas dos demais itens. Para repetir falhas já
+isoladas, use `retry_qwen_failures: true` no arquivo da campanha.
 
 ## Taxonomia
 
@@ -45,6 +48,7 @@ decisões auditadas. Um ID desconhecido ou repetido é recusado, inclusive quand
 
 - O Qwen não cria taxonomia nem toma decisão editorial final.
 - Um lote do Qwen só é aceito quando contém exatamente uma resposta para cada ID enviado.
+- A sugestão precisa ter apoio lexical no próprio enunciado para ser aplicada à fila.
 - Alterar uma questão depois da aprovação invalida a decisão anterior.
 - Duplicatas por ID ou identidade semântica não entram duas vezes no pacote.
 - Uma falha do Ollama mantém as regras locais e a revisão disponíveis.
