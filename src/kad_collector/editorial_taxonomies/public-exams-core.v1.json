@@ -1,6 +1,6 @@
 {
   "id": "public-exams-core",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "sources": [
     {"id": "pf-2018", "title": "Edital nº 1 DGP/PF de 2018", "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/ED_1_DPF_2018___ABT.PDF"},
     {"id": "pf-2021", "title": "Edital nº 1 DGP/PF de 2021", "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/ED_1_DPF_2021_ABT.PDF"},
@@ -29,7 +29,7 @@
     ]},
     {"id": "disc:estatistica", "name": "Estatística", "topics": [
       {"id": "topic:estatistica:descritiva", "matter": "Estatística Descritiva", "subject": "Medidas e Distribuições", "keywords": ["média aritmética", "mediana", "desvio padrão", "variância", "distribuição de frequência"]},
-      {"id": "topic:estatistica:inferencia", "matter": "Inferência Estatística", "subject": "Estimação e Testes", "keywords": ["intervalo de confiança", "teste de hipótese", "nível de significância", "estimador"]}
+      {"id": "topic:estatistica:inferencia", "matter": "Inferência Estatística", "subject": "Estimação e Testes", "keywords": ["intervalo de confiança", "teste de hipótese", "nível de significância", "estimador", "erro de amostragem", "amostragem sistemática", "t de student", "população infinita"]}
     ]},
     {"id": "disc:informatica", "name": "Informática", "aliases": ["Noções de Informática"], "topics": [
       {"id": "topic:informatica:sistemas", "matter": "Sistemas Operacionais e Escritório", "subject": "Windows e Microsoft Office", "keywords": ["microsoft word", "microsoft excel", "powerpoint", "windows 10", "windows 11", "planilha eletrônica"]},

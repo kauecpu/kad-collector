@@ -1,6 +1,6 @@
 {
-  "version": "3.0.0",
-  "compatible_versions": ["2.0.1"],
+  "version": "3.1.0",
+  "compatible_versions": ["3.0.0", "2.0.1"],
   "catalogs": [
     "editorial_taxonomies/public-exams-core.v1.json",
     "editorial_taxonomies/cebraspe-pf.v1.json",

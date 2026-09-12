@@ -443,6 +443,11 @@ class EditorialApprovalTests(unittest.TestCase):
                 with urlopen(f"http://{host}:{port}/api/state", timeout=2) as response:
                     payload = json.load(response)
                 self.assertEqual(payload["summary"]["audit_sample"], 1)
+                self.assertEqual(payload["sample"][0]["discipline"], "Língua Portuguesa")
+                self.assertEqual(payload["sample"][0]["difficulty"], "Média")
+                self.assertEqual(
+                    payload["sample"][0]["classificationMethod"], "deterministic"
+                )
                 body = json.dumps(
                     {
                         "status": "approved",

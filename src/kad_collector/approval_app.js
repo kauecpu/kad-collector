@@ -6,6 +6,7 @@ const detail = document.querySelector('#question-detail');
 const toast = document.querySelector('#toast');
 let state;
 let view = 'sample';
+const filters = { search: '', board: '', year: '', method: '', blocker: '', discipline: '' };
 
 const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, (char) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
@@ -65,7 +66,19 @@ function renderSample() {
 
 function renderExceptions() {
   const cards = Object.entries(state.exceptions).map(([reason, count]) => `<div class="reason"><span>${esc(reason)}</span><strong>${count}</strong></div>`).join('');
-  workspace.innerHTML = `<div class="section-head"><div><h2>Fila de exceções</h2><p>Só aparecem casos que precisam de correção ou isolamento.</p></div></div><div class="reason-grid">${cards || '<div class="empty">Nenhuma exceção.</div>'}</div><div style="height:24px"></div>${questionTable(state.reviewQueue)}`;
+  const values = (field) => [...new Set(state.reviewQueue.map((item) => item[field]).filter(Boolean))].sort();
+  const options = (field, label, source = field) => `<select data-filter="${field}"><option value="">${label}: todos</option>${values(source).map((value) => `<option value="${esc(value)}" ${filters[field] === String(value) ? 'selected' : ''}>${esc(value)}</option>`).join('')}</select>`;
+  const blockers = [...new Set(state.reviewQueue.flatMap((item) => item.blockers || []))].sort();
+  const filtered = state.reviewQueue.filter((item) => {
+    const haystack = [item.number, item.board, item.organization, item.contest, item.role, item.discipline, item.matter, item.subject].join(' ').toLowerCase();
+    return (!filters.search || haystack.includes(filters.search.toLowerCase()))
+      && (!filters.board || item.board === filters.board)
+      && (!filters.year || String(item.year) === filters.year)
+      && (!filters.method || item.classificationMethod === filters.method)
+      && (!filters.discipline || item.discipline === filters.discipline)
+      && (!filters.blocker || (item.blockers || []).includes(filters.blocker));
+  });
+  workspace.innerHTML = `<div class="section-head"><div><h2>Fila de exceções</h2><p>Só aparecem casos que precisam de correção ou isolamento.</p></div></div><div class="reason-grid">${cards || '<div class="empty">Nenhuma exceção.</div>'}</div><div class="filter-bar"><input data-filter="search" value="${esc(filters.search)}" placeholder="Buscar questão, órgão, concurso ou cargo">${options('board', 'Banca')}${options('year', 'Ano')}${options('method', 'Método', 'classificationMethod')}${options('discipline', 'Disciplina')}<select data-filter="blocker"><option value="">Bloqueio: todos</option>${blockers.map((value) => `<option value="${esc(value)}" ${filters.blocker === value ? 'selected' : ''}>${esc(value)}</option>`).join('')}</select><strong>${filtered.length} de ${state.reviewQueue.length}</strong></div>${questionTable(filtered)}`;
 }
 
 function precision(value) { return value == null ? '—' : `${(value * 100).toFixed(1)}%`; }
@@ -123,6 +136,17 @@ workspace.addEventListener('click', async (event) => {
       if (reviewer && reason) { await api(`/api/groups/${button.dataset.id}/block`, { method: 'POST', body: JSON.stringify({ reviewer, reason }) }); notify('Grupo bloqueado.'); return load(); }
     }
   } catch (error) { notify(error.message); }
+});
+
+workspace.addEventListener('input', (event) => {
+  const control = event.target.closest('[data-filter]');
+  if (!control) return;
+  filters[control.dataset.filter] = control.value;
+  renderExceptions();
+  const replacement = workspace.querySelector(`[data-filter="${control.dataset.filter}"]`);
+  if (replacement && control.tagName === 'INPUT') {
+    replacement.focus(); replacement.setSelectionRange(replacement.value.length, replacement.value.length);
+  }
 });
 
 detail.addEventListener('submit', async (event) => {

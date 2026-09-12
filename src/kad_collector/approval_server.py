@@ -81,6 +81,12 @@ class ApprovalApplication:
             "year": item.year,
             "role": item.role,
             "blockers": item.blockers,
+            "classificationMethod": item.classification_method,
+            "discipline": item.discipline,
+            "matter": item.matter,
+            "subject": item.subject,
+            "level": item.level,
+            "difficulty": item.difficulty,
             "decision": (
                 item.audit_decision.model_dump(mode="json")
                 if item.audit_decision is not None
