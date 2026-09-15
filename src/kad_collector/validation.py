@@ -16,8 +16,9 @@ _EDITORIAL_TEXT_FIELDS = (
     ("concurso", "concurso"),
     ("cargo", "role"),
     ("nivel", "level"),
-    ("dificuldade", "difficulty"),
 )
+_NON_BLOCKING_EDITORIAL_MARKERS = frozenset({"difficulty_unresolved"})
+
 
 def _normalized(value: str) -> str:
     decomposed = unicodedata.normalize("NFKD", value)
@@ -79,9 +80,9 @@ def _validate_question_for_transfer(
 def validate_app_import_question(question: QuestionRecord) -> list[str]:
     """Validate the safe subset accepted as an app-import candidate.
 
-    Explanation and difficulty deliberately remain outside this gate. They belong to
-    publication readiness, while official answers, provenance fields and valid
-    alternatives remain mandatory.
+    Explanation and difficulty deliberately remain outside this gate. They are
+    optional editorial enrichment, while official answers, provenance fields and
+    valid alternatives remain mandatory.
     """
 
     return [
@@ -100,6 +101,7 @@ def validate_editorial_question(question: QuestionRecord) -> list[str]:
     errors.extend(
         f"questao {question.number}: bloqueio editorial pendente: {reason}"
         for reason in question.editorial_blocks
+        if reason not in _NON_BLOCKING_EDITORIAL_MARKERS
     )
     if question.explanation is not None and len(question.explanation.strip()) < 10:
         errors.append(

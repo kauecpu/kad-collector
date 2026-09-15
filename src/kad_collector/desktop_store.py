@@ -316,8 +316,6 @@ def question_quality_flags(
         flags.append("incomplete")
     if not (question.explanation or "").strip():
         flags.append("without_explanation")
-    if question.difficulty is None:
-        flags.append("without_difficulty")
     if question.answer_status == "annulled":
         flags.append("annulled")
     if question.answer_status == "missing":

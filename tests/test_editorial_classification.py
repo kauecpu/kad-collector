@@ -304,7 +304,7 @@ class ImportReadinessTests(unittest.TestCase):
 
         self.assertEqual(validate_app_import_question(question), [])
         publication_errors = validate_editorial_question(question)
-        self.assertTrue(any("dificuldade" in error for error in publication_errors))
+        self.assertFalse(any("dificuldade" in error for error in publication_errors))
         self.assertFalse(any("explicacao" in error for error in publication_errors))
 
     def test_import_validation_keeps_answer_alternative_and_origin_fields_required(self) -> None:
@@ -449,7 +449,7 @@ class StoredReclassificationTests(unittest.TestCase):
                 ["classification_reprocessed"],
             )
 
-    def test_question_view_exposes_importable_separately_from_publication_ready(self) -> None:
+    def test_question_view_is_ready_without_optional_editorial_enrichment(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
             pdf_path = root / "prova.pdf"
@@ -476,7 +476,7 @@ class StoredReclassificationTests(unittest.TestCase):
             view = application.store.question(question_id)
 
             self.assertTrue(view["importable"])
-            self.assertFalse(view["publication_ready"])
+            self.assertTrue(view["publication_ready"])
             self.assertEqual(application.bootstrap()["summary"]["importable"], 1)
 
     def test_ui_presents_missing_classification_as_text_not_zero_percent(self) -> None:

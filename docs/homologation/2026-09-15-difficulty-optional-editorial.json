@@ -1,0 +1,243 @@
+{
+  "schema_version": "1.0",
+  "report_id": "difficulty-optional-editorial-2026-09-15",
+  "base_commit": "ae2b74a1634d795769efd19c24fb1bb33728449b",
+  "branch": "codex/difficulty-optional-editorial",
+  "corpus": [
+    "Polícia Federal/CEBRASPE",
+    "Banco do Brasil/CESGRANRIO",
+    "CORE-PI/QUADRIX"
+  ],
+  "contract": {
+    "required_classification_fields": [
+      "discipline",
+      "matter",
+      "subject",
+      "level"
+    ],
+    "optional_classification_fields": [
+      "difficulty"
+    ],
+    "difficulty_missing_is_blocker": false,
+    "difficulty_is_requested_from_qwen": false,
+    "difficulty_is_defaulted": false,
+    "existing_valid_difficulty_is_preserved": true,
+    "export_omits_missing_difficulty": true
+  },
+  "before_after": {
+    "occurrences": {"before": 5580, "after": 5580},
+    "unique_questions": {"before": 5292, "after": 5292},
+    "structurally_accepted": {"before": 5158, "after": 5158},
+    "taxonomy_complete": {"before": 0, "after": 1043},
+    "classification_pending": {"before": 5580, "after": 4537},
+    "answer_association_blocked": {"before": 182, "after": 182},
+    "visual_dependency_blocked": {"before": 115, "after": 115},
+    "duplicate_occurrences": {"before": 288, "after": 288},
+    "approval_quarantine": {"before": 441, "after": 441},
+    "sampling_eligible": {"before": 0, "after": 419},
+    "approved_for_staging": {"before": 0, "after": 0}
+  },
+  "classification": {
+    "taxonomy_blockers_removed": 518,
+    "eligible_after_all_automatic_gates": 419,
+    "auto_ready_pending_group_audit": 369,
+    "audit_sample": 50,
+    "taxonomy_coverage": 0.18691756272401433,
+    "field_coverage": {
+      "discipline": {"before": 0.1867383512544803, "after": 0.18691756272401433},
+      "matter": {"before": 0.2114695340501792, "after": 0.21164874551971327},
+      "subject": {"before": 0.29623655913978497, "after": 0.296415770609319},
+      "level": {"before": 1.0, "after": 1.0},
+      "difficulty": {"before": 0.0, "after": 0.0, "informational_only": true}
+    },
+    "idempotency": {
+      "first_content_sha256": "77afce5e9a12ba41978d61e34a107ddda3112fcf896fc978ebd7521ac1f9be54",
+      "second_content_sha256": "77afce5e9a12ba41978d61e34a107ddda3112fcf896fc978ebd7521ac1f9be54",
+      "equal": true,
+      "occurrences_after_second_run": 5580,
+      "unique_after_second_run": 5292
+    }
+  },
+  "distribution": {
+    "boards": {
+      "CEBRASPE": 4108,
+      "CESGRANRIO": 1312,
+      "QUADRIX": 160
+    },
+    "organizations": {
+      "Policia Federal": 4108,
+      "Banco do Brasil": 1312,
+      "Conselho Regional dos Representantes Comerciais do Piaui": 160
+    },
+    "contests": {
+      "POLÍCIA FEDERAL": 1710,
+      "PF 25": 1248,
+      "PF 25 ADM": 1150,
+      "bb0121": 1312,
+      "CORE-PI 2026": 160
+    },
+    "years": {
+      "2018": 1230,
+      "2021": 1792,
+      "2025": 2398,
+      "2026": 160
+    },
+    "roles": {
+      "CONHECIMENTOS ESPECÍFICOS – CARGO 1": 190,
+      "CONHECIMENTOS ESPECÍFICOS – CARGO 2": 140,
+      "CONHECIMENTOS ESPECÍFICOS – CARGO 3": 140,
+      "CONHECIMENTOS ESPECÍFICOS – CARGO 4": 140,
+      "CONHECIMENTOS ESPECÍFICOS – CARGO 5": 140,
+      "CONHECIMENTOS ESPECÍFICOS – CARGO 6": 140,
+      "CONHECIMENTOS ESPECÍFICOS – CARGO 7": 140,
+      "CONHECIMENTOS ESPECÍFICOS – CARGO 8": 140,
+      "CONHECIMENTOS ESPECÍFICOS – CARGO 9": 140,
+      "CONHECIMENTOS ESPECÍFICOS – CARGO 10": 140,
+      "CONHECIMENTOS ESPECÍFICOS – CARGO 11": 140,
+      "CONHECIMENTOS ESPECÍFICOS – CARGO 12": 140,
+      "CONHECIMENTOS ESPECÍFICOS – CARGO 13": 140,
+      "CONHECIMENTOS ESPECÍFICOS – CARGO 14": 140,
+      "CONHECIMENTOS ESPECÍFICOS – CARGO 15": 94,
+      "CONHECIMENTOS ESPECÍFICOS – CARGO 16": 24,
+      "CONHECIMENTOS ESPECÍFICOS – CARGO 17": 24,
+      "CONHECIMENTOS BÁSICOS – BLOCO I – PARA OS CARGOS 15, 16 E 17": 60,
+      "CONHECIMENTOS BÁSICOS – BLOCO II – PARA OS CARGOS 15, 16 E 17": 36,
+      "CONHECIMENTOS BÁSICOS PARA O CARGO 15": 50,
+      "CONHECIMENTOS BÁSICOS PARA O CARGO 2 - TODAS AS ÁREAS": 50,
+      "CONHECIMENTOS BÁSICOS PARA OS CARGOS DE 1 A 14": 50,
+      "CONHECIMENTOS BÁSICOS PARA TODOS OS CARGOS DE PERITO CRIMINAL FEDERAL": 50,
+      "CARGO 1: DELEGADO DE POLÍCIA FEDERAL": 120,
+      "CARGO 2: AGENTE DE POLÍCIA FEDERAL": 120,
+      "CARGO 3: ESCRIVÃO DE POLÍCIA FEDERAL": 120,
+      "CARGO 4: PAPILOSCOPISTA DE POLÍCIA FEDERAL": 120,
+      "CONHECIMENTOS ESPECÍFICOS - CARGO 1": 120,
+      "CONHECIMENTOS ESPECÍFICOS - CARGO 2/ÁREA 1": 70,
+      "CONHECIMENTOS ESPECÍFICOS - CARGO 3/ÁREA 2": 70,
+      "CONHECIMENTOS ESPECÍFICOS - CARGO 4 - ÁREA 3": 70,
+      "CONHECIMENTOS ESPECÍFICOS - CARGO 5/ÁREA 4": 70,
+      "CONHECIMENTOS ESPECÍFICOS - CARGO 6/ÁREA 5": 70,
+      "CONHECIMENTOS ESPECÍFICOS - CARGO 7/ÁREA 6": 70,
+      "CONHECIMENTOS ESPECÍFICOS - CARGO 8/ÁREA 7": 70,
+      "CONHECIMENTOS ESPECÍFICOS - CARGO 9/ÁREA 9": 70,
+      "CONHECIMENTOS ESPECÍFICOS - CARGO 10/ÁREA 12": 70,
+      "CONHECIMENTOS ESPECÍFICOS - CARGO 11/ÁREA 14": 70,
+      "CONHECIMENTOS ESPECÍFICOS - CARGO 12": 120,
+      "CONHECIMENTOS ESPECÍFICOS - CARGO 13": 120,
+      "CONHECIMENTOS ESPECÍFICOS - CARGO 14": 120,
+      "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 1": 68,
+      "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 2": 69,
+      "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 3": 69,
+      "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 4": 69,
+      "PROVA A – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 5": 68,
+      "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 1": 69,
+      "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 2": 69,
+      "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 3": 69,
+      "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 4": 69,
+      "PROVA B – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 5": 69,
+      "PROVA C – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 1": 70,
+      "PROVA C – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 2": 70,
+      "PROVA C – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 3": 70,
+      "PROVA C – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 4": 70,
+      "PROVA C – ESCRITURÁRIO – AGENTE COMERCIAL – GABARITO 5": 70,
+      "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 1": 68,
+      "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 2": 68,
+      "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 3": 69,
+      "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 4": 69,
+      "Provas aplicadas 22/06/2026 - 200 Assistente Administrativo QUADRIX Concurso-2026 CORE-PI Prova": 40,
+      "Provas aplicadas 22/06/2026 - 201 Fiscal QUADRIX Concurso-2026 CORE-PI Prova": 40,
+      "Provas aplicadas 22/06/2026 - 400 Assistente Jurídico QUADRIX Concurso-2026 CORE-PI Prova": 40,
+      "Provas aplicadas 22/06/2026 - 401 Contador QUADRIX Concurso-2026 CORE-PI Prova": 40
+    },
+    "approval_by_board": {
+      "CEBRASPE": {"total": 4108, "auto_ready": 258, "audit_sample": 31, "needs_review": 3551, "quarantined": 268},
+      "CESGRANRIO": {"total": 1312, "auto_ready": 61, "audit_sample": 15, "needs_review": 1082, "quarantined": 154},
+      "QUADRIX": {"total": 160, "auto_ready": 50, "audit_sample": 4, "needs_review": 87, "quarantined": 19}
+    }
+  },
+  "qwen": {
+    "model": "qwen3:8b",
+    "digest": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41",
+    "pilot_unique_candidates": 11,
+    "calls_including_recursive_splits": 13,
+    "questions_sent_including_retries_and_splits": 42,
+    "accepted_suggestions": 1,
+    "unresolved_suggestions": 10,
+    "guard_rejections": 5,
+    "cache_hits": 0,
+    "cache_misses": 11,
+    "failures": 0,
+    "duration_seconds": 174.804,
+    "full_run_performed": false,
+    "full_run_blocker": "Piloto aceitou 1/11; catálogo fechado não cobria com segurança a maior parte das pendências.",
+    "projected_full_run_hours": 17.8,
+    "ollama_off": {
+      "available": false,
+      "calls": 0,
+      "deterministic_run_completed": true,
+      "discarded_results": 0
+    }
+  },
+  "remaining_blockers": {
+    "taxonomy": 5062,
+    "structure": 441,
+    "deduplication": 288,
+    "answer_association": 182,
+    "visual_dependency": 115,
+    "difficulty": 0,
+    "counts_can_overlap": true
+  },
+  "performance": {
+    "deterministic_campaign_seconds": 58.904,
+    "approval_seconds": 7.27,
+    "approval_seconds_per_thousand": 1.303,
+    "combined_seconds": 66.174,
+    "combined_seconds_per_thousand": 11.859
+  },
+  "validation": {
+    "tests": {"status": "passed", "count": 973, "duration_seconds": 174.63},
+    "lint": {"status": "passed"},
+    "types": {"status": "passed", "source_files": 83},
+    "build": {
+      "status": "passed_without_isolation",
+      "wheel": "dist/kad_collector-0.4.0-py3-none-any.whl",
+      "sdist": "dist/kad_collector-0.4.0.tar.gz",
+      "isolated_build_limitation": "O Python portátil disponível não contém o módulo venv."
+    },
+    "wheel_install_smoke": {"status": "passed"},
+    "ollama_available": {"status": "passed_pilot"},
+    "ollama_unavailable": {"status": "passed"},
+    "idempotency": {"status": "passed"}
+  },
+  "evidence": {
+    "qwen_pilot_report": {
+      "path": "data/editorial-campaign/difficulty-optional-offline/qwen-smoke-v2-report.json",
+      "file_sha256": "6912fc074cfcfd95adb679063d6a8cc0238a98d9dcd09ed77183adb46275d227"
+    },
+    "idempotency_report": {
+      "path": "data/editorial-campaign/difficulty-optional-offline/idempotency-report-2.json",
+      "file_sha256": "329f847a7f3182f08438018b600182e7f89964d7cf0e87a09c7b5fbe40476508"
+    },
+    "ollama_off_report": {
+      "path": "data/editorial-campaign/difficulty-optional-ollama-off/report.json",
+      "file_sha256": "fe59f65a9f0e42926c987e9bb77f4015ebccd8c4a802294f96a4ad8012f764c7"
+    },
+    "approval_report": {
+      "path": "data/editorial-approval/difficulty-optional-final-report.json",
+      "file_sha256": "b6478f1929705eca7663a79a9f8a5a8dbda0e17bf6abcaaf724fc6f7dbdc6e9c"
+    }
+  },
+  "safety": {
+    "pdfs_added_to_git": 0,
+    "kad_writes": 0,
+    "supabase_writes": 0,
+    "invented_human_decisions": 0,
+    "raw_qwen_responses_versioned": 0,
+    "approved_for_staging": 0
+  },
+  "limitations": [
+    "4.537 ocorrências ainda não possuem todos os campos obrigatórios.",
+    "5.062 ocorrências ainda falham no gate de taxonomia por ausência ou confiança abaixo de 0,84.",
+    "A amostra de 50 questões ainda não possui decisões humanas; nenhum grupo pode seguir para staging.",
+    "A execução integral do Qwen foi evitada após o piloto de baixa efetividade; o catálogo deve ser ampliado antes de nova execução em massa."
+  ]
+}

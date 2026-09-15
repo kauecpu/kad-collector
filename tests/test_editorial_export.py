@@ -186,6 +186,14 @@ class EditorialExportTests(unittest.TestCase):
 
         self.assertNotIn("explanation", payload["data"])
         self.assertNotIn("difficulty", payload["data"])
+        self.assertEqual(validate_editorial_question(item), [])
+
+    def test_question_rejects_difficulty_outside_the_closed_catalog(self) -> None:
+        payload = question(1).model_dump(mode="python")
+        payload["difficulty"] = "Extrema"
+
+        with self.assertRaises(ValueError):
+            QuestionRecord.model_validate(payload)
 
     def test_ai_explanation_requires_traceability(self) -> None:
         with self.assertRaisesRegex(ValueError, "provider"):

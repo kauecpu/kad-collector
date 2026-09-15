@@ -402,9 +402,10 @@ O executavel validado para Windows tambem fica disponivel na pagina de
 sao commitados no historico Git; cada versao e publicada como artefato da release correspondente.
 
 Na interface, o card **Importaveis** conta questoes estruturalmente aptas para entrar no app.
-Explicacao e dificuldade nao participam dessa conta; resposta oficial, alternativas validas,
-classificacao, duplicidade e origem comprovada continuam sendo barreiras. A prontidao para
-publicacao editorial permanece separada e ainda pode exigir explicacao e dificuldade.
+Explicacao e dificuldade nao participam dessa conta nem bloqueiam a exportacao editorial.
+Quando ausentes, nao recebem valor artificial e sao omitidas do contrato v2. Resposta oficial,
+alternativas validas, taxonomia fechada, duplicidade e origem comprovada continuam sendo
+barreiras.
 
 O card **Pendentes** abre a fila editorial. A revisao permite editar a questao,
 consultar o PDF na pagina de origem, enviar para excecoes com justificativa, adiar a decisao e

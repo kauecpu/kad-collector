@@ -207,7 +207,7 @@ def _load_package(
             if existing is not None and existing != document:
                 raise ValueError(f"documento {document.sha256} diverge entre manifestos")
             documents_by_sha[document.sha256] = document
-    for document in documents_by_sha.values():
+    for document_sha, document in list(documents_by_sha.items()):
         local_path = Path(document.local_path)
         if not local_path.is_absolute():
             local_path = spec_path.parent.parent / local_path
@@ -216,6 +216,12 @@ def _load_package(
             raise ValueError(f"documento local ausente: {document.local_path}")
         if _file_sha256(local_path) != document.sha256:
             raise ValueError(f"documento local corrompido: {document.local_path}")
+        # Approval can run from a different checkout or worktree. Persist the
+        # already-verified absolute path in runtime sessions so integrity checks do
+        # not accidentally resolve a manifest-relative path against the CWD.
+        documents_by_sha[document_sha] = document.model_copy(
+            update={"local_path": str(local_path)}
+        )
 
     actual = (
         len(package.accepted),
@@ -337,7 +343,11 @@ def _session_state(
             exportable = (
                 decision.status == "approved"
                 and classified
-                and not question.editorial_blocks
+                and not [
+                    block
+                    for block in question.editorial_blocks
+                    if block != "difficulty_unresolved"
+                ]
                 and question.answer_status == "matched"
             )
             result[stable_id] = (classified, exportable, decision.status != "pending")

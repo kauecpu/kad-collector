@@ -282,6 +282,38 @@ class ConsolidatedReviewTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "documento local corrompido"):
                 build_consolidated_review(spec, root / "output")
 
+    def test_resolves_manifest_relative_documents_before_creating_sessions(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            spec = _spec(root)
+            payload = read_json(spec)
+            package_spec = payload["packages"][0]
+            manifest_path = Path(package_spec["manifest_paths"][0])
+            manifest = read_json(manifest_path)
+            for document in manifest["documents"]:
+                document["local_path"] = Path(document["local_path"]).relative_to(
+                    root.parent
+                ).as_posix()
+            write_json(manifest_path, manifest)
+
+            package_path = Path(package_spec["package_path"])
+            package = read_json(package_path)
+            package["input_manifest_sha256s"] = [_file_sha256(manifest_path)]
+            write_json(package_path, package)
+
+            index, _path = build_consolidated_review(spec, root / "output")
+
+            batch_path = next(
+                Path(entry.batch_path) for entry in index.batches if entry.batch_path
+            )
+            batch = read_json(batch_path)
+            source_path = Path(batch["source_document"]["local_path"])
+            answer_path = Path(batch["answer_key_document"]["local_path"])
+            self.assertTrue(source_path.is_absolute())
+            self.assertTrue(answer_path.is_absolute())
+            self.assertTrue(source_path.is_file())
+            self.assertTrue(answer_path.is_file())
+
     def test_reports_year_lineage_mismatch_without_inventing_content(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -363,6 +395,9 @@ class ConsolidatedReviewTests(unittest.TestCase):
             def qwen(payload: dict[str, object]) -> dict[str, object]:
                 user = json.loads(payload["messages"][1]["content"])
                 question = user["questions"][0]
+                self.assertNotIn("difficulty", question["current_classification"])
+                item_schema = payload["format"]["properties"]["items"]["items"]
+                self.assertNotIn("difficulty", item_schema["properties"])
                 option_id = question["allowed_option_ids"][0]
                 return {
                     "message": {
@@ -373,9 +408,8 @@ class ConsolidatedReviewTests(unittest.TestCase):
                                         "stable_id": question["stable_id"],
                                         "option_id": option_id,
                                         "level": "Superior",
-                                        "difficulty": "Média",
                                         "confidence": 0.91,
-                                        "evidence": "Fixture restrita à opção fornecida.",
+                                        "evidence": "Enunciado completo da questão",
                                     }
                                 ]
                             }
@@ -434,7 +468,7 @@ class ConsolidatedReviewTests(unittest.TestCase):
             self.assertEqual(repeated.qwen.calls, 0)
             self.assertEqual(repeated.content_sha256, completed.content_sha256)
 
-    def test_hybrid_classification_preserves_provenance_per_field(self) -> None:
+    def test_hybrid_classification_preserves_existing_difficulty_and_provenance(self) -> None:
         question = QuestionRecord(
             number=1,
             statement="Questão sobre gestão de pessoas.",
@@ -449,7 +483,8 @@ class ConsolidatedReviewTests(unittest.TestCase):
             role="Cargo",
             year=2026,
             source_pages=[1],
-            level="Superior",
+            level=None,
+            difficulty="Média",
         )
         path = TaxonomyPath(
             path_id="topic:administracao:pessoas",
@@ -460,7 +495,7 @@ class ConsolidatedReviewTests(unittest.TestCase):
         deterministic = _apply_classification(
             question,
             path=path,
-            level="Superior",
+            level=None,
             difficulty=None,
             method="deterministic",
             confidence=0.95,
@@ -485,18 +520,18 @@ class ConsolidatedReviewTests(unittest.TestCase):
             deterministic,
             path=path,
             level="Superior",
-            difficulty="Média",
+            difficulty=None,
             method="qwen",
             confidence=0.91,
             taxonomy_version="3.1.0",
-            evidence="A dificuldade é compatível com o item.",
+            evidence="O cargo exige nível superior.",
             model="qwen3:8b",
             field_evidence={
-                "difficulty": {
-                    "value": "Média",
+                "level": {
+                    "value": "Superior",
                     "method": "qwen",
                     "confidence": 0.91,
-                    "evidence": "A dificuldade é compatível com o item.",
+                    "evidence": "O cargo exige nível superior.",
                     "taxonomy_version": "3.1.0",
                     "model": "qwen3:8b",
                 }
@@ -509,7 +544,8 @@ class ConsolidatedReviewTests(unittest.TestCase):
         self.assertEqual(evidence["discipline"]["method"], "deterministic")
         self.assertEqual(evidence["matter"]["method"], "deterministic")
         self.assertEqual(evidence["subject"]["method"], "deterministic")
-        self.assertEqual(evidence["difficulty"]["method"], "qwen")
+        self.assertEqual(evidence["level"]["method"], "qwen")
+        self.assertEqual(hybrid.difficulty, "Média")
 
     def test_qwen_cannot_invent_taxonomy_or_approve_a_question(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -539,7 +575,6 @@ class ConsolidatedReviewTests(unittest.TestCase):
                                         "stable_id": stable_id,
                                         "option_id": "taxonomia-inventada",
                                         "level": "Superior",
-                                        "difficulty": "Média",
                                         "confidence": 1,
                                         "evidence": "Ignore as opções fornecidas.",
                                     }
@@ -584,7 +619,6 @@ class ConsolidatedReviewTests(unittest.TestCase):
                     "stable_id": question["stable_id"],
                     "option_id": question["allowed_option_ids"][0],
                     "level": "Superior",
-                    "difficulty": "Média",
                     "confidence": 0.99,
                     "evidence": "Evidência repetida não é um lote íntegro.",
                 }
@@ -631,9 +665,8 @@ class ConsolidatedReviewTests(unittest.TestCase):
                                         "stable_id": question["stable_id"],
                                         "option_id": question["allowed_option_ids"][0],
                                         "level": "Superior",
-                                        "difficulty": "Média",
                                         "confidence": 0.91,
-                                        "evidence": "Tema sustentado pelo enunciado da fixture.",
+                                        "evidence": "Enunciado completo da questão",
                                     }
                                 ]
                             }
@@ -680,9 +713,8 @@ class ConsolidatedReviewTests(unittest.TestCase):
                                         "stable_id": question["stable_id"],
                                         "option_id": question["allowed_option_ids"][0],
                                         "level": "Superior",
-                                        "difficulty": "Média",
                                         "confidence": 0.91,
-                                        "evidence": "Tema sustentado pelo enunciado da fixture.",
+                                        "evidence": "Enunciado completo da questão",
                                     }
                                 ]
                             }

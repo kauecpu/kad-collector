@@ -8,10 +8,15 @@ Esta rotina organiza o acervo estruturado em uma fila retomável, sem publicar q
 2. Cada prova é dividida em lotes estáveis de no máximo 100 questões.
 3. Metadados oficiais, faixas de prova, títulos, aliases e regras semânticas locais
    tentam preencher a taxonomia primeiro.
-4. O `qwen3:8b` recebe apenas as pendências e opções com IDs estáveis da taxonomia fechada.
+4. O `qwen3:8b` recebe apenas pendências de disciplina, matéria, assunto e nível, com opções
+   de IDs estáveis da taxonomia fechada. Dificuldade nunca entra no pedido.
 5. Sugestões do Qwen continuam com decisão `pending`.
-6. O revisor confere enunciado, alternativas, gabarito, origem e classificação.
-7. A exportação local aceita somente itens aprovados por uma pessoa e gera um pacote `draft`.
+6. Uma amostra estratificada é auditada; exceções permanecem em fila própria.
+7. A exportação local aceita grupos aprovados pela amostra e gera um pacote `draft`.
+
+`difficulty` é enriquecimento opcional. Valor válido já existente é preservado; ausência não
+torna a taxonomia incompleta, não cria bloqueio e é omitida do JSON exportado. Nunca se usa um
+valor genérico para preencher o campo.
 
 ## Retomada e auditoria
 
@@ -52,6 +57,7 @@ decisões auditadas. Um ID desconhecido ou repetido é recusado, inclusive quand
 - Alterar uma questão depois da aprovação invalida a decisão anterior.
 - Duplicatas por ID ou identidade semântica não entram duas vezes no pacote.
 - Uma falha do Ollama mantém as regras locais e a revisão disponíveis.
+- Dificuldade ausente não aparece como falha de qualidade nem como motivo de exceção.
 - Nenhuma etapa escreve no Supabase ou no KAD.
 - PDFs e dados de trabalho permanecem fora do Git.
 

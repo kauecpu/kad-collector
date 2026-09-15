@@ -75,3 +75,7 @@ Origem insegura, PDF inválido, estrutura inválida, associação ambígua do ga
 visual indispensável bloqueiam a aprovação. Uma classificação sugerida apenas pelo Qwen segue para
 revisão, mesmo que a confiança informada seja alta. Se o Ollama estiver indisponível, a avaliação
 determinística continua funcionando.
+
+`difficulty` é opcional: quando não informada, não bloqueia elegibilidade, amostragem ou staging.
+Quando presente, precisa continuar no catálogo `Fácil`, `Média` ou `Difícil`; o fluxo não inventa
+nem solicita esse campo ao Qwen.

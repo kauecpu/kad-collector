@@ -7,6 +7,7 @@ import re
 import time
 from collections import Counter, defaultdict
 from datetime import UTC, datetime
+from functools import cache
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlsplit
@@ -35,7 +36,7 @@ from .local_review import (
 from .models import DocumentRecord, LocalReviewSession, QuestionRecord, StrictModel
 from .question_equivalence import question_fingerprints
 
-APPROVAL_RULE_VERSION = "1.0.0"
+APPROVAL_RULE_VERSION = "1.1.0"
 APPROVAL_SCHEMA_VERSION = "1.0"
 
 EditorialState = Literal[
@@ -48,6 +49,11 @@ EditorialState = Literal[
 ]
 GroupStatus = Literal["pending_audit", "approved", "blocked"]
 AuditStatus = Literal["approved", "rejected", "deferred"]
+
+
+@cache
+def _closed_taxonomy_path_ids() -> frozenset[str]:
+    return frozenset(path.path_id for path in EditorialTaxonomy.load_default().candidate_paths())
 
 
 class ApprovalConfig(StrictModel):
@@ -387,16 +393,18 @@ def _evaluate_question(
             question.matter,
             question.subject,
             question.level,
-            question.difficulty,
         )
     )
     taxonomy_ok = (
         taxonomy_complete
-        and method in {"deterministic", "human_or_existing"}
+        and method in {"deterministic", "human_or_existing", "qwen", "hybrid"}
         and (
             method == "human_or_existing" or (confidence or 0) >= config.minimum_taxonomy_confidence
         )
-        and method != "qwen"
+        and (
+            method not in {"qwen", "hybrid"}
+            or (path_id is not None and path_id in _closed_taxonomy_path_ids())
+        )
     )
     taxonomy_score = (
         1.0 if method == "human_or_existing" and taxonomy_complete else (confidence or 0)
@@ -405,6 +413,7 @@ def _evaluate_question(
         f"método={method}",
         f"confiança={confidence if confidence is not None else 'ausente'}",
         f"caminho={path_id or 'ausente'}",
+        "difficulty=opcional" if question.difficulty is None else "difficulty=preservada",
     ]
 
     visual_ok = not _visual_dependency(question)

@@ -325,7 +325,7 @@ function statusLabel(status) {
 function flagLabel(flag) {
   return {
     incomplete: 'Incompleta', without_explanation: 'Sem explicação',
-    without_difficulty: 'Sem dificuldade', annulled: 'Anulada',
+    annulled: 'Anulada',
     without_answer: 'Sem gabarito', visual: 'Visual', missing_fields: 'Campos ausentes',
     low_confidence: 'Baixa confiança', duplicate: 'Duplicata',
   }[flag] || flag;
