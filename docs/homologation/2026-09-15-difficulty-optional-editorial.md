@@ -1,8 +1,8 @@
 # Homologação editorial com dificuldade opcional
 
-Data: 15/09/2026  
-Branch: `codex/difficulty-optional-editorial`  
-Base: `ae2b74a1634d795769efd19c24fb1bb33728449b` (PR #105)  
+Data: 15/09/2026
+Branch: `codex/difficulty-optional-editorial`
+Base: `ae2b74a1634d795769efd19c24fb1bb33728449b` (PR #105)
 Corpus: Polícia Federal/CEBRASPE, Banco do Brasil/CESGRANRIO e CORE-PI/QUADRIX
 
 ## Resultado
