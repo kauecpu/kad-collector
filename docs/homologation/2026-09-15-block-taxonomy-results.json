@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "campaign_version": "1.5",
+  "taxonomy_version": "3.2.0",
+  "mode": "deterministic_only",
+  "corpus": {
+    "occurrences": 5580,
+    "unique_questions": 5292,
+    "structurally_accepted": 5158,
+    "quarantined": 422
+  },
+  "baseline": {
+    "reported_complete": 1042,
+    "closed_taxonomy_paths": 763,
+    "invalid_complete_paths": 279
+  },
+  "current": {
+    "reported_complete": 1191,
+    "closed_taxonomy_paths": 1191,
+    "invalid_complete_paths": 0,
+    "unresolved": 4389,
+    "qwen_calls": 0,
+    "verified_block_context_questions": 7,
+    "repeated_run_same_counts": true,
+    "duplicate_stable_ids": 0
+  },
+  "closed_paths_by_corpus": {
+    "policia_federal_cebraspe": {
+      "before": 393,
+      "after": 683,
+      "delta": 290
+    },
+    "banco_do_brasil_cesgranrio": {
+      "before": 271,
+      "after": 409,
+      "delta": 138
+    },
+    "core_pi_quadrix": {
+      "before": 99,
+      "after": 99,
+      "delta": 0
+    }
+  },
+  "total_delta": 428,
+  "relative_gain_percent": 56.1,
+  "publication": "none"
+}

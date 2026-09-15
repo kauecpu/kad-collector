@@ -16,10 +16,11 @@ from kad_collector.editorial_campaign import (
     _apply_classification,
     _classification_field_evidence,
     _classification_method,
+    _sanitize_taxonomy_values,
     export_campaign_dry_run,
     run_editorial_campaign,
 )
-from kad_collector.editorial_taxonomy import TaxonomyPath
+from kad_collector.editorial_taxonomy import EditorialTaxonomy, TaxonomyPath
 from kad_collector.json_utils import read_json, write_json
 from kad_collector.local_review import (
     decide_review_question,
@@ -202,6 +203,35 @@ def _spec(root: Path) -> Path:
 
 
 class ConsolidatedReviewTests(unittest.TestCase):
+    def test_legacy_structural_labels_are_not_counted_as_closed_taxonomy(self) -> None:
+        question = QuestionRecord(
+            number=1,
+            statement="Enunciado completo sobre uma questão oficial.",
+            alternatives=[
+                Alternative(letter="A", text="Certo"),
+                Alternative(letter="B", text="Errado"),
+            ],
+            discipline="Direito Administrativo",
+            matter="2",
+            subject="Bloco I",
+            board="CEBRASPE",
+            organization="Polícia Federal",
+            role="Agente",
+            year=2021,
+            source_pages=[1],
+            correct_answer="A",
+            answer_status="matched",
+        )
+
+        sanitized = _sanitize_taxonomy_values(
+            question, EditorialTaxonomy.load_default()
+        )
+
+        self.assertEqual(sanitized.discipline, "Direito Administrativo")
+        self.assertIsNone(sanitized.matter)
+        self.assertIsNone(sanitized.subject)
+        self.assertIn("valor estrutural", " ".join(sanitized.review_notes))
+
     def test_builds_inventory_and_preserves_quarantine_overlap(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -247,9 +277,9 @@ class ConsolidatedReviewTests(unittest.TestCase):
             )
             classified = session.batch.questions[0].model_copy(
                 update={
-                    "discipline": "Direito",
-                    "matter": "Direito Administrativo",
-                    "subject": "Atos administrativos",
+                    "discipline": "Direito Administrativo",
+                    "matter": "Atos Administrativos",
+                    "subject": "Elementos, Atributos e Extinção",
                     "level": "Superior",
                     "difficulty": "Média",
                 }

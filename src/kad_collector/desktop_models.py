@@ -180,6 +180,29 @@ class ClassificationRequest(StrictModel):
     section_title: str | None = None
     block_id: str | None = None
     context: str | None = None
+    official_discipline: str | None = None
+    official_range_start: int | None = Field(default=None, ge=1)
+    official_range_end: int | None = Field(default=None, ge=1)
+    official_range_evidence: str | None = None
+
+    @model_validator(mode="after")
+    def validate_official_range(self) -> ClassificationRequest:
+        values = (
+            self.official_discipline,
+            self.official_range_start,
+            self.official_range_end,
+            self.official_range_evidence,
+        )
+        if any(value is not None for value in values) and any(
+            value is None for value in values
+        ):
+            raise ValueError("o intervalo oficial exige disciplina, limites e evidência")
+        if self.official_range_start is not None and self.official_range_end is not None:
+            if self.official_range_end < self.official_range_start:
+                raise ValueError("o intervalo oficial é inválido")
+            if not self.official_range_start <= self.question_number <= self.official_range_end:
+                raise ValueError("a questão não pertence ao intervalo oficial informado")
+        return self
 
 
 class ClassificationResponseItem(StrictModel):

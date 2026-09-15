@@ -79,6 +79,10 @@ def _question_record(question: StructuredQuestion, *, state: str) -> QuestionRec
     ]
     if question.correct_answer_label:
         notes.append(f"Rótulo original do gabarito: {question.correct_answer_label}.")
+    if question.area:
+        notes.append(f"Área estrutural da prova: {question.area}.")
+    if question.block:
+        notes.append(f"Bloco estrutural da prova: {question.block}.")
     notes.extend(f"Validação estrutural: {reason}" for reason in question.validation_reasons)
     answer_status: Literal["missing", "matched", "annulled"] = "missing"
     if question.correct_answer is not None:
@@ -97,8 +101,10 @@ def _question_record(question: StructuredQuestion, *, state: str) -> QuestionRec
             Alternative(letter=letter, text=text)
             for letter, text in sorted(question.alternatives.items())
         ],
-        matter=question.area,
-        subject=question.block,
+        # ``area`` and ``block`` describe the booklet structure. They are useful
+        # classification evidence, but are not editorial taxonomy values.
+        matter=None,
+        subject=None,
         board=question.board,
         organization=question.organization,
         role=question.role,

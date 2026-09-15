@@ -13,6 +13,7 @@ from typing import Any, Literal, cast
 
 import httpx
 from pydantic import Field
+from pypdf import PdfReader
 
 from .consolidated_review import (
     ConsolidatedReviewIndex,
@@ -20,8 +21,14 @@ from .consolidated_review import (
 )
 from .desktop_classifier import LocalRuleClassifier
 from .desktop_models import ClassificationRequest, DesktopImportMetadata
+from .desktop_parser import OfficialQuestionRangeContext, map_official_question_ranges
 from .editorial_export import build_editorial_record, stable_question_id
-from .editorial_taxonomy import EditorialTaxonomy, TaxonomyPath, normalize_taxonomy_text
+from .editorial_taxonomy import (
+    EditorialTaxonomy,
+    TaxonomyField,
+    TaxonomyPath,
+    normalize_taxonomy_text,
+)
 from .json_utils import read_json, write_json, write_json_lines
 from .local_review import (
     question_content_sha256,
@@ -33,7 +40,7 @@ from .models import LocalReviewSession, QuestionRecord, StrictModel
 from .question_equivalence import question_fingerprints
 from .validation import validate_editorial_question
 
-CAMPAIGN_VERSION = "1.4"
+CAMPAIGN_VERSION = "1.5"
 CLASSIFICATION_NOTE_PREFIX = "Classificação automática:"
 CLASSIFICATION_FIELD_NOTE_PREFIX = "Evidências da classificação:"
 REQUIRED_CLASSIFICATION_FIELDS = ("discipline", "matter", "subject", "level")
@@ -193,7 +200,10 @@ def _append_json_line(path: Path, payload: dict[str, Any]) -> None:
         handle.write("\n")
 
 
-def _classification_request(question: QuestionRecord) -> ClassificationRequest:
+def _classification_request(
+    question: QuestionRecord,
+    official_range: OfficialQuestionRangeContext | None = None,
+) -> ClassificationRequest:
     paragraphs = [
         value.strip()
         for value in re.split(r"\n\s*\n", question.statement)
@@ -209,8 +219,49 @@ def _classification_request(question: QuestionRecord) -> ClassificationRequest:
         question_number=question.number,
         statement=question.statement,
         alternatives=[item.text for item in question.alternatives],
+        section_title=_note_value(question, "Área estrutural da prova:"),
         context=(supporting_context or question.statement)[:1_200],
         block_id=block_id,
+        official_discipline=(official_range.discipline if official_range else None),
+        official_range_start=(official_range.first if official_range else None),
+        official_range_end=(official_range.last if official_range else None),
+        official_range_evidence=(
+            (
+                f"Quadro da página {official_range.page_number}: "
+                f"{official_range.heading}, questões "
+                f"{official_range.first} a {official_range.last}"
+            )
+            if official_range
+            else None
+        ),
+    )
+
+
+def _document_question_ranges(
+    session: LocalReviewSession,
+    taxonomy: EditorialTaxonomy,
+) -> dict[int, OfficialQuestionRangeContext]:
+    document = session.batch.source_document
+    try:
+        reader = PdfReader(document.local_path, strict=False)
+        pages = [
+            {
+                "page_number": number,
+                "text": (reader.pages[number - 1].extract_text() or "").replace(
+                    "\x00", ""
+                ),
+            }
+            for number in range(1, min(3, len(reader.pages)) + 1)
+        ]
+    except Exception:  # noqa: BLE001 - classification must survive one unreadable PDF
+        return {}
+    if not session.batch.questions:
+        return {}
+    metadata = _classification_metadata(session.batch.questions[0])
+    return map_official_question_ranges(
+        pages,
+        taxonomy,
+        catalog_ids=taxonomy.relevant_catalog_ids(metadata),
     )
 
 
@@ -341,6 +392,70 @@ def _classification_field_evidence(question: QuestionRecord) -> dict[str, dict[s
     except (TypeError, ValueError, json.JSONDecodeError):
         return {}
     return cast(dict[str, dict[str, Any]], payload) if isinstance(payload, dict) else {}
+
+
+def _sanitize_taxonomy_values(
+    question: QuestionRecord,
+    taxonomy: EditorialTaxonomy,
+) -> QuestionRecord:
+    """Remove legacy structural labels that are not members of the closed taxonomy."""
+    updates: dict[str, str | None] = {}
+    rejected: list[str] = []
+    taxonomy_fields: tuple[tuple[str, TaxonomyField], ...] = (
+        ("discipline", "discipline"),
+        ("matter", "matter"),
+        ("subject", "subject"),
+    )
+    for field_name, taxonomy_field in taxonomy_fields:
+        value = getattr(question, field_name)
+        if value is None:
+            continue
+        try:
+            updates[field_name] = taxonomy.canonical_name(taxonomy_field, value)
+        except ValueError:
+            updates[field_name] = None
+            rejected.append(f"{field_name}={value}")
+
+    projected = {
+        field_name: updates.get(field_name, getattr(question, field_name))
+        for field_name in ("discipline", "matter", "subject")
+    }
+    if all(projected.values()) and taxonomy.path_for_values(
+        projected["discipline"], projected["matter"], projected["subject"]
+    ) is None:
+        rejected.extend(
+            f"{field_name}={projected[field_name]}"
+            for field_name in ("matter", "subject")
+        )
+        updates["matter"] = None
+        updates["subject"] = None
+
+    if not updates and not rejected:
+        return question
+    changed = any(getattr(question, field_name) != value for field_name, value in updates.items())
+    if not changed:
+        return question
+    details = _classification_field_evidence(question)
+    for field_name, value in updates.items():
+        if value is None:
+            details.pop(field_name, None)
+    notes = [
+        item
+        for item in question.review_notes
+        if not item.startswith((CLASSIFICATION_NOTE_PREFIX, CLASSIFICATION_FIELD_NOTE_PREFIX))
+    ]
+    notes.append(
+        "Taxonomia fechada: valor estrutural ou combinação inválida descartada ("
+        + ", ".join(dict.fromkeys(rejected))
+        + ")."
+    )
+    if details:
+        notes.append(
+            CLASSIFICATION_FIELD_NOTE_PREFIX
+            + " "
+            + json.dumps(details, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        )
+    return question.model_copy(update={**updates, "review_notes": notes})
 
 
 def _apply_classification(
@@ -1497,9 +1612,16 @@ def run_editorial_campaign(
     )
     qwen_available = enable_qwen and qwen.preflight()
     processed = 0
+    document_range_cache: dict[str, dict[int, OfficialQuestionRangeContext]] = {}
 
     for _batch_id, session_path in sessions:
         session = LocalReviewSession.model_validate(read_json(session_path))
+        document_sha = session.batch.source_document.sha256
+        if document_sha not in document_range_cache:
+            document_range_cache[document_sha] = _document_question_ranges(
+                session, taxonomy
+            )
+        document_ranges = document_range_cache[document_sha]
         decisions = {item.question_number: item for item in session.decisions}
         pending: list[QuestionRecord] = []
         candidates: list[QuestionRecord] = []
@@ -1511,6 +1633,7 @@ def run_editorial_campaign(
                 continue
             original_question = question
             question = _reset_stale_automatic_classification(question)
+            question = _sanitize_taxonomy_values(question, taxonomy)
             if question != original_question:
                 session = update_review_question(session, question.number, question)
             method = _classification_method(question)
@@ -1525,7 +1648,12 @@ def run_editorial_campaign(
             candidates.append(question)
         results = (
             local.classify_many(
-                [_classification_request(question) for question in candidates],
+                [
+                    _classification_request(
+                        question, document_ranges.get(question.number)
+                    )
+                    for question in candidates
+                ],
                 _classification_metadata(candidates[0]),
             )
             if candidates

@@ -422,6 +422,82 @@ class EditorialTaxonomy:
     def path_by_id(self, path_id: str) -> TaxonomyPath | None:
         return self._paths_by_id.get(path_id)
 
+    def path_for_values(
+        self,
+        discipline: str | None,
+        matter: str | None,
+        subject: str | None,
+    ) -> TaxonomyPath | None:
+        """Return the single closed path represented by the three editorial values."""
+        if not all((discipline, matter, subject)):
+            return None
+        matches = [
+            path
+            for path in self._paths_by_id.values()
+            if (path.discipline, path.matter, path.subject)
+            == (discipline, matter, subject)
+        ]
+        # Different source-specific catalogs may intentionally repeat the same
+        # canonical tuple.  The tuple is still closed; prefer the first loaded
+        # path so callers get the stable, general catalog id when one exists.
+        return matches[0] if matches else None
+
+    def discipline_path(
+        self,
+        value: str,
+        *,
+        catalog_ids: Iterable[str] | None = None,
+    ) -> TaxonomyPath | None:
+        """Resolve a discipline heading without guessing a matter or subject."""
+        try:
+            canonical = self.canonical_name("discipline", value)
+        except ValueError:
+            return None
+        allowed = frozenset(catalog_ids) if catalog_ids is not None else None
+        matches = [
+            path
+            for path in self._paths_by_id.values()
+            if path.discipline == canonical
+            and path.matter is None
+            and path.subject is None
+            and self._catalog_allowed(path, allowed)
+        ]
+        return matches[0] if matches else None
+
+    def discipline_mentions(
+        self,
+        text: str,
+        *,
+        catalog_ids: Iterable[str] | None = None,
+    ) -> tuple[tuple[int, str, TaxonomyPath], ...]:
+        """Find non-overlapping controlled discipline headings in display order."""
+        normalized = normalize_taxonomy_text(text)
+        if not normalized:
+            return ()
+        allowed = frozenset(catalog_ids) if catalog_ids is not None else None
+        candidates: list[tuple[int, int, str, TaxonomyPath]] = []
+        for heading, path in self._heading_paths:
+            if (
+                path.matter is not None
+                or path.subject is not None
+                or not self._catalog_allowed(path, allowed)
+            ):
+                continue
+            match = re.search(rf"(?<!\w){re.escape(heading)}(?!\w)", normalized)
+            if match is not None:
+                candidates.append((match.start(), match.end(), heading, path))
+        candidates.sort(key=lambda item: (item[0], -(item[1] - item[0])))
+        selected: list[tuple[int, str, TaxonomyPath]] = []
+        occupied_until = -1
+        seen: set[str] = set()
+        for start, end, heading, path in candidates:
+            if start < occupied_until or path.discipline in seen:
+                continue
+            selected.append((start, heading, path))
+            occupied_until = end
+            seen.add(path.discipline)
+        return tuple(selected)
+
     def is_compatible_version(self, version: str) -> bool:
         return version in self.compatible_versions
 
