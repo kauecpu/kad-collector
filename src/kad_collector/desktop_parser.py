@@ -54,6 +54,13 @@ _CEBRASPE_NON_OBJECTIVE_HEADING = re.compile(
 _CEBRASPE_TRUE_FALSE_NOTE = (
     "item CERTO/ERRADO; A representa Certo e B representa Errado no formato interno"
 )
+_QUESTION_RANGE = re.compile(
+    r"(?<!\d)(?P<start>\d{1,3})\s*(?:a|até|ate|[-–—])\s*"
+    r"(?P<end>\d{1,3})(?!\d)",
+    re.IGNORECASE,
+)
+
+
 @dataclass
 class _QuestionBuilder:
     number: int
@@ -71,6 +78,88 @@ class QuestionSectionContext:
     block_id: str
     page_number: int
     path: TaxonomyPath
+
+
+@dataclass(frozen=True)
+class OfficialQuestionRangeContext:
+    discipline: str
+    first: int
+    last: int
+    page_number: int
+    heading: str
+    provenance: tuple[str, ...]
+
+
+def map_official_question_ranges(
+    pages: list[dict[str, Any]],
+    taxonomy: EditorialTaxonomy,
+    *,
+    catalog_ids: Iterable[str] | None = None,
+) -> dict[int, OfficialQuestionRangeContext]:
+    """Read discipline/range tables printed in an official exam booklet.
+
+    The parser pairs controlled discipline headings with the next row containing
+    the same number of closed question intervals. Conflicting tables fail closed.
+    """
+    mapped: dict[int, OfficialQuestionRangeContext] = {}
+    conflicts: set[int] = set()
+    for page in pages:
+        page_number = int(page["page_number"])
+        pending: list[tuple[int, str, TaxonomyPath]] = []
+        lines_since_heading = 0
+        for raw_line in str(page["text"]).splitlines():
+            line = " ".join(raw_line.split())
+            if not line:
+                continue
+            mentions = list(
+                taxonomy.discipline_mentions(line, catalog_ids=catalog_ids)
+            )
+            ranges = [
+                (int(match.group("start")), int(match.group("end")))
+                for match in _QUESTION_RANGE.finditer(line)
+            ]
+            if mentions and not ranges:
+                pending = mentions
+                lines_since_heading = 0
+                continue
+            if pending:
+                lines_since_heading += 1
+            if pending and ranges and len(ranges) == len(pending):
+                valid = all(1 <= first <= last <= 500 for first, last in ranges)
+                ordered = all(
+                    left[1] < right[0]
+                    for left, right in zip(ranges, ranges[1:], strict=False)
+                )
+                if valid and ordered:
+                    for (_, heading, path), (first, last) in zip(
+                        pending, ranges, strict=True
+                    ):
+                        context = OfficialQuestionRangeContext(
+                            discipline=path.discipline,
+                            first=first,
+                            last=last,
+                            page_number=page_number,
+                            heading=heading,
+                            provenance=path.provenance,
+                        )
+                        for number in range(first, last + 1):
+                            previous = mapped.get(number)
+                            same_range = previous is not None and (
+                                previous.discipline,
+                                previous.first,
+                                previous.last,
+                            ) == (context.discipline, context.first, context.last)
+                            if previous is not None and not same_range:
+                                conflicts.add(number)
+                                mapped.pop(number, None)
+                            elif number not in conflicts:
+                                mapped[number] = context
+                pending = []
+                continue
+            if pending and (mentions or lines_since_heading > 3):
+                pending = mentions
+                lines_since_heading = 0
+    return mapped
 
 
 @dataclass(frozen=True)

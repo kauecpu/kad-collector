@@ -14,6 +14,7 @@ from kad_collector.desktop_models import (
     DesktopImportMetadata,
     QuestionClassification,
 )
+from kad_collector.desktop_parser import map_official_question_ranges
 from kad_collector.desktop_server import DesktopApplication
 from kad_collector.editorial_taxonomy import EditorialTaxonomy
 from kad_collector.models import Alternative, QuestionRecord
@@ -56,6 +57,8 @@ def _request(
     section_title: str | None = None,
     block_id: str | None = None,
     context: str | None = None,
+    official_discipline: str | None = None,
+    official_range: tuple[int, int] | None = None,
 ) -> ClassificationRequest:
     return ClassificationRequest(
         question_number=number,
@@ -64,6 +67,12 @@ def _request(
         section_title=section_title,
         block_id=block_id,
         context=context,
+        official_discipline=official_discipline,
+        official_range_start=official_range[0] if official_range else None,
+        official_range_end=official_range[1] if official_range else None,
+        official_range_evidence=(
+            "Quadro oficial da prova" if official_range else None
+        ),
     )
 
 
@@ -87,6 +96,97 @@ def _fgv_metadata(**changes: object) -> DesktopImportMetadata:
 
 
 class EditorialTaxonomyTests(unittest.TestCase):
+    def test_reads_multiple_discipline_ranges_from_official_cover_table(self) -> None:
+        taxonomy = EditorialTaxonomy.load_default()
+        ranges = map_official_question_ranges(
+            [
+                {
+                    "page_number": 1,
+                    "text": (
+                        "CONHECIMENTOS BÁSICOS\n"
+                        "Língua Portuguesa Língua Inglesa Matemática "
+                        "Atualidades do Mercado Financeiro\n"
+                        "Questões Pontuação Questões Pontuação Questões Pontuação "
+                        "Questões Pontuação\n"
+                        "1 a 10 1,5 ponto cada 11 a 15 1,0 ponto cada "
+                        "16 a 20 1,5 ponto cada 21 a 25 1,0 ponto cada"
+                    ),
+                }
+            ],
+            taxonomy,
+        )
+
+        self.assertEqual(ranges[1].discipline, "Língua Portuguesa")
+        self.assertEqual(ranges[14].discipline, "Língua Inglesa")
+        self.assertEqual(ranges[21].discipline, "Atualidades do Mercado Financeiro")
+        self.assertEqual((ranges[21].first, ranges[21].last), (21, 25))
+
+    def test_document_range_overrides_outdated_catalog_fallback(self) -> None:
+        result = LocalRuleClassifier().classify_many(
+            [
+                _request(
+                    21,
+                    "A transformação digital alterou os meios de pagamento.",
+                    official_discipline="Atualidades do Mercado Financeiro",
+                    official_range=(21, 25),
+                )
+            ],
+            DesktopImportMetadata(
+                source_url="https://inscricao.cesgranrio.com.br/bb0121/prova.pdf",
+                concurso="bb0121",
+                board="Cesgranrio",
+                role="Escriturário - Agente Comercial",
+                stage="objetiva",
+            ),
+        )[0].classification
+
+        self.assertEqual(result.discipline.value, "Atualidades do Mercado Financeiro")
+        self.assertEqual(result.discipline.source, "official_document_range")
+
+    def test_repeated_identical_cover_table_does_not_create_a_conflict(self) -> None:
+        taxonomy = EditorialTaxonomy.load_default()
+        pages = [
+            {
+                "page_number": page_number,
+                "text": "Língua Portuguesa\nQuestões\n1 a 10",
+            }
+            for page_number in (1, 2)
+        ]
+
+        ranges = map_official_question_ranges(pages, taxonomy)
+
+        self.assertEqual(ranges[7].discipline, "Língua Portuguesa")
+        self.assertEqual((ranges[7].first, ranges[7].last), (1, 10))
+
+    def test_shared_block_context_classifies_the_whole_verified_block(self) -> None:
+        context = (
+            "Durante a investigação criminal, a cadeia de custódia da prova deve "
+            "ser preservada desde a coleta."
+        )
+        results = LocalRuleClassifier().classify_many(
+            [
+                _request(
+                    number,
+                    f"Julgue o item {number}.",
+                    block_id="contexto-prova",
+                    context=context,
+                    official_discipline="Direito Processual Penal",
+                    official_range=(1, 3),
+                )
+                for number in range(1, 4)
+            ],
+            DesktopImportMetadata(),
+        )
+
+        self.assertTrue(
+            all(
+                item.classification.subject.value == "Prova Penal"
+                and item.classification.topic.value == "Meios de Prova e Cadeia de Custódia"
+                and item.classification.topic.source == "verified_block_context"
+                for item in results
+            )
+        )
+
     def test_taxonomy_is_versioned_sourced_and_rejects_unknown_names(self) -> None:
         taxonomy = EditorialTaxonomy.load_default()
 
@@ -119,7 +219,7 @@ class EditorialTaxonomyTests(unittest.TestCase):
             ),
         )[0].classification
 
-        self.assertEqual(result.discipline.value, "Vendas e Negociação")
+        self.assertEqual(result.discipline.value, "Informática")
         self.assertEqual(result.discipline.source, "official_exam_range")
         self.assertEqual(result.level.value, "Médio")
         self.assertEqual(result.level.source, "official_contest_requirement")
@@ -185,7 +285,7 @@ class EditorialTaxonomyTests(unittest.TestCase):
         middle = results[1].classification
         self.assertEqual(middle.discipline.value, "Direito Tributário")
         self.assertEqual(middle.subject.value, "Sigilo Fiscal")
-        self.assertEqual(middle.discipline.source, "neighbor_context")
+        self.assertEqual(middle.discipline.source, "verified_block_context")
 
     def test_neighbor_context_does_not_propagate_without_explicit_block(self) -> None:
         results = LocalRuleClassifier().classify_many(

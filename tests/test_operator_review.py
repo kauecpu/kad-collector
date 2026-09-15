@@ -251,6 +251,23 @@ class OperatorReviewBridgeTests(unittest.TestCase):
             self.assertTrue(record.statement.startswith("Texto de apoio oficial da questão."))
             self.assertIn(structured.statement, record.statement)
 
+    def test_structural_area_and_block_are_evidence_not_taxonomy_values(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            exam = _document(root, "prova", "exam")
+            answer_key = _document(root, "gabarito", "answer_key")
+            structured = _structured(1, exam, answer_key, status="accepted")
+
+            record = _question_record(structured, state="accepted")
+
+            self.assertIsNone(record.matter)
+            self.assertIsNone(record.subject)
+            self.assertIn("Área estrutural da prova: Direito.", record.review_notes)
+            self.assertIn(
+                "Bloco estrutural da prova: Direito Administrativo.",
+                record.review_notes,
+            )
+
     def test_builds_pending_batches_and_preserves_quarantine_and_rejection(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             output = _write_operator_artifacts(Path(temporary))
@@ -307,9 +324,9 @@ class OperatorReviewBridgeTests(unittest.TestCase):
             )
             edited = session.batch.questions[0].model_copy(
                 update={
-                    "discipline": "Direito",
-                    "matter": "Direito Administrativo",
-                    "subject": "Atos administrativos",
+                    "discipline": "Direito Administrativo",
+                    "matter": "Atos Administrativos",
+                    "subject": "Elementos, Atributos e Extinção",
                     "level": "Superior",
                     "difficulty": "Média",
                 }
@@ -362,9 +379,9 @@ class OperatorReviewBridgeTests(unittest.TestCase):
                 completed.append(
                     question.model_copy(
                         update={
-                            "discipline": "Direito",
-                            "matter": "Direito Administrativo",
-                            "subject": "Atos administrativos",
+                            "discipline": "Direito Administrativo",
+                            "matter": "Atos Administrativos",
+                            "subject": "Elementos, Atributos e Extinção",
                             "level": "Superior",
                             "difficulty": "Média",
                         }

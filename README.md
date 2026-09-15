@@ -117,6 +117,11 @@ aplica primeiro as regras locais e consulta o Qwen apenas nos itens ainda incomp
 só pode escolher caminhos da taxonomia fechada; a sugestão registra método, confiança e versão,
 mas permanece pendente até uma decisão humana explícita.
 
+Rótulos estruturais do caderno, como `Bloco I` ou `Área 2`, ficam apenas como evidência e nunca
+como matéria ou assunto. Quando a capa contém uma tabela de disciplinas e intervalos de questões,
+o coletor lê esses intervalos antes das regras fixas. Contexto compartilhado só é propagado dentro
+de um bloco explícito e quando aponta para um único caminho da taxonomia fechada.
+
 ```cmd
 kad-collector editorial-campaign config\editorial-campaign.v1.json ^
   --output data\editorial-campaign\pf-bb-corepi ^

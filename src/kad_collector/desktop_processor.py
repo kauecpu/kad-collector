@@ -24,6 +24,7 @@ from .desktop_models import (
     QuestionClassification,
 )
 from .desktop_parser import (
+    map_official_question_ranges,
     map_question_sections,
     parse_question_document,
     question_section_context,
@@ -369,12 +370,18 @@ class DesktopProcessor:
                 taxonomy,
                 catalog_ids=taxonomy.relevant_catalog_ids(metadata),
             )
+            range_contexts = map_official_question_ranges(
+                list(self.store.pages(document_id)),
+                taxonomy,
+                catalog_ids=taxonomy.relevant_catalog_ids(metadata),
+            )
             requests: list[ClassificationRequest] = []
             for row in rows:
                 question = cast(QuestionRecord, row["question"])
                 section_context = question_section_context(
                     section_contexts, question
                 )
+                range_context = range_contexts.get(question.number)
                 context = "\n".join(
                     pages[number]
                     for number in question.source_pages
@@ -396,6 +403,22 @@ class DesktopProcessor:
                             else None
                         ),
                         context=context or None,
+                        official_discipline=(
+                            range_context.discipline if range_context else None
+                        ),
+                        official_range_start=(
+                            range_context.first if range_context else None
+                        ),
+                        official_range_end=(
+                            range_context.last if range_context else None
+                        ),
+                        official_range_evidence=(
+                            f"Quadro da página {range_context.page_number}: "
+                            f"{range_context.heading}, questões "
+                            f"{range_context.first} a {range_context.last}"
+                            if range_context
+                            else None
+                        ),
                     )
                 )
             classified = classifier.classify_many(requests, metadata)
@@ -918,11 +941,17 @@ class DesktopProcessor:
                 taxonomy,
                 catalog_ids=taxonomy.relevant_catalog_ids(metadata),
             )
+            range_contexts = map_official_question_ranges(
+                pages,
+                taxonomy,
+                catalog_ids=taxonomy.relevant_catalog_ids(metadata),
+            )
             requests: list[ClassificationRequest] = []
             for question in questions:
                 section_context = question_section_context(
                     section_contexts, question
                 )
+                range_context = range_contexts.get(question.number)
                 requests.append(
                     ClassificationRequest(
                         question_number=question.number,
@@ -944,6 +973,22 @@ class DesktopProcessor:
                             if number in page_text
                         )
                         or None,
+                        official_discipline=(
+                            range_context.discipline if range_context else None
+                        ),
+                        official_range_start=(
+                            range_context.first if range_context else None
+                        ),
+                        official_range_end=(
+                            range_context.last if range_context else None
+                        ),
+                        official_range_evidence=(
+                            f"Quadro da página {range_context.page_number}: "
+                            f"{range_context.heading}, questões "
+                            f"{range_context.first} a {range_context.last}"
+                            if range_context
+                            else None
+                        ),
                     )
                 )
             provider_name = cast(str, self.store.job(job_id)["classifier_provider"])

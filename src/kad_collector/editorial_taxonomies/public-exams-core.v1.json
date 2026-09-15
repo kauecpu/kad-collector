@@ -1,6 +1,6 @@
 {
   "id": "public-exams-core",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "sources": [
     {"id": "pf-2018", "title": "Edital nº 1 DGP/PF de 2018", "url": "https://cdn.cebraspe.org.br/concursos/pf_18/arquivos/ED_1_DPF_2018___ABT.PDF"},
     {"id": "pf-2021", "title": "Edital nº 1 DGP/PF de 2021", "url": "https://cdn.cebraspe.org.br/concursos/pf_21/arquivos/ED_1_DPF_2021_ABT.PDF"},
@@ -23,15 +23,19 @@
       {"id": "topic:matematica:combinatoria", "matter": "Análise Combinatória", "subject": "Contagem e Probabilidade", "keywords": ["probabilidade", "arranjo", "permutação", "combinação", "princípio fundamental da contagem"]},
       {"id": "topic:matematica:geometria", "matter": "Geometria", "subject": "Geometria Plana e Espacial", "keywords": ["área do", "volume do", "perímetro", "triângulo", "circunferência"]}
     ]},
+    {"id": "disc:matematica-financeira", "name": "Matemática Financeira", "topics": [
+      {"id": "topic:matematica-financeira:juros", "matter": "Juros e Descontos", "subject": "Capitalização e Taxas", "keywords": ["juros simples", "juros compostos", "taxa de juros", "valor presente", "valor futuro", "desconto comercial"]},
+      {"id": "topic:matematica-financeira:amortizacao", "matter": "Sistemas de Amortização", "subject": "Prestações e Saldos", "keywords": ["sistema price", "sistema de amortização constante", "tabela sac", "saldo devedor", "prestação"]}
+    ]},
     {"id": "disc:raciocinio-logico", "name": "Raciocínio Lógico-Matemático", "aliases": ["Raciocínio Lógico"], "topics": [
       {"id": "topic:logica:proposicoes", "matter": "Lógica Proposicional", "subject": "Proposições e Conectivos", "keywords": ["proposição", "tabela verdade", "negação lógica", "conectivo lógico", "equivalência lógica"]},
       {"id": "topic:logica:argumentacao", "matter": "Lógica de Argumentação", "subject": "Inferências e Diagramas", "keywords": ["diagrama lógico", "inferência", "dedução lógica", "argumento válido"]}
     ]},
-    {"id": "disc:estatistica", "name": "Estatística", "topics": [
+    {"id": "disc:estatistica", "name": "Estatística", "aliases": ["Probabilidade e Estatística"], "topics": [
       {"id": "topic:estatistica:descritiva", "matter": "Estatística Descritiva", "subject": "Medidas e Distribuições", "keywords": ["média aritmética", "mediana", "desvio padrão", "variância", "distribuição de frequência"]},
       {"id": "topic:estatistica:inferencia", "matter": "Inferência Estatística", "subject": "Estimação e Testes", "keywords": ["intervalo de confiança", "teste de hipótese", "nível de significância", "estimador", "erro de amostragem", "amostragem sistemática", "t de student", "população infinita"]}
     ]},
-    {"id": "disc:informatica", "name": "Informática", "aliases": ["Noções de Informática"], "topics": [
+    {"id": "disc:informatica", "name": "Informática", "aliases": ["Noções de Informática", "Conhecimentos de Informática"], "topics": [
       {"id": "topic:informatica:sistemas", "matter": "Sistemas Operacionais e Escritório", "subject": "Windows e Microsoft Office", "keywords": ["microsoft word", "microsoft excel", "powerpoint", "windows 10", "windows 11", "planilha eletrônica"]},
       {"id": "topic:informatica:internet", "matter": "Internet e Redes", "subject": "Navegação, Correio e Redes", "keywords": ["google chrome", "mozilla firefox", "correio eletrônico", "internet e intranet", "endereço ip"]},
       {"id": "topic:informatica:seguranca", "matter": "Segurança da Informação", "subject": "Ameaças, Proteção e Backup", "keywords": ["segurança da informação", "vírus de computador", "firewall", "antivírus", "procedimento de backup", "ransomware"]}
@@ -82,6 +86,10 @@
       {"id": "topic:bancario:sfn", "matter": "Sistema Financeiro Nacional", "subject": "Instituições e Mercados", "keywords": ["sistema financeiro nacional", "banco central", "conselho monetário nacional", "mercado de capitais"]},
       {"id": "topic:bancario:produtos", "matter": "Produtos e Serviços Bancários", "subject": "Crédito, Investimentos e Meios de Pagamento", "keywords": ["crédito bancário", "cartão de crédito", "pix", "caderneta de poupança", "fundo de investimento"]},
       {"id": "topic:bancario:compliance", "matter": "Compliance Bancário", "subject": "PLD, Ética e Proteção de Dados", "keywords": ["lavagem de dinheiro", "financiamento do terrorismo", "sigilo bancário", "proteção de dados"]}
+    ]},
+    {"id": "disc:atualidades-mercado-financeiro", "name": "Atualidades do Mercado Financeiro", "topics": [
+      {"id": "topic:mercado-financeiro:transformacao", "matter": "Transformação do Sistema Financeiro", "subject": "Inovação e Novos Modelos", "keywords": ["bancos na era digital", "internet banking", "mobile banking", "open banking", "open finance", "fintech", "shadow banking", "marketplace"]},
+      {"id": "topic:mercado-financeiro:moedas-pagamentos", "matter": "Moedas e Pagamentos Digitais", "subject": "Blockchain, Criptoativos e PIX", "keywords": ["moeda digital", "blockchain", "bitcoin", "criptomoeda", "arranjo de pagamento", "sistema de pagamentos instantâneos", "pix"]}
     ]},
     {"id": "disc:vendas-negociacao", "name": "Vendas e Negociação", "topics": [
       {"id": "topic:vendas:atendimento", "matter": "Atendimento e Vendas", "subject": "Relacionamento com o Cliente", "keywords": ["relacionamento com o cliente", "atendimento ao cliente", "satisfação do cliente", "experiência do cliente"]},

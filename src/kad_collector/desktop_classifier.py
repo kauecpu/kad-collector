@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from .desktop_models import (
     ClassificationRequest,
@@ -57,6 +57,7 @@ def _metadata_classification(metadata: DesktopImportMetadata) -> QuestionClassif
 
 class LocalRuleClassifier:
     name = "local"
+    _AUTHORITATIVE_BLOCK_SOURCES = frozenset({"section_title", "page_section"})
 
     def __init__(self, taxonomy: EditorialTaxonomy | None = None) -> None:
         self.taxonomy = taxonomy or EditorialTaxonomy.load_default()
@@ -210,6 +211,117 @@ class LocalRuleClassifier:
                         ),
                     )
 
+    def _classify_verified_blocks(
+        self,
+        classifications: list[QuestionClassification],
+        questions: list[ClassificationRequest],
+        *,
+        catalog_ids: tuple[str, ...],
+    ) -> None:
+        grouped: dict[str, list[int]] = {}
+        for index, question in enumerate(questions):
+            if question.block_id is not None:
+                grouped.setdefault(question.block_id, []).append(index)
+
+        for block_id, indexes in grouped.items():
+            if len(indexes) < 2:
+                continue
+            contexts = {
+                " ".join((questions[index].context or "").split())
+                for index in indexes
+                if (questions[index].context or "").strip()
+            }
+            authoritative_paths: list[TaxonomyPath] = []
+            for index in indexes:
+                classification = classifications[index]
+                path = self.taxonomy.path_for_values(
+                    cast(str | None, classification.discipline.value),
+                    cast(str | None, classification.subject.value),
+                    cast(str | None, classification.topic.value),
+                )
+                sources = {
+                    classification.discipline.source,
+                    classification.subject.source,
+                    classification.topic.source,
+                }
+                if (
+                    path is not None
+                    and sources
+                    and sources <= self._AUTHORITATIVE_BLOCK_SOURCES
+                    and min(
+                        classification.discipline.confidence,
+                        classification.subject.confidence,
+                        classification.topic.confidence,
+                    )
+                    >= 0.9
+                ):
+                    authoritative_paths.append(path)
+
+            selected: TaxonomyPath | None = None
+            source = "verified_block_context"
+            confidence = 0.9
+            reason = "Seção controlada aplicada somente ao bloco explícito correspondente"
+            evidence = f"Bloco {block_id} possui seção oficial reconhecida"
+            unique_authoritative = {
+                (path.discipline, path.matter, path.subject): path
+                for path in authoritative_paths
+            }
+            if len(unique_authoritative) == 1:
+                selected = next(iter(unique_authoritative.values()))
+            elif len(unique_authoritative) > 1 or len(contexts) != 1:
+                continue
+            else:
+                shared_context = next(iter(contexts))
+                known_disciplines = {
+                    str(classifications[index].discipline.value)
+                    for index in indexes
+                    if classifications[index].discipline.value is not None
+                    and classifications[index].discipline.source
+                    in {"official_document_range", "official_exam_range"}
+                }
+                if len(known_disciplines) > 1:
+                    continue
+                discipline = next(iter(known_disciplines), None)
+                semantic = self.taxonomy.semantic_match(
+                    shared_context,
+                    discipline=discipline,
+                    catalog_ids=catalog_ids,
+                )
+                minimum_score = 2 if discipline is not None else 3
+                if semantic is None or semantic.score < minimum_score:
+                    continue
+                selected = semantic.path
+                confidence = min(0.9, 0.78 + semantic.score * 0.03)
+                evidence = semantic.evidence
+                reason = (
+                    "Contexto repetido do bloco contém evidência taxonômica "
+                    "controlada suficiente"
+                )
+
+            expected = (selected.discipline, selected.matter, selected.subject)
+            conflict = any(
+                current.value is not None and current.value != expected[position]
+                for index in indexes
+                for position, current in enumerate(
+                    (
+                        classifications[index].discipline,
+                        classifications[index].subject,
+                        classifications[index].topic,
+                    )
+                )
+            )
+            if conflict:
+                continue
+            for index in indexes:
+                self._apply_path(
+                    classifications[index],
+                    selected,
+                    confidence=confidence,
+                    source=source,
+                    evidence=evidence,
+                    reason=reason,
+                )
+
     def classify_many(
         self,
         questions: list[ClassificationRequest],
@@ -253,10 +365,27 @@ class LocalRuleClassifier:
                     reason="Título de seção reconhecido na taxonomia versionada",
                 )
 
+            document_range = None
+            if question.official_discipline is not None:
+                document_range = self.taxonomy.discipline_path(
+                    question.official_discipline,
+                    catalog_ids=catalog_ids,
+                )
+            if document_range is not None:
+                self._apply_path(
+                    classification,
+                    document_range,
+                    confidence=0.98,
+                    source="official_document_range",
+                    evidence=question.official_range_evidence
+                    or f"Questão {question.question_number} em intervalo oficial",
+                    reason="Disciplina e intervalo lidos do quadro oficial da prova",
+                )
+
             official_range = self.taxonomy.match_official_range(
                 metadata, question.question_number
             )
-            if official_range is not None:
+            if official_range is not None and classification.discipline.value is None:
                 self._apply_path(
                     classification,
                     official_range,
@@ -299,6 +428,11 @@ class LocalRuleClassifier:
                 )
             classifications.append(classification)
 
+        self._classify_verified_blocks(
+            classifications,
+            questions,
+            catalog_ids=catalog_ids,
+        )
         self._propagate_neighbors(classifications, questions)
         for classification in classifications:
             self._mark_unresolved(classification)

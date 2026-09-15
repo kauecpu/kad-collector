@@ -83,8 +83,8 @@ def _question(
             Alternative(letter="B", text="Errado"),
         ],
         discipline="Língua Portuguesa",
-        matter="Compreensão de textos",
-        subject="Interpretação de texto",
+        matter="Interpretação de Textos",
+        subject="Compreensão e Interpretação",
         board="CEBRASPE",
         organization="Polícia Federal",
         concurso="Polícia Federal 2021",
@@ -101,8 +101,9 @@ def _question(
             f"Associação de gabarito: {association}.",
             (
                 "Classificação automática: "
-                f"método={method}; confiança={confidence:.2f}; taxonomia=2.0; "
-                "caminho=portugues-texto; evidência=regra oficial; pendências=nenhuma."
+                f"método={method}; confiança={confidence:.2f}; taxonomia=3.2.0; "
+                "caminho=topic:portugues:interpretacao; evidência=regra oficial; "
+                "pendências=nenhuma."
             ),
             *(extra_notes or []),
         ],
@@ -221,14 +222,43 @@ class EditorialApprovalTests(unittest.TestCase):
             self.assertTrue(result.dimensions["taxonomy"].passed)
             self.assertIn("difficulty=opcional", result.dimensions["taxonomy"].evidence)
 
+    def test_structural_block_label_cannot_pass_as_a_taxonomy_subject(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            question = _question(1)
+            question.subject = "Bloco I"
+            session = create_review_session(_batch(root, [question]))
+
+            result = _evaluate_question(
+                session,
+                session.batch.questions[0],
+                config=ApprovalConfig(authorized_hosts=["example.test"]),
+                seen_fingerprints=set(),
+                document_cache={},
+            )
+
+            self.assertFalse(result.dimensions["taxonomy"].passed)
+            self.assertEqual(result.state, "needs_review")
+            self.assertIn(
+                "caminho_fechado=não", result.dimensions["taxonomy"].evidence
+            )
+
     def test_ambiguous_answer_ocr_visual_duplicate_and_qwen_are_blocked(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
+            qwen_without_closed_path = _question(4, method="qwen", confidence=0.99)
+            qwen_without_closed_path.review_notes = [
+                note.replace(
+                    "caminho=topic:portugues:interpretacao",
+                    "caminho=portugues-texto-inexistente",
+                )
+                for note in qwen_without_closed_path.review_notes
+            ]
             cases = [
                 _question(1, association="ambígua; duas possibilidades"),
                 _question(2, extraction="ocr", extra_notes=["OCR confiança=0.70"]),
                 _question(3, extra_notes=["Dependência visual necessária."]),
-                _question(4, method="qwen", confidence=0.99),
+                qwen_without_closed_path,
             ]
             session = create_review_session(_batch(root, cases))
             results = [

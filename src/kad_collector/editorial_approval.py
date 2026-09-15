@@ -395,8 +395,30 @@ def _evaluate_question(
             question.level,
         )
     )
+    taxonomy = EditorialTaxonomy.load_default()
+    closed_path = taxonomy.path_for_values(
+        question.discipline,
+        question.matter,
+        question.subject,
+    )
+    noted_path = (
+        taxonomy.path_by_id(path_id) if path_id is not None else None
+    )
+    path_matches_note = closed_path is not None and (
+        path_id is None
+        or (
+            noted_path is not None
+            and (
+                noted_path.discipline,
+                noted_path.matter,
+                noted_path.subject,
+            )
+            == (question.discipline, question.matter, question.subject)
+        )
+    )
     taxonomy_ok = (
         taxonomy_complete
+        and path_matches_note
         and method in {"deterministic", "human_or_existing", "qwen", "hybrid"}
         and (
             method == "human_or_existing" or (confidence or 0) >= config.minimum_taxonomy_confidence
@@ -407,12 +429,15 @@ def _evaluate_question(
         )
     )
     taxonomy_score = (
-        1.0 if method == "human_or_existing" and taxonomy_complete else (confidence or 0)
+        1.0
+        if method == "human_or_existing" and taxonomy_complete and path_matches_note
+        else (confidence or 0)
     )
     taxonomy_evidence = [
         f"método={method}",
         f"confiança={confidence if confidence is not None else 'ausente'}",
         f"caminho={path_id or 'ausente'}",
+        f"caminho_fechado={'sim' if path_matches_note else 'não'}",
         "difficulty=opcional" if question.difficulty is None else "difficulty=preservada",
     ]
 
