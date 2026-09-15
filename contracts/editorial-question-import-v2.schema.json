@@ -39,7 +39,10 @@
         "institution": { "type": "string", "minLength": 2 },
         "concurso": { "type": "string", "minLength": 2 },
         "level": { "enum": ["Fundamental", "Médio", "Superior"] },
-        "difficulty": { "enum": ["Fácil", "Média", "Difícil"] },
+        "difficulty": {
+          "description": "Enriquecimento editorial opcional; quando ausente, a propriedade deve ser omitida.",
+          "enum": ["Fácil", "Média", "Difícil"]
+        },
         "statement": { "type": "string", "minLength": 10 },
         "alternatives": {
           "type": "array",

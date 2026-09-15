@@ -18,7 +18,7 @@ from .models import DocumentRecord, QuestionBatch, QuestionRecord, StrictModel
 from .validation import validate_app_import_question, verify_approved_batch
 
 EDITORIAL_IMPORT_V2_FINGERPRINT = (
-    "f6143444db37b30fd0c17e6eba5b5a1701743b69a8d45079f6eaa9f02abfb5e1"
+    "d60e7270a9b9f16f5768e0f3f59be3294512fe696e9e6a00d3c779397c619ada"
 )
 
 

@@ -207,7 +207,9 @@ class EditorialApprovalTests(unittest.TestCase):
     def test_valid_question_is_auto_ready_at_configured_threshold(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            session = create_review_session(_batch(root, [_question(1)]))
+            question = _question(1)
+            question.difficulty = None
+            session = create_review_session(_batch(root, [question]))
             result = _evaluate_question(
                 session,
                 session.batch.questions[0],
@@ -217,6 +219,7 @@ class EditorialApprovalTests(unittest.TestCase):
             )
             self.assertEqual(result.state, "auto_ready")
             self.assertTrue(result.dimensions["taxonomy"].passed)
+            self.assertIn("difficulty=opcional", result.dimensions["taxonomy"].evidence)
 
     def test_ambiguous_answer_ocr_visual_duplicate_and_qwen_are_blocked(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
