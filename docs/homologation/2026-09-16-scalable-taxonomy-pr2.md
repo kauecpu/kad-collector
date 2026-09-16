@@ -81,4 +81,3 @@ não foram aprovadas nem publicadas.
 - não houve publicação no KAD ou no Supabase;
 - dificuldade editorial continua fora do bloqueio de importação, conforme a
   decisão anterior do projeto.
-
