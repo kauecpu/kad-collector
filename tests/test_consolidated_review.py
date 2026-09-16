@@ -6,16 +6,20 @@ import tempfile
 import unittest
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 from kad_collector.consolidated_review import (
     _file_sha256,
     _structured_content_sha256,
     build_consolidated_review,
 )
+from kad_collector.desktop_models import ClassificationValue, QuestionClassification
 from kad_collector.editorial_campaign import (
+    OllamaTaxonomyClassifier,
     _apply_classification,
     _classification_field_evidence,
     _classification_method,
+    _local_path,
     _sanitize_taxonomy_values,
     export_campaign_dry_run,
     run_editorial_campaign,
@@ -203,6 +207,75 @@ def _spec(root: Path) -> Path:
 
 
 class ConsolidatedReviewTests(unittest.TestCase):
+    def test_qwen_does_not_guess_without_deterministic_discipline(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            request_calls = 0
+
+            def qwen(_payload: dict[str, object]) -> dict[str, object]:
+                nonlocal request_calls
+                request_calls += 1
+                raise AssertionError("Qwen não deve receber questão sem disciplina")
+
+            classifier = OllamaTaxonomyClassifier(
+                endpoint="http://127.0.0.1:11434",
+                model="qwen3:8b",
+                minimum_confidence=0.78,
+                request=qwen,
+            )
+            question = QuestionRecord(
+                number=1,
+                statement="Calcule o volume comercial das árvores da floresta.",
+                alternatives=[
+                    Alternative(letter="A", text="10 m³"),
+                    Alternative(letter="B", text="20 m³"),
+                ],
+                board="CEBRASPE",
+                organization="Polícia Federal",
+                role="Perito",
+                year=2025,
+                source_pages=[1],
+                matter=None,
+                subject=None,
+            )
+
+            suggestions = classifier.classify(
+                [question],
+                EditorialTaxonomy.load_default(),
+                root / "qwen-trace.jsonl",
+            )
+
+            self.assertEqual(suggestions, {})
+            self.assertEqual(request_calls, 0)
+            self.assertEqual(classifier.calls, 0)
+            self.assertEqual(classifier.missing_discipline_skips, 1)
+            self.assertEqual(classifier.unresolved, 1)
+
+    def test_partial_deterministic_discipline_is_preserved_for_qwen_narrowing(
+        self,
+    ) -> None:
+        classification = QuestionClassification(
+            discipline=ClassificationValue(
+                value="Conhecimentos Bancários",
+                confidence=0.98,
+                source="official_document_range",
+                evidence="Questões 31 a 40",
+            ),
+            level=ClassificationValue(value="Médio", confidence=0.98),
+        )
+
+        path, level, _difficulty, confidence, evidence = _local_path(
+            SimpleNamespace(classification=classification),
+            EditorialTaxonomy.load_default(),
+        )
+
+        assert path is not None
+        self.assertEqual(path.discipline, "Conhecimentos Bancários")
+        self.assertIsNone(path.matter)
+        self.assertEqual(level, "Médio")
+        self.assertEqual(confidence, 0.98)
+        self.assertEqual(evidence, "Questões 31 a 40")
+
     def test_legacy_structural_labels_are_not_counted_as_closed_taxonomy(self) -> None:
         question = QuestionRecord(
             number=1,
@@ -418,6 +491,7 @@ class ConsolidatedReviewTests(unittest.TestCase):
                     "campaign_id": "fixture-qwen",
                     "corpus_spec": str(corpus_spec),
                     "qwen_batch_size": 1,
+                    "qwen_requires_deterministic_discipline": False,
                     "sample_size": 4,
                 },
             )
@@ -589,6 +663,7 @@ class ConsolidatedReviewTests(unittest.TestCase):
                     "campaign_id": "fixture-hostile-qwen",
                     "corpus_spec": str(corpus_spec),
                     "qwen_batch_size": 1,
+                    "qwen_requires_deterministic_discipline": False,
                     "sample_size": 4,
                 },
             )
@@ -638,6 +713,7 @@ class ConsolidatedReviewTests(unittest.TestCase):
                     "campaign_id": "fixture-duplicate-qwen",
                     "corpus_spec": str(_spec(root)),
                     "qwen_batch_size": 2,
+                    "qwen_requires_deterministic_discipline": False,
                     "sample_size": 4,
                 },
             )
@@ -677,6 +753,7 @@ class ConsolidatedReviewTests(unittest.TestCase):
                     "campaign_id": "fixture-isolated-qwen",
                     "corpus_spec": str(_spec(root)),
                     "qwen_batch_size": 2,
+                    "qwen_requires_deterministic_discipline": False,
                     "sample_size": 4,
                 },
             )
@@ -727,6 +804,7 @@ class ConsolidatedReviewTests(unittest.TestCase):
                     "campaign_id": "fixture-qwen-cache",
                     "corpus_spec": str(_spec(root)),
                     "qwen_batch_size": 1,
+                    "qwen_requires_deterministic_discipline": False,
                     "sample_size": 4,
                 },
             )
