@@ -40,7 +40,7 @@ from .models import LocalReviewSession, QuestionRecord, StrictModel
 from .question_equivalence import question_fingerprints
 from .validation import validate_editorial_question
 
-CAMPAIGN_VERSION = "1.6"
+CAMPAIGN_VERSION = "1.7"
 CLASSIFICATION_NOTE_PREFIX = "Classificação automática:"
 CLASSIFICATION_FIELD_NOTE_PREFIX = "Evidências da classificação:"
 REQUIRED_CLASSIFICATION_FIELDS = ("discipline", "matter", "subject", "level")
@@ -152,6 +152,20 @@ class CampaignSampleEntry(StrictModel):
     answer_key_url: str | None
 
 
+class CampaignRunEntry(StrictModel):
+    stable_id: str
+    semantic_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+    batch_id: str
+    question_number: int = Field(ge=1)
+    structural_state: Literal["accepted", "quarantined", "rejected", "unknown"]
+    classification_method: str
+    classification_complete: bool
+    discipline: str | None
+    matter: str | None
+    subject: str | None
+    level: str | None
+
+
 class EditorialCampaignReport(StrictModel):
     schema_version: Literal["1.0"] = "1.0"
     campaign_id: str
@@ -162,6 +176,9 @@ class EditorialCampaignReport(StrictModel):
     taxonomy_before: TaxonomySnapshot
     taxonomy_after: TaxonomySnapshot
     qwen: CampaignQwenStatus
+    run_processed: int = Field(default=0, ge=0)
+    run_duplicate_candidates_skipped: int = Field(default=0, ge=0)
+    run_questions: list[CampaignRunEntry] = Field(default_factory=list)
     sample: CampaignSample
     audit_sample: list[CampaignSampleEntry] = Field(default_factory=list)
     grouped: dict[str, list[dict[str, Any]]]
@@ -1158,6 +1175,55 @@ def _semantic_counts(
     }
 
 
+def _classified_semantic_fingerprints(
+    sessions: list[tuple[str, Path]], taxonomy_version: str
+) -> set[str]:
+    fingerprints: set[str] = set()
+    for _batch_id, session_path in sessions:
+        session = LocalReviewSession.model_validate(read_json(session_path))
+        for question in session.batch.questions:
+            if (
+                _classification_method(question) != "unresolved"
+                and _classification_taxonomy_version(question) == taxonomy_version
+            ):
+                fingerprints.add(
+                    question_fingerprints(question.model_dump(mode="json")).exact
+                )
+    return fingerprints
+
+
+def _run_entries(
+    sessions: list[tuple[str, Path]], processed_ids: list[str]
+) -> list[CampaignRunEntry]:
+    wanted = set(processed_ids)
+    by_id: dict[str, CampaignRunEntry] = {}
+    for batch_id, session_path in sessions:
+        session = LocalReviewSession.model_validate(read_json(session_path))
+        for question in session.batch.questions:
+            stable_id = question.source_stable_id or question_content_sha256(question)
+            if stable_id not in wanted:
+                continue
+            by_id[stable_id] = CampaignRunEntry(
+                stable_id=stable_id,
+                semantic_fingerprint=question_fingerprints(
+                    question.model_dump(mode="json")
+                ).exact,
+                batch_id=batch_id,
+                question_number=question.number,
+                structural_state=cast(
+                    Literal["accepted", "quarantined", "rejected", "unknown"],
+                    _structural_state(question),
+                ),
+                classification_method=_classification_method(question),
+                classification_complete=all(_classification_fields(question)),
+                discipline=question.discipline,
+                matter=question.matter,
+                subject=question.subject,
+                level=question.level,
+            )
+    return [by_id[stable_id] for stable_id in processed_ids if stable_id in by_id]
+
+
 def _sample(
     sessions: list[tuple[str, Path]], *, sample_size: int
 ) -> tuple[CampaignSample, list[CampaignSampleEntry]]:
@@ -1526,6 +1592,25 @@ def _write_markdown(report: EditorialCampaignReport, path: Path) -> None:
             f"{report.taxonomy_after.unresolved - report.taxonomy_before.unresolved:+d} |"
         ),
         "",
+        "## Questões processadas nesta execução",
+        "",
+        f"- Questões únicas processadas: {report.run_processed}",
+        (
+            "- Candidatas duplicadas ignoradas antes da classificação: "
+            f"{report.run_duplicate_candidates_skipped}"
+        ),
+        "",
+        "| ID estável | Hash semântico | Estado estrutural | Classificação | Taxonomia |",
+        "|---|---|---|---|---|",
+        *[
+            (
+                f"| `{item.stable_id}` | `{item.semantic_fingerprint}` | "
+                f"{item.structural_state} | {item.classification_method} | "
+                f"{'completa' if item.classification_complete else 'pendente'} |"
+            )
+            for item in report.run_questions
+        ],
+        "",
         "## Qwen local",
         "",
         "| Indicador | Resultado |",
@@ -1656,6 +1741,11 @@ def run_editorial_campaign(
     )
     qwen_available = enable_qwen and qwen.preflight()
     processed = 0
+    processed_ids: list[str] = []
+    duplicate_candidates_skipped = 0
+    selected_fingerprints = _classified_semantic_fingerprints(
+        sessions, taxonomy.version
+    )
     document_range_cache: dict[str, dict[int, OfficialQuestionRangeContext]] = {}
 
     for _batch_id, session_path in sessions:
@@ -1689,6 +1779,13 @@ def run_editorial_campaign(
                 and classified_version == taxonomy.version
             ):
                 continue
+            semantic_fingerprint = question_fingerprints(
+                question.model_dump(mode="json")
+            ).exact
+            if semantic_fingerprint in selected_fingerprints:
+                duplicate_candidates_skipped += 1
+                continue
+            selected_fingerprints.add(semantic_fingerprint)
             candidates.append(question)
         results = (
             local.classify_many(
@@ -1719,6 +1816,9 @@ def run_editorial_campaign(
             session = update_review_question(session, question.number, updated)
             if not all(_classification_fields(updated)):
                 pending.append(updated)
+            processed_ids.append(
+                question.source_stable_id or question_content_sha256(question)
+            )
             processed += 1
         if qwen_available:
             for offset in range(0, len(pending), spec.qwen_batch_size):
@@ -1785,6 +1885,7 @@ def run_editorial_campaign(
     inventory, inventory_path = build_consolidated_review(corpus_spec, output_dir)
     sessions = _iter_sessions(inventory)
     taxonomy_after = _taxonomy_snapshot(sessions)
+    run_questions = _run_entries(sessions, processed_ids)
     counts = _report_counts(inventory, sessions)
     sample, sample_entries = _sample(sessions, sample_size=spec.sample_size)
     next_batch = next(
@@ -1869,6 +1970,9 @@ def run_editorial_campaign(
             guard_rejections=qwen.guard_rejections,
             missing_discipline_skips=qwen.missing_discipline_skips,
         ),
+        run_processed=len(run_questions),
+        run_duplicate_candidates_skipped=duplicate_candidates_skipped,
+        run_questions=run_questions,
         sample=sample,
         audit_sample=sample_entries,
         grouped=_grouped(sessions),

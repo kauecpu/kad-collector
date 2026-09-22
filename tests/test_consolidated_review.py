@@ -479,6 +479,48 @@ class ConsolidatedReviewTests(unittest.TestCase):
                     root / "output" / "review" / "index.json", root / "export"
                 )
 
+    def test_campaign_limit_counts_unique_question_content(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            corpus_spec = _spec(root)
+            corpus = read_json(corpus_spec)
+            first_path = Path(corpus["packages"][0]["package_path"])
+            second_path = Path(corpus["packages"][1]["package_path"])
+            first = StructuredQuestionPackage.model_validate(read_json(first_path))
+            second = StructuredQuestionPackage.model_validate(read_json(second_path))
+            duplicate = second.accepted[0].model_copy(
+                update={
+                    "statement": first.accepted[0].statement,
+                    "alternatives": first.accepted[0].alternatives,
+                }
+            )
+            second = second.model_copy(update={"accepted": [duplicate]})
+            second = second.model_copy(
+                update={"content_sha256": _structured_content_sha256(second)}
+            )
+            write_json(second_path, second.model_dump(mode="json"))
+            campaign_spec = root / "campaign.json"
+            write_json(
+                campaign_spec,
+                {
+                    "schema_version": "1.0",
+                    "campaign_id": "fixture-unique-limit",
+                    "corpus_spec": str(corpus_spec),
+                    "sample_size": 4,
+                },
+            )
+
+            report, _path = run_editorial_campaign(
+                campaign_spec, root / "output", enable_qwen=False, limit=3
+            )
+
+            self.assertEqual(report.run_processed, 3)
+            self.assertEqual(report.run_duplicate_candidates_skipped, 1)
+            self.assertEqual(
+                len({item.semantic_fingerprint for item in report.run_questions}),
+                3,
+            )
+
     def test_qwen_suggestion_stays_pending_until_human_approval(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
