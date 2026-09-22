@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
@@ -59,6 +60,20 @@ _QUESTION_RANGE = re.compile(
     r"(?P<end>\d{1,3})(?!\d)",
     re.IGNORECASE,
 )
+_PAGE_FURNITURE = re.compile(r"(?i)^(?:RASCUNHO|GABARITO(?:\s+\d+)?)$")
+
+
+def _header_token(line: str) -> str:
+    return re.sub(r"\s*\d+\s*$", "", " ".join(line.split())).casefold()
+
+
+def _section_heading(line: str) -> bool:
+    return (
+        line.isupper()
+        and len(line.split()) >= 2
+        and len(line) <= 72
+        and bool(re.fullmatch(r"[\wÀ-ÿ ]+", line))
+    )
 
 
 @dataclass
@@ -323,6 +338,12 @@ def _generic_parse(
     questions: list[QuestionRecord] = []
     warnings: list[str] = []
     current: _QuestionBuilder | None = None
+    repeated_headers = Counter(
+        _header_token(line)
+        for page in pages
+        for line in str(page["text"]).splitlines()[:4]
+        if line.strip() and not line.strip().isdigit()
+    )
     for page in pages:
         page_number = int(page["page_number"])
         page_lines = str(page["text"]).splitlines()
@@ -335,6 +356,24 @@ def _generic_parse(
         for line_index, raw_line in enumerate(page_lines):
             line = raw_line.strip()
             if not line:
+                continue
+            if (
+                line_index < 8
+                and (
+                    (has_pdf_header and line == str(page_number))
+                    or _PAGE_FURNITURE.fullmatch(line)
+                    or (line_index < 4 and repeated_headers[_header_token(line)] > 1)
+                )
+            ) or line == "RASCUNHO":
+                continue
+            if (
+                line_index < 8
+                and _QUESTION_LINE.match(line) is None
+                and _section_heading(line)
+            ):
+                if current is not None and len(current.alternatives) >= 5:
+                    _flush(current, questions, warnings)
+                    current = None
                 continue
             if line_index < 8 and (
                 (has_pdf_header and line == str(page_number))
