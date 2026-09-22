@@ -209,6 +209,65 @@ Instruções ao candidato.
 
         self.assertEqual([question.number for question in result.objective_questions], [1])
 
+    def test_generic_parser_stops_completed_item_at_next_section(self) -> None:
+        result = parse_question_document(
+            [
+                _page(
+                    5,
+                    "CARGO DE TECNOLOGIA5\nBANCO EXEMPLO\nGABARITO 4\n"
+                    "10\nEnunciado completo da questão anterior.\n"
+                    "(A) Opção A.\n(B) Opção B.\n(C) Opção C.\n"
+                    "(D) Opção D.\n(E) Opção E.\nRASCUNHO\n",
+                ),
+                _page(
+                    6,
+                    "CARGO DE TECNOLOGIA 6\nBANCO EXEMPLO\nGABARITO 4\n"
+                    "LÍNGUA INGLESA\nTexto compartilhado para a próxima seção.\n"
+                    "11\nEnunciado completo da nova questão.\n"
+                    "(A) Primeira alternativa.\n(B) Segunda alternativa.\n",
+                ),
+            ],
+            BankParsingContext(
+                document_id="generic-exam",
+                board="CESGRANRIO",
+                contest="TEST",
+                role="Cargo",
+            ),
+        )
+
+        self.assertEqual([question.number for question in result.objective_questions], [10, 11])
+        previous = result.objective_questions[0]
+        self.assertEqual(previous.source_pages, [5])
+        self.assertEqual(previous.alternatives[-1].text, "Opção E.")
+        self.assertNotIn("LÍNGUA INGLESA", previous.alternatives[-1].text)
+
+    def test_generic_parser_keeps_real_fifth_alternative_continuation(self) -> None:
+        result = parse_question_document(
+            [
+                _page(
+                    1,
+                    "10\nEnunciado completo da questão.\n"
+                    "(A) Opção A.\n(B) Opção B.\n(C) Opção C.\n"
+                    "(D) Opção D.\n(E) Alternativa que continua",
+                ),
+                _page(2, "na página seguinte.\n11\nOutra questão completa.\n(A) Sim.\n(B) Não."),
+            ],
+            BankParsingContext(
+                document_id="generic-exam",
+                board="CESGRANRIO",
+                contest="TEST",
+                role="Cargo",
+            ),
+        )
+
+        questions = result.objective_questions
+        self.assertEqual(result.warnings, ())
+        self.assertEqual(questions[0].source_pages, [1, 2])
+        self.assertEqual(
+            questions[0].alternatives[-1].text,
+            "Alternativa que continua\nna página seguinte.",
+        )
+
     def test_discursive_subitems_never_become_objective_alternatives(self) -> None:
         result = _parse(
             [
