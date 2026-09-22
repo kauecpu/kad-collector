@@ -367,6 +367,30 @@ class EditorialTaxonomyTests(unittest.TestCase):
         self.assertEqual(classification.topic.value, "Probabilidade de Eventos")
         self.assertEqual(classification.subject.source, "local_semantic_rule")
 
+    def test_distractor_keywords_do_not_define_the_question_topic(self) -> None:
+        request = _request(
+            23,
+            "Qual sistema permite consultar vínculos com instituições financeiras?",
+            official_discipline="Atualidades do Mercado Financeiro",
+            official_range=(21, 25),
+        )
+        request.alternatives = [
+            "Blockchain",
+            "Registrato",
+            "Pix",
+            "Certificação Digital",
+            "Bitcoin",
+        ]
+        classification = LocalRuleClassifier().classify_many(
+            [request], DesktopImportMetadata()
+        )[0].classification
+
+        self.assertEqual(
+            classification.discipline.value, "Atualidades do Mercado Financeiro"
+        )
+        self.assertIsNone(classification.subject.value)
+        self.assertIsNone(classification.topic.value)
+
     def test_controlled_compound_keyword_recognizes_nosql_as_database(self) -> None:
         classification = LocalRuleClassifier().classify_many(
             [_request(1, "Bancos de dados NoSQL usam estruturas flexíveis.")],

@@ -5,6 +5,7 @@ import json
 import math
 import re
 import time
+import unicodedata
 from collections import Counter, defaultdict
 from datetime import UTC, datetime
 from functools import cache
@@ -36,7 +37,7 @@ from .local_review import (
 from .models import DocumentRecord, LocalReviewSession, QuestionRecord, StrictModel
 from .question_equivalence import question_fingerprints
 
-APPROVAL_RULE_VERSION = "1.1.0"
+APPROVAL_RULE_VERSION = "1.2.0"
 APPROVAL_SCHEMA_VERSION = "1.0"
 
 EditorialState = Literal[
@@ -313,6 +314,42 @@ def _dimension(
     )
 
 
+_EXTERNAL_CONTEXT_REFERENCE = re.compile(
+    r"\b(?:par[aá]grafo\s*\d+|(?:o|do|no|the|of\s+the)\s+texto?\b|"
+    r"(?:after\s+reading|in)\s+the\s+(?:last|\d+(?:st|nd|rd|th))\s+paragraph\b)",
+    re.IGNORECASE,
+)
+_LOST_EMPHASIS_REFERENCE = re.compile(
+    r"\b(?:em\s+destaque|destacad[ao]s?|highlighted|underlined)\b",
+    re.IGNORECASE,
+)
+_PAGE_BLEED = re.compile(
+    r"(?m)^\s*(?:RASCUNHO|BANCO DO BRASIL|(?:L[ÍI]NGUA|CONHECIMENTOS)\s+"
+    r"(?:INGLESA|PORTUGUESA|B[ÁA]SICOS|ESPEC[ÍI]FICOS))\s*$"
+)
+
+
+def _content_integrity_issues(question: QuestionRecord) -> list[str]:
+    """Keep PDF reading-order and lost-formatting defects out of automatic approval."""
+    issues: list[str] = []
+    statement = question.statement
+    parts = [statement, *(item.text for item in question.alternatives)]
+    content = "\n".join(parts)
+    if any(unicodedata.category(char) == "Co" or char == "\ufffd" for char in content):
+        issues.append("glifo privado ou ilegível na questão")
+    if any(
+        _PAGE_BLEED.search(part) is not None
+        and _PAGE_BLEED.fullmatch(part.strip()) is None
+        for part in parts
+    ):
+        issues.append("cabeçalho, seção ou rascunho capturado no conteúdo")
+    if _LOST_EMPHASIS_REFERENCE.search(statement):
+        issues.append("referência a destaque sem formatação preservada")
+    if _EXTERNAL_CONTEXT_REFERENCE.search(statement) and "\n\n" not in statement:
+        issues.append("referência a texto externo sem contexto anexado")
+    return issues
+
+
 def _evaluate_question(
     session: LocalReviewSession,
     question: QuestionRecord,
@@ -331,6 +368,7 @@ def _evaluate_question(
     extraction = _extraction_method(question)
     letters = [item.letter for item in question.alternatives]
     expected_letters = list("ABCDE"[: len(letters)])
+    content_issues = _content_integrity_issues(question)
 
     exam_ok, exam_evidence = _document_integrity(exam, document_cache)
     answer_ok, answer_evidence = _document_integrity(answer_key, document_cache)
@@ -347,10 +385,12 @@ def _evaluate_question(
         and len(set(letters)) == len(letters)
         and all(item.text.strip() for item in question.alternatives)
         and bool(question.source_pages)
+        and not content_issues
     )
     structure_evidence = [
         f"estado={_structural_state(question)}",
         f"alternativas={','.join(letters)}",
+        *content_issues,
     ]
 
     ocr_confidence = _ocr_confidence(question)
@@ -416,9 +456,31 @@ def _evaluate_question(
             == (question.discipline, question.matter, question.subject)
         )
     )
+    classification_fields = _classification_field_evidence(question)
+    local_semantic_rule = any(
+        value.get("source") == "local_semantic_rule"
+        for field, value in classification_fields.items()
+        if field in {"matter", "subject"}
+    )
+    statement_match = (
+        taxonomy.semantic_match(question.statement, discipline=question.discipline)
+        if local_semantic_rule
+        else None
+    )
+    statement_supports_path = not local_semantic_rule or (
+        statement_match is not None
+        and closed_path is not None
+        and (
+            statement_match.path.discipline,
+            statement_match.path.matter,
+            statement_match.path.subject,
+        )
+        == (closed_path.discipline, closed_path.matter, closed_path.subject)
+    )
     taxonomy_ok = (
         taxonomy_complete
         and path_matches_note
+        and statement_supports_path
         and method in {"deterministic", "human_or_existing", "qwen", "hybrid"}
         and (
             method == "human_or_existing" or (confidence or 0) >= config.minimum_taxonomy_confidence
@@ -438,6 +500,10 @@ def _evaluate_question(
         f"confiança={confidence if confidence is not None else 'ausente'}",
         f"caminho={path_id or 'ausente'}",
         f"caminho_fechado={'sim' if path_matches_note else 'não'}",
+        (
+            "regra_semântica_no_enunciado="
+            f"{'sim' if statement_supports_path else 'não'}"
+        ),
         "difficulty=opcional" if question.difficulty is None else "difficulty=preservada",
     ]
 
@@ -509,7 +575,7 @@ def _evaluate_question(
         subject=question.subject,
         level=question.level,
         difficulty=question.difficulty,
-        classification_fields=_classification_field_evidence(question),
+        classification_fields=classification_fields,
         exam_url=exam.resolved_url,
         answer_key_url=answer_key.resolved_url if answer_key else None,
         exam_sha256=exam.sha256,
