@@ -407,7 +407,10 @@ class LocalRuleClassifier:
                     reason="Título de seção reconhecido na taxonomia versionada",
                 )
 
-            text = " ".join([question.statement, *question.alternatives])
+            # Alternatives are possible answers, not evidence that their topics
+            # are what the question tests. Distractors can otherwise outvote the
+            # statement (for example, several payment products beside Registrato).
+            text = question.statement
             semantic = self.taxonomy.semantic_match(
                 text,
                 discipline=(

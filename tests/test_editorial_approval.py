@@ -222,6 +222,102 @@ class EditorialApprovalTests(unittest.TestCase):
             self.assertTrue(result.dimensions["taxonomy"].passed)
             self.assertIn("difficulty=opcional", result.dimensions["taxonomy"].evidence)
 
+    def test_pdf_context_and_page_bleed_do_not_pass_as_complete_structure(self) -> None:
+        cases = [
+            ("No parágrafo 5, conclui-se que...", "contexto anexado"),
+            ("A palavra em destaque está correta?", "destaque"),
+            ("Enunciado completo e verificável.", "rascunho"),
+            ("Enunciado completo e verificável.", "cabeçalho"),
+            ("Enunciado completo e verificável.", "glifo"),
+        ]
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for index, (statement, defect) in enumerate(cases, start=1):
+                with self.subTest(defect=defect):
+                    question = _question(index)
+                    question.statement = statement
+                    if defect == "rascunho":
+                        question.alternatives[1].text = "Errado\nRASCUNHO"
+                    elif defect == "cabeçalho":
+                        question.alternatives[1].text = "Errado\nBANCO DO BRASIL"
+                    elif defect == "glifo":
+                        question.alternatives[1].text = "\uf02d2"
+                    session = create_review_session(_batch(root, [question]))
+                    result = _evaluate_question(
+                        session,
+                        session.batch.questions[0],
+                        config=ApprovalConfig(authorized_hosts=["example.test"]),
+                        seen_fingerprints=set(),
+                        document_cache={},
+                    )
+                    self.assertEqual(result.state, "quarantined")
+                    self.assertFalse(result.dimensions["structure"].passed)
+                    self.assertTrue(
+                        any(defect in item for item in result.dimensions["structure"].evidence)
+                    )
+
+    def test_text_reference_with_attached_context_remains_eligible(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            question = _question(1)
+            question.statement = (
+                "Texto de apoio completo e relevante.\n\n"
+                "No parágrafo 1, qual afirmação é sustentada?"
+            )
+            session = create_review_session(_batch(root, [question]))
+            result = _evaluate_question(
+                session,
+                session.batch.questions[0],
+                config=ApprovalConfig(authorized_hosts=["example.test"]),
+                seen_fingerprints=set(),
+                document_cache={},
+            )
+            self.assertEqual(result.state, "auto_ready")
+
+    def test_legitimate_bank_name_as_single_alternative_is_not_page_bleed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            question = _question(1)
+            question.alternatives[1].text = "Banco do Brasil"
+            session = create_review_session(_batch(root, [question]))
+            result = _evaluate_question(
+                session,
+                session.batch.questions[0],
+                config=ApprovalConfig(authorized_hosts=["example.test"]),
+                seen_fingerprints=set(),
+                document_cache={},
+            )
+            self.assertEqual(result.state, "auto_ready")
+
+    def test_stale_semantic_rule_supported_only_by_distractor_is_pending(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            question = _question(1)
+            question.alternatives[1].text = "Interpretação de textos"
+            question.review_notes.append(
+                "Evidências da classificação: "
+                + json.dumps(
+                    {
+                        "matter": {"source": "local_semantic_rule"},
+                        "subject": {"source": "local_semantic_rule"},
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            session = create_review_session(_batch(root, [question]))
+            result = _evaluate_question(
+                session,
+                session.batch.questions[0],
+                config=ApprovalConfig(authorized_hosts=["example.test"]),
+                seen_fingerprints=set(),
+                document_cache={},
+            )
+            self.assertEqual(result.state, "needs_review")
+            self.assertIn(
+                "regra_semântica_no_enunciado=não",
+                result.dimensions["taxonomy"].evidence,
+            )
+
     def test_structural_block_label_cannot_pass_as_a_taxonomy_subject(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
