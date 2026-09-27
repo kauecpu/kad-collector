@@ -219,8 +219,15 @@ def extract_page_inventory(html: str, page_url: str, source: SourceDefinition) -
     for href, title, section, year in parser.links:
         url = urljoin(page_url, href)
         section_text = normalize_discovery_text(section)
-        candidate = f"{title}\n{url}\n{section}"
-        if _REJECTED_SECTION.search(section_text) and not _DOCUMENT_SECTION.search(section_text):
+        explicit_key = bool(re.search(r"\bgabaritos?\b", normalize_discovery_text(title)))
+        # Revised answer keys often live under 'Resposta aos Recursos'. The
+        # document title still goes through every exclusion and host policy.
+        candidate = f"{title}\n{url}" if explicit_key else f"{title}\n{url}\n{section}"
+        if (
+            _REJECTED_SECTION.search(section_text)
+            and not _DOCUMENT_SECTION.search(section_text)
+            and not explicit_key
+        ):
             continue
         if source.exclude_patterns and any(
             re.search(pattern, candidate) for pattern in source.exclude_patterns
