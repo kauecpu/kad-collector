@@ -8,6 +8,7 @@ import unittest
 from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -478,6 +479,15 @@ class EditorialApprovalTests(unittest.TestCase):
                 )
             self.assertEqual(state.groups[0].status, "approved")
             self.assertTrue(all(item.state == "approved_for_staging" for item in state.questions))
+            original_state = state_path.read_bytes()
+            with (
+                patch("kad_collector.editorial_approval.validate_package",
+                      return_value=["fixture contract blocker"]),
+                self.assertRaisesRegex(ValueError, "contrato de publicação bloqueado"),
+            ):
+                export_staging_package(state_path, root / "blocked-contract")
+            self.assertFalse((root / "blocked-contract").exists())
+            self.assertEqual(state_path.read_bytes(), original_state)
             manifest = export_staging_package(state_path, root / "staging")
             self.assertEqual(manifest["questions"], 2)
             lines = (root / "staging" / "questoes.jsonl").read_text(encoding="utf-8").splitlines()
