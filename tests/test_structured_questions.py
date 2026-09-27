@@ -272,6 +272,58 @@ def _cesgranrio_document(
     )
 
 
+def test_generic_revised_key_uses_pdf_header_without_rewriting_provenance() -> None:
+    exam = _cesgranrio_document(
+        "exam", "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI – GABARITO 4", "a",
+        "QUESTÃO 1\nQual alternativa está correta?\nA) Sim\nB) Não",
+    )
+    key = _cesgranrio_document(
+        "answer_key", "Gabaritos Alterados", "b",
+        "BANCO DO BRASIL - Prova Agente de Tecnologia – Microrregião 16 DF-TI\n"
+        "GABARITO 4\n1 - B",
+    )
+    snapshot = key.model_dump()
+    errors = []
+    pairs = _pair_documents([exam, key], errors)
+    assert not errors
+    assert len(pairs) == 1
+    assert pairs[0][1].document.title == "Gabaritos Alterados"
+    assert pairs[0][1].document.original_url == key.document.original_url
+    questions, _ = _process_pair(*pairs[0], [])
+    assert questions[0].correct_answer == "B"
+    assert questions[0].answer_association.key_version == "revised"
+    assert "cabeçalho PDF p.1" in questions[0].answer_association.reason
+    assert key.model_dump() == snapshot
+    repeated = _pair_documents([key, exam], [])
+    assert repeated == pairs
+
+
+@pytest.mark.parametrize("header", [
+    "BANCO DO BRASIL - Prova Agente Comercial",
+    "GABARITOS\nBANCO DO BRASIL - Prova Agente de Tecnologia – Microrregião 16 DF-TI",
+    "GABARITOS",
+])
+def test_generic_key_never_borrows_other_role_or_body_text(header: str) -> None:
+    exam = _cesgranrio_document("exam", "AGENTE DE TECNOLOGIA – MICRORREGIÃO 16 DF-TI",
+                               "a", "QUESTÃO 1\nUma questão completa?\nA) Sim\nB) Não")
+    key = _cesgranrio_document("answer_key", "Gabaritos Alterados", "b",
+                              header + "\n1 - B")
+    assert not _pair_documents([exam, key], [])
+
+
+def test_conflicting_key_headers_are_not_guessed() -> None:
+    exam = _cesgranrio_document("exam", "PROVA A - AGENTE COMERCIAL", "a",
+                               "QUESTÃO 1\nUma questão completa?\nA) Sim\nB) Não")
+    key = _cesgranrio_document("answer_key", "Gabaritos Alterados", "b",
+                              "BANCO DO BRASIL - Prova A – AGENTE COMERCIAL\n1 - B")
+    key.pages.append(ExtractedPage(number=2,
+                                  text="BANCO DO BRASIL - Prova B – AGENTE COMERCIAL\n1 - A",
+                                  character_count=65))
+    errors = []
+    assert not _pair_documents([exam, key], errors)
+    assert any("cabeçalhos" in error.message for error in errors)
+
+
 def test_pairing_uses_pdf_structure_and_reuses_a_consolidated_answer_key() -> None:
     key_text = "\n".join(f"{number} - A" for number in range(1, 11))
     key = _cesgranrio_document("exam", "PROVA A - AGENTE COMERCIAL", "2", key_text)

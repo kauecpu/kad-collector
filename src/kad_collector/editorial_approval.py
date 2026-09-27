@@ -124,6 +124,7 @@ class ApprovalQuestion(StrictModel):
     stable_id: str
     semantic_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
     content_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    evidence_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     group_id: str
     batch_id: str
     session_path: str
@@ -352,6 +353,15 @@ def _content_integrity_issues(question: QuestionRecord) -> list[str]:
     return issues
 
 
+def _document_evidence_sha256(session: LocalReviewSession) -> str:
+    fields = {"sha256", "original_url", "resolved_url", "title", "document_type",
+              "source_id", "metadata"}
+    return _canonical_sha256([
+        document.model_dump(mode="json", include=fields) if document else None
+        for document in (session.batch.source_document, session.batch.answer_key_document)
+    ])
+
+
 def _evaluate_question(
     session: LocalReviewSession,
     question: QuestionRecord,
@@ -553,6 +563,7 @@ def _evaluate_question(
         stable_id=stable_id,
         semantic_fingerprint=fingerprint,
         content_sha256=content_sha,
+        evidence_sha256=_document_evidence_sha256(session),
         group_id=group_id,
         batch_id=session.batch.batch_id,
         session_path=str(Path(session.batch.source_document.local_path).resolve().parent),
@@ -825,6 +836,9 @@ def build_approval_campaign(
     previous_content = {
         item.stable_id: item.content_sha256 for item in (previous.questions if previous else [])
     }
+    previous_evidence = {
+        item.stable_id: item.evidence_sha256 for item in (previous.questions if previous else [])
+    }
     questions: list[ApprovalQuestion] = []
     seen_fingerprints: set[str] = set()
     document_cache: dict[str, tuple[bool, list[str]]] = {}
@@ -845,7 +859,11 @@ def build_approval_campaign(
             )
             evaluated.session_path = str(session_path.resolve())
             decision = previous_decisions.get(evaluated.stable_id)
-            if decision and previous_content.get(evaluated.stable_id) == evaluated.content_sha256:
+            if (
+                decision
+                and previous_content.get(evaluated.stable_id) == evaluated.content_sha256
+                and previous_evidence.get(evaluated.stable_id) == evaluated.evidence_sha256
+            ):
                 evaluated.audit_decision = decision
                 if decision.status == "rejected":
                     evaluated.state = "rejected"
@@ -855,6 +873,8 @@ def build_approval_campaign(
                 local_decision = local_decisions.get(question.number)
                 if (
                     local_decision
+                    # Do not resurrect an invalidated campaign audit from an older local decision.
+                    and evaluated.stable_id not in previous_content
                     and local_decision.status != "pending"
                     and local_decision.content_sha256 == evaluated.content_sha256
                     and local_decision.reviewed_by
@@ -1097,6 +1117,8 @@ def export_staging_package(state_path: Path, output_dir: Path) -> dict[str, Any]
             question = matches[0]
             if question_content_sha256(question) != item.content_sha256:
                 raise ValueError("conteúdo mudou após avaliação")
+            if _document_evidence_sha256(session) != item.evidence_sha256:
+                raise ValueError("evidência mudou após avaliação; nova auditoria necessária")
             exam = session.batch.source_document
             answer_key = session.batch.answer_key_document
             if (

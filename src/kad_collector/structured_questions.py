@@ -368,6 +368,37 @@ def _identity(document: DocumentRecord) -> tuple[str, int, str]:
     return _contest_slug(document), _year(document), _pair_key(document)
 
 
+def _pairing_identity(
+    document: ExtractedDocument,
+) -> tuple[tuple[str, int, str], ExtractedDocument]:
+    record = document.document
+    generic_key = record.document_type == "answer_key" and re.fullmatch(
+        r"gabaritos? (?:alterados?|retificados?|definitivos?|preliminares?|oficiais?)",
+        _normalize(record.title),
+    )
+    if not generic_key:
+        return _identity(record), document
+
+    # Only a first nonblank line explicitly naming the exam is identity evidence.
+    # Do not infer scope from a URL, a question body or the only available key.
+    identities: set[tuple[str, int, str]] = set()
+    evidence: list[str] = []
+    for page in document.pages:
+        header = next((line.strip() for line in page.text.splitlines() if line.strip()), "")
+        match = re.fullmatch(r".+?\s+[-–—]\s+(Prova\s+.+)", header, re.IGNORECASE)
+        if match is None:
+            raise ValueError(f"gabarito genérico sem identidade no cabeçalho PDF p.{page.number}")
+        identities.add(_identity(record.model_copy(update={"title": match.group(1)})))
+        evidence.append(f"cabeçalho PDF p.{page.number}: {header}")
+    if len(identities) != 1:
+        raise ValueError("gabarito genérico com cabeçalhos ausentes ou incompatíveis")
+    metadata = {**record.metadata, "pairing_identity_evidence": "; ".join(evidence)}
+    traced = document.model_copy(update={
+        "document": record.model_copy(update={"metadata": metadata}),
+    })
+    return next(iter(identities)), traced
+
+
 def _answer_key_version(
     document: DocumentRecord,
 ) -> Literal["definitive", "revised", "preliminary", "unknown"]:
@@ -432,7 +463,7 @@ def _pair_documents(
     for original in documents:
         document = _with_content_document_type(original)
         try:
-            identity = _identity(document.document)
+            identity, document = _pairing_identity(document)
         except ValueError as exc:
             errors.append(
                 PackageError(
@@ -836,6 +867,9 @@ def _structured_question(
                 "item anulado no gabarito oficial"
                 if annulled
                 else "número, concurso, cargo/área e bloco compatíveis"
+            ) + (
+                "; " + key_record.metadata["pairing_identity_evidence"]
+                if key_record.metadata.get("pairing_identity_evidence") else ""
             ),
         ),
     )
