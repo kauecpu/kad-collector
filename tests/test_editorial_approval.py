@@ -638,6 +638,47 @@ class EditorialApprovalTests(unittest.TestCase):
                 export_staging_package(state_path, root / "changed-content")
             self.assertEqual(state_path.read_bytes(), original_state)
 
+    def test_changed_document_evidence_requires_a_new_audit(self) -> None:
+        for field in ("source_document", "answer_key_document"):
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                index_path, state_path = _campaign_fixture(
+                    root, [_question(1)], approve_first_locally=True)
+                config = ApprovalConfig(minimum_sample=1, maximum_sample=1,
+                                        authorized_hosts=["example.test"])
+                before = build_approval_campaign(index_path, state_path, config=config)
+                self.assertEqual(before.questions[0].audit_decision.status, "approved")
+                session_path = root / "session.json"
+                session = json.loads(session_path.read_text("utf-8"))
+                session["batch"][field]["resolved_url"] += "?revision=2"
+                write_json(session_path, session)
+                for _ in range(2):
+                    changed = build_approval_campaign(index_path, state_path, config=config)
+                    self.assertIsNone(changed.questions[0].audit_decision)
+                    self.assertEqual(changed.summary.approved_for_staging, 0)
+                    with self.assertRaisesRegex(ValueError, "nenhum grupo auditado"):
+                        export_staging_package(state_path, root / "export")
+                    self.assertFalse((root / "export").exists())
+
+    def test_legacy_approval_without_evidence_hash_cannot_export_or_be_reused(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            index_path, state_path = _campaign_fixture(root, [_question(1)])
+            config = ApprovalConfig(minimum_sample=1, maximum_sample=1,
+                                    authorized_hosts=["example.test"])
+            state = build_approval_campaign(index_path, state_path, config=config)
+            decide_audit_item(state_path, state.questions[0].stable_id, reviewer="fixture-human",
+                              status="approved", structural_correct=True, answer_correct=True,
+                              taxonomy_correct=True)
+            legacy = json.loads(state_path.read_text("utf-8"))
+            del legacy["questions"][0]["evidence_sha256"]
+            write_json(state_path, legacy)
+            with self.assertRaisesRegex(ValueError, "nenhuma questão válida"):
+                export_staging_package(state_path, root / "export")
+            rebuilt = build_approval_campaign(index_path, state_path, config=config)
+            self.assertIsNone(rebuilt.questions[0].audit_decision)
+            self.assertEqual(rebuilt.summary.approved_for_staging, 0)
+
     def test_human_decision_is_preserved_but_rule_change_rechecks_automation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
