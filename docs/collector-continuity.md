@@ -21,6 +21,8 @@ Branch ativa: `codex/collector-reconciliation`, checkout
 `C:\Users\igord\Documents\Codex\KAD\kad-collector-reconciliation`.
 Commit da implementação: `ba56bb6e70a1811cb2119f36f76cf8bea1ee1949`
 (`fix: reconciliar associação e auditoria do piloto BB`).
+PR de seguimento: [115](https://github.com/kauecpu/kad-collector/pull/115), aberto,
+sem merge. Validar os checks do GitHub antes da integração.
 
 Os checkouts `kad-collector` (`3454ac52`) e `kad-collector-corpus-gates`
 (`c1653aa3`) foram preservados. A criação de worktree pelo aplicativo falhou
