@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from kad_collector.models import DocumentRecord, ExtractedDocument, ExtractedPage
 from kad_collector.structured_questions import (
     StructuredQuestionPackage,
@@ -140,6 +142,59 @@ def test_multiple_choice_answer_is_preserved() -> None:
     assert questions[0].correct_answer_label == "Delta"
 
 
+def test_revised_key_reprocesses_answer_and_annulment_without_mutating_inputs():
+    exam = _document("exam", "PROVA OBJETIVA - CARGO 1", "a",
+                     "CONHECIMENTOS ESPECÍFICOS – BLOCO III\n"
+                     "Julgue os itens.\n1 A primeira afirmação está completa.\n"
+                     "2 A segunda afirmação está completa.")
+    old = _document("answer_key", "GABARITO PRELIMINAR - CARGO 1", "b", "1 - C\n2 - C")
+    revised = _document("answer_key", "GABARITO ALTERADO - CARGO 1", "c", "1 - E\n2 - X")
+    snapshot = revised.model_dump()
+    errors = []
+    pairs = _pair_documents([old, exam, revised], errors)
+    assert not errors
+    assert pairs[0][1].document.sha256 == "c" * 64
+    questions, _ = _process_pair(*pairs[0], [])
+    assert questions[0].correct_answer_label == "Errado"
+    assert questions[1].validation_status == "quarantined"
+    assert "item anulado no gabarito oficial" in questions[1].validation_reasons
+    assert questions[0].answer_association.superseded_key_ids == ["b" * 64]
+    assert questions[0].answer_association.key_version == "revised"
+    repeat, _ = _process_pair(*_pair_documents([exam, revised, old], [])[0], [])
+    assert [q.model_dump() for q in repeat] == [q.model_dump() for q in questions]
+    assert revised.model_dump() == snapshot
+    original, _ = _process_pair(*_pair_documents([exam, old], [])[0], [])
+    assert original[0].correct_answer_label == "Certo"
+
+
+def test_two_finals_require_an_explicit_predecessor():
+    exam = _document("exam", "PROVA OBJETIVA - CARGO 1", "a", "1 Uma questão completa.")
+    old = _document("answer_key", "GABARITO DEFINITIVO - CARGO 1", "b", "1 - C")
+    revised = _document("answer_key", "GABARITO RETIFICADO - CARGO 1", "c", "1 - E")
+    assert not _pair_documents([exam, old, revised], [])
+    revised.document.metadata["predecessor_sha256"] = old.document.sha256
+    errors = []
+    pairs = _pair_documents([exam, old, revised], errors)
+    assert not errors
+    assert pairs[0][1].document.sha256 == revised.document.sha256
+    revised.document.metadata["predecessor_sha256"] = "f" * 64
+    assert not _pair_documents([exam, old, revised], [])
+    revised.document.metadata["predecessor_sha256"] = old.document.sha256
+    old.document.metadata["predecessor_sha256"] = revised.document.sha256
+    assert not _pair_documents([exam, old, revised], [])
+
+
+@pytest.mark.parametrize("exam_title,key_title", [
+    ("PROVA OBJETIVA - CARGO 1", "GABARITO DEFINITIVO - CARGO 2"),
+    ("PROVA OBJETIVA - CONHECIMENTOS BASICOS BLOCO I",
+     "GABARITO DEFINITIVO - CONHECIMENTOS BASICOS BLOCO II"),
+])
+def test_pairing_never_borrows_other_cargo_or_block(exam_title, key_title):
+    exam = _document("exam", exam_title, "a", "1 Uma questão completa.")
+    key = _document("answer_key", key_title, "b", "1 - C")
+    assert not _pair_documents([exam, key], [])
+
+
 def test_qwen_is_used_only_for_a_missing_deterministic_item(
     monkeypatch: object,
 ) -> None:
@@ -245,6 +300,25 @@ def test_pairing_uses_pdf_structure_and_reuses_a_consolidated_answer_key() -> No
         "answer_key"
     }
     assert {answer_key.document.sha256 for _exam, answer_key in pairs} == {"2" * 64}
+
+
+def test_cesgranrio_revised_key_uses_explicit_booklet_group():
+    exam_a = _cesgranrio_document(
+        "exam", "PROVA A - AGENTE COMERCIAL - GABARITO 1", "a",
+        "QUESTÃO 1\nQual é a resposta?\nA) Alfa\nB) Beta", variant="Tipo 1",
+    )
+    exam_b = _cesgranrio_document(
+        "exam", "PROVA B - AGENTE COMERCIAL - GABARITO 1", "b",
+        "QUESTÃO 1\nQual é a resposta?\nA) Alfa\nB) Beta", variant="Tipo 1",
+    )
+    key = _cesgranrio_document("answer_key", "PROVA A - AGENTE COMERCIAL", "c", "1 - A")
+    revised = _cesgranrio_document(
+        "answer_key", "Gabaritos Alterados - Prova A", "d", "1 - B",
+    )
+    pairs = _pair_documents([exam_a, exam_b, key, revised], [])
+    assert len(pairs) == 1
+    assert pairs[0][0].document.sha256 == exam_a.document.sha256
+    assert pairs[0][1].document.sha256 == revised.document.sha256
 
 
 def test_pairing_reuses_one_definitive_aggregate_key_for_archive_members() -> None:

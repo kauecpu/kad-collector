@@ -54,6 +54,8 @@ class AnswerAssociationTrace(StrictModel):
     internal_answer: AlternativeLetter | None
     confidence: Literal["high"] = "high"
     reason: str
+    key_version: Literal["definitive", "revised", "preliminary", "unknown"] = "unknown"
+    superseded_key_ids: list[str] = Field(default_factory=list)
 
 
 class StructuredQuestion(StrictModel):
@@ -239,6 +241,12 @@ def _year(document: DocumentRecord) -> int:
 
 def _pair_key(document: DocumentRecord) -> str:
     title = _normalize(document.title)
+    # Cesgranrio publishes revised grids as 'Gabaritos Alterados - Prova A',
+    # without repeating the role. The named booklet group is still explicit.
+    if "cesgranrio" in document.source_id.casefold():
+        group = re.search(r"\bprova\s+([a-z])\b", title)
+        if group is not None:
+            return f"prova_{group.group(1)}"
     cargo = re.search(r"\bcargo\s+(\d{1,3})\b", title)
     if "conhecimentos basicos" in title:
         block = re.search(r"\bbloco\s+([ivx]+)\b", title)
@@ -257,7 +265,9 @@ def _pair_key(document: DocumentRecord) -> str:
     if cargo is not None:
         return f"cargo_{int(cargo.group(1))}"
     generic = re.sub(
-        r"^(?:gabarito(?: oficial)?(?: preliminar| definitivo)?|prova objetiva)\s+",
+        r"^(?:gabaritos?(?: oficiais| oficial)?"
+        r"(?: preliminares| preliminar| definitivos?| alterados?| retificados?)?"
+        r"|prova objetiva)\s+",
         "",
         title,
     )
@@ -360,10 +370,12 @@ def _identity(document: DocumentRecord) -> tuple[str, int, str]:
 
 def _answer_key_version(
     document: DocumentRecord,
-) -> Literal["definitive", "preliminary", "unknown"]:
+) -> Literal["definitive", "revised", "preliminary", "unknown"]:
     value = _normalize(
         f"{document.title} {document.original_url} {document.resolved_url}"
     )
+    if "alterad" in value or "retificad" in value:
+        return "revised"
     if "definitiv" in value:
         return "definitive"
     if "preliminar" in value:
@@ -374,14 +386,42 @@ def _answer_key_version(
 def _single_preferred_key(
     candidates: list[tuple[tuple[str, int, str], ExtractedDocument]],
 ) -> tuple[tuple[str, int, str], ExtractedDocument] | None:
-    if len(candidates) == 1:
-        return candidates[0]
-    definitive = [
-        item
-        for item in candidates
-        if _answer_key_version(item[1].document) == "definitive"
-    ]
-    return definitive[0] if len(definitive) == 1 else None
+    unique = {item[1].document.sha256: item for item in candidates}
+    if not unique:
+        return None
+    # Operator-supplied predecessors must refer to this exact compatible set.
+    predecessors = {
+        digest: item[1].document.metadata.get("predecessor_sha256")
+        for digest, item in unique.items()
+    }
+    rank = {"unknown": 0, "preliminary": 0, "definitive": 2, "revised": 2}
+    for digest in unique:
+        visited = {digest}
+        previous = predecessors[digest]
+        while previous:
+            if previous not in unique or previous in visited:
+                return None
+            if rank[_answer_key_version(unique[previous][1].document)] > rank[
+                _answer_key_version(unique[digest][1].document)
+            ]:
+                return None
+            visited.add(previous)
+            previous = predecessors[previous]
+    replaced = {value for value in predecessors.values() if value}
+    heads = [item for digest, item in unique.items() if digest not in replaced]
+    highest = max(rank[_answer_key_version(item[1].document)] for item in heads)
+    preferred = [item for item in heads
+                 if rank[_answer_key_version(item[1].document)] == highest]
+    if len(preferred) != 1:
+        return None
+    identity, selected = preferred[0]
+    metadata = dict(selected.document.metadata)
+    metadata["superseded_key_ids"] = ",".join(sorted(
+        digest for digest in unique if digest != selected.document.sha256
+    ))
+    return identity, selected.model_copy(update={
+        "document": selected.document.model_copy(update={"metadata": metadata})
+    })
 
 
 def _pair_documents(
@@ -413,9 +453,6 @@ def _pair_documents(
     for identity in sorted(set(exams) | set(keys)):
         matching_exams = exams.get(identity, [])
         matching_keys = keys.get(identity, [])
-        if len(matching_exams) == 1 and len(matching_keys) == 1:
-            pairs.append((matching_exams[0], matching_keys[0]))
-            continue
         unmatched_exams.extend((identity, item) for item in matching_exams)
         unmatched_keys.extend((identity, item) for item in matching_keys)
 
@@ -430,15 +467,13 @@ def _pair_documents(
         exact = [
             (identity, key)
             for identity, key in same_contest
-            if (
-                identity[2] == pair_key
-                or (
-                    pair_key.startswith("conhecimentos_basicos")
-                    and identity[2].startswith("conhecimentos_basicos")
-                )
-            )
+            if identity[2] == pair_key
         ]
-        selected = _single_preferred_key(exact) or _single_preferred_key(same_contest)
+        # A named cargo/block must never borrow a different cargo's key.
+        # Retain the existing aggregate-key path only for explicitly generic titles.
+        aggregate = [(identity, key) for identity, key in same_contest
+                     if identity[2] in {"objetiva", "prova_objetiva", "gabarito", "gabaritos"}]
+        selected = _single_preferred_key(exact if exact else aggregate)
         if selected is not None:
             _key_identity, key = selected
             pairs.append((exam, key))
@@ -454,19 +489,15 @@ def _pair_documents(
             )
         )
     paired_key_ids = {key.document.sha256 for _exam, key in pairs}
-    paired_definitive_contests = {
-        identity[:2]
-        for identity, key in remaining_keys
-        if key.document.sha256 in paired_key_ids
-        and _answer_key_version(key.document) == "definitive"
+    superseded_ids = {
+        digest for _exam, key in pairs
+        for digest in key.document.metadata.get("superseded_key_ids", "").split(",")
+        if digest
     }
     for key_identity, key in remaining_keys:
         if key.document.sha256 in paired_key_ids:
             continue
-        if (
-            key_identity[:2] in paired_definitive_contests
-            and _answer_key_version(key.document) == "preliminary"
-        ):
+        if key.document.sha256 in superseded_ids:
             continue
         errors.append(
             PackageError(
@@ -794,6 +825,11 @@ def _structured_question(
         validation_reasons=reasons,
         answer_association=AnswerAssociationTrace(
             answer_key_id=key_record.sha256,
+            key_version=_answer_key_version(key_record),
+            superseded_key_ids=[
+                digest for digest in key_record.metadata.get("superseded_key_ids", "").split(",")
+                if digest
+            ],
             original_answer=cast(OriginalAnswer | None, original),
             internal_answer=cast(AlternativeLetter | None, internal_answer),
             reason=(

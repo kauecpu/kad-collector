@@ -35,6 +35,7 @@ from .local_review import (
     verify_review_session,
 )
 from .models import DocumentRecord, LocalReviewSession, QuestionRecord, StrictModel
+from .publication_contract import validate_package
 from .question_equivalence import question_fingerprints
 from .staging_provenance import StagingOccurrence, build_canonical_staging_record
 
@@ -1168,6 +1169,9 @@ def export_staging_package(state_path: Path, output_dir: Path) -> dict[str, Any]
         )
     if not records:
         raise ValueError("nenhuma questão válida permaneceu no pacote de staging")
+    contract_issues = validate_package(records)
+    if contract_issues:
+        raise ValueError("contrato de publicação bloqueado: " + "; ".join(contract_issues))
     output_dir.mkdir(parents=True, exist_ok=True)
     paths = {
         "questions": output_dir / "questoes.jsonl",

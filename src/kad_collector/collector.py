@@ -1225,6 +1225,7 @@ def collect_documents(
     filtered_out_documents = 0
     duplicate_documents = 0
     discovery_inventory: list[dict[str, object]] = []
+    inventory_dispositions: dict[tuple[str, str], str] = {}
     seen_digests: set[str] = set()
     browser_runtime_checked = False
     browser_runtime_error: BrowserRuntimeError | None = None
@@ -1775,6 +1776,15 @@ def collect_documents(
                                 "target_terms": sorted(discovery_target.terms),
                                 "target_years": sorted(discovery_target.years),
                                 "expected": [item.as_dict() for item in in_scope_inventory],
+                                "excluded": [
+                                    *page_inventory.excluded,
+                                    *[
+                                        {**item.as_dict(), "status": "excluded",
+                                         "reason": "year_filter"}
+                                        for item in page_inventory.expected
+                                        if item not in in_scope_inventory
+                                    ],
+                                ],
                                 "expected_exams": sum(
                                     item.document_type == "exam" for item in in_scope_inventory
                                 ),
@@ -2117,6 +2127,11 @@ def collect_documents(
                 else max(0, settings.max_files_per_source - source_items)
             )
             selected_links = _limit_document_links(source_links, remaining)
+            selected_urls = {canonicalize_url(item[0]) for item in selected_links}
+            for candidate_url, _title, _kind in source_links:
+                normalized_url = canonicalize_url(candidate_url)
+                if normalized_url not in selected_urls:
+                    inventory_dispositions[(source.id, normalized_url)] = "file_limit"
             if source.access_mode == "reference_only":
                 for url, title, _document_type in selected_links:
                     references.append(
@@ -2279,7 +2294,18 @@ def collect_documents(
                 transport_callback(None)
             client.close()
 
-    finalized_inventory = finalize_discovery_inventory(discovery_inventory, documents)
+    for failure in failures:
+        if failure.stage in {"robots", "download"}:
+            try:
+                key = (failure.source_id, canonicalize_url(failure.url))
+                inventory_dispositions[key] = (
+                    "robots_policy" if failure.stage == "robots" else "download_error"
+                )
+            except ValueError:
+                pass
+    finalized_inventory = finalize_discovery_inventory(
+        discovery_inventory, documents, dispositions=inventory_dispositions
+    )
     inventory_summary = summarize_discovery_inventory(finalized_inventory)
     inventory_by_tier = {
         tier: summarize_discovery_inventory(

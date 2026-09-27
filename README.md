@@ -1249,6 +1249,9 @@ O manifesto, as métricas e o procedimento de atualização estão descritos em
 
 ### PDF para questões estruturadas
 
+Para a sequência contrato de publicação, cobertura/versões de gabarito e piloto
+isolado PF 2021, consulte [Portas de qualidade do acervo](docs/corpus-quality-gates.md).
+
 O comando `structure-pdfs` recebe um ou mais manifestos já coletados, usa a extração de
 texto/OCR e os parsers do Collector, associa cada prova ao gabarito oficial e grava um pacote
 JSON versionado para revisão. Ele não publica no KAD nem no Supabase.

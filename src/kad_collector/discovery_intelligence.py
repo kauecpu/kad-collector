@@ -167,6 +167,7 @@ class InventoryDocument:
 class PageInventory:
     page_url: str
     expected: tuple[InventoryDocument, ...]
+    excluded: tuple[dict[str, object], ...] = ()
 
     @property
     def exams(self) -> int:
@@ -215,6 +216,7 @@ def extract_page_inventory(html: str, page_url: str, source: SourceDefinition) -
     page_years = {int(value) for value in re.findall(r"\b(?:19|20)\d{2}\b", page_url)}
     page_year = next(iter(page_years)) if len(page_years) == 1 else None
     expected: list[InventoryDocument] = []
+    excluded: list[dict[str, object]] = []
     seen: set[str] = set()
     for href, title, section, year in parser.links:
         url = urljoin(page_url, href)
@@ -223,22 +225,6 @@ def extract_page_inventory(html: str, page_url: str, source: SourceDefinition) -
         # Revised answer keys often live under 'Resposta aos Recursos'. The
         # document title still goes through every exclusion and host policy.
         candidate = f"{title}\n{url}" if explicit_key else f"{title}\n{url}\n{section}"
-        if (
-            _REJECTED_SECTION.search(section_text)
-            and not _DOCUMENT_SECTION.search(section_text)
-            and not explicit_key
-        ):
-            continue
-        if source.exclude_patterns and any(
-            re.search(pattern, candidate) for pattern in source.exclude_patterns
-        ):
-            continue
-        if source.include_patterns and not any(
-            re.search(pattern, value)
-            for pattern in source.include_patterns
-            for value in (url, candidate)
-        ):
-            continue
         document_type = _document_type(title, url, source)
         if document_type == "other":
             continue
@@ -246,17 +232,33 @@ def extract_page_inventory(html: str, page_url: str, source: SourceDefinition) -
         if key in seen:
             continue
         seen.add(key)
-        expected.append(
-            InventoryDocument(
-                url=url,
-                title=title or urlsplit(url).path.rsplit("/", 1)[-1],
-                document_type=document_type,
-                variant=_variant(title),
-                group=_group(title),
-                year=year or page_year,
-            )
+        item = InventoryDocument(
+            url=url, title=title or urlsplit(url).path.rsplit("/", 1)[-1],
+            document_type=document_type, variant=_variant(title), group=_group(title),
+            year=year or page_year,
         )
-    return PageInventory(page_url=page_url, expected=tuple(expected))
+        reason: str | None = None
+        if (
+            _REJECTED_SECTION.search(section_text)
+            and not _DOCUMENT_SECTION.search(section_text)
+            and not explicit_key
+        ):
+            reason = "administrative_section"
+        elif source.exclude_patterns and any(
+            re.search(pattern, candidate) for pattern in source.exclude_patterns
+        ):
+            reason = "exclude_pattern"
+        elif source.include_patterns and not any(
+            re.search(pattern, value)
+            for pattern in source.include_patterns
+            for value in (url, candidate)
+        ):
+            reason = "include_pattern_mismatch"
+        if reason:
+            excluded.append({**item.as_dict(), "status": "excluded", "reason": reason})
+        else:
+            expected.append(item)
+    return PageInventory(page_url=page_url, expected=tuple(expected), excluded=tuple(excluded))
 
 
 def navigation_relevance(
@@ -359,7 +361,8 @@ def select_relevant_navigation_links(
 
 
 def finalize_discovery_inventory(
-    entries: list[dict[str, object]], documents: list[DocumentRecord]
+    entries: list[dict[str, object]], documents: list[DocumentRecord],
+    *, dispositions: dict[tuple[str, str], str] | None = None,
 ) -> list[dict[str, object]]:
     downloaded_by_source: dict[str, set[str]] = {}
     for document in documents:
@@ -389,13 +392,25 @@ def finalize_discovery_inventory(
             except ValueError:
                 found = False
             item["status"] = "downloaded" if found else "missing"
+            try:
+                disposition = (dispositions or {}).get((source_id, canonicalize_url(raw_url)))
+            except ValueError:
+                disposition = "invalid_url"
+            item["reason"] = "downloaded" if found else (disposition or "not_recorded")
             (downloaded if found else missing).append(item)
+        raw_excluded = entry.get("excluded", [])
+        excluded = [
+            {**item, "url": redact_url_secrets(str(item.get("url", "")))}
+            for item in (raw_excluded if isinstance(raw_excluded, list) else [])
+            if isinstance(item, dict)
+        ]
         total = len(downloaded) + len(missing)
         finalized.append(
             {
                 **entry,
                 "page_url": redact_url_secrets(str(entry.get("page_url", ""))),
                 "expected": [*downloaded, *missing],
+                "excluded": excluded,
                 "downloaded": len(downloaded),
                 "missing": missing,
                 "complete": total > 0 and not missing,
