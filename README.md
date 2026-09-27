@@ -1345,3 +1345,50 @@ Para aprovar acervos grandes sem revisar cada questão, use o fluxo de
 [aprovação editorial por amostragem](docs/editorial-approval.md). Ele aplica travas automáticas,
 seleciona uma amostra estratificada e só permite gerar um pacote local `draft` para grupos que
 atingiram os limites da auditoria.
+
+## Revisão de hifenização pendente
+
+O reparo automático continua conservador: uma palavra sem comprovação não é
+juntada por suposição. Para uma quebra conferida visualmente no PDF, `structure-pdfs`
+aceita `--hyphenation-plan <plano.json>`. Isso é uma **proposta editorial**, não uma
+aprovação humana nem uma regra nova para todas as provas.
+
+```json
+{
+  "schema_version": "1.0",
+  "prepared_by": "identificação de quem preparou a proposta",
+  "status": "proposed",
+  "joins": [{
+    "document_sha256": "SHA-256 completo do PDF",
+    "page_number": 7,
+    "before": "inves-\ntir",
+    "after": "investir",
+    "reason": "Conferência visual da palavra no fim da linha da página indicada."
+  }]
+}
+```
+
+O comando verifica o arquivo, a página e a ocorrência exata; só permite remover
+o hífen e a quebra, sem trocar letras, alternativas ou respostas. Propostas
+ambíguas ou desatualizadas interrompem a execução. Os PDFs e o cache de extração
+ficam intactos. O plano é copiado para `<pacote>.hyphenation.json`, e seu hash entra
+na versão do processamento. Não contar essa execução como livre de intervenção.
+
+Para substituir um piloto sem reaproveitar suas aprovações:
+
+```powershell
+kad-collector structure-pdfs <manifesto> --output <novo-diretorio>/package.json --hyphenation-plan <plano.json> --disable-ollama
+python scripts/revise_pilot_review.py --source-session <sessao-original> --package <novo-diretorio>/package.json --manifest <manifesto> --output <nova-revisao>
+kad-collector review <nova-revisao>/batch.json --session <nova-revisao>/session.json --output <nova-revisao>/approved.json --admin-output-dir <nova-revisao>/exports
+```
+
+A nova revisão usa o gabarito do pacote reprocessado e mantém a identidade de
+importação e a classificação anterior **somente** se o texto, alternativas,
+resposta e páginas forem equivalentes, descontando espaços e quebras físicas.
+Qualquer outra diferença exige investigação. Todas as decisões começam pendentes;
+nenhum estado antigo é alterado. `revision.json` registra hashes antigos/novos e
+as questões afetadas. Preparar a revisão não exporta nem publica conteúdo.
+
+Esta tela serve para conferir o lote. Não substitui o fluxo de `approval-campaign`
+e `approval-export` para o pacote com proveniência canônica exigido pelo KAD.
+Não use um exportador alternativo para contornar a auditoria pendente.
