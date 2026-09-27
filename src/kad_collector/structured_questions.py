@@ -15,6 +15,7 @@ from pydantic import Field
 from .answer_key import adapt_true_false_entries, parse_answer_key
 from .desktop_parser import cebraspe_question_contexts, parse_question_document
 from .fgv_parser import BankParsingContext
+from .hyphenation_plan import HyphenationPlan, apply_hyphenation_plan
 from .json_utils import read_json, write_json
 from .models import (
     DocumentRecord,
@@ -967,6 +968,7 @@ def build_structured_question_package(
     ollama_endpoint: str = DEFAULT_OLLAMA_ENDPOINT,
     qwen_model: str = DEFAULT_QWEN_MODEL,
     enable_ollama: bool = True,
+    hyphenation_plan: Path | None = None,
 ) -> StructuredQuestionPackage:
     """Build a deterministic, review-first package from collector manifests."""
     if not manifest_paths:
@@ -977,6 +979,12 @@ def build_structured_question_package(
     documents, manifest_hashes = _load_extracted_documents(
         manifest_paths, extraction_dir, errors
     )
+    plan = (
+        HyphenationPlan.model_validate(read_json(hyphenation_plan))
+        if hyphenation_plan is not None else None
+    )
+    if plan is not None:
+        documents = apply_hyphenation_plan(documents, plan)
     page_extraction = {
         document.document.sha256: _page_traces(document) for document in documents
     }
@@ -1007,6 +1015,22 @@ def build_structured_question_package(
             continue
         questions.extend(items)
         exam_metrics.append(metrics)
+
+    parser_version = STRUCTURED_PARSER_VERSION
+    if plan is not None:
+        parser_version += f"+hyphenation-{plan.digest()}"
+        changed_documents = {join.document_sha256 for join in plan.joins}
+        changed_exams = {
+            exam.document.sha256 for exam, key in pairs
+            if {exam.document.sha256, key.document.sha256} & changed_documents
+        }
+        questions = [
+            item.model_copy(update={"parser_version": parser_version})
+            if item.exam_sha256 in changed_exams else item for item in questions
+        ]
+        for metric in exam_metrics:
+            if metric.exam_id in changed_exams:
+                metric.intervention_free = False
 
     by_id: dict[str, StructuredQuestion] = {}
     duplicate_ids: set[str] = set()
@@ -1085,7 +1109,7 @@ def build_structured_question_package(
     )
     content = {
         "schema_version": STRUCTURED_PACKAGE_VERSION,
-        "parser_version": STRUCTURED_PARSER_VERSION,
+        "parser_version": parser_version,
         "input_manifest_sha256s": manifest_hashes,
         "accepted": [item.model_dump(mode="json") for item in accepted],
         "quarantined": [item.model_dump(mode="json") for item in quarantined],
@@ -1118,5 +1142,7 @@ def build_structured_question_package(
             "content_sha256": _canonical_sha256(semantic_content),
         }
     )
+    if plan is not None:
+        write_json(output_path.with_suffix(".hyphenation.json"), plan.model_dump(mode="json"))
     write_json(output_path, package.model_dump(mode="json"))
     return package

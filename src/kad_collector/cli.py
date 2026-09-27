@@ -189,6 +189,10 @@ def build_parser() -> argparse.ArgumentParser:
     structure.add_argument("--ollama-endpoint", default=DEFAULT_OLLAMA_ENDPOINT)
     structure.add_argument("--qwen-model", default=DEFAULT_QWEN_MODEL)
     structure.add_argument("--disable-ollama", action="store_true")
+    structure.add_argument(
+        "--hyphenation-plan", type=_path,
+        help="propostas de junção conferidas no PDF; não aprovam questões",
+    )
 
     consolidate = subparsers.add_parser(
         "consolidate-review",
@@ -755,6 +759,7 @@ def _run(args: argparse.Namespace) -> int:
             ollama_endpoint=args.ollama_endpoint,
             qwen_model=args.qwen_model,
             enable_ollama=not args.disable_ollama,
+            hyphenation_plan=args.hyphenation_plan,
         )
         structured_metrics = structured.metrics
         print(
