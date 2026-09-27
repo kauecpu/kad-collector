@@ -5,10 +5,13 @@ import json
 import tempfile
 import threading
 import unittest
+from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+
+from publication_contract import publication_blockers
 
 from kad_collector.approval_server import ApprovalApplication, create_approval_server
 from kad_collector.consolidated_review import (
@@ -27,11 +30,12 @@ from kad_collector.editorial_approval import (
     export_staging_package,
     reprocess_group,
 )
-from kad_collector.editorial_export import EditorialImportRecordV2
+from kad_collector.editorial_export import EditorialImportRecordV2, stable_question_id
 from kad_collector.json_utils import write_json
 from kad_collector.local_review import (
     create_review_session,
     decide_review_question,
+    question_content_sha256,
     save_review_session,
 )
 from kad_collector.models import (
@@ -41,6 +45,7 @@ from kad_collector.models import (
     QuestionRecord,
 )
 from kad_collector.operator_review import OperatorReviewBatch
+from kad_collector.staging_provenance import StagingOccurrence, build_canonical_staging_record
 from kad_collector.validation import validate_questions
 
 
@@ -478,7 +483,150 @@ class EditorialApprovalTests(unittest.TestCase):
             lines = (root / "staging" / "questoes.jsonl").read_text(encoding="utf-8").splitlines()
             self.assertEqual(len(lines), 2)
             for line in lines:
-                EditorialImportRecordV2.model_validate(json.loads(line))
+                record = json.loads(line)
+                EditorialImportRecordV2.model_validate(record)
+                self.assertEqual(publication_blockers(record), set())
+                self.assertEqual(record["data"]["publicationStatus"], "draft")
+                without_evidence = deepcopy(record)
+                del without_evidence["data"]["canonicalQuestion"]
+                self.assertEqual(publication_blockers(without_evidence), {"official_answer"})
+                for field, bad in (("answerKeyLinkId", " "), ("answerStatus", "missing"),
+                                   ("answer", "B")):
+                    changed = deepcopy(record)
+                    changed["data"]["canonicalQuestion"]["provenances"][0][field] = bad
+                    self.assertEqual(publication_blockers(changed), {"official_answer"})
+            before = {p.name: p.read_bytes() for p in (root / "staging").iterdir()}
+            export_staging_package(state_path, root / "again")
+            self.assertEqual(before, {p.name: p.read_bytes() for p in (root / "again").iterdir()})
+
+    def test_canonical_export_groups_permutations_and_keeps_original_answer_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            first = _question(1)
+            second = first.model_copy(deep=True, update={"number": 2, "correct_answer": "B"})
+            second.alternatives = [Alternative(letter="A", text="Errado"),
+                                   Alternative(letter="B", text="Certo")]
+            batch = _batch(root, [first, second])
+            occurrences = [StagingOccurrence("first", batch, first, {}),
+                           StagingOccurrence("second", batch, second, {})]
+            record, lineage = build_canonical_staging_record(occurrences)
+            raw = record.model_dump(mode="json", by_alias=True, exclude_none=True)
+            self.assertEqual(record.data.id, stable_question_id(batch, first))
+            self.assertEqual(raw["data"]["canonicalQuestion"]["occurrenceCount"], 2)
+            self.assertEqual(publication_blockers(raw), set())
+            self.assertEqual(lineage["occurrences"][1]["originalAnswer"], "B")
+            self.assertEqual(lineage["occurrences"][1]["canonicalAnswer"], "A")
+            self.assertEqual(lineage["occurrences"][1]["answerKeySha256"],
+                             batch.answer_key_document.sha256)
+            again, again_lineage = build_canonical_staging_record(list(reversed(occurrences)))
+            self.assertEqual(record, again)
+            self.assertEqual(lineage, again_lineage)
+            second.correct_answer = "A"
+            with self.assertRaisesRegex(ValueError, "respostas oficiais divergentes"):
+                build_canonical_staging_record(occurrences)
+
+    def test_approval_export_groups_only_the_approved_occurrences(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            first, second = _question(1), _question(2)
+            second.statement = first.statement
+            second.alternatives = [Alternative(letter="A", text="Errado"),
+                                   Alternative(letter="B", text="Certo")]
+            second.correct_answer = "B"
+            index_path, state_path = _campaign_fixture(root, [first, second])
+            state = build_approval_campaign(index_path, state_path, config=ApprovalConfig(
+                minimum_sample=2, maximum_sample=2, authorized_hosts=["example.test"]))
+            for item in state.questions:
+                decide_audit_item(state_path, item.stable_id, reviewer="auditora",
+                                  status="approved", structural_correct=True,
+                                  answer_correct=True, taxonomy_correct=True)
+            manifest = export_staging_package(state_path, root / "staging")
+            self.assertEqual((manifest["questions"], manifest["occurrences"]), (1, 2))
+            record = json.loads((root / "staging/questoes.jsonl").read_text(encoding="utf-8"))
+            self.assertEqual(publication_blockers(record), set())
+            approved = json.loads(state_path.read_text(encoding="utf-8"))
+            # A fixture simulates a withdrawn occurrence; the exporter must not infer approval.
+            approved["questions"][1]["state"] = "needs_review"
+            write_json(state_path, approved)
+            remaining = export_staging_package(state_path, root / "remaining")
+            self.assertEqual((remaining["questions"], remaining["occurrences"]), (1, 1))
+
+    def test_publication_contract_rejects_incomplete_data_and_duplicate_source(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            question = _question(1)
+            batch = _batch(root, [question])
+            record, _ = build_canonical_staging_record([
+                StagingOccurrence("first", batch, question, {})])
+            valid = record.model_dump(mode="json", by_alias=True, exclude_none=True)
+            for field, value, blocker in (
+                ("statement", "curto", "statement"),
+                ("discipline", "", "taxonomy"),
+                ("subject", "", "taxonomy"),
+                ("topic", "", "taxonomy"),
+                ("level", "", "taxonomy"),
+                ("correct", "E", "alternatives"),
+                ("alternatives", [], "alternatives"),
+            ):
+                changed = deepcopy(valid)
+                changed["data"][field] = value
+                self.assertIn(blocker, publication_blockers(changed))
+            for field in ("provider", "externalId", "url", "collectedAt", "fingerprint"):
+                changed = deepcopy(valid)
+                changed["source"][field] = None
+                self.assertEqual(publication_blockers(changed), {"source"})
+            duplicate = deepcopy(valid)
+            duplicate["data"]["id"] += "-duplicate"
+            self.assertEqual(publication_blockers(valid, [duplicate]), {"duplicate_source"})
+
+    def test_canonical_export_does_not_erase_operators_or_taxonomy_conflicts(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            first = _question(1)
+            first.statement = "A operação x + y é positiva."
+            second = first.model_copy(deep=True, update={"number": 2})
+            batch = _batch(root, [first, second])
+            occurrences = [StagingOccurrence("first", batch, first, {}),
+                           StagingOccurrence("second", batch, second, {})]
+            second.statement = "A operação x - y é positiva."
+            self.assertEqual(occurrences[0].equivalence_key, occurrences[1].equivalence_key)
+            with self.assertRaisesRegex(ValueError, "colisão de equivalência"):
+                build_canonical_staging_record(occurrences)
+            second.statement = first.statement
+            second.discipline = "Matemática"
+            with self.assertRaisesRegex(ValueError, "classificações divergentes"):
+                build_canonical_staging_record(occurrences)
+
+    def test_export_rechecks_document_and_content_without_changing_approval(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            index_path, state_path = _campaign_fixture(root, [_question(1)])
+            state = build_approval_campaign(index_path, state_path, config=ApprovalConfig(
+                minimum_sample=1, maximum_sample=1, authorized_hosts=["example.test"]))
+            decide_audit_item(state_path, state.questions[0].stable_id, reviewer="auditora",
+                              status="approved", structural_correct=True, answer_correct=True,
+                              taxonomy_correct=True)
+            original_state = state_path.read_bytes()
+            session_path = root / "session.json"
+            original_session = session_path.read_bytes()
+            session = json.loads(original_session)
+            session["batch"]["answer_key_document"]["sha256"] = "0" * 64
+            write_json(session_path, session)
+            with self.assertRaisesRegex(ValueError, "nenhuma questão válida"):
+                export_staging_package(state_path, root / "wrong-key")
+            session_path.write_bytes(original_session)
+            (root / "answer_key.pdf").write_bytes(b"modified")
+            with self.assertRaisesRegex(ValueError, "nenhuma questão válida"):
+                export_staging_package(state_path, root / "changed-pdf")
+            _document(root, "answer_key")
+            session = json.loads(original_session)
+            session["batch"]["questions"][0]["statement"] += " Conteúdo alterado."
+            changed = QuestionRecord.model_validate(session["batch"]["questions"][0])
+            self.assertNotEqual(question_content_sha256(changed), state.questions[0].content_sha256)
+            write_json(session_path, session)
+            with self.assertRaisesRegex(ValueError, "nenhuma questão válida"):
+                export_staging_package(state_path, root / "changed-content")
+            self.assertEqual(state_path.read_bytes(), original_state)
 
     def test_human_decision_is_preserved_but_rule_change_rechecks_automation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

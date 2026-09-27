@@ -85,7 +85,7 @@ class DiscoveryIntelligenceTests(unittest.TestCase):
             ["https://example.gov.br/concurso/policia-federal-edital-2022/"],
         )
 
-    def test_cesgranrio_regression_inventory_has_twenty_exams_and_four_keys(self) -> None:
+    def test_cesgranrio_inventory_includes_revised_key_under_recursos(self) -> None:
         source = next(
             item
             for item in load_config(ROOT / "config" / "sources.official.toml").sources
@@ -100,16 +100,16 @@ class DiscoveryIntelligenceTests(unittest.TestCase):
         )
         selected = select_document_links(html, inventory.page_url, source)
 
-        self.assertEqual((inventory.exams, inventory.answer_keys), (20, 4))
+        self.assertEqual((inventory.exams, inventory.answer_keys), (20, 5))
         self.assertEqual(
             (
                 sum(item[2] == "exam" for item in selected),
                 sum(item[2] == "answer_key" for item in selected),
             ),
-            (20, 4),
+            (20, 5),
         )
         self.assertFalse(any("edital" in item.title.casefold() for item in inventory.expected))
-        self.assertFalse(any("alterado" in item.title.casefold() for item in inventory.expected))
+        self.assertTrue(any("alterado" in item.title.casefold() for item in inventory.expected))
 
     def test_inventory_uses_structured_publication_time_for_each_document_block(self) -> None:
         inventory = extract_page_inventory(

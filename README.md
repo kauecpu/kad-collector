@@ -28,6 +28,28 @@ para a IA.
 - uma chave do provedor escolhido apenas quando uma etapa de IA for habilitada;
 - acesso local ao painel administrativo do KAD para importar o JSONL revisado.
 
+## Exportação da campanha aprovada
+
+```cmd
+kad-collector approval-export caminho\state.json --output caminho\pacote-staging
+```
+
+O comando revalida o conteúdo aprovado, os PDFs e seus hashes. O JSONL contém
+`canonicalQuestion.provenances`, incluindo páginas, resposta e vínculo determinístico
+com o gabarito. `linhagem.jsonl` relaciona cada vínculo aos hashes e URLs dos dois PDFs.
+Não é necessário um script adicional para inserir essa evidência.
+
+Somente ocorrências já aprovadas entram no pacote. Versões equivalentes são agrupadas
+apenas quando texto, alternativas, classificação e resposta são compatíveis. A letra
+original e seu mapeamento para as alternativas canônicas ficam na linhagem. Divergências
+vão para `excecoes.jsonl`; a deduplicação da campanha anterior não é refeita por este comando.
+O pacote continua `draft`: importar não equivale a aprovar ou publicar no KAD.
+
+Na nova extração, hífens de quebra de linha só são removidos quando discricionários
+ou quando a grafia unida aparece no próprio documento. Hífens reais e grafias sem
+comprovação são preservados. Isso não corrige sessões antigas: reprocessar gera conteúdo
+novo para revisão, sem transferir automaticamente a aprovação anterior.
+
 ## Operação simples por órgão, banca e período
 
 O comando `run` aceita um objetivo completo sem exigir URLs individuais. Ele seleciona

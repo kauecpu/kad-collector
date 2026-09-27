@@ -389,6 +389,29 @@ class LinkParsingTests(unittest.TestCase):
             ],
         )
 
+    def test_cesgranrio_revised_key_in_recursos_directory_is_not_excluded(self) -> None:
+        config = load_config(PROJECT_ROOT / "config" / "sources.official.toml")
+        source = next(item for item in config.sources if item.id == "cesgranrio_banco_brasil")
+        for folder in ("/recursos/", "%2Frecursos%2F"):
+            with self.subTest(folder=folder):
+                base = "https://inscricao.cesgranrio.com.br/storage.ashx?file=pdf" + folder
+                url = base + "PROVA-AGENTE-TECNOLOGIA-ALTERADO-EM-05_10_2021.pdf"
+                html = (
+                    f'<a href="{url}">Gabaritos Alterados</a>'
+                    f'<a href="{base}resposta-prova.pdf">Resposta aos Recursos</a>'
+                    f'<a href="{base}resultado-prova.pdf">Resultado final</a>'
+                    f'<a href="{base}edital-prova.pdf">Edital</a>'
+                )
+                self.assertEqual(
+                    select_document_links(html, source.start_urls[0], source),
+                    [(url, "Gabaritos Alterados", "answer_key")],
+                )
+                self.assertEqual(
+                    _matches_source_link(DiscoveredLink(url=url, title="Gabaritos Alterados"),
+                                         source),
+                    (url, "Gabaritos Alterados", "answer_key"),
+                )
+
     def test_cebraspe_pf_rules_accept_objective_proofs_and_definitive_keys(self) -> None:
         config = load_config(PROJECT_ROOT / "config" / "sources.official.toml")
         source = next(

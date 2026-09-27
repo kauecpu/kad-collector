@@ -14,6 +14,7 @@ from .fgv_parser import (
     FgvSectionAdapter,
 )
 from .models import Alternative, QuestionRecord
+from .pdf_text import repair_page_hyphenation
 from .static_parser import FuvestStaticExtractor
 
 _QUESTION_LINE = re.compile(
@@ -729,6 +730,7 @@ def _parse_cebraspe_true_false_pages(
 def parse_question_document(
     pages: list[dict[str, Any]], context: BankParsingContext
 ) -> BankParsingResult:
+    pages = repair_page_hyphenation(pages)
     if _supports_cebraspe_true_false(pages, context):
         return _parse_cebraspe_true_false_pages(pages, context)
     adapter = FgvSectionAdapter()
@@ -741,7 +743,7 @@ def parse_question_document(
     questions, warnings = _legacy_parse_question_pages(pages)
     return BankParsingResult(
         adapter_id="generic",
-        adapter_version="1.0",
+        adapter_version="1.1",
         profile_id=None,
         identity=FgvDocumentIdentity(
             role=context.role,
@@ -770,6 +772,6 @@ def parse_question_pages(
     pages: list[dict[str, Any]], context: BankParsingContext | None = None
 ) -> tuple[list[QuestionRecord], list[str]]:
     if context is None:
-        return _legacy_parse_question_pages(pages)
+        return _legacy_parse_question_pages(repair_page_hyphenation(pages))
     result = parse_question_document(pages, context)
     return list(result.objective_questions), result.warning_messages()

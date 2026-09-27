@@ -36,6 +36,7 @@ from .local_review import (
 )
 from .models import DocumentRecord, LocalReviewSession, QuestionRecord, StrictModel
 from .question_equivalence import question_fingerprints
+from .staging_provenance import StagingOccurrence, build_canonical_staging_record
 
 APPROVAL_RULE_VERSION = "1.2.0"
 APPROVAL_SCHEMA_VERSION = "1.0"
@@ -1072,55 +1073,97 @@ def export_staging_package(state_path: Path, output_dir: Path) -> dict[str, Any]
     if not eligible:
         raise ValueError("nenhum grupo auditado foi aprovado para staging")
     session_cache: dict[str, LocalReviewSession] = {}
+    document_cache: dict[str, tuple[bool, list[str]]] = {}
+    occurrences: dict[str, list[StagingOccurrence]] = defaultdict(list)
     records: list[dict[str, Any]] = []
     lineage: list[dict[str, Any]] = []
     exceptions: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
     seen_fingerprints: set[str] = set()
     group_by_id = {item.group_id: item for item in state.groups}
-    for item in eligible:
-        session = session_cache.setdefault(
-            item.session_path,
-            LocalReviewSession.model_validate(read_json(Path(item.session_path))),
-        )
-        question = next(
-            value for value in session.batch.questions if value.number == item.question_number
-        )
-        if question_content_sha256(question) != item.content_sha256:
-            exceptions.append(
-                {"stableId": item.stable_id, "issues": ["conteúdo mudou após avaliação"]}
-            )
-            continue
+    for item in sorted(eligible, key=lambda value: value.stable_id):
         try:
-            record = build_editorial_record(session.batch, question)
-        except ValueError as exc:
+            if item.session_path not in session_cache:
+                session_cache[item.session_path] = LocalReviewSession.model_validate(
+                    read_json(Path(item.session_path))
+                )
+            session = session_cache[item.session_path]
+            matches = [
+                value for value in session.batch.questions if value.number == item.question_number
+            ]
+            if len(matches) != 1:
+                raise ValueError("questão ausente ou número ambíguo na sessão")
+            question = matches[0]
+            if question_content_sha256(question) != item.content_sha256:
+                raise ValueError("conteúdo mudou após avaliação")
+            exam = session.batch.source_document
+            answer_key = session.batch.answer_key_document
+            if (
+                answer_key is None
+                or exam.sha256 != item.exam_sha256
+                or exam.resolved_url != item.exam_url
+                or answer_key.sha256 != item.answer_key_sha256
+                or answer_key.resolved_url != item.answer_key_url
+            ):
+                raise ValueError("documentos da associação mudaram após avaliação")
+            for document in (exam, answer_key):
+                # Cache by path as well as hash: a second occurrence may point to a missing copy.
+                cache_key = f"{document.local_path}:{document.sha256}:{document.size_bytes}"
+                if cache_key not in document_cache:
+                    document_cache[cache_key] = _document_integrity(document, {})
+                valid, issues = document_cache[cache_key]
+                if not valid:
+                    raise ValueError("; ".join(issues))
+                if not _host_allowed(document.resolved_url, state.config.authorized_hosts):
+                    raise ValueError("host da evidência não autorizado")
+            association = _note_value(question, "Associação de gabarito:")
+            if (
+                not association
+                or re.search(r"amb[ií]gu|incert|múltipl", association, re.I)
+                or question.answer_status != "matched"
+                or not question.source_pages
+                or any(page < 1 for page in question.source_pages)
+            ):
+                raise ValueError("associação ou páginas da evidência ausentes ou inválidas")
+            build_editorial_record(session.batch, question)
+        except (OSError, ValueError) as exc:
             exceptions.append({"stableId": item.stable_id, "issues": [str(exc)]})
             continue
+        group = group_by_id[item.group_id]
+        occurrence = StagingOccurrence(
+            item.stable_id, session.batch, question,
+            {
+                "groupId": group.group_id,
+                "sampleIds": sorted(group.sample_ids),
+                "structuralPrecision": group.structural_precision,
+                "answerPrecision": group.answer_precision,
+                "taxonomyPrecision": group.taxonomy_precision,
+            },
+        )
+        occurrences[occurrence.equivalence_key].append(occurrence)
+    for key in sorted(occurrences):
+        members = occurrences[key]
+        try:
+            record, evidence = build_canonical_staging_record(members)
+        except ValueError as exc:
+            exceptions.extend(
+                {"stableId": member.stable_id, "issues": [str(exc)]} for member in members
+            )
+            continue
         if record.data.id in seen_ids or record.source.fingerprint in seen_fingerprints:
-            exceptions.append(
-                {"stableId": item.stable_id, "issues": ["duplicata no pacote de staging"]}
+            exceptions.extend(
+                {"stableId": member.stable_id, "issues": ["duplicata no pacote de staging"]}
+                for member in members
             )
             continue
         seen_ids.add(record.data.id)
         seen_fingerprints.add(record.source.fingerprint)
         records.append(record.model_dump(mode="json", by_alias=True, exclude_none=True))
-        group = group_by_id[item.group_id]
         lineage.append(
             {
-                "stableId": item.stable_id,
-                "groupId": item.group_id,
-                "examUrl": item.exam_url,
-                "examSha256": item.exam_sha256,
-                "answerKeyUrl": item.answer_key_url,
-                "answerKeySha256": item.answer_key_sha256,
+                **evidence,
                 "taxonomyVersion": state.taxonomy_version,
                 "ruleVersion": state.rule_version,
-                "audit": {
-                    "sampleIds": group.sample_ids,
-                    "structuralPrecision": group.structural_precision,
-                    "answerPrecision": group.answer_precision,
-                    "taxonomyPrecision": group.taxonomy_precision,
-                },
             }
         )
     if not records:
@@ -1150,6 +1193,8 @@ def export_staging_package(state_path: Path, output_dir: Path) -> dict[str, Any]
         "taxonomyVersion": state.taxonomy_version,
         "ruleVersion": state.rule_version,
         "questions": len(records),
+        "occurrences": sum(record["data"]["canonicalQuestion"]["occurrenceCount"]
+                           for record in records),
         "exceptions": len(exceptions),
         "files": files,
         "content_sha256": _canonical_sha256(

@@ -398,7 +398,8 @@ include_patterns = [
   "(?is)(?:prova|caderno.?de.?quest(?:ao|oes|ão|ões)|gabarito).+(?:\\.pdf(?:$|[?#])|storage\\.ashx)",
 ]
 exclude_patterns = [
-  "(?i)(edital|resultado|classificacao|convocacao|comunicado|cronograma|cartao.?de.?inscricao|lista.?de.?candidatos|recurso|gabaritos?.?alterados?)",
+  # A pasta /recursos/ também contém gabaritos alterados após os recursos.
+  "(?i)(edital|resultado|classificacao|convocacao|comunicado|cronograma|cartao.?de.?inscricao|lista.?de.?candidatos|recurso(?!s?(?:/|%2f)))",
 ]
 exam_patterns = ["(?i)(prova|caderno.?de.?quest(?:ao|oes|ão|ões))"]
 answer_key_patterns = ["(?i)(gabarito.?preliminar|gabarito.?definitivo|gabarito)"]
