@@ -11,6 +11,7 @@ from kad_collector.structured_questions import (
     _content_document_type,
     _pair_documents,
     _process_pair,
+    _role,
     build_structured_question_package,
 )
 
@@ -142,6 +143,34 @@ def test_multiple_choice_answer_is_preserved() -> None:
     assert questions[0].correct_answer_label == "Delta"
 
 
+def test_declared_role_has_priority_over_noisy_document_title() -> None:
+    record = _record("exam", "PROVA OBJETIVA - TIPO 1", "a")
+    record.metadata["cargo"] = "Agente de Polícia Federal"
+
+    assert _role(record) == "Agente de Polícia Federal"
+
+
+def test_missing_board_and_organization_are_not_silently_replaced() -> None:
+    exam = _document(
+        "exam",
+        "PROVA OBJETIVA - CARGO 1",
+        "a",
+        "CONHECIMENTOS ESPECÍFICOS – BLOCO III\n"
+        "Julgue os itens subsequentes.\n"
+        "1 A primeira afirmação está completa.",
+    )
+    exam.document.metadata.clear()
+    key = _document("answer_key", "GABARITO DEFINITIVO - CARGO 1", "b", "1 - C")
+
+    questions, _metrics = _process_pair(exam, key, [])
+
+    assert questions[0].board == ""
+    assert questions[0].organization == ""
+    assert questions[0].validation_status == "quarantined"
+    assert "banca ausente" in questions[0].validation_reasons
+    assert "órgão ausente" in questions[0].validation_reasons
+
+
 def test_revised_key_reprocesses_answer_and_annulment_without_mutating_inputs():
     exam = _document("exam", "PROVA OBJETIVA - CARGO 1", "a",
                      "CONHECIMENTOS ESPECÍFICOS – BLOCO III\n"
@@ -193,6 +222,53 @@ def test_pairing_never_borrows_other_cargo_or_block(exam_title, key_title):
     exam = _document("exam", exam_title, "a", "1 Uma questão completa.")
     key = _document("answer_key", key_title, "b", "1 - C")
     assert not _pair_documents([exam, key], [])
+
+
+def test_pairing_uses_shared_semantic_role_compatibility_for_declared_roles() -> None:
+    exam = _document(
+        "exam",
+        "PROVA OBJETIVA - TIPO 1",
+        "a",
+        "1 Uma questão completa.",
+    )
+    key = _document(
+        "answer_key",
+        "GABARITO DEFINITIVO - CADERNO AZUL",
+        "b",
+        "1 - C",
+    )
+    exam.document.metadata["cargo"] = "Analista Tributário da Receita Federal"
+    key.document.metadata["role"] = "Analista Tributário Receita Federal"
+
+    errors = []
+    pairs = _pair_documents([exam, key], errors)
+
+    assert len(pairs) == 1
+    assert not errors
+
+
+@pytest.mark.parametrize(
+    ("field", "exam_value", "key_value"),
+    [
+        ("etapa", "Prova objetiva", "Curso de formação"),
+        ("turno", "Manhã", "Tarde"),
+        ("variant", "Tipo 1", "Tipo 2"),
+        ("cargo", "Agente", "Delegado"),
+    ],
+)
+def test_pairing_rejects_explicitly_conflicting_scope(
+    field: str, exam_value: str, key_value: str
+) -> None:
+    exam = _document("exam", "PROVA OBJETIVA - CARGO 1", "a", "1 Questão completa.")
+    key = _document("answer_key", "GABARITO DEFINITIVO - CARGO 1", "b", "1 - C")
+    exam.document.metadata[field] = exam_value
+    key.document.metadata[field] = key_value
+
+    errors = []
+    pairs = _pair_documents([exam, key], errors)
+
+    assert not pairs
+    assert any(error.stage == "pairing" for error in errors)
 
 
 def test_qwen_is_used_only_for_a_missing_deterministic_item(

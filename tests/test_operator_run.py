@@ -27,6 +27,7 @@ from kad_collector.operator_run import (
     select_operator_config,
 )
 from kad_collector.structured_questions import (
+    PackageError,
     QwenDecisionTrace,
     QwenRuntimeTrace,
     StructuredPackageMetrics,
@@ -175,6 +176,32 @@ def _package(*, qwen_calls: int = 0) -> StructuredQuestionPackage:
             duration_ms=1,
         ),
         content_sha256="a" * 64,
+    )
+
+
+def _unassociated_package() -> StructuredQuestionPackage:
+    package = _package()
+    return package.model_copy(
+        update={
+            "errors": [
+                PackageError(
+                    stage="pairing",
+                    document_id="d" * 64,
+                    message="prova sem gabarito compatível",
+                )
+            ],
+            "metrics": package.metrics.model_copy(
+                update={
+                    "exams_processed": 0,
+                    "answer_keys_processed": 0,
+                    "expected_questions": 0,
+                    "detected_questions": 0,
+                    "accepted_questions": 0,
+                    "associated_answers": 0,
+                    "intervention_free_percent": 0,
+                }
+            ),
+        }
     )
 
 
@@ -400,6 +427,48 @@ class OperatorRunTests(unittest.TestCase):
             self.assertEqual(result.state.metrics.handled_failures, 1)
             self.assertEqual(read_json(root / "run" / "failures.json")[0]["stage"], "download")
 
+    def test_reports_partial_when_collected_exam_has_no_association(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+
+            def structurer(
+                _manifest_paths: list[Path], output_path: Path, **_options: object
+            ) -> StructuredQuestionPackage:
+                package = _unassociated_package()
+                write_json(output_path, package.model_dump(mode="json"))
+                return package
+
+            result = self._run(root, structurer=structurer)
+
+            self.assertEqual(result.state.status, "partial")
+            self.assertEqual(result.state.metrics.exams_collected, 1)
+            self.assertEqual(result.state.metrics.exams_structured, 0)
+            self.assertEqual(result.state.metrics.pairing_failures, 1)
+            self.assertIn("associação", result.state.last_error or "")
+            report = (root / "run" / "report.md").read_text(encoding="utf-8")
+            self.assertIn("Provas coletadas | 1", report)
+            self.assertIn("Provas estruturadas | 0", report)
+
+    def test_partial_run_can_be_repeated_without_resume(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+
+            packages = iter((_unassociated_package(), _package()))
+
+            def structurer(
+                _manifest_paths: list[Path], output_path: Path, **_options: object
+            ) -> StructuredQuestionPackage:
+                package = next(packages)
+                write_json(output_path, package.model_dump(mode="json"))
+                return package
+
+            first = self._run(root, structurer=structurer)
+            second = self._run(root, structurer=structurer)
+
+            self.assertEqual(first.state.status, "partial")
+            self.assertEqual(second.state.status, "completed")
+            self.assertEqual(second.state.repeated_count, 1)
+
     def test_total_source_failure_preserves_last_verified_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -448,7 +517,24 @@ class OperatorRunTests(unittest.TestCase):
             self.assertEqual(result.state.status, "failed")
             self.assertEqual(
                 result.state.last_error,
-                "nenhuma fonte entregou documentos nesta tentativa",
+                "nenhuma prova utilizável foi coletada nesta tentativa",
+            )
+
+    def test_empty_successful_manifest_is_not_reported_as_completed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            empty_manifest = DownloadManifest(
+                created_at=datetime.now(UTC),
+                documents=[],
+                failures=[],
+            )
+
+            result = self._run(root, manifest=empty_manifest)
+
+            self.assertEqual(result.state.status, "failed")
+            self.assertEqual(
+                result.state.last_error,
+                "nenhuma prova utilizável foi coletada nesta tentativa",
             )
 
     def test_resume_after_total_source_failure_retries_collection(self) -> None:

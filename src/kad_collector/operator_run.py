@@ -37,7 +37,7 @@ from .url_utils import canonicalize_url, redact_text_secrets, redact_url_secrets
 OPERATOR_RUN_VERSION = "1.0"
 
 OperatorStage = Literal["discovery", "download", "extraction", "structuring"]
-RunStatus = Literal["running", "interrupted", "failed", "completed"]
+RunStatus = Literal["running", "interrupted", "failed", "partial", "completed"]
 
 
 class CollectorCallable(Protocol):
@@ -111,6 +111,11 @@ class OperatorMetrics(StrictModel):
     documents_found: int = Field(default=0, ge=0)
     exams_accepted: int = Field(default=0, ge=0)
     answer_keys_accepted: int = Field(default=0, ge=0)
+    exams_collected: int = Field(default=0, ge=0)
+    answer_keys_collected: int = Field(default=0, ge=0)
+    exams_structured: int = Field(default=0, ge=0)
+    answer_keys_associated: int = Field(default=0, ge=0)
+    pairing_failures: int = Field(default=0, ge=0)
     questions_found: int = Field(default=0, ge=0)
     questions_ready: int = Field(default=0, ge=0)
     questions_quarantined: int = Field(default=0, ge=0)
@@ -409,13 +414,22 @@ def _metrics(
     failures: list[OperatorFailure],
 ) -> OperatorMetrics:
     package_metrics = package.metrics
+    exams_collected = sum(item.document_type == "exam" for item in manifest.documents)
+    answer_keys_collected = sum(
+        item.document_type == "answer_key" for item in manifest.documents
+    )
     return OperatorMetrics(
         sources_consulted=selected_sources,
         documents_found=len(manifest.documents),
-        exams_accepted=sum(item.document_type == "exam" for item in manifest.documents),
-        answer_keys_accepted=sum(
-            item.document_type == "answer_key" for item in manifest.documents
-        ),
+        # Campos legados preservados para leitura de artefatos 1.0. Eles contam
+        # PDFs validados, não associações concluídas.
+        exams_accepted=exams_collected,
+        answer_keys_accepted=answer_keys_collected,
+        exams_collected=exams_collected,
+        answer_keys_collected=answer_keys_collected,
+        exams_structured=package_metrics.exams_processed,
+        answer_keys_associated=package_metrics.answer_keys_processed,
+        pairing_failures=sum(item.stage == "pairing" for item in package.errors),
         questions_found=package_metrics.detected_questions,
         questions_ready=package_metrics.accepted_questions,
         questions_quarantined=package_metrics.quarantined_questions,
@@ -454,8 +468,11 @@ def _report_text(state: OperatorRunState, failures: list[OperatorFailure]) -> st
         "|---|---:|",
         f"| Fontes consultadas | {metrics.sources_consulted} |",
         f"| Documentos encontrados | {metrics.documents_found} |",
-        f"| Provas aceitas | {metrics.exams_accepted} |",
-        f"| Gabaritos aceitos | {metrics.answer_keys_accepted} |",
+        f"| Provas coletadas | {metrics.exams_collected} |",
+        f"| Gabaritos coletados | {metrics.answer_keys_collected} |",
+        f"| Provas estruturadas | {metrics.exams_structured} |",
+        f"| Gabaritos associados | {metrics.answer_keys_associated} |",
+        f"| Falhas de associação | {metrics.pairing_failures} |",
         f"| Questões encontradas | {metrics.questions_found} |",
         f"| Questões prontas para revisão | {metrics.questions_ready} |",
         f"| Questões em quarentena | {metrics.questions_quarantined} |",
@@ -565,7 +582,7 @@ def run_operator(
             updated_at=timestamp,
         )
     else:
-        if not resume and existing_state.status != "completed":
+        if not resume and existing_state.status not in {"completed", "partial"}:
             raise ValueError(
                 "a execução anterior não terminou; use --resume para continuar"
             )
@@ -682,15 +699,35 @@ def run_operator(
         failures = _failures(manifest, package)
         write_json(failures_path, [item.model_dump(mode="json") for item in failures])
         state.metrics = _metrics(len(config.sources), manifest, package, failures)
-        total_source_failure = not manifest.documents and bool(manifest.failures)
-        state.status = "failed" if total_source_failure else "completed"
+        no_usable_documents = (
+            not manifest.documents or state.metrics.exams_collected == 0
+        )
+        association_incomplete = bool(manifest.documents) and (
+            state.metrics.pairing_failures > 0
+            or state.metrics.exams_structured < state.metrics.exams_collected
+            or (
+                state.metrics.exams_collected > 0
+                and state.metrics.questions_found == 0
+            )
+        )
+        state.status = (
+            "failed"
+            if no_usable_documents
+            else "partial"
+            if association_incomplete
+            else "completed"
+        )
         state.updated_at = _now()
         state.semantic_sha256 = package.content_sha256
         state.changes = _changes(previous_manifest, manifest)
         state.last_error = (
-            "nenhuma fonte entregou documentos nesta tentativa"
-            if total_source_failure
-            else None
+            "nenhuma prova utilizável foi coletada nesta tentativa"
+            if no_usable_documents
+            else (
+                "coleta concluída, mas a associação ou estruturação ficou incompleta"
+                if association_incomplete
+                else None
+            )
         )
         _write_state(state_path, state)
         _write_report(report_path, state, failures)
@@ -715,12 +752,20 @@ def run_operator(
 
     metrics = state.metrics
     emit("")
-    emit("Execução concluída" if state.status == "completed" else "Execução sem resultado")
+    status_message = {
+        "completed": "Execução concluída",
+        "partial": "Execução concluída parcialmente",
+        "failed": "Execução sem resultado",
+    }.get(state.status, "Execução interrompida")
+    emit(status_message)
     emit("")
     emit(f"Fontes consultadas: {metrics.sources_consulted}")
     emit(f"Documentos encontrados: {metrics.documents_found}")
-    emit(f"Provas aceitas: {metrics.exams_accepted}")
-    emit(f"Gabaritos aceitos: {metrics.answer_keys_accepted}")
+    emit(f"Provas coletadas: {metrics.exams_collected}")
+    emit(f"Gabaritos coletados: {metrics.answer_keys_collected}")
+    emit(f"Provas estruturadas: {metrics.exams_structured}")
+    emit(f"Gabaritos associados: {metrics.answer_keys_associated}")
+    emit(f"Falhas de associação: {metrics.pairing_failures}")
     emit(f"Questões encontradas: {metrics.questions_found}")
     emit(f"Questões prontas para revisão: {metrics.questions_ready}")
     emit(f"Questões em quarentena: {metrics.questions_quarantined}")
