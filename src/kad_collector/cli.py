@@ -684,9 +684,11 @@ def _run(args: argparse.Namespace) -> int:
                 qwen_model=args.qwen_model,
                 enable_ollama=not args.disable_ollama,
             )
-            if operator_result.state.status == "completed":
+            if operator_result.state.status in {"completed", "partial"}:
                 _finish_operator_review(args, output_dir)
-            return 2 if operator_result.state.status == "failed" else 0
+            if operator_result.state.status == "failed":
+                return 2
+            return 1 if operator_result.state.status == "partial" else 0
         urls = read_requested_urls(args.url, args.urls_file)
         semiautomatic_report, path = run_semiautomatic(
             config_path=args.config,

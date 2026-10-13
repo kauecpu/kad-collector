@@ -26,6 +26,7 @@ from .models import (
     StrictModel,
 )
 from .pdf_extractor import extract_manifest
+from .semantic_identity import semantic_role_values_compatible
 
 STRUCTURED_PACKAGE_VERSION = "1.0"
 STRUCTURED_PARSER_VERSION = "cebraspe-true-false-2.0"
@@ -351,6 +352,9 @@ def _with_content_document_type(document: ExtractedDocument) -> ExtractedDocumen
 
 
 def _role(document: DocumentRecord) -> str:
+    declared = _metadata_value(document, "role", "cargo")
+    if declared is not None:
+        return declared
     title = re.sub(
         r"(?i)^\s*(?:PROVA\s+OBJETIVA|GABARITO(?:\s+OFICIAL)?(?:\s+DEFINITIVO)?)\s*[-–—:]\s*",
         "",
@@ -366,6 +370,48 @@ def _area(role: str) -> str | None:
 
 def _identity(document: DocumentRecord) -> tuple[str, int, str]:
     return _contest_slug(document), _year(document), _pair_key(document)
+
+
+def _declared_scope(document: DocumentRecord, *keys: str) -> str | None:
+    value = _metadata_value(document, *keys)
+    return _normalize(value) if value is not None else None
+
+
+def _declared_scopes_compatible(
+    exam: DocumentRecord, answer_key: DocumentRecord
+) -> bool:
+    """Reject a pair when both documents explicitly declare conflicting scope.
+
+    Missing metadata is not invented here: it remains available for the legacy
+    title/header evidence path. When both sides do make a declaration, however,
+    a different stage, turn or booklet can never be silently ignored.
+    """
+    for aliases in (
+        ("stage", "etapa", "fase"),
+        ("turn", "turno", "shift"),
+        ("variant", "versao", "tipo", "booklet_type"),
+    ):
+        exam_value = _declared_scope(exam, *aliases)
+        key_value = _declared_scope(answer_key, *aliases)
+        if exam_value is not None and key_value is not None and exam_value != key_value:
+            return False
+    exam_role = _metadata_value(exam, "role", "cargo")
+    key_role = _metadata_value(answer_key, "role", "cargo")
+    return not (
+        exam_role is not None
+        and key_role is not None
+        and not semantic_role_values_compatible((exam_role,), (key_role,))
+    )
+
+
+def _declared_roles_match(exam: DocumentRecord, answer_key: DocumentRecord) -> bool:
+    exam_role = _metadata_value(exam, "role", "cargo")
+    key_role = _metadata_value(answer_key, "role", "cargo")
+    return bool(
+        exam_role is not None
+        and key_role is not None
+        and semantic_role_values_compatible((exam_role,), (key_role,))
+    )
 
 
 def _pairing_identity(
@@ -494,17 +540,25 @@ def _pair_documents(
             (identity, key)
             for identity, key in remaining_keys
             if identity[:2] == (contest, year)
+            and _declared_scopes_compatible(exam.document, key.document)
         ]
         exact = [
             (identity, key)
             for identity, key in same_contest
             if identity[2] == pair_key
         ]
+        declared_role = [
+            (identity, key)
+            for identity, key in same_contest
+            if _declared_roles_match(exam.document, key.document)
+        ]
         # A named cargo/block must never borrow a different cargo's key.
         # Retain the existing aggregate-key path only for explicitly generic titles.
         aggregate = [(identity, key) for identity, key in same_contest
                      if identity[2] in {"objetiva", "prova_objetiva", "gabarito", "gabaritos"}]
-        selected = _single_preferred_key(exact if exact else aggregate)
+        selected = _single_preferred_key(
+            exact if exact else declared_role if declared_role else aggregate
+        )
         if selected is not None:
             _key_identity, key = selected
             pairs.append((exam, key))
@@ -801,6 +855,12 @@ def _structured_question(
     key_record = answer_key.document
     role = _role(exam_record)
     reasons: list[str] = []
+    board = _metadata_value(exam_record, "board", "banca") or ""
+    organization = _metadata_value(exam_record, "organization", "orgao") or ""
+    if not board:
+        reasons.append("banca ausente")
+    if not organization:
+        reasons.append("órgão ausente")
     if annulled:
         reasons.append("item anulado no gabarito oficial")
     if internal_answer is None and not annulled:
@@ -820,10 +880,8 @@ def _structured_question(
         stable_id=_stable_question_id(
             exam_record, question_number, statement, parser_version
         ),
-        board=_metadata_value(exam_record, "board", "banca") or "Cebraspe",
-        organization=(
-            _metadata_value(exam_record, "organization", "orgao") or "Polícia Federal"
-        ),
+        board=board,
+        organization=organization,
         contest=(
             _metadata_value(exam_record, "contest", "concurso")
             or _contest_slug(exam_record)
@@ -904,7 +962,7 @@ def _process_pair(
     ]
     context = BankParsingContext(
         document_id=exam.document.sha256,
-        board=_metadata_value(exam.document, "board", "banca") or "Cebraspe",
+        board=_metadata_value(exam.document, "board", "banca") or "não informado",
         provider=exam.document.source_id,
         contest=_metadata_value(exam.document, "contest", "concurso"),
         role=_role(exam.document),

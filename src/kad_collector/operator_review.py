@@ -159,8 +159,10 @@ def _load_inputs(
     package = StructuredQuestionPackage.model_validate(
         read_json(output_dir / "review-package.json")
     )
-    if state.status != "completed":
-        raise ValueError("a execução precisa estar concluída antes de abrir a revisão")
+    if state.status not in {"completed", "partial"}:
+        raise ValueError(
+            "a execução precisa estar concluída ou parcial antes de abrir a revisão"
+        )
     if state.semantic_sha256 != package.content_sha256:
         raise ValueError("o pacote estruturado não corresponde ao estado da execução")
     return state, manifest, package

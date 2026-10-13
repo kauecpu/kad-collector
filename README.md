@@ -82,6 +82,14 @@ Se a execução for interrompida, retome o mesmo trabalho sem repetir as etapas 
 kad-collector run --resume data\runs\policia-federal-cebraspe-2021-2025
 ```
 
+O estado final distingue `completed`, quando todas as provas coletadas foram estruturadas,
+de `partial`, quando há PDFs válidos mas alguma prova ficou sem associação ou sem questões.
+Uma execução parcial mantém as questões aproveitáveis disponíveis para revisão, retorna código
+de saída `1` e informa separadamente provas coletadas, provas estruturadas, gabaritos associados
+e falhas de associação. `failed` continua reservado para uma execução sem resultado utilizável.
+Os campos legados `exams_accepted` e `answer_keys_accepted` permanecem no `run.json` apenas para
+compatibilidade e representam PDFs coletados, não pareamentos concluídos.
+
 O Qwen local usa `qwen3:8b` no Ollama somente como fallback. A descoberta e a estruturação
 determinísticas continuam funcionando quando o Ollama está desligado; para exigir esse modo,
 adicione `--disable-ollama`. Uma repetição não duplica documentos ou questões. Se todas as
